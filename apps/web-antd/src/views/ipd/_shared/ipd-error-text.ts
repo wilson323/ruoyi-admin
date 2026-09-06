@@ -104,6 +104,8 @@ export function ipdErrorText(error: unknown, options: IpdErrorOptions = {}): str
   if (error instanceof IpdRequestError) {
     if (error.kind === 'transport') return '无法连接服务，请检查网络后重试';
     if (error.kind === 'cancelled') return '登录状态已变化，请重新操作';
+    // 2026-09-06 第六批判例补：形状校验类（protocol）错误自带专属用户文案，不得降级为通用 fallback
+    if (error.kind === 'protocol') return error.message;
     if (error.kind === 'http') {
       const pageText = options.codeTexts?.[error.code];
       if (pageText) return pageText;
