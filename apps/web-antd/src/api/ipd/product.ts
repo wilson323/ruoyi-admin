@@ -118,9 +118,9 @@ export function updateProduct(
   }).then(normalizeProduct);
 }
 
-/** 上架状态变更（POST /{id}/status?status=；独立于编辑白名单）。 */
-export function changeProductStatus(id: string, status: ProductStatus | string): Promise<Product> {
-  return ipdPost<unknown>(`/products/${encodeURIComponent(id)}/status`, undefined, { status }).then(normalizeProduct);
+/** 上架状态变更（POST /{id}/status?status=；独立于编辑白名单；后端返回 Void，成功仅以 code=0 表达）。 */
+export function changeProductStatus(id: string, status: ProductStatus | string): Promise<void> {
+  return ipdPost<void>(`/products/${encodeURIComponent(id)}/status`, undefined, { status }).then(() => undefined);
 }
 
 /** 批量导入（仅超管；行级隔离，来源强制 ADMIN_IMPORT；≤500 行；缺列在 API 层兜底）。 */
@@ -135,11 +135,11 @@ export function batchImportProducts(
   })));
 }
 
-/** 绑定项目（1:1；query 传 projectId，空串表示解绑）。 */
-export function bindProductProject(id: string, projectId: null | string): Promise<Product> {
-  return ipdPost<unknown>(`/products/${encodeURIComponent(id)}/bind-project`, undefined, {
+/** 绑定项目（1:1；query 传 projectId，空串表示解绑；后端返回 Void，结果以 GET /products 复查）。 */
+export function bindProductProject(id: string, projectId: null | string): Promise<void> {
+  return ipdPost<void>(`/products/${encodeURIComponent(id)}/bind-project`, undefined, {
     projectId: projectId ?? '',
-  }).then(normalizeProduct);
+  }).then(() => undefined);
 }
 
 // ===== 产品组（页28 组织架构，2026-09-06 根因分析后从 product-group.ts 迁入）=====
