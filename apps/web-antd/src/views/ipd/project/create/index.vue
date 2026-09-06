@@ -36,8 +36,8 @@ import {
 import type { Project, ProjectCreateBody, ProjectLevel, TemplateType } from '../../../../api/ipd/project';
 import { createProject } from '../../../../api/ipd/project';
 import { isTransportError, projectErrorText } from '../project-error';
-import { RULES_BY_PAGE, renderRulesDescription, type ZkIpdRule } from '../_shared/zk-ipd-rules';
-import '../_shared/ipd-theme.css';
+import { RULES_BY_PAGE, renderRulesDescription } from '../../_shared/zk-ipd-rules';
+import '../../_shared/ipd-theme.css';
 
 const router = useRouter();
 const projectCreateRules = computed(() => renderRulesDescription(RULES_BY_PAGE.projectCreate));

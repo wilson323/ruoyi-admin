@@ -118,7 +118,7 @@ import { Alert, Button, Card, DatePicker, Form, Input, Radio, message } from 'an
 import { createBidInvitation } from '../../../../api/ipd/bid';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { bidErrorText } from '../bid-error';
-import '../_shared/ipd-theme.css';
+import '../../_shared/ipd-theme.css';
 
 const router = useRouter();
 const auth = useIpdAuthStore();

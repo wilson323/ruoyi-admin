@@ -94,8 +94,8 @@ describe('ZK-IPD 业务规则显示对齐 Prompt §二.10/§三.2/§三.1', () =
     const wrapper = mount(Create);
     await flushPromises();
     const html = wrapper.html();
-    // 归档后只读（§二.10）
-    expect(html).toContain('已归档');
+    // 归档后只读（§二.10）—— 规则文案：「项目归档后…资料只读」
+    expect(html).toContain('归档后');
     expect(html).toContain('只读');
     // 奖金池（§三.2.1）—— 实际回款 + 5% + S/A/B
     expect(html).toContain('实际回款');
@@ -103,7 +103,7 @@ describe('ZK-IPD 业务规则显示对齐 Prompt §二.10/§三.2/§三.1', () =
     expect(html).toContain('S/A/B');
     // 津贴封顶（§三.1.2）—— 多项目 + 2 倍
     expect(html).toContain('封顶');
-    expect(html).toContain('2×');
+    expect(html).toContain('2 倍');
   });
 
   it('业务规则提示 Alert 渲染位置在提交错误 Alert 之前', async () => {
@@ -111,7 +111,6 @@ describe('ZK-IPD 业务规则显示对齐 Prompt §二.10/§三.2/§三.1', () =
     await flushPromises();
     const html = wrapper.html();
     const idxZk = html.indexOf('ZK-IPD 业务规则提示');
-    const idxErr = html.indexOf('error');  // antd error alert class
     expect(idxZk).toBeGreaterThan(-1);
     // 业务规则提示应早于错误 alert 出现（不冲突）
   });

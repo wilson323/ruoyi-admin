@@ -39,7 +39,7 @@
 
       <!-- ZK-IPD §四.1 应标业务规则提示（BR-TEAM-03 拒绝不留痕） -->
       <Alert
-        v-else-if="invitation"
+        v-if="!invitation"
         class="mb-4"
         type="info"
         show-icon
@@ -47,7 +47,7 @@
         :description="respondRules"
       />
 
-      <template v-else-if="invitation">
+      <template v-if="invitation">
         <Card class="mb-4">
           <template #title>{{ invitation.title || '待补充' }}</template>
           <Descriptions :column="1" size="small">
@@ -239,6 +239,7 @@ import {
   composeResponseNote,
   validateRespondForm,
 } from '../bid-display';
+import { RULES_BY_PAGE, renderRulesDescription } from '../../_shared/zk-ipd-rules';
 
 const route = useRoute();
 const router = useRouter();

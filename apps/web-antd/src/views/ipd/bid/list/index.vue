@@ -167,6 +167,7 @@ import type { BidInvitation, IpdPage } from '../../../../api/ipd/bid';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { bidErrorText } from '../bid-error';
 import { bidModeText, bidStatusColor, bidStatusText, bidTimeText } from '../bid-display';
+import { RULES_BY_PAGE, renderRulesDescription } from '../../_shared/zk-ipd-rules';
 import '../../_shared/ipd-theme.css';
 
 const router = useRouter();
