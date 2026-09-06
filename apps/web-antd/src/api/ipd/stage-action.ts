@@ -10,7 +10,7 @@
  *   冲突由后端抛 50002 STATE_CONFLICT，前端显示「状态已变更，请刷新后重试」。
  * - 轻管录入（actualDoneAt/FAR/FRR/certNo/certPassedAt/algoType）走 /{id}/fields，不改 status；
  *   完成路径：先 fields 写日期，再 /transit?target=DONE。
- * - 深管交付物：POST /{id}/deliverables?fileName=&ossId=（需已上传至 OSS；前端不实现 OSS 上传，仅封装接口）。
+ * - 深管交付物：POST /{id}/deliverables?fileName=&ossId=（ossId 由前端先调若依 core/upload.ts uploadApi 上传 OSS 拿到再透传）。
  * - 阶段动作实例无 GET /{id} 单查端点，需 GET /?projectId= 全量后客户端筛 id。
  * - D11 FAR+FRR ≤ 1.000000（系统参数可配）；后端 40001 触发。
  * - V02 certNo 格式正则 ^[A-Za-z0-9\-/]+$；后端 10001 触发。
@@ -164,12 +164,15 @@ export function recordStageActionFields(id: string, body: StageActionFieldsBody)
 
 /**
  * 深管交付物登记（POST /api/v1/stage-actions/{id}/deliverables?fileName=&ossId=）。
- * 已知缺口（审计 2026-09-06 A-3/A-4）：后端暂无附件上传端点（/api/v1/attachments 不存在），
- * ossId 约定为后端 Long，前端当前以 string 拼串传递——待附件端点落地时一并定契约。
+ * 已知（[CONSISTENCY-13] 2026-09-06 选 A 落地）：
+ * - 前端先调若依 /resource/oss/upload（core/upload.ts uploadApi）拿 ossId (string 透传，后端 Long 接)；
+ * - 后端 StageActionService.addDeliverable(actionId, fileName, ossId, operator) 已就位；
+ * - ossId 类型契约：后端 Long；前端以 string 拼 query（URLSearchParams 接受 string），
+ *   Spring 反序列化时自动 toString→Long；测试中已用 string '9001' 验证契约。
  */
-export function addStageActionDeliverable(id: string, fileName: string, ossId?: null | string): Promise<unknown> {
+export function addStageActionDeliverable(id: string, fileName: string, ossId: string): Promise<unknown> {
   const params = new URLSearchParams();
   params.set('fileName', fileName);
-  if (ossId) params.set('ossId', ossId);
+  params.set('ossId', ossId);
   return ipdPost<unknown>(`/stage-actions/${id}/deliverables?${params.toString()}`);
 }
