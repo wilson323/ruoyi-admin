@@ -56,6 +56,8 @@ const IPD_DOMAIN_DEFAULTS: Record<string, Record<number, string>> = {
   bid: {
     30001: '您没有执行此操作的权限',
     40002: '招募条件已变更，请确认新条件后重试',
+    /** bid 域 50002 语义专属：招募/遴选/关闭/过期是 bid 生命周期术语 */
+    50002: '状态已变更（可能已遴选、已关闭或已过期），请刷新后查看',
   },
   project: {
     30001: '您没有此项目的操作权限',
@@ -64,9 +66,27 @@ const IPD_DOMAIN_DEFAULTS: Record<string, Record<number, string>> = {
   },
   portal: {
     30001: '操作超出当前游客允许范围',
+    20001: '登录状态已失效，请刷新页面后重试',
+    40010: '查询码格式不正确，请核对后重新输入',
+    40011: '请求过于频繁，请稍后再试',
+    40012: '附件数量或大小超出限制',
+    40013: 'AI 预算超出限制',
+    40401: '该产品已下架，请改选其他产品或「其他/未找到」',
+    50001: '未查询到对应的需求，请核对查询码',
+    50002: '当前状态不支持该操作，请稍后重试',
   },
   ai_document: {
-    30001: 'AI 文档操作权限不足',
+    /** 与通用表不同语义：账号级别被冻结而非单点权限 */
+    30001: '账号当前不可执行此操作，请联系管理员',
+    20003: '首次登录需先修改密码后再执行此操作',
+    40003: '当前存在超项未备案，暂不可执行此操作',
+    40004: '角色固定不可跨，当前账号不能执行此操作',
+    40012: '附件数量或大小超出限制',
+    40013: 'AI 预算超出限制，请联系管理员调整配额',
+    /** 通用表 50002 文案是"状态已变更"，AI 文档域更侧重"版本冲突"语义 */
+    50002: '状态冲突：该记录已被其他成员处理，请刷新后重试',
+    /** HTTP 404：未匹配路由或资源已删除（与业务 40401 区分） */
+    404: '请求的接口不存在或资源已删除，请确认后重试',
   },
 };
 
@@ -76,7 +96,7 @@ export interface IpdErrorOptions {
   /** 按 code 覆盖的页面级文案（最高优先级） */
   codeTexts?: Record<number, string>;
   /** 域名前缀：用于查找 IPD_DOMAIN_DEFAULTS */
-  domain?: 'bid' | 'project' | 'portal' | 'ai_document';
+  domain?: 'ai_document' | 'bid' | 'portal' | 'project';
 }
 
 /** 主入口：错误对象 → 中文文案。 */
@@ -96,11 +116,16 @@ export function ipdErrorText(error: unknown, options: IpdErrorOptions = {}): str
   return options.fallback ?? '操作失败，请稍后重试';
 }
 
-/** 工厂：返回绑定 codeTexts 的 ipdErrorText 变体（页面级覆写）。 */
+/** 工厂：返回绑定 codeTexts 的 ipdErrorText 变体（页面级覆写）。
+ *
+ *  opts 可继续追加 codeTexts（最高优先级覆盖绑定值），同时可覆盖 domain/fallback。
+ *  类型用交叉而非 Omit，是因为 Omit<IpdErrorOptions,'codeTexts'> 不含 codeTexts 字段
+ *  会导致 opts.codeTexts 读取报 TS2339。
+ */
 export function withCodeTextOverrides(
   codeTexts: Record<number, string>,
-  options: Omit<IpdErrorOptions, 'codeTexts'> = {},
-): (error: unknown, opts?: Omit<IpdErrorOptions, 'codeTexts'>) => string {
+  options: Partial<Omit<IpdErrorOptions, 'codeTexts'>> = {},
+): (error: unknown, opts?: Partial<IpdErrorOptions>) => string {
   return (error, opts) =>
     ipdErrorText(error, {
       ...options,
