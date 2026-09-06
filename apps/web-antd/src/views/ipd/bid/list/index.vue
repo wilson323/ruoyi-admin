@@ -1,6 +1,15 @@
 <template>
   <div class="p-4">
     <Card>
+      <!-- ZK-IPD §四.1.3 招标规则提示 -->
+      <Alert
+        class="mb-3"
+        type="info"
+        show-icon
+        message="ZK-IPD 招标规则"
+        :description="bidListRules"
+      />
+
       <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div class="flex flex-wrap items-center gap-2">
           <Select
@@ -161,6 +170,7 @@ import { bidModeText, bidStatusColor, bidStatusText, bidTimeText } from '../bid-
 import '../../_shared/ipd-theme.css';
 
 const router = useRouter();
+const bidListRules = computed(() => renderRulesDescription(RULES_BY_PAGE.bidList));
 const auth = useIpdAuthStore();
 
 const loading = ref(false);

@@ -1,21 +1,22 @@
 <script setup lang="ts">
 /**
- * 页03 工作台（卡 P0-10.3，后端聚合接口 P4-3.1 未交付）。
+ * 页03 工作台（后端聚合 WorkbenchController GET /api/v1/workbench/summary，2026-09-06 接入真实数据）。
  *
  * 真值源：ZK-IPD LIVE URL http://127.0.0.1:4173/workspace（2026-09-06 chrome-devtools 实地抓取）。
- *         设计稿字段：--navy / --navy-2 / --blue / --blue-dark / --blue-soft
- * 形态：身份问候（按时辰）+ 4 metric 卡 + 责任任务队列 + 我的当前推进 + 治理待办 + 删除审批 + 无实质产出提醒。
- * 聚合数据等待后端交付后接入（待我处理数 / 责任队列分组 / 当前推进 / 删除审批数 / 无产出提醒名单）。
+ * 形态：身份问候（按时辰）+ 4 metric 卡 + 责任任务队列 + 我的当前推进 + 删除审批数 + 无实质产出提醒。
+ * 无实质产出名单依赖绩效域月度资格规则（P1 substantive-output），当前展示真实空态。
  */
-import { computed } from 'vue';
-import { useRouter } from 'vue-router';
-import { Alert, Card, Tag } from 'ant-design-vue';
+import { computed, onMounted, ref } from 'vue';
+import { Alert, Tag } from 'ant-design-vue';
 
+import { fetchWorkbenchSummary } from '../../../api/ipd/workbench';
+import type { WorkbenchSummary, WorkbenchTask } from '../../../api/ipd/workbench';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
 import '../_shared/ipd-theme.css';
+import { RULES_BY_PAGE, renderRulesDescription } from '../_shared/zk-ipd-rules';
 
 const auth = useIpdAuthStore();
-const router = useRouter();
+const workbenchRules = computed(() => renderRulesDescription(RULES_BY_PAGE.workbench));
 
 /** ZK-IPD 设计稿：按当前小时生成时辰问候（24h 制）。 */
 const greeting = computed(() => {
@@ -36,64 +37,101 @@ const greeting = computed(() => {
   return `${timeText}，${name}`;
 });
 
+/** 聚合数据（真实接口，无 mock）。 */
+const summary = ref<null | WorkbenchSummary>(null);
+const loadError = ref('');
+
 interface MetricCard {
   label: string;
   note: string;
   value: number | string;
   tone: 'default' | 'danger' | 'warning' | 'primary';
 }
-/** ZK-IPD 工作台 4 metric 占位（待后端聚合接口 P4-3.1 接入真实值）。 */
-const metrics: MetricCard[] = [
-  { label: '待我处理', note: '按责任链实时投递', value: '—', tone: 'default' },
-  { label: '临期 / 超期', note: '优先处理阻断项', value: '—', tone: 'danger' },
-  { label: '未读通知', note: '站内提醒不依赖企微', value: '—', tone: 'warning' },
-  { label: '已完成', note: '全过程可追溯', value: '—', tone: 'primary' },
-];
+/** 4 metric：stats.pending / stats.overdue / unread / completed。 */
+const metrics = computed<MetricCard[]>(() => {
+  const s = summary.value?.stats;
+  return [
+    { label: '待我处理', note: '按责任链实时投递', value: s ? s.pending : '—', tone: 'default' },
+    { label: '临期 / 超期', note: '优先处理阻断项', value: s ? s.overdue : '—', tone: 'danger' },
+    { label: '未读通知', note: '站内提醒不依赖企微', value: s ? s.unread : '—', tone: 'warning' },
+    { label: '已完成', note: '全过程可追溯', value: s ? s.completed : '—', tone: 'primary' },
+  ];
+});
 
 const activeTab = ref<'completed' | 'followed' | 'initiated' | 'overdue' | 'pending'>('pending');
 
-/** LIVE 工作台责任队列筛选 tab（待后端聚合接口接入真实计数与列表）。 */
-const queueTabs = [
-  { key: 'pending', label: '待我处理' },
-  { key: 'initiated', label: '我发起的' },
-  { key: 'overdue', label: '临期/超期' },
-  { key: 'completed', label: '已完成' },
-  { key: 'followed', label: '我的关注' },
-] as const;
+/** LIVE 工作台责任队列筛选 tab（计数来自真实聚合）。 */
+const queueTabs = computed(() => {
+  const s = summary.value?.stats;
+  return [
+    { key: 'pending', label: '待我处理', count: s ? s.pending : 0 },
+    { key: 'initiated', label: '我发起的', count: 0 },
+    { key: 'overdue', label: '临期/超期', count: s ? s.overdue : 0 },
+    { key: 'completed', label: '已完成', count: s ? s.completed : 0 },
+    { key: 'followed', label: '我的关注', count: 0 },
+  ] as const;
+});
 
-/** LIVE 工作台责任任务队列占位分组（待后端按项目聚合）。 */
+/** 责任队列：后端 tasks 平铺 → 按项目分组（真实 stage_action）。 */
 interface TaskGroup {
   projectName: string;
   count: number;
-  items: { kind: string; title: string; desc: string; code: string; initiator: string; time: string }[];
+  items: { kind: string; title: string; desc: string; code: string; initiator: string; time: string; overdue: boolean }[];
 }
-const taskGroups: TaskGroup[] = [
-  {
-    projectName: '如门禁测试',
-    count: 2,
-    items: [
-      { kind: '产出资格提醒', title: '连续两个月无实质产出复核', desc: '仅提醒复核津贴资格，系统不会自动停发', code: 'pm2008', initiator: '傅志谦', time: '09/02 20:15' },
-      { kind: '产出资格提醒', title: '连续两个月无实质产出复核', desc: '仅提醒复核津贴资格，系统不会自动停发', code: 'pm2008', initiator: '傅志谦', time: '09/02 20:15' },
-    ],
-  },
-  {
-    projectName: '熵基互联+智能锁',
-    count: 2,
-    items: [
-      { kind: '产出资格提醒', title: '连续两个月无实质产出复核', desc: '仅提醒复核津贴资格，系统不会自动停发', code: 'PM00085', initiator: '傅志谦', time: '09/02 20:15' },
-      { kind: '产出资格提醒', title: '连续两个月无实质产出复核', desc: '仅提醒复核津贴资格，系统不会自动停发', code: 'PM00085', initiator: '傅志谦', time: '09/02 20:15' },
-    ],
-  },
-];
 
-/** LIVE 无产出提醒占位名单（待后端按月度资格规则接入）。 */
-interface NoOutputRow { person: string; project: string; month: string; reason: string }
-const noOutputList: NoOutputRow[] = [
-  { person: '杨志君', project: '熵基互联+智能锁', month: '2026-09', reason: '最近产出 两个月内无记录' },
-  { person: '胡蛟露', project: '如门禁测试', month: '2026-09', reason: '最近产出 两个月内无记录' },
-  { person: '上官志昌', project: '如门禁测试', month: '2026-09', reason: '最近产出 两个月内无记录' },
-  { person: '文元彪', project: '熵基互联+智能锁', month: '2026-09', reason: '最近产出 两个月内无记录' },
-];
+const STATUS_TEXT: Record<string, string> = {
+  IN_PROGRESS: '进行中',
+  NOT_STARTED: '未开始',
+  DELAYED: '已延期',
+};
+
+function formatDue(iso: null | number | string): string {
+  if (!iso) return '无截止';
+  const d = new Date(iso);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${mm}/${dd} 截止`;
+}
+
+const taskGroups = computed<TaskGroup[]>(() => {
+  const tasks = summary.value?.tasks ?? [];
+  const visible = activeTab.value === 'overdue'
+    ? tasks.filter((t) => t.priority === 'high')
+    : tasks;
+  const byProject = new Map<string, WorkbenchTask[]>();
+  for (const t of visible) {
+    const key = t.projectName ?? '未命名项目';
+    byProject.set(key, [...(byProject.get(key) ?? []), t]);
+  }
+  return [...byProject.entries()].map(([projectName, items]) => ({
+    projectName,
+    count: items.length,
+    items: items.map((t) => ({
+      kind: STATUS_TEXT[t.status] ?? t.status,
+      title: t.title ?? t.actionCode ?? '阶段动作',
+      desc: `责任角色 ${t.ownerRole ?? 'BOTH'} · ${t.isBlocking === '1' ? '阻断项' : '非阻断'}`,
+      code: t.projectCode ?? '',
+      initiator: '',
+      time: formatDue(t.dueDate),
+      // 超期红字按事实判定（dueDate 已过，与后端 priority=high 同口径），而非仅 DELAYED 状态
+      overdue: typeof t.dueDate === 'number' && t.dueDate < Date.now(),
+    })),
+  }));
+});
+
+/** 删除审批待办数（组长=待初审；超管=待终审）。 */
+const deletionPending = computed(() => summary.value?.deletionPending ?? 0);
+
+/** 我的当前推进。 */
+const currentAdvance = computed(() => summary.value?.currentAdvance ?? null);
+
+onMounted(async () => {
+  try {
+    summary.value = await fetchWorkbenchSummary();
+  } catch (error) {
+    loadError.value = error instanceof Error ? error.message : '聚合接口加载失败';
+  }
+});
 </script>
 
 <template>
@@ -109,6 +147,16 @@ const noOutputList: NoOutputRow[] = [
       <button type="button" class="ipd-wb-continue">
         继续当前IPD动作
       </button>
+    </div>
+
+    <!-- ZK-IPD §三.1.4 业务规则提示：长期无产出提醒 -->
+    <div class="ipd-wb-rules">
+      <Alert
+        type="info"
+        show-icon
+        message="ZK-IPD 津贴风控规则"
+        :description="workbenchRules"
+      />
     </div>
 
     <!-- 4 metric 卡（按 LIVE URL 顺序：待我处理 / 临期·超期 / 未读通知 / 已完成） -->
@@ -140,7 +188,7 @@ const noOutputList: NoOutputRow[] = [
           :class="['ipd-wb-tab', { active: activeTab === t.key }]"
           @click="activeTab = t.key"
         >
-          {{ t.label }}
+          {{ t.label }}<span v-if="t.count > 0" class="ipd-wb-tab-count">{{ t.count }}</span>
         </button>
       </div>
 
@@ -149,9 +197,10 @@ const noOutputList: NoOutputRow[] = [
         <section class="ipd-wb-queue-card">
           <header class="ipd-wb-section-header">
             <h2 class="ipd-wb-section-title">责任任务队列</h2>
-            <span class="ipd-wb-section-meta">— 项</span>
+            <span class="ipd-wb-section-meta">{{ taskGroups.reduce((n, g) => n + g.count, 0) }} 项</span>
           </header>
-          <div v-if="activeTab !== 'pending'" class="ipd-wb-empty">
+          <p v-if="loadError" class="ipd-wb-empty">聚合接口加载失败：{{ loadError }}</p>
+          <div v-else-if="activeTab !== 'pending' && activeTab !== 'overdue'" class="ipd-wb-empty">
             {{ activeTab === 'followed' ? '尚未收藏业务对象；在动作工作区点击收藏后，会集中显示在这里。' : '当前没有待处理事项；新的动作、审批、移交、绩效或整改责任会自动投递到这里。' }}
           </div>
           <template v-else>
@@ -173,11 +222,11 @@ const noOutputList: NoOutputRow[] = [
                 <h4 class="ipd-wb-task-title">{{ it.title }}</h4>
                 <p class="ipd-wb-task-desc">{{ it.desc }}</p>
                 <p class="ipd-wb-task-meta">
-                  <span>{{ it.code }}</span>
-                  <span> · 发起人 </span>
-                  <span>{{ it.initiator }}</span>
+                  <span v-if="it.code">{{ it.code }}</span>
+                  <span v-if="it.initiator"> · 发起人 </span>
+                  <span v-if="it.initiator">{{ it.initiator }}</span>
                   <span> · </span>
-                  <span>{{ it.time }}</span>
+                  <span :class="{ 'ipd-wb-overdue': it.overdue }">{{ it.time }}</span>
                 </p>
               </div>
             </article>
@@ -190,12 +239,22 @@ const noOutputList: NoOutputRow[] = [
           <section class="ipd-wb-side-card">
             <header class="ipd-wb-section-header">
               <h2 class="ipd-wb-section-title">我的当前推进</h2>
-              <span class="ipd-wb-section-meta">—</span>
+              <span class="ipd-wb-section-meta">{{ currentAdvance ? (currentAdvance.currentStage ?? '—') : '—' }}</span>
             </header>
-            <div class="ipd-wb-current">
+            <div v-if="currentAdvance" class="ipd-wb-current">
+              <p class="ipd-wb-current-code">{{ currentAdvance.projectCode ?? currentAdvance.projectName }}</p>
+              <h3 class="ipd-wb-current-title">{{ currentAdvance.actionName ?? '当前阶段无待办动作' }}</h3>
+              <p class="ipd-wb-current-meta">
+                {{ currentAdvance.projectName }} · {{ currentAdvance.actionStatus ?? 'IDLE' }} · 深入业务详情办理
+              </p>
+              <button type="button" class="ipd-wb-coach-btn" @click="$router.push(currentAdvance.deepLink).catch(() => {})">
+                打开任务教练
+              </button>
+            </div>
+            <div v-else class="ipd-wb-current">
               <p class="ipd-wb-current-code">—</p>
               <h3 class="ipd-wb-current-title">尚无进行中的 IPD 动作</h3>
-              <p class="ipd-wb-current-meta">待后端聚合接口接入后展示当前项目 / 阶段 / 工作项</p>
+              <p class="ipd-wb-current-meta">项目推进后，当前阶段动作会实时展示在这里</p>
               <button type="button" class="ipd-wb-coach-btn" disabled>
                 打开任务教练
               </button>
@@ -226,10 +285,10 @@ const noOutputList: NoOutputRow[] = [
         <section class="ipd-wb-side-card">
           <header class="ipd-wb-section-header">
             <h3 class="ipd-wb-section-title">删除审批</h3>
-            <span class="ipd-wb-section-meta">0项待处理</span>
+            <span class="ipd-wb-section-meta">{{ deletionPending }}项待处理</span>
           </header>
           <div class="ipd-wb-empty ipd-wb-empty-tight">
-            暂无待处理删除审批。
+            {{ deletionPending > 0 ? `有 ${deletionPending} 项删除申请待处理；从对应业务对象进入办理。` : '暂无待处理删除审批。' }}
           </div>
         </section>
 
@@ -238,16 +297,9 @@ const noOutputList: NoOutputRow[] = [
             <h3 class="ipd-wb-section-title">无实质产出提醒</h3>
             <span class="ipd-wb-section-meta">仅提醒，不自动停发</span>
           </header>
-          <ul class="ipd-wb-nooutput">
-            <li v-for="r in noOutputList" :key="r.person + r.project">
-              <span class="ipd-wb-nooutput-person">{{ r.person }}</span>
-              <span class="ipd-wb-nooutput-sep"> · </span>
-              <span class="ipd-wb-nooutput-project">{{ r.project }}</span>
-              <span class="ipd-wb-nooutput-meta">
-                {{ r.month }} · {{ r.reason }}
-              </span>
-            </li>
-          </ul>
+          <div class="ipd-wb-empty ipd-wb-empty-tight">
+            本月暂无待复核名单；月度资格规则扫描后自动展示（P1 substantive-output 接入）。
+          </div>
         </section>
       </div>
     </section>
@@ -380,6 +432,25 @@ const noOutputList: NoOutputRow[] = [
   background: var(--ipd-blue-soft, #edf2ff);
   border-color: var(--ipd-blue, #245bf4);
   color: var(--ipd-blue, #245bf4);
+  font-weight: 600;
+}
+.ipd-wb-tab-count {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--ipd-blue-soft, #edf2ff);
+  color: var(--ipd-blue, #245bf4);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+}
+.ipd-wb-tab.active .ipd-wb-tab-count {
+  background: #ffffff;
+}
+.ipd-wb-overdue {
+  color: var(--ipd-red, #e45757);
   font-weight: 600;
 }
 

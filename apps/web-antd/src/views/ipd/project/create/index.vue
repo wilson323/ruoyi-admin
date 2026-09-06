@@ -36,9 +36,11 @@ import {
 import type { Project, ProjectCreateBody, ProjectLevel, TemplateType } from '../../../../api/ipd/project';
 import { createProject } from '../../../../api/ipd/project';
 import { isTransportError, projectErrorText } from '../project-error';
+import { RULES_BY_PAGE, renderRulesDescription, type ZkIpdRule } from '../_shared/zk-ipd-rules';
 import '../_shared/ipd-theme.css';
 
 const router = useRouter();
+const projectCreateRules = computed(() => renderRulesDescription(RULES_BY_PAGE.projectCreate));
 
 interface FormState {
   launchDate: null | number;
@@ -190,6 +192,15 @@ function cancel(): void {
         message="新建项目需满足 BR-PROD-02 三模板分支 + BR-INC-05 系数定值双签；项目编码 / 立项阶段 / 状态 / 来源由服务端权威生成。"
         show-icon
         type="info"
+      />
+
+      <!-- ZK-IPD 业务规则提示：与 Prompt §二.10/§三.2/§三.1 强一致 -->
+      <Alert
+        class="mb-4"
+        type="warning"
+        show-icon
+        message="ZK-IPD 业务规则提示"
+        :description="projectCreateRules"
       />
 
       <Alert
