@@ -6,6 +6,8 @@ import { defineStore } from 'pinia';
 import { useAccessStore, useUserStore } from '@vben/stores';
 
 import {
+  IPD_LOGIN_CREDENTIAL_ERROR,
+  IPD_LOGIN_CREDENTIAL_TEXT,
   IpdRequestError,
   fetchPlatformToken,
   loginIpd,
@@ -81,6 +83,10 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
     const cached = restorePlatformToken();
     if (!force && cached && cached.expiresAt > Date.now() + 30_000) {
       if (accessStore.accessToken !== cached.token) accessStore.setAccessToken(cached.token);
+      // 缓存命中路径同样要恢复按钮权限码：v-access:code 消费 accessStore.accessCodes，
+      // 只靠 userStore.permissions 会导致平台各模块增删改按钮全部不渲染（2026-09-06 浏览器实测修复）
+      const cachedPermissions = useUserStore().userInfo?.permissions ?? [];
+      if (cachedPermissions.length > 0) accessStore.setAccessCodes(cachedPermissions);
       return cached.token;
     }
     const result = await fetchPlatformToken(token.value);
@@ -101,6 +107,9 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
           userId: String(info.user.userId),
           username: info.user.userName,
         });
+        // 对齐 authLogin 标准登录路径（store/auth.ts）：按钮权限码必须进 accessStore，
+        // 否则 v-access:code 全部判否，平台模块无法增删改（2026-09-06 用户实测反馈修复）
+        accessStore.setAccessCodes(info.permissions ?? []);
       }
     } catch { /* 用户信息加载失败不影响票有效性 */ }
     return result.token;
@@ -146,7 +155,7 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
       try {
         const result = await refreshIpd(previous.accessToken);
         if (version !== sessionVersion) throw supersededSession();
-        if (result.token === previous.accessToken) throw new IpdRequestError('刷新响应未轮换凭据');
+        if (result.token === previous.accessToken) throw new IpdRequestError('会话刷新异常，请重新登录');
         installSession(result);
       } catch (cause) {
         if (version !== sessionVersion) throw supersededSession();
@@ -223,9 +232,14 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
       if (cause instanceof IpdRequestError && cause.kind === 'cancelled') throw cause;
       if (!requiresReauthentication.value) clearSession();
       // 2026-09-06 第六批：登录页文案统一走 _shared/ipd-error-text 权威源（治理 Warning-2）；
-      // 登录语境 code=10001 恒为凭据错误，页面级覆写专用文案，不再被通用表吞成「输入信息不符合要求」（Warning-3 用户可见修复）
+      // 登录语境 10001 须按后端枚举消息精确判定凭据语义（评审 Important-1）：
+      // 坏凭据/离职/禁用/限流均落 400+10001，只有 envelope.message === 固定枚举「用户名或密码错误」才是真凭据错；
+      // 按 code 无差别覆写会把「账号已停用」误报成密码错、把「登录尝试过于频繁」的防爆破提示遮蔽掉。
+      const credentialReject = cause instanceof IpdRequestError
+        && cause.code === 10001
+        && cause.envelopeMessage === IPD_LOGIN_CREDENTIAL_ERROR;
       error.value = cause instanceof IpdRequestError
-        ? ipdErrorText(cause, { codeTexts: { 10001: '用户名或密码错误，请重新输入' }, fallback: '登录失败，请重试' })
+        ? (credentialReject ? IPD_LOGIN_CREDENTIAL_TEXT : ipdErrorText(cause, { fallback: '登录失败，请重试' }))
         : '登录失败，请重试';
       throw cause;
     } finally { busy.value = false; }

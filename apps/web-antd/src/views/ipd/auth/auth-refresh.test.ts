@@ -9,7 +9,7 @@ import { useIpdAuthStore } from '../../../store/ipd-auth';
 
 const identity = { mustChangePwd: false, scope: 'FULL', person: { id: '900103', groupId: null, name: '测试人员', username: 'fixture', personType: 'MARKET_PM', accountStatus: 'ACTIVE' } };
 const pair = (suffix = 'one') => ({ ...identity, token: `access-${suffix}`, tokenType: 'Bearer', expiresIn: 900 });
-const response = (data: unknown, status = 200, code = 0) => new Response(JSON.stringify({ code, message: code ? '请求被拒绝' : 'ok', data, timestamp: '2026-09-05', traceId: null }), { status, headers: { 'Content-Type': 'application/json' } });
+const response = (data: unknown, status = 200, code = 0, message?: string) => new Response(JSON.stringify({ code, message: message ?? (code ? '请求被拒绝' : 'ok'), data, timestamp: '2026-09-05', traceId: null }), { status, headers: { 'Content-Type': 'application/json' } });
 beforeEach(() => { sessionStorage.clear(); setActivePinia(createPinia()); });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
@@ -19,11 +19,27 @@ describe('rotating IPD session', () => {
     expect(await loginIpd('fixture', 'fixture-password')).toEqual(pair());
   });
   it('maps a credential rejection (400/10001) on the login path to the dedicated message', async () => {
-    // 2026-09-06 第六批回归：登录语境 10001 恒为凭据错误，不得被通用表吞成「输入信息不符合要求」（治理 Warning-3）
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(null, 400, 10001)));
+    // 2026-09-06 第六批回归：凭据语义按后端固定枚举消息判定（评审 Important-1），不得被通用表吞成「输入信息不符合要求」
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(null, 400, 10001, '用户名或密码错误')));
     const auth = useIpdAuthStore();
     await expect(auth.login('fixture', 'wrong-password')).rejects.toThrow();
     expect(auth.error).toBe('用户名或密码错误，请重新输入');
+  });
+  it('does not mask non-credential 10001 rejections (rate limit / disabled) as wrong password', async () => {
+    // 评审 Important-1：离职/禁用/限流同落 400+10001，按 code 无差别覆写会遮蔽防爆破提示、误导撞库
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(null, 400, 10001, '登录尝试过于频繁，请稍后再试')));
+    const auth = useIpdAuthStore();
+    await expect(auth.login('fixture', 'any')).rejects.toThrow();
+    expect(auth.error).toBe('输入信息不符合要求，请检查后重试');
+  });
+  it('keeps the defensive 401 login specialization for credential codes (gateway rewrite path)', async () => {
+    // 评审 Suggestion-2：后端登录匿名放行且 10001 实走 HTTP 400，401+10001 仅网关异常改写时出现——纯防御分支须有用例固定
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(null, 401, 10001, '用户名或密码错误')));
+    await expect(loginIpd('fixture', 'wrong')).rejects.toThrow('用户名或密码错误，请重新输入');
+  });
+  it('never reports wrong-password for 401 login rejections carrying non-credential codes', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(null, 401, 20002, '账号待移交冻结中')));
+    await expect(loginIpd('fixture', 'wrong')).rejects.toThrow('账号待移交冻结中，仅保留移交相关权限');
   });
   it('rotates once for concurrent expired requests and atomically stores the new pair', async () => {
     let expired = false; let refreshCalls = 0; let release!: () => void;

@@ -23,11 +23,17 @@ export interface IpdLoginResult extends IpdIdentity {
 }
 
 export class IpdRequestError extends Error {
-  constructor(message: string, readonly status = 0, readonly code = 0, readonly kind: 'http' | 'protocol' | 'transport' | 'cancelled' = 'protocol') {
+  constructor(message: string, readonly status = 0, readonly code = 0, readonly kind: 'http' | 'protocol' | 'transport' | 'cancelled' = 'protocol', readonly envelopeMessage?: string) {
     super(message);
     this.name = 'IpdRequestError';
   }
 }
+
+/** 后端登录坏凭据的固定枚举文案（IpdAuthService.login 唯一固定值；离职/禁用/限流同落 400+10001 但 message 不同）。
+ *  调用方必须按 envelopeMessage 精确比对而非按 code 覆写，否则会把「账号已停用」「登录尝试过于频繁」误报成密码错误（评审 Important-1）。 */
+export const IPD_LOGIN_CREDENTIAL_ERROR = '用户名或密码错误';
+/** 登录页展示用的凭据错误文案。 */
+export const IPD_LOGIN_CREDENTIAL_TEXT = '用户名或密码错误，请重新输入';
 
 /**
  * ApiV1ErrorCode → 中文兜底文案映射（与 ruoyi-ipd ApiV1ErrorCode.java 一一对应）。
@@ -126,9 +132,10 @@ export async function requestIpd(
     }
     if (!response.ok || envelope.code !== 0) {
       // 顺序：登录页 401 特化 → 业务 code → HTTP 状态 → 通用兜底
-      // （2026-09-06 第六批修：特化必须先于 code 表短路，且限定 code=10001——401+20002 冻结等非凭据语义不得误报「密码错误」，治理 Warning-3）
+      // （2026-09-06 第六批修：特化必须先于 code 表短路，且限定 code=10001——401+20002 冻结等非凭据语义不得误报「密码错误」，治理 Warning-3；
+      //   该分支为纯防御：后端登录匿名放行且 10001 实际走 HTTP 400，401+10001 仅在网关异常改写时出现，用例固定见 auth-refresh.test.ts）
       const loginCredential = response.status === 401 && path === '/auth/login' && envelope.code === 10001
-        ? '用户名或密码错误，请重新输入'
+        ? IPD_LOGIN_CREDENTIAL_TEXT
         : null;
       const fromCode = messageFromCode(envelope.code);
       const message =
@@ -137,7 +144,7 @@ export async function requestIpd(
           ?? (response.status === 401 ? '登录已失效，请重新登录'
             : response.status === 403 ? '权限不足，请联系管理员'
               : '服务暂时不可用，请稍后重试');
-      throw new IpdRequestError(message, response.status, envelope.code, 'http');
+      throw new IpdRequestError(message, response.status, envelope.code, 'http', envelope.message);
     }
     return envelope.data;
   } catch (error) {
