@@ -19,7 +19,13 @@ import { Alert, Button, Card, Empty, Input, Tag } from 'ant-design-vue';
 
 import GatePanel from '../../review/gate-panel.vue';
 
-defineOptions({ name: 'IpdProjectGates', meta: { ipdCard: 'P0-10.23' } });
+defineOptions({
+  name: 'IpdProjectGates',
+  meta: {
+    ipdBackend: 'GateReviewController 已交付：GET /gates/{gateId}/review + POST /gates/{gateId}/{sign|reopen|extend-deadline|arbitrate|final-ruling}。原型 /api/key-gates（项目维度 Gate 列表）后端未交付——经 Gate 编号定位。',
+    ipdCard: 'P0-10.23',
+  },
+});
 
 const route = useRoute();
 const projectId = computed(() => String(route.params.projectId ?? ''));
