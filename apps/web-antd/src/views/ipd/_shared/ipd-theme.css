@@ -98,3 +98,70 @@ a {
 a:hover {
   color: var(--ipd-blue-dark);
 }
+
+/* ============================================================================
+ * V11 暗色模式（简版）—— html.dark 时切换色板
+ * 触发方式：document.documentElement.classList.add('dark') / .remove('dark')
+ * 由 Vben Admin 的 useDark() hook 控制；本文件只定义 ipd/* 页面专属覆写。
+ * ============================================================================ */
+html.dark {
+  --ipd-navy: #0d1b2a;
+  --ipd-navy-2: #1b2a41;
+  --ipd-blue: #4f7df9;
+  --ipd-blue-dark: #649bff;
+  --ipd-blue-soft: #1a2540;
+  --ipd-green: #4ec27a;
+  --ipd-red: #ff7676;
+  --ipd-amber: #e9a93a;
+  --ipd-text: #e6ebf5;
+  --ipd-muted: #95a1b8;
+  --ipd-line: #2a3654;
+  --ipd-surface: #1a2336;
+  --ipd-bg: #0d1626;
+}
+
+html.dark body {
+  background: var(--ipd-bg);
+  color: var(--ipd-text);
+}
+
+html.dark .ant-table-thead > tr > th {
+  background: #1a2336 !important;
+  color: #95a1b8 !important;
+}
+
+html.dark .ant-card {
+  background: var(--ipd-surface);
+}
+
+html.dark .ant-btn-primary:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(79, 125, 249, 0.28);
+}
+
+/* ============================================================================
+ * V10 移动端断点（简版）—— 关键 IPD 列表 / 表单在 ≤768px 时的简化布局
+ * 覆盖：表格 → 卡片化滚动；卡片网格单列；按钮区全宽。
+ * ============================================================================ */
+@media (max-width: 768px) {
+  .ant-table-wrapper .ant-table-pagination {
+    flex-wrap: wrap;
+  }
+  .ipd-page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .ipd-page-actions {
+    flex-direction: column;
+    width: 100%;
+    margin-top: 8px;
+  }
+  .ipd-page-actions .ant-btn {
+    width: 100%;
+  }
+  .ipd-stat-card-row {
+    flex-direction: column;
+  }
+  .ipd-stat-card-row > * {
+    margin-bottom: 12px;
+  }
+}
