@@ -283,332 +283,391 @@ async function goPage(next: number): Promise<void> {
 </template>
 
 <style scoped>
-/* 原型 styles.css 摘录；--blue/--line/--muted/--text/--green 映射为 --ipd-*。 */
+
+/* V12-F3: 原 1100px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
+  .metric-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .analytics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .business-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .report-page {
-  padding: 28px 32px 60px;
   max-width: 1600px;
+  padding: 28px 32px 60px;
   margin: auto;
 }
+
 .page-heading {
   margin-bottom: 24px;
 }
+
 .page-heading h1 {
   margin: 0 0 8px;
   font-size: 25px;
   letter-spacing: -0.02em;
 }
+
 .page-heading p {
   margin: 0;
-  color: var(--ipd-muted);
   font-size: 13px;
+  color: var(--ipd-muted);
 }
+
 .surface {
+  margin-bottom: 18px;
   background: white;
   border: 1px solid var(--ipd-line);
   border-radius: 8px;
-  margin-bottom: 18px;
 }
+
 .section-title {
   display: flex;
+  gap: 14px;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
   padding: 18px 20px;
   border-bottom: 1px solid var(--ipd-line);
 }
+
 .section-title h2 {
   margin: 0;
   font-size: 15px;
 }
+
 .section-title p {
   margin: 3px 0 0;
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .section-title > span {
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .primary-button,
 .secondary-button,
 .panel-action {
-  border: 0;
-  min-height: 38px;
-  padding: 0 16px;
-  border-radius: 6px;
   display: inline-flex;
+  gap: 7px;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  min-height: 38px;
+  padding: 0 16px;
   font-weight: 700;
-  cursor: pointer;
   white-space: nowrap;
+  cursor: pointer;
+  border: 0;
+  border-radius: 6px;
 }
+
 .primary-button {
-  background: var(--ipd-blue);
   color: white;
+  background: var(--ipd-blue);
   box-shadow: 0 4px 12px rgb(36 91 244 / 18%);
 }
+
 .primary-button:hover {
   background: #1747d7;
 }
+
 .primary-button:disabled,
 .secondary-button:disabled,
 .panel-action:disabled {
-  opacity: 0.6;
   cursor: not-allowed;
+  opacity: 0.6;
 }
+
 .secondary-button {
+  color: #465168;
   background: white;
   border: 1px solid #cdd4df;
-  color: #465168;
 }
+
 .panel-action {
   min-height: 30px;
   padding: 0 11px;
-  border: 1px solid #cfd6e1;
-  background: white;
-  color: var(--ipd-text);
-  font-weight: 600;
   font-size: 12px;
+  font-weight: 600;
+  color: var(--ipd-text);
+  background: white;
+  border: 1px solid #cfd6e1;
 }
+
 .inline-actions {
   display: flex;
   gap: 10px;
 }
+
 .summary-filter {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 14px;
+  align-items: center;
   padding: 16px 20px;
 }
+
 .summary-filter label {
   display: flex;
-  align-items: center;
   gap: 8px;
-  font-weight: 700;
+  align-items: center;
   font-size: 13px;
+  font-weight: 700;
 }
+
 .summary-filter input {
   height: 38px;
   padding: 0 10px;
+  color: var(--ipd-text);
   border: 1px solid #cfd6e1;
   border-radius: 6px;
-  color: var(--ipd-text);
 }
+
 .report-error {
-  margin: 0 20px 12px;
   padding: 10px 12px;
+  margin: 0 20px 12px;
+  font-size: 12px;
+  color: #a8071a;
   background: #fff2f0;
   border: 1px solid #ffccc7;
   border-radius: 6px;
-  color: #a8071a;
-  font-size: 12px;
 }
+
 .report-loading {
   padding: 20px;
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .business-table {
   padding: 0 20px 8px;
 }
+
 .business-row {
   display: grid;
   grid-template-columns: 1.4fr 0.6fr 1fr 1fr 0.9fr 1.1fr;
   gap: 10px;
   align-items: center;
   padding: 12px 0;
-  border-bottom: 1px solid var(--ipd-line);
   font-size: 12px;
+  border-bottom: 1px solid var(--ipd-line);
 }
+
 .business-row.head {
-  color: var(--ipd-muted);
-  font-weight: 700;
   font-size: 11px;
+  font-weight: 700;
+  color: var(--ipd-muted);
 }
+
 .business-row strong {
   display: block;
   font-size: 13px;
 }
+
 .business-row small {
   display: block;
   margin-top: 2px;
-  color: var(--ipd-muted);
   font-size: 11px;
+  color: var(--ipd-muted);
 }
+
 .muted {
-  color: var(--ipd-muted);
   font-size: 11px;
+  color: var(--ipd-muted);
 }
+
 .pager {
   display: flex;
+  gap: 12px;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
   padding: 12px 20px 16px;
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .export-card .export-columns {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   padding: 14px 20px;
 }
+
 .export-columns span {
   padding: 4px 10px;
-  background: #edf2ff;
-  border-radius: 4px;
-  color: var(--ipd-blue);
   font-size: 11px;
   font-weight: 700;
+  color: var(--ipd-blue);
+  background: #edf2ff;
+  border-radius: 4px;
 }
+
 .metric-strip {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   padding: 16px 20px 4px;
 }
+
 .metric {
-  border: 1px solid var(--ipd-line);
-  border-radius: 8px;
-  padding: 14px;
   display: grid;
   gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--ipd-line);
+  border-radius: 8px;
 }
+
 .metric span {
-  color: var(--ipd-muted);
   font-size: 11px;
+  color: var(--ipd-muted);
 }
+
 .metric strong {
   font-size: 22px;
 }
+
 .metric small {
-  color: var(--ipd-muted);
   font-size: 11px;
+  color: var(--ipd-muted);
 }
+
 .metric.warning strong {
   color: #9a6509;
 }
+
 .analytics-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
   padding: 14px 20px;
 }
+
 .cycle-box {
+  padding: 14px;
   border: 1px solid var(--ipd-line);
   border-radius: 8px;
-  padding: 14px;
 }
+
 .box-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
 }
+
 .box-title h3 {
   margin: 0;
   font-size: 13px;
 }
+
 .box-title span {
-  color: var(--ipd-muted);
   font-size: 11px;
+  color: var(--ipd-muted);
 }
+
 .insight-card {
   display: flex;
   gap: 10px;
   padding: 12px;
-  border: 1px solid var(--ipd-line);
-  border-radius: 8px;
   margin-bottom: 10px;
   font-size: 12px;
+  border: 1px solid var(--ipd-line);
+  border-radius: 8px;
 }
+
 .insight-card :deep(.anticon) {
-  color: #9a6509;
   font-size: 18px;
+  color: #9a6509;
 }
+
 .insight-card strong {
   display: block;
   font-size: 13px;
 }
+
 .insight-card p {
   margin: 4px 0;
   color: #56647c;
 }
+
 .insight-card small {
   color: var(--ipd-muted);
 }
+
 .empty-state {
-  min-height: 160px;
   display: grid;
   place-content: center;
   justify-items: center;
-  text-align: center;
+  min-height: 160px;
   color: var(--ipd-muted);
+  text-align: center;
 }
+
 .empty-state.compact {
   min-height: 120px;
 }
+
 .empty-state > div {
-  width: 48px;
-  height: 48px;
   display: grid;
   place-items: center;
+  width: 48px;
+  height: 48px;
+  font-size: 22px;
   color: var(--ipd-blue);
   background: #edf2ff;
   border-radius: 50%;
-  font-size: 22px;
 }
+
 .empty-state strong {
-  color: var(--ipd-text);
   margin: 10px 0 4px;
+  color: var(--ipd-text);
 }
+
 .empty-state p {
-  margin: 0;
   max-width: 320px;
+  margin: 0;
   font-size: 12px;
   line-height: 1.6;
 }
+
 .summary-section .empty-state {
   min-height: 200px;
 }
+
 .report-pending {
-  margin: 0 20px 12px;
   padding: 10px 12px;
+  margin: 0 20px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6b7a90;
   background: #f6f8fb;
   border: 1px dashed #cfd9e5;
   border-radius: 6px;
-  color: #6b7a90;
-  font-size: 12px;
-  line-height: 1.6;
 }
+
 .report-note {
   display: flex;
-  align-items: center;
   gap: 8px;
-  margin: 0 20px;
+  align-items: center;
   padding: 12px;
+  margin: 0 20px;
+  font-size: 12px;
+  color: #56647c;
   background: #f2f6ff;
   border-radius: 6px;
-  color: #56647c;
-  font-size: 12px;
 }
+
 .report-note :deep(.anticon) {
   color: var(--ipd-blue);
 }
-/* V12-F3: 原 1100px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
-@media (max-width: 768px) {
-  .metric-strip {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .analytics-grid {
-    grid-template-columns: 1fr;
-  }
-  .business-row {
-    grid-template-columns: 1fr 1fr;
-  }
-}
+
+/* 原型 styles.css 摘录；--blue/--line/--muted/--text/--green 映射为 --ipd-*。 */
 </style>

@@ -2,10 +2,12 @@
 /**
  * 页42 AI 文档助手（独立页）。
  *
- * 按 AiDocumentController（P1-10.1）已交付端点实现版本链管理闭环：
- * 选择项目/文档类型 → 登记 AI 输出 v1 → 人工审核 → 版本对比。
- * 未交付（页内提示，G-06）：AI 模型生成 / 模型配置 / 预算（P4-2）；按项目列出文档的读端点。
- * 人工改版入口在页14（项目详情-文档与交付物）。
+ * 按 AiDocumentController（P1-10.1 + P4-2.2）已交付端点实现闭环：
+ * 选择项目/文档类型 → AI 生成（原始资料 → 模型 → v1 待审核）→ 人工审核 → 版本对比；
+ * 外部 AI 输出也可手工登记 v1。
+ * BR-AI-03：AI 输出未经审核不生效；BR-AI-04：系统不做内容过滤直接透传，UI 须有风险提示。
+ * 未交付（页内提示，G-06）：按项目列出文档的读端点。
+ * 人工改版入口在页14（项目详情-文档与交付物）；归档走 P0-6.2 删除审核流程。
  */
 import { computed, onMounted, reactive, ref, type Ref } from 'vue';
 import { useRoute } from 'vue-router';
@@ -31,6 +33,7 @@ import {
 import { PENDING_TEXT } from '../_shared/format';
 import {
   type AiDocument,
+  generateAiDocument,
   ipdApiErrorText,
   listAiDocumentVersions,
   registerAiDocument,
@@ -129,6 +132,48 @@ const projectOptions = computed(() =>
     value: project.id,
   })),
 );
+
+// ---------- AI 生成（P4-2.2） ----------
+const generateForm = reactive({
+  prompt: '',
+  title: '',
+});
+const generateSubmitting = ref(false);
+const generateError = ref<null | string>(null);
+const generateResult = ref<null | AiDocument>(null);
+
+async function submitGenerate() {
+  if (!selectedProjectId.value) {
+    generateError.value = '请先在上方选择项目。';
+    return;
+  }
+  if (!generateForm.title.trim() || generateForm.title.length > 200) {
+    generateError.value = '请填写文档标题（不超过 200 字）。';
+    return;
+  }
+  if (!generateForm.prompt.trim()) {
+    generateError.value = '请填写原始资料或生成指令。';
+    return;
+  }
+  generateSubmitting.value = true;
+  generateError.value = null;
+  try {
+    generateResult.value = await generateAiDocument({
+      docType: selectedDocType.value || null,
+      projectId: selectedProjectId.value,
+      prompt: generateForm.prompt,
+      title: generateForm.title.trim(),
+    });
+    message.success('AI 生成完成，已登记为待审核版本 v1');
+    docIdInput.value = generateResult.value.id;
+    await loadChain(generateResult.value.id);
+  } catch (cause) {
+    generateResult.value = null;
+    generateError.value = ipdApiErrorText(cause);
+  } finally {
+    generateSubmitting.value = false;
+  }
+}
 
 // ---------- 登记 AI 输出 v1 ----------
 const registerForm = reactive({
@@ -265,9 +310,9 @@ onMounted(() => {
 <template>
   <div class="flex flex-col gap-4 p-4">
     <Alert
-      message="AI 模型生成、模型配置与预算控制（P4-2）尚未交付；当前页覆盖版本链闭环：登记 AI 输出 → 人工审核 → 版本对比。"
+      message="AI 生成已接入（P4-2.2）：生成结果登记为待审核 v1，未经人工审核不得作为正式交付物（BR-AI-03）。系统不做内容过滤、直接透传模型输出（BR-AI-04），请人工把控内容风险。"
       show-icon
-      type="info"
+      type="warning"
     />
 
     <!-- ① 选择项目与文档类型 -->
@@ -301,8 +346,53 @@ onMounted(() => {
       </Form>
     </Card>
 
-    <!-- ② 登记 AI 输出 v1 -->
-    <Card title="登记 AI 输出（版本链 v1 锚点）">
+    <!-- ② AI 生成（P4-2.2） -->
+    <Card title="AI 生成（录入原始资料 → 模型润色/补齐/标准化）">
+      <Alert
+        class="mb-3"
+        message="风险提示：模型输出由系统原样透传、不过滤（BR-AI-04）；生成结果为待审核状态，须经人工审核确认后方可使用。"
+        show-icon
+        type="warning"
+      />
+      <Form layout="horizontal" :label-col="{ style: { width: '110px' } }">
+        <FormItem label="文档标题" required>
+          <Input
+            v-model:value="generateForm.title"
+            :maxlength="200"
+            placeholder="请输入生成文档的标题"
+            show-count
+          />
+        </FormItem>
+        <FormItem label="原始资料" required>
+          <Textarea
+            v-model:value="generateForm.prompt"
+            :maxlength="30000"
+            :rows="8"
+            show-count
+            placeholder="粘贴原始资料 / 输入生成指令（不超过 30000 字符），例如：用户反馈要点、竞品速览、希望覆盖的章节……"
+          />
+        </FormItem>
+        <FormItem label=" " :colon="false">
+          <Space>
+            <Button :loading="generateSubmitting" type="primary" @click="submitGenerate">
+              {{ generateSubmitting ? '生成中（约需数十秒）……' : '开始生成' }}
+            </Button>
+          </Space>
+        </FormItem>
+      </Form>
+      <Alert v-if="generateError" class="mt-2" show-icon type="error" role="alert" :message="generateError" />
+      <Alert v-if="generateResult" class="mt-2" show-icon type="success">
+        <template #message>已生成 v{{ generateResult.versionNo }}（待审核）：{{ generateResult.title }}</template>
+        <template #description>
+          文档 ID：{{ generateResult.id }}；模型：{{ generateResult.model || PENDING_TEXT }}；
+          Token 消耗：提示 {{ generateResult.tokenPrompt ?? PENDING_TEXT }} + 补全 {{ generateResult.tokenCompletion ?? PENDING_TEXT }}；
+          版本链已在下方加载，请人工审核确认。
+        </template>
+      </Alert>
+    </Card>
+
+    <!-- ③ 登记 AI 输出 v1 -->
+    <Card title="登记外部 AI 输出（版本链 v1 锚点）">
       <Form layout="horizontal" :label-col="{ style: { width: '110px' } }">
         <FormItem label="文档标题" required>
           <Input v-model:value="registerForm.title" :maxlength="200" placeholder="请输入文档标题" show-count />

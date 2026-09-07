@@ -17,7 +17,6 @@ import {
   RadioGroup,
   Button,
   Space,
-  message,
   Switch,
   Slider,
 } from 'ant-design-vue';
@@ -97,7 +96,7 @@ const { validate, validateInfos, resetFields } = Form.useForm(
 async function fetchEmbeddingModels() {
   try {
     const response = await embeddingModelList();
-    const models = Array.isArray(response) ? response : (response.rows || response.records || []);
+    const models = Array.isArray(response) ? response : (response.rows || []);
     embeddingModelOptions.value = models.map((model: any) => ({
       label: model.modelDescribe,
       value: model.modelName,
@@ -110,7 +109,7 @@ async function fetchEmbeddingModels() {
 async function fetchRerankModels() {
   try {
     const response = await rerankModelList();
-    const models = Array.isArray(response) ? response : (response.rows || response.records || []);
+    const models = Array.isArray(response) ? response : (response.rows || []);
     rerankModelOptions.value = models.map((model: any) => ({
       label: model.modelDescribe,
       value: model.modelName,
@@ -132,7 +131,7 @@ watch(() => formData.value.enableRerank, (newVal) => {
   if (newVal === 1) {
     // 启用重排序时，设置默认值
     if (!formData.value.rerankModel && rerankModelOptions.value.length > 0) {
-      formData.value.rerankModel = rerankModelOptions.value[0].value;
+      formData.value.rerankModel = rerankModelOptions.value[0]?.value;
     }
     if (!formData.value.rerankTopN) {
       formData.value.rerankTopN = Math.min(5, formData.value.retrieveLimit || 5);
@@ -156,10 +155,10 @@ async function handleOpen(id?: string | number) {
       formData.value = filterRecord;
     } else {
       const defaultEmbeddingModel = embeddingModelOptions.value.length > 0
-        ? embeddingModelOptions.value[0].value
+        ? embeddingModelOptions.value[0]?.value
         : undefined;
       const defaultRerankModel = rerankModelOptions.value.length > 0
-        ? rerankModelOptions.value[0].value
+        ? rerankModelOptions.value[0]?.value
         : undefined;
 
       formData.value = {

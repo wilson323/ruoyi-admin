@@ -102,7 +102,7 @@ function submitForm() {
     <div>
       <div class="text-xl mb-1">开场白</div>
       <div>
-        <Input v-model:value="(wfNode.nodeConfig as any).prologue" type="textarea" :auto-size="{ minRows: 2, maxRows: 6 }" />
+        <Input.TextArea v-model:value="(wfNode.nodeConfig as any).prologue" :auto-size="{ minRows: 2, maxRows: 6 }" />
       </div>
     </div>
     <br />

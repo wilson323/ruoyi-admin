@@ -108,7 +108,6 @@ describe('IPD gate panel — V4 33 elements complete render', () => {
     const codes = rows.map((row) => row.attributes('data-testid') ?? '');
     const counts: Record<string, number> = {};
     for (const id of codes) {
-      const match = id.match(/^gate-element-(G\d)$|^(G\d)-\d+$/);
       const code = id.match(/gate-element-(G\d)-/)?.[1] ?? '';
       if (code) counts[code] = (counts[code] ?? 0) + 1;
     }

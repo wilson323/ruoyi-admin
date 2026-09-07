@@ -13,7 +13,6 @@ import type {
   GraphRetrievalResult,
   GraphPath,
   GraphNode,
-  GraphBuildTask,
 } from './model';
 
 /**

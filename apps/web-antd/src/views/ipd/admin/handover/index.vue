@@ -170,30 +170,46 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 原型 styles.css 摘录；--blue/--line/--muted/--text 映射为 --ipd-*。 */
+
+/* V12-F3: 原 900px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
+  .create-form {
+    grid-template-columns: 1fr;
+  }
+
+  .readiness {
+    grid-column: span 1;
+  }
+}
+
 .admin-handover-page {
-  padding: 28px 32px 60px;
   max-width: 1200px;
+  padding: 28px 32px 60px;
   margin: auto;
 }
+
 .page-heading {
   margin-bottom: 24px;
 }
+
 .page-heading h1 {
   margin: 0 0 8px;
   font-size: 25px;
   letter-spacing: -0.02em;
 }
+
 .page-heading p {
   margin: 0;
-  color: var(--ipd-muted);
   font-size: 13px;
+  color: var(--ipd-muted);
 }
+
 .surface {
   background: white;
   border: 1px solid var(--ipd-line);
   border-radius: 8px;
 }
+
 .section-title {
   display: flex;
   align-items: center;
@@ -201,122 +217,132 @@ onMounted(() => {
   padding: 18px 20px;
   border-bottom: 1px solid var(--ipd-line);
 }
+
 .section-title h2 {
   margin: 0;
   font-size: 15px;
 }
+
 .section-title p {
   margin: 3px 0 0;
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .section-title > span {
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .state-block {
   padding: 18px 20px;
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .state-block.error {
   color: #a8071a;
 }
+
 .state-block .retry {
-  margin-left: 10px;
-  border: 1px solid #cfd6e1;
-  background: white;
-  border-radius: 6px;
   padding: 2px 10px;
-  cursor: pointer;
+  margin-left: 10px;
   color: var(--ipd-text);
+  cursor: pointer;
+  background: white;
+  border: 1px solid #cfd6e1;
+  border-radius: 6px;
 }
+
 .create-form {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 14px;
-  padding: 16px 20px 20px;
   align-items: end;
+  padding: 16px 20px 20px;
 }
+
 .create-form label {
   display: grid;
   gap: 6px;
-  font-weight: 700;
   font-size: 12px;
+  font-weight: 700;
 }
+
 .create-form input,
 .create-form select {
   height: 38px;
   padding: 0 10px;
+  font-weight: 400;
+  color: var(--ipd-text);
+  background: white;
   border: 1px solid #cfd6e1;
   border-radius: 6px;
-  background: white;
-  color: var(--ipd-text);
-  font-weight: 400;
 }
+
 .readiness {
+  display: grid;
   grid-column: span 2;
-  margin: 0;
+  gap: 4px;
   padding: 10px 12px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--ipd-muted);
   list-style: none;
   border: 1px dashed #cfd9e5;
   border-radius: 6px;
-  color: var(--ipd-muted);
-  font-size: 12px;
-  display: grid;
-  gap: 4px;
 }
+
 .readiness li:not(.ok) {
   color: #a8071a;
 }
+
 .readiness.ready {
-  border-color: #b7dfc1;
   color: var(--ipd-green);
+  border-color: #b7dfc1;
 }
+
 .primary-button {
-  border: 0;
-  min-height: 38px;
-  padding: 0 16px;
-  border-radius: 6px;
   display: inline-flex;
+  gap: 7px;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  min-height: 38px;
+  padding: 0 16px;
   font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  background: var(--ipd-blue);
   color: white;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--ipd-blue);
+  border: 0;
+  border-radius: 6px;
   box-shadow: 0 4px 12px rgb(36 91 244 / 18%);
 }
+
 .primary-button:hover {
   background: #1747d7;
 }
+
 .primary-button:disabled {
-  opacity: 0.6;
   cursor: not-allowed;
+  opacity: 0.6;
 }
+
 .danger-action {
   background: #b42318;
   box-shadow: 0 4px 12px rgb(180 35 24 / 20%);
 }
+
 .pending-note {
-  margin-top: 18px;
   padding: 10px 12px;
+  margin-top: 18px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6b7a90;
   background: #f6f8fb;
   border: 1px dashed #cfd9e5;
   border-radius: 6px;
-  color: #6b7a90;
-  font-size: 12px;
-  line-height: 1.6;
 }
-/* V12-F3: 原 900px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
-@media (max-width: 768px) {
-  .create-form {
-    grid-template-columns: 1fr;
-  }
-  .readiness {
-    grid-column: span 1;
-  }
-}
+
+/* 原型 styles.css 摘录；--blue/--line/--muted/--text 映射为 --ipd-*。 */
 </style>

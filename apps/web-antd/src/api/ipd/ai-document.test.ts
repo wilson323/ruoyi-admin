@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
 import {
+  generateAiDocument,
   ipdApiErrorText,
   listAiDocumentVersions,
   parseAiDocument,
@@ -88,6 +89,35 @@ describe('AI 文档版本链接口', () => {
     const chain = await listAiDocumentVersions('1');
     expect(fetcher.mock.calls[2]?.[0]).toBe('/api/v1/ai-documents/1/versions');
     expect(chain.map((doc) => doc.versionNo)).toEqual([1, 2]);
+  });
+
+  it('AI 生成走 POST /api/v1/ai-documents/generate，docType 空不进请求体，返回契约化 v1', async () => {
+    // 每次调用新建 Response：body 流只能读一次，mockResolvedValue 复用同一 Response 会致第二次调用 transport 失败
+    const fetcher = vi.fn().mockImplementation(() => Promise.resolve(response(docFixture())));
+    vi.stubGlobal('fetch', fetcher);
+    const result = await generateAiDocument({
+      docType: 'PRD',
+      projectId: '100',
+      prompt: '原始资料：用户反馈整理',
+      title: 'PRD 初稿',
+    });
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/ai-documents/generate');
+    expect(JSON.parse(fetcher.mock.calls[0]?.[1].body)).toEqual({
+      docType: 'PRD',
+      projectId: '100',
+      prompt: '原始资料：用户反馈整理',
+      title: 'PRD 初稿',
+    });
+    expect(result.id).toBe('9007199254740993');
+    expect(result.versionNo).toBe(1);
+    expect(result.status).toBe('GENERATED');
+
+    await generateAiDocument({ projectId: '100', prompt: '资料', title: '标题' });
+    expect(JSON.parse(fetcher.mock.calls[1]?.[1].body)).toEqual({
+      projectId: '100',
+      prompt: '资料',
+      title: '标题',
+    });
   });
 
   it('parse 拒绝数字 ID、缺失字段与非对象数据，不做静默修补', () => {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 项目详情壳（路由父级，8 个子页签导航 + 子路由出口）。
+ * 项目详情壳（路由父级，9 个子页签导航 + 子路由出口）。
  * 子页签内容：overview / flow / audit 等其余页签组件由各自看板卡实现，
  * documents / changes 两页签由本卡（P0-10.14 / P0-10.25 详情 tab 卡）实现。
  * 壳只负责：项目头部信息（GET /projects/{id}）+ 页签导航，不承载领域逻辑。
@@ -45,6 +45,8 @@ const TABS = [
   { key: 'incentive', title: '激励台账' },
   { key: 'documents', title: '文档与交付物' },
   { key: 'audit', title: '项目日志' },
+  // 协作圈（看板卡 c5254e23）：ProjectCircleController /api/v1/project-circle 6 端点唯一数据源
+  { key: 'circle', title: '协作圈' },
 ] as const;
 
 const route = useRoute();

@@ -19,7 +19,7 @@ export interface ProviderVO {
   /**
    * 厂商图标
    */
-  providerIcon: number | string;
+  providerIcon: string;
 
   /**
    * 厂商描述
@@ -71,7 +71,7 @@ export interface ProviderForm extends BaseEntity {
   /**
    * 厂商图标
    */
-  providerIcon?: number | string;
+  providerIcon?: string;
 
   /**
    * 厂商描述
@@ -118,7 +118,7 @@ export interface ProviderQuery extends PageQuery {
   /**
    * 厂商图标
    */
-  providerIcon?: number | string;
+  providerIcon?: string;
 
   /**
    * 厂商描述

@@ -301,13 +301,14 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
 
 <style scoped>
 .ipd-input {
-  border: 1px solid #d9d9d9;
-  border-radius: 4px;
+  width: 160px;
   height: 32px;
   padding: 0 11px;
-  width: 160px;
   font-size: 14px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
 }
+
 /* V12-F1：移除 outline:none（全局 :focus-visible token 焦点环接管可见性）；
  * 焦点边线归一到调色板主色（原 #006be6 离板）。 */
 .ipd-input:focus {

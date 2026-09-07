@@ -153,123 +153,156 @@ async function logout() {
 </template>
 
 <style scoped>
-/* 与 login.vue 同源的双栏样式 + 原型 styles.css 的 managed-profile-card /
-   field-grid.two / secondary-button / login-back-button 摘录。 */
+
+/* V12-F3: 原 900px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
+  .login-page {
+    grid-template-columns: 1fr;
+  }
+
+  .login-brand {
+    padding: 34px 28px;
+  }
+
+  .field-grid.two {
+    grid-template-columns: 1fr;
+  }
+}
+
 .login-page {
   --blue: #245bf4;
+
   /* V12/a11y：#697388 对比不足（axe serious）加深至 #556479 = 5.36:1 on #eef1f6 */
   --muted: #556479;
   --text: #172033;
   --navy: #071426;
 
-  min-height: 100vh;
   display: grid;
   grid-template-columns: 1.1fr 0.9fr;
-  background: white;
-  color: var(--text);
+  min-height: 100vh;
   font-family: Inter, 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
+  color: var(--text);
+  background: white;
 }
+
 .login-brand {
   position: relative;
   display: flex;
   flex-direction: column;
   padding: 54px 68px;
+  overflow: hidden;
   color: white;
   background: var(--navy);
-  overflow: hidden;
 }
+
 .login-brand::after {
-  content: '';
   position: absolute;
-  width: 320px;
-  height: 320px;
   right: -150px;
   bottom: -150px;
+  width: 320px;
+  height: 320px;
+  content: '';
   border: 1px solid rgb(93 132 255 / 32%);
   border-radius: 50%;
 }
+
 .brand-lockup {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  font-size: 20px;
-  font-weight: 750;
   position: relative;
   z-index: 1;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  font-size: 20px;
+  font-weight: 750;
 }
+
 .brand-logo {
   width: 34px;
   height: 34px;
   overflow: hidden;
   border-radius: 6px;
 }
+
 .brand-logo img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;
 }
+
 .login-message {
-  margin: auto 0;
-  max-width: 640px;
   position: relative;
   z-index: 1;
+  max-width: 640px;
+  margin: auto 0;
 }
+
 .login-message .eyebrow {
-  color: #7fa0ff;
-  font-weight: 700;
   font-size: 14px;
+  font-weight: 700;
+  color: #7fa0ff;
   letter-spacing: 0.08em;
 }
+
 .login-message h1 {
+  margin: 24px 0;
   font-size: clamp(40px, 4vw, 62px);
   line-height: 1.2;
   letter-spacing: -0.035em;
-  margin: 24px 0;
 }
+
 .login-message p {
-  color: #b8c3d6;
+  max-width: 580px;
   font-size: 18px;
   line-height: 1.8;
-  max-width: 580px;
+  color: #b8c3d6;
 }
+
 .login-panel {
   display: grid;
   place-items: center;
   padding: 40px;
 }
+
 .login-panel form {
   width: min(460px, 100%);
 }
+
 .login-panel h2 {
-  font-size: 32px;
   margin: 0 0 8px;
+  font-size: 32px;
 }
+
 .panel-sub {
-  color: var(--muted);
   margin: 0 0 20px;
+  color: var(--muted);
 }
+
 .managed-profile-card {
   display: flex;
   gap: 12px;
   align-items: center;
   padding: 14px;
+  margin-bottom: 8px;
   background: #edf2ff;
   border: 1px solid #ccd8ff;
   border-radius: 7px;
-  margin-bottom: 8px;
 }
+
 .managed-profile-card :deep(.anticon) {
   font-size: 28px;
   color: var(--blue);
 }
+
 .managed-profile-card span {
   display: grid;
 }
+
 .managed-profile-card small {
-  color: var(--muted);
   margin-top: 4px;
+  color: var(--muted);
 }
+
 .login-panel label {
   display: grid;
   gap: 8px;
@@ -278,95 +311,99 @@ async function logout() {
   font-weight: 650;
   color: #465168;
 }
+
 .login-panel input {
   width: 100%;
   height: 44px;
-  border: 1px solid #ccd3df;
-  border-radius: 7px;
   padding: 0 12px;
-  color: var(--text);
-  background: white;
   font-size: 14px;
   font-weight: 400;
+  color: var(--text);
+  background: white;
+  border: 1px solid #ccd3df;
+  border-radius: 7px;
 }
+
 .login-panel input:focus {
-  border-color: var(--blue);
   outline: 3px solid rgb(36 91 244 / 12%);
+  border-color: var(--blue);
 }
+
 .field-grid {
   display: grid;
   gap: 16px;
 }
+
 .field-grid.two {
   grid-template-columns: repeat(2, 1fr);
 }
+
 .field-grid.two label {
   margin: 0;
 }
+
 .form-error {
-  margin: 12px 0 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
   padding: 10px 12px;
-  border-radius: 7px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: #bd2835;
   background: #fdf0f0;
   border: 1px solid #f3c6c6;
-  color: #bd2835;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  border-radius: 7px;
 }
+
 .primary-button,
 .secondary-button {
-  border: 0;
-  min-height: 38px;
-  padding: 0 16px;
-  border-radius: 6px;
   display: inline-flex;
+  gap: 7px;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  min-height: 38px;
+  padding: 0 16px;
   font-weight: 700;
+  white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
-  white-space: nowrap;
+  border: 0;
+  border-radius: 6px;
 }
+
 .primary-button {
-  background: var(--blue);
   color: white;
+  background: var(--blue);
   box-shadow: 0 4px 12px rgb(36 91 244 / 18%);
 }
+
 .primary-button:hover {
   background: #1747d7;
 }
+
 .primary-button:disabled {
-  opacity: 0.6;
   cursor: not-allowed;
+  opacity: 0.6;
 }
+
 .secondary-button {
+  color: #465168;
   background: white;
   border: 1px solid #cdd4df;
-  color: #465168;
 }
+
 .login-button {
   width: 100%;
   height: 46px;
   margin-top: 10px;
 }
+
 .login-back-button {
+  justify-content: center;
   width: 100%;
   margin-top: 10px;
-  justify-content: center;
 }
-/* V12-F3: 原 900px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
-@media (max-width: 768px) {
-  .login-page {
-    grid-template-columns: 1fr;
-  }
-  .login-brand {
-    padding: 34px 28px;
-  }
-  .field-grid.two {
-    grid-template-columns: 1fr;
-  }
-}
+
+/* 与 login.vue 同源的双栏样式 + 原型 styles.css 的 managed-profile-card /
+   field-grid.two / secondary-button / login-back-button 摘录。 */
 </style>

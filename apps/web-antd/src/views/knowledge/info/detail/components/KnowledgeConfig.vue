@@ -3,7 +3,7 @@ import type { RuleObject } from 'ant-design-vue/es/form';
 import type { InfoForm } from '#/api/knowledge/info/model';
 
 import { ref, watch, h } from 'vue';
-import { $t } from '@vben/locales';
+
 import { cloneDeep } from '@vben/utils';
 
 import {
@@ -17,12 +17,8 @@ import {
   Button,
   Switch,
   message,
-  Card,
-  Row,
-  Col,
   Tooltip,
-  Tag,
-  Slider
+  Slider,
 } from 'ant-design-vue';
 import { QuestionCircleOutlined } from '@ant-design/icons-vue';
 import { pick } from 'lodash-es';
@@ -102,7 +98,7 @@ const { validate, validateInfos } = Form.useForm(
 async function fetchEmbeddingModels() {
   try {
     const response = await modelList({ category: 'vector', pageSize: 1000 });
-    const models = Array.isArray(response) ? response : (response.rows || response.records || []);
+    const models = Array.isArray(response) ? response : (response.rows || []);
     embeddingModelOptions.value = models.map((model: any) => ({
       label: model.modelDescribe || model.modelName,
       value: model.modelName,
@@ -115,7 +111,7 @@ async function fetchEmbeddingModels() {
 async function fetchRerankModels() {
   try {
     const response = await modelList({ category: 'rerank', pageSize: 1000 });
-    const models = Array.isArray(response) ? response : (response.rows || response.records || []);
+    const models = Array.isArray(response) ? response : (response.rows || []);
     rerankModelOptions.value = models.map((model: any) => ({
       label: model.modelDescribe || model.modelName,
       value: model.modelName,
@@ -139,7 +135,7 @@ async function loadData() {
       loadedSplitConfig.value = splitConfigKey(filterRecord);
     } else {
       const defaultEmbeddingModel = embeddingModelOptions.value.length > 0
-        ? embeddingModelOptions.value[0].value
+        ? embeddingModelOptions.value[0]?.value
         : undefined;
 
       formData.value = {

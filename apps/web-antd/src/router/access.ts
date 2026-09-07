@@ -1,3 +1,5 @@
+import type { Router } from 'vue-router';
+
 import type {
   ComponentRecordType,
   GenerateMenuAndRoutesOptions,
@@ -263,4 +265,36 @@ async function generateAccess(options: GenerateMenuAndRoutesOptions) {
   });
 }
 
-export { generateAccess };
+export { generateAccess, generatePlatformAccess };
+
+/**
+ * AI 平台动态路由（2026-09-06）：仅后端菜单（不并入 localMenuList），
+ * 由 IPD 守卫在平台票就绪后挂载；菜单由守卫与 IPD 菜单树合并。
+ * 与 generateAccess 的差异：前者产出「IPD+平台」合并形态的完整可用菜单；本函数只产出平台子集。
+ */
+async function generatePlatformAccess(router: Router) {
+  const pageMap: ComponentRecordType = import.meta.glob('../views/**/*.vue');
+
+  const layoutMap: ComponentRecordType = {
+    BasicLayout,
+    IFrameView,
+    NotFoundComponent,
+  };
+
+  return generateAccessible(preferences.app.accessMode, {
+    fetchMenuListAsync: async () => {
+      const platformMenus = cloneDeep(await getAllMenusApi());
+      // 单企业非 SaaS（owner 2026-09-06 决策）：顶级「租户管理」菜单不展示；仅前端过滤，不动后端 RBAC 数据
+      const visibleMenus = platformMenus.filter(
+        (menu) => menu.path !== 'tenant' && menu.path !== '/tenant',
+      );
+      return backMenuToVbenMenu(visibleMenus);
+    },
+    forbiddenComponent,
+    layoutMap,
+    pageMap,
+    router,
+    // backend 模式实际不消费 routes，但类型必填（与 generateAccessible 的 cloneDeep 兼容）
+    routes: [],
+  } as GenerateMenuAndRoutesOptions);
+}

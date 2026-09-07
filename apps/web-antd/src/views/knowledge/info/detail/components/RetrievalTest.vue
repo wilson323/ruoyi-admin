@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { TableColumnsType } from 'ant-design-vue';
 import { ref, h, onMounted } from 'vue';
 import {
   Button,
@@ -16,8 +17,6 @@ import {
   Tag,
   Alert,
   Slider,
-  Typography,
-  TypographyParagraph,
   Drawer,
   Descriptions,
   DescriptionsItem,
@@ -196,7 +195,7 @@ async function handleApplyConfig() {
   });
 }
 
-const tableColumns = [
+const tableColumns: TableColumnsType = [
   { title: '位次/变动', key: 'rank', width: 100, align: 'center' },
   { title: '片段内容', dataIndex: 'content', key: 'content', width: '50%' },
   { title: '得分对比', dataIndex: 'score', key: 'score', align: 'center', width: 140 },

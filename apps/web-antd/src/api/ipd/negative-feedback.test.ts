@@ -18,24 +18,24 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('negative-feedback API contract', () => {
-  it('GET /negative-feedback/list with optional projectId/personId', async () => {
+  it('GET /negative-feedbacks/list with optional projectId/personId', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope([]));
     vi.stubGlobal('fetch', fetcher);
     await listNegativeFeedback({ projectId: 'p-1' });
     const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
-    expect(url.pathname).toBe('/api/v1/negative-feedback/list');
+    expect(url.pathname).toBe('/api/v1/negative-feedbacks/list');
     expect(url.searchParams.get('projectId')).toBe('p-1');
     expect(url.searchParams.has('personId')).toBe(false);
   });
 
-  it('POST /negative-feedback/create', async () => {
+  it('POST /negative-feedbacks/create', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope({ id: 'nf-1' }));
     vi.stubGlobal('fetch', fetcher);
     await createNegativeFeedback({
       effectiveMonth: '2026-01', operatorId: 'op-1', personId: 'pm-1',
       projectId: 'p-1', role: 'PRIMARY', trigger: 'QUALITY_INCIDENT',
     });
-    expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/negative-feedback/create');
+    expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/negative-feedbacks/create');
     expect((fetcher.mock.calls[0]![1] as RequestInit).method).toBe('POST');
   });
 });

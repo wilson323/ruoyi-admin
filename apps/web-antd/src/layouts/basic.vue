@@ -1,17 +1,11 @@
 <script lang="ts" setup>
-import { computed, h, onMounted, watch } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { AuthenticationLoginExpiredModal } from '@vben/common-ui';
-import { VBEN_DOC_URL, VBEN_GITHUB_URL } from '@vben/constants';
+
 import { useWatermark } from '@vben/hooks';
-import {
-  BookOpenText,
-  CircleHelp,
-  GiteeIcon,
-  GitHubOutlined,
-  UserOutlined,
-} from '@vben/icons';
+import { UserOutlined } from '@vben/icons';
 import {
   BasicLayout,
   LockScreen,
@@ -20,11 +14,9 @@ import {
 } from '@vben/layouts';
 import { preferences } from '@vben/preferences';
 import { useAccessStore, useUserStore } from '@vben/stores';
-import { openWindow } from '@vben/utils';
 
 import { message } from 'ant-design-vue';
 
-import { TenantToggle } from '#/components/tenant-toggle';
 import { $t } from '#/locales';
 import { resetRoutes } from '#/router';
 import { useAuthStore, useNotifyStore } from '#/store';
@@ -99,9 +91,7 @@ watch(
 
 <template>
   <BasicLayout @clear-preferences-and-logout="handleLogout">
-    <template #header-right-1>
-      <TenantToggle />
-    </template>
+    <!-- 单企业部署非 SaaS（2026-09-06 owner 指令）：不渲染 TenantToggle 租户切换 -->
     <template #user-dropdown>
       <UserDropdown
         :avatar
@@ -123,6 +113,18 @@ watch(
       />
     </template>
     <template #extra>
+      <!-- BasicLayout 无 default slot（packages/effects/layouts/src/basic/layout.vue 只透传
+           logo-text/user-dropdown/notification/extra/lock-screen 等具名插槽），裸按钮放在
+           默认插槽会被整体丢弃——回切按钮必须挂在 #extra 内（2026-09-06 浏览器实测修复） -->
+      <button
+        class="ipd-workbench-switch"
+        data-testid="platform-ipd-switch"
+        type="button"
+        @click="router.replace('/ipd/workbench')"
+      >
+        <strong>IPD 工作台</strong>
+        <small>返回产品流程管理</small>
+      </button>
       <AuthenticationLoginExpiredModal
         v-model:open="accessStore.loginExpired"
         :avatar
@@ -135,3 +137,26 @@ watch(
     </template>
   </BasicLayout>
 </template>
+
+<style scoped>
+.ipd-workbench-switch {
+  position: fixed;
+  bottom: 22px;
+  left: 22px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(135deg, #071426, #18253a);
+  box-shadow: 0 8px 22px rgb(7 20 38 / 30%);
+  cursor: pointer;
+}
+.ipd-workbench-switch strong { font-size: 13px; }
+.ipd-workbench-switch small { font-size: 10px; opacity: 0.75; }
+.ipd-workbench-switch:hover { opacity: 0.92; }
+</style>

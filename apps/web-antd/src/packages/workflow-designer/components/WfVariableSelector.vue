@@ -78,7 +78,6 @@ function rebuildSelectedVars() {
 rebuildSelectedVars()
 
 function two(n: number) { return String(n).padStart(2, '0') }
-function defaultKeyAt(idx: number) { return `var_${two(idx + 1)}` }
 function nextAutoKey(list: string[]) {
   const nums = list
     .map((k) => (k && /^var_(\d+)$/.test(k) ? Number((k.match(/^var_(\d+)$/) as RegExpMatchArray)[1]) : 0))
@@ -140,10 +139,10 @@ function removeVariable(index: number) {
             :value="sv"
             :show-arrow="true"
             :options="options"
-            @update:value="(val: string) => handleSelectAt(idx, val)"
+            @update:value="(val) => typeof val === 'string' && handleSelectAt(idx, val)"
             class="flex-1"
           >
-            <template #optionRender="{ option }">
+            <template #option="option">
               <component :is="() => renderDropdownLabel(option)" />
             </template>
           </Select>

@@ -4,7 +4,6 @@ import type { VbenFormProps } from '@vben/common-ui';
 import type { VxeGridProps } from '#/adapter/vxe-table';
 import type { InfoForm } from '#/api/knowledge/info/model';
 
-import { ref } from 'vue';
 import { Page } from '@vben/common-ui';
 import { getVxePopupContainer } from '@vben/utils';
 

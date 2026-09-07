@@ -317,94 +317,104 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* ============================================================================
- * 工作台视觉对齐 —— 真值源：ZK-IPD LIVE URL 2026-09-06 chrome-devtools 实测
- * 关键色：--ipd-blue #245bf4 / --ipd-text #172033 / --ipd-muted #697388
- *       / --ipd-line #dfe4ed / --ipd-bg #f5f7fb
- * ============================================================================ */
+
+/* V12-F3: 原 1100px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
+  .ipd-wb-queue-grid { grid-template-columns: 1fr; }
+}
 
 /* 页面容器（原型 .page-frame：28px 32px 60px，max-width 1600px 居中） */
 .ipd-workbench {
-  padding: 28px 32px 60px;
-  max-width: 1600px;
-  margin: auto;
   display: grid;
   gap: 18px;
+  max-width: 1600px;
+  padding: 28px 32px 60px;
+  margin: auto;
 }
 
 
 /* 标题块（greeting + continue 按钮） */
 .ipd-wb-header {
   display: flex;
+  gap: 16px;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  background: var(--ipd-surface, #ffffff);
+  padding: 20px 24px;
+  background: var(--ipd-surface, #fff);
   border: 1px solid var(--ipd-line, #dfe4ed);
   border-radius: 8px;
-  padding: 20px 24px;
 }
+
 .ipd-wb-title {
+  margin: 0;
+  font-family: var(--ipd-font, Inter, 'Noto Sans SC', 'Microsoft YaHei', sans-serif);
   font-size: 25px;
   font-weight: 700;
-  color: var(--ipd-text, #172033);
-  font-family: var(--ipd-font, Inter, 'Noto Sans SC', 'Microsoft YaHei', sans-serif);
-  margin: 0;
   line-height: 1.3;
+  color: var(--ipd-text, #172033);
 }
+
 .ipd-wb-subtitle {
-  font-size: 13px;
-  color: var(--ipd-muted, #697388);
   margin: 6px 0 0;
+  font-size: 13px;
   line-height: 1.5;
+  color: var(--ipd-muted, #697388);
 }
+
 .ipd-wb-continue {
   display: inline-flex;
-  align-items: center;
   gap: 6px;
-  background: var(--ipd-blue, #245bf4);
-  color: #ffffff;
-  border: none;
-  border-radius: 6px;
+  align-items: center;
   height: 38px;
   padding: 0 16px;
   font-size: 14px;
   font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(36, 91, 244, 0.18);
+  color: #fff;
   white-space: nowrap;
+  cursor: pointer;
+  background: var(--ipd-blue, #245bf4);
+  border: none;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(36 91 244 / 18%);
 }
+
 .ipd-wb-continue:hover {
   background: var(--ipd-blue-dark, #1747d7);
-  box-shadow: 0 6px 16px rgba(36, 91, 244, 0.24);
+  box-shadow: 0 6px 16px rgb(36 91 244 / 24%);
 }
 
 /* 4 metric 卡（与 LIVE 工作台 metric 一致：白底 / 灰边 / 8px 圆角 / 17px 20px padding） */
 .ipd-metric-card {
-  background: var(--ipd-surface, #ffffff);
-  border: 1px solid var(--ipd-line, #dfe4ed);
-  border-radius: 8px;
-  padding: 17px 20px;
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-height: 96px;
+  padding: 17px 20px;
+  background: var(--ipd-surface, #fff);
+  border: 1px solid var(--ipd-line, #dfe4ed);
+  border-radius: 8px;
 }
+
 .ipd-metric-label {
   font-size: 13px;
-  color: var(--ipd-text, #172033);
   font-weight: 600;
+  color: var(--ipd-text, #172033);
 }
+
 .ipd-metric-value {
   font-size: 28px;
   font-weight: 700;
-  color: var(--ipd-text, #172033);
-  line-height: 1.2;
   font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  color: var(--ipd-text, #172033);
 }
+
 .tone-danger .ipd-metric-value { color: var(--ipd-red, #e45757); }
+
 .tone-warning .ipd-metric-value { color: var(--ipd-amber, #c98313); }
+
 .tone-primary .ipd-metric-value { color: var(--ipd-blue, #245bf4); }
+
 .ipd-metric-note {
   font-size: 12px;
   color: var(--ipd-muted, #697388);
@@ -412,56 +422,63 @@ onMounted(async () => {
 
 /* 责任队列 tab + 卡片 */
 .ipd-wb-queue {
-  background: var(--ipd-surface, #ffffff);
+  padding: 20px 24px;
+  background: var(--ipd-surface, #fff);
   border: 1px solid var(--ipd-line, #dfe4ed);
   border-radius: 8px;
-  padding: 20px 24px;
 }
+
 .ipd-wb-tabs {
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 16px;
 }
+
 .ipd-wb-tab {
-  background: transparent;
-  border: 1px solid var(--ipd-line, #dfe4ed);
-  color: var(--ipd-text, #172033);
-  border-radius: 6px;
   padding: 6px 14px;
   font-size: 13px;
   font-weight: 500;
+  color: var(--ipd-text, #172033);
   cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--ipd-line, #dfe4ed);
+  border-radius: 6px;
   transition: all 0.15s;
 }
+
 .ipd-wb-tab:hover {
   color: var(--ipd-blue, #245bf4);
   border-color: var(--ipd-blue, #245bf4);
 }
+
 .ipd-wb-tab.active {
+  font-weight: 600;
+  color: var(--ipd-blue, #245bf4);
   background: var(--ipd-blue-soft, #edf2ff);
   border-color: var(--ipd-blue, #245bf4);
-  color: var(--ipd-blue, #245bf4);
-  font-weight: 600;
 }
+
 .ipd-wb-tab-count {
   display: inline-block;
   min-width: 18px;
-  margin-left: 6px;
   padding: 0 5px;
-  border-radius: 9px;
-  background: var(--ipd-blue-soft, #edf2ff);
-  color: var(--ipd-blue, #245bf4);
+  margin-left: 6px;
   font-size: 11px;
+  font-weight: 600;
   line-height: 16px;
-  font-weight: 600;
+  color: var(--ipd-blue, #245bf4);
+  background: var(--ipd-blue-soft, #edf2ff);
+  border-radius: 9px;
 }
+
 .ipd-wb-tab.active .ipd-wb-tab-count {
-  background: #ffffff;
+  background: #fff;
 }
+
 .ipd-wb-overdue {
-  color: var(--ipd-red, #e45757);
   font-weight: 600;
+  color: var(--ipd-red, #e45757);
 }
 
 .ipd-wb-queue-grid {
@@ -469,19 +486,16 @@ onMounted(async () => {
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 20px;
 }
-/* V12-F3: 原 1100px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
-@media (max-width: 768px) {
-  .ipd-wb-queue-grid { grid-template-columns: 1fr; }
-}
 
 .ipd-wb-queue-card,
 .ipd-wb-side-card,
 .ipd-wb-governance {
-  background: var(--ipd-surface, #ffffff);
+  padding: 18px 20px;
+  background: var(--ipd-surface, #fff);
   border: 1px solid var(--ipd-line, #dfe4ed);
   border-radius: 8px;
-  padding: 18px 20px;
 }
+
 .ipd-wb-queue-side,
 .ipd-wb-governance-grid {
   display: flex;
@@ -491,140 +505,177 @@ onMounted(async () => {
 
 .ipd-wb-section-header {
   display: flex;
+  gap: 12px;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
   margin-bottom: 12px;
 }
+
 .ipd-wb-section-title {
+  margin: 0;
   font-size: 15px;
   font-weight: 700;
   color: var(--ipd-text, #172033);
-  margin: 0;
 }
+
 .ipd-wb-section-meta {
   font-size: 12px;
-  color: var(--ipd-muted, #697388);
   font-weight: 500;
+  color: var(--ipd-muted, #697388);
 }
+
 .ipd-wb-section-sub {
+  margin: 0 0 12px;
   font-size: 13px;
   color: var(--ipd-muted, #697388);
-  margin: 0 0 12px;
 }
 
 .ipd-wb-empty {
+  padding: 28px 12px;
   font-size: 13px;
   color: var(--ipd-muted, #697388);
   text-align: center;
-  padding: 28px 12px;
 }
+
 .ipd-wb-empty-tight { padding: 14px 0; }
 
 .ipd-wb-group + .ipd-wb-group { margin-top: 16px; }
+
 .ipd-wb-group-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 8px;
   font-size: 14px;
   font-weight: 700;
   color: var(--ipd-text, #172033);
-  margin: 0 0 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
+
 .ipd-wb-task {
   display: flex;
   gap: 12px;
   padding: 12px 14px;
+  margin-bottom: 8px;
+  background: var(--ipd-surface, #fff);
   border: 1px solid var(--ipd-line, #dfe4ed);
   border-radius: 6px;
-  margin-bottom: 8px;
-  background: var(--ipd-surface, #ffffff);
 }
-.ipd-wb-task-kind { flex-shrink: 0; height: 22px; line-height: 20px; }
-.ipd-wb-task-body { flex: 1; min-width: 0; }
+
+.ipd-wb-task-kind {
+  flex-shrink: 0;
+  height: 22px;
+  line-height: 20px;
+}
+
+.ipd-wb-task-body {
+  flex: 1;
+  min-width: 0;
+}
+
 .ipd-wb-task-title {
+  margin: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--ipd-text, #172033);
-  margin: 0;
 }
+
 .ipd-wb-task-desc {
-  font-size: 12px;
-  color: var(--ipd-muted, #697388);
   margin: 4px 0 0;
-}
-.ipd-wb-task-meta {
   font-size: 12px;
   color: var(--ipd-muted, #697388);
+}
+
+.ipd-wb-task-meta {
   margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--ipd-muted, #697388);
 }
 
 .ipd-wb-current-code {
-  font-size: 12px;
-  color: var(--ipd-muted, #697388);
   margin: 0;
+  font-size: 12px;
   font-weight: 600;
+  color: var(--ipd-muted, #697388);
 }
+
 .ipd-wb-current-title {
+  margin: 4px 0 6px;
   font-size: 15px;
   font-weight: 700;
   color: var(--ipd-text, #172033);
-  margin: 4px 0 6px;
 }
+
 .ipd-wb-current-meta {
+  margin: 0 0 14px;
   font-size: 12px;
   color: var(--ipd-muted, #697388);
-  margin: 0 0 14px;
 }
+
 .ipd-wb-coach-btn {
   width: 100%;
-  background: var(--ipd-blue, #245bf4);
-  color: #ffffff;
-  border: none;
-  border-radius: 6px;
   height: 38px;
   font-size: 14px;
   font-weight: 600;
+  color: #fff;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(36, 91, 244, 0.18);
+  background: var(--ipd-blue, #245bf4);
+  border: none;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(36 91 244 / 18%);
 }
+
 .ipd-wb-coach-btn:disabled {
-  background: var(--ipd-line, #dfe4ed);
   color: var(--ipd-muted, #697388);
   cursor: not-allowed;
+  background: var(--ipd-line, #dfe4ed);
   box-shadow: none;
 }
 
 .ipd-wb-handoff-desc {
-  font-size: 13px;
-  color: var(--ipd-muted, #697388);
   margin: 0;
+  font-size: 13px;
   line-height: 1.6;
+  color: var(--ipd-muted, #697388);
 }
 
 .ipd-wb-nooutput {
-  list-style: none;
-  margin: 0;
   padding: 0;
+  margin: 0;
+  list-style: none;
 }
+
 .ipd-wb-nooutput li {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
   gap: 4px;
+  align-items: baseline;
   padding: 8px 0;
-  border-top: 1px dashed var(--ipd-line, #dfe4ed);
   font-size: 13px;
+  border-top: 1px dashed var(--ipd-line, #dfe4ed);
 }
+
 .ipd-wb-nooutput li:first-child { border-top: none; }
-.ipd-wb-nooutput-person { font-weight: 600; color: var(--ipd-text, #172033); }
+
+.ipd-wb-nooutput-person {
+  font-weight: 600;
+  color: var(--ipd-text, #172033);
+}
+
 .ipd-wb-nooutput-sep { color: var(--ipd-muted, #697388); }
+
 .ipd-wb-nooutput-project { color: var(--ipd-text, #172033); }
+
 .ipd-wb-nooutput-meta {
   display: block;
   width: 100%;
+  margin-top: 2px;
   font-size: 12px;
   color: var(--ipd-muted, #697388);
-  margin-top: 2px;
 }
+
+/* ============================================================================
+ * 工作台视觉对齐 —— 真值源：ZK-IPD LIVE URL 2026-09-06 chrome-devtools 实测
+ * 关键色：--ipd-blue #245bf4 / --ipd-text #172033 / --ipd-muted #697388
+ *       / --ipd-line #dfe4ed / --ipd-bg #f5f7fb
+ * ============================================================================ */
 </style>

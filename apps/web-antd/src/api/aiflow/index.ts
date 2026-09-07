@@ -26,7 +26,7 @@ export const workflowApi = {
   },
 
 //新增节点
-  addNode<T = any>(data: { name: string; title: string }) {
+  addNode<T = any>(data: { name: string; title: string; uuid?: string; remark?: string; isEnable?: boolean }) {
     return adapters.httpPost<T>('/admin/workflow/component/addOrUpdate', data)
   },
 

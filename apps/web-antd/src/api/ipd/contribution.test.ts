@@ -18,25 +18,25 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('contribution API contract', () => {
-  it('GET /contribution/versions with projectId+period', async () => {
+  it('GET /contributions/versions with projectId+period', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope([]));
     vi.stubGlobal('fetch', fetcher);
     await listContributionVersions('p-1', '2026-01');
     const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
-    expect(url.pathname).toBe('/api/v1/contribution/versions');
+    expect(url.pathname).toBe('/api/v1/contributions/versions');
     expect(url.searchParams.get('projectId')).toBe('p-1');
     expect(url.searchParams.get('period')).toBe('2026-01');
   });
 
-  it('GET /contribution/current with same filters', async () => {
+  it('GET /contributions/current with same filters', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope({ id: 'cv-1' }));
     vi.stubGlobal('fetch', fetcher);
     await getCurrentContribution('p-1', '2026-01');
     const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
-    expect(url.pathname).toBe('/api/v1/contribution/current');
+    expect(url.pathname).toBe('/api/v1/contributions/current');
   });
 
-  it('POST /contribution/submit', async () => {
+  it('POST /contributions/submit', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope({ id: 'cv-2' }));
     vi.stubGlobal('fetch', fetcher);
     await submitContribution({

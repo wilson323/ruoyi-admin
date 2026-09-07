@@ -4,7 +4,7 @@
  * 五态齐全：loading / success / empty / error / 断网；按角色权重 0.2 / 0.4 / 0.4 自评+双组长评。
  */
 import { computed, onMounted, ref } from 'vue';
-import { Alert, Button, Card, Empty, Input, Table, Tag, message } from 'ant-design-vue';
+import { Alert, Button, Card, Empty, Input, Table, Tag } from 'ant-design-vue';
 
 import {
   type ProjectScore,
@@ -137,7 +137,7 @@ onMounted(() => {
           <template v-if="column.key === 'role'">
             <Tag :color="roleColor[record.role as ScoreRole]">{{ roleText[record.role as ScoreRole] }}</Tag>
           </template>
-          <template v-else-if="column.key === 'weight'">{{ roleWeight(record) }}</template>
+          <template v-else-if="column.key === 'weight'">{{ roleWeight(record as ProjectScore) }}</template>
           <template v-else-if="column.key === 'createTime'">{{ formatDateTime(record.createTime) }}</template>
         </template>
         <template #emptyText>
@@ -158,7 +158,7 @@ onMounted(() => {
           <template v-if="column.key === 'role'">
             <Tag :color="roleColor[record.role as ScoreRole]">{{ roleText[record.role as ScoreRole] }}</Tag>
           </template>
-          <template v-else-if="column.key === 'weight'">{{ roleWeight(record) }}</template>
+          <template v-else-if="column.key === 'weight'">{{ roleWeight(record as ProjectScore) }}</template>
           <template v-else-if="column.key === 'createTime'">{{ formatDateTime(record.createTime) }}</template>
         </template>
         <template #emptyText>

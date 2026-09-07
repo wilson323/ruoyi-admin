@@ -202,10 +202,14 @@ export const PAGE_PERMISSIONS: Record<string, readonly IpdPermissionCode[]> = {
 
 /** 给定路径返回该页所需的权限码（无映射返回空数组 = 内部全员可访问）。 */
 export function getRequiredCodes(path: string): readonly IpdPermissionCode[] {
-  if (PAGE_PERMISSIONS[path]) return PAGE_PERMISSIONS[path];
+  const direct = PAGE_PERMISSIONS[path];
+  if (direct) return direct;
   // 子路径向上回溯（如 /ipd/projects/123/overview → /ipd/projects）
   for (const key of Object.keys(PAGE_PERMISSIONS).sort((a, b) => b.length - a.length)) {
-    if (path.startsWith(`${key}/`)) return PAGE_PERMISSIONS[key];
+    if (path.startsWith(`${key}/`)) {
+      const hit = PAGE_PERMISSIONS[key];
+      if (hit) return hit;
+    }
   }
   return [];
 }

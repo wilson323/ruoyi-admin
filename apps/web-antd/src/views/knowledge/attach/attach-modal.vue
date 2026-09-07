@@ -20,7 +20,6 @@ import {
   Input,
   Textarea,
   Select,
-  InputNumber,
 } from 'ant-design-vue';
 import { pick } from 'lodash-es';
 

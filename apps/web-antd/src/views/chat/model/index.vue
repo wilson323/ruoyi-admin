@@ -1,8 +1,4 @@
 <script setup lang="ts">
-import type { Recordable } from '@vben/types';
-
-import { ref } from 'vue';
-
 import { Page, useVbenModal, type VbenFormProps } from '@vben/common-ui';
 import { DictEnum } from '@vben/constants';
 import { getVxePopupContainer } from '@vben/utils';

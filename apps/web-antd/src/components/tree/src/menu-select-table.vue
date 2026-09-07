@@ -136,7 +136,7 @@ const [BasicTable, tableApi] = useVbenVxeGrid({
     },
     // 全选事件
     checkboxAll: (params) => {
-      const records = params.$grid.getData();
+      const records = params.$grid?.getData() ?? [];
       records.forEach((item) => {
         rowAndChildrenChecked(item, params.checked);
       });

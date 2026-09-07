@@ -4,7 +4,7 @@ import type { InfoForm } from '#/api/knowledge/info/model';
 
 import { ref, computed, h } from 'vue';
 import { useVbenModal } from '@vben/common-ui';
-import { $t } from '@vben/locales';
+
 import { cloneDeep } from '@vben/utils';
 
 import {
@@ -12,14 +12,12 @@ import {
   FormItem,
   Input,
   Select,
-  Radio,
   RadioGroup,
   Switch,
   Slider,
   InputNumber,
   message,
   Tooltip,
-  Tag
 } from 'ant-design-vue';
 import { QuestionCircleOutlined } from '@ant-design/icons-vue';
 
@@ -28,7 +26,6 @@ import { modelList } from '#/api/chat/model';
 
 const emit = defineEmits<{ reload: [] }>();
 
-const isUpdate = ref(false);
 const title = computed(() => '新增知识库');
 
 const defaultValues: Partial<InfoForm> = {
@@ -82,7 +79,7 @@ const { validate, validateInfos, resetFields } = Form.useForm(
 async function fetchEmbeddingModels() {
   try {
     const response = await modelList({ category: 'vector', pageSize: 1000 });
-    const models = Array.isArray(response) ? response : (response.rows || response.records || []);
+    const models = Array.isArray(response) ? response : (response.rows || []);
     embeddingModelOptions.value = models.map((model: any) => ({
       label: model.modelDescribe || model.modelName,
       value: model.modelName,
@@ -98,7 +95,7 @@ async function fetchEmbeddingModels() {
 async function fetchRerankModels() {
   try {
     const response = await modelList({ category: 'rerank', pageSize: 1000 });
-    const models = Array.isArray(response) ? response : (response.rows || response.records || []);
+    const models = Array.isArray(response) ? response : (response.rows || []);
     rerankModelOptions.value = models.map((model: any) => ({
       label: model.modelDescribe || model.modelName,
       value: model.modelName,

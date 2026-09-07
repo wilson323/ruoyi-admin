@@ -424,39 +424,56 @@ async function submitAdminTransfer(): Promise<void> {
 </template>
 
 <style scoped>
-/* 原型 styles.css 摘录；--blue/--line/--muted/--text/--green 映射为 --ipd-*。 */
+
+/* V12-F3: 原 1100px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
+  .handover-inbox-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .create-form {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .handover-page {
-  padding: 28px 32px 60px;
   max-width: 1600px;
+  padding: 28px 32px 60px;
   margin: auto;
 }
+
 .page-heading {
   margin-bottom: 24px;
 }
+
 .page-heading h1 {
   margin: 0 0 8px;
   font-size: 25px;
   letter-spacing: -0.02em;
 }
+
 .page-heading p {
   margin: 0;
-  color: var(--ipd-muted);
   font-size: 13px;
+  color: var(--ipd-muted);
 }
+
 .handover-error {
-  margin-bottom: 16px;
   padding: 10px 12px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: #a8071a;
   background: #fff2f0;
   border: 1px solid #ffccc7;
   border-radius: 6px;
-  color: #a8071a;
-  font-size: 12px;
 }
+
 .surface {
   background: white;
   border: 1px solid var(--ipd-line);
   border-radius: 8px;
 }
+
 .section-title {
   display: flex;
   align-items: center;
@@ -464,111 +481,130 @@ async function submitAdminTransfer(): Promise<void> {
   padding: 18px 20px;
   border-bottom: 1px solid var(--ipd-line);
 }
+
 .section-title.second {
+  padding-top: 16px;
+  margin-top: 8px;
   border-top: 1px solid var(--ipd-line);
   border-bottom: 0;
-  margin-top: 8px;
-  padding-top: 16px;
 }
+
 .section-title h2 {
   margin: 0;
   font-size: 15px;
 }
+
 .section-title p {
   margin: 3px 0 0;
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .section-title > span {
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .primary-button {
-  border: 0;
-  min-height: 38px;
-  padding: 0 16px;
-  border-radius: 6px;
   display: inline-flex;
+  gap: 7px;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  min-height: 38px;
+  padding: 0 16px;
   font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  background: var(--ipd-blue);
   color: white;
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--ipd-blue);
+  border: 0;
+  border-radius: 6px;
   box-shadow: 0 4px 12px rgb(36 91 244 / 18%);
 }
+
 .primary-button:hover {
   background: #1747d7;
 }
+
 .primary-button:disabled {
-  opacity: 0.6;
   cursor: not-allowed;
+  opacity: 0.6;
 }
+
 .danger-action {
   background: #b42318;
   box-shadow: 0 4px 12px rgb(180 35 24 / 20%);
 }
+
 .handover-inbox-grid {
   display: grid;
   grid-template-columns: 0.9fr 1.4fr;
   gap: 18px;
   margin-bottom: 18px;
 }
+
 .inbox-item {
-  width: calc(100% - 40px);
-  margin: 0 20px;
-  padding: 12px 0;
   display: grid;
   grid-template-columns: 30px 1fr auto;
   gap: 10px;
   align-items: center;
+  width: calc(100% - 40px);
+  padding: 12px 0;
+  margin: 0 20px;
+  color: var(--ipd-text);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
   border: 0;
   border-bottom: 1px solid var(--ipd-line);
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-  color: var(--ipd-text);
 }
+
 .inbox-item.active {
   background: #f5f8ff;
 }
+
 .inbox-item strong {
   display: block;
   font-size: 13px;
 }
+
 .inbox-item small {
   display: block;
   margin-top: 2px;
-  color: var(--ipd-muted);
   font-size: 11px;
+  color: var(--ipd-muted);
 }
+
 .inbox-item > :deep(.anticon) {
-  color: var(--ipd-blue);
   font-size: 16px;
+  color: var(--ipd-blue);
 }
+
 .inbox-blank {
   padding: 18px 20px;
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .status-pill {
-  font-style: normal;
+  padding: 4px 8px;
   font-size: 11px;
+  font-style: normal;
   font-weight: 700;
   border-radius: 4px;
-  padding: 4px 8px;
 }
+
 .status-pill.draft,
 .status-pill.pending {
   color: var(--ipd-blue);
   background: #edf2ff;
 }
+
 .status-pill.completed {
   color: var(--ipd-green);
   background: #eaf7ed;
 }
+
 .detail-head {
   display: flex;
   gap: 14px;
@@ -576,156 +612,172 @@ async function submitAdminTransfer(): Promise<void> {
   padding: 18px 20px;
   border-bottom: 1px solid var(--ipd-line);
 }
+
 .detail-icon {
-  width: 44px;
-  height: 44px;
   display: grid;
   place-items: center;
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
   color: var(--ipd-blue);
   background: #edf2ff;
   border-radius: 8px;
-  font-size: 20px;
 }
+
 .detail-head i {
-  color: var(--ipd-muted);
-  font-style: normal;
   font-size: 11px;
+  font-style: normal;
+  color: var(--ipd-muted);
 }
+
 .detail-head h2 {
   margin: 3px 0;
   font-size: 16px;
 }
+
 .detail-head p {
   margin: 0;
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .detail-head .status-pill {
   margin-left: auto;
 }
+
 .detail-note {
-  margin: 14px 20px 0;
   padding: 12px;
+  margin: 14px 20px 0;
+  font-size: 12px;
+  color: #56647c;
   background: #f2f6ff;
   border-radius: 6px;
-  color: #56647c;
-  font-size: 12px;
 }
+
 .detail-meta {
   display: flex;
   gap: 18px;
   padding: 12px 20px;
-  color: var(--ipd-muted);
   font-size: 11px;
+  color: var(--ipd-muted);
 }
+
 .accept-row {
   display: flex;
   gap: 10px;
   padding: 0 20px 18px;
 }
+
 .accept-row input {
-  min-width: 0;
   flex: 1;
+  min-width: 0;
   height: 38px;
   padding: 0 10px;
+  color: var(--ipd-text);
   border: 1px solid #cfd6e1;
   border-radius: 6px;
-  color: var(--ipd-text);
 }
+
 .detail-waiting {
   padding: 0 20px 18px;
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .empty-state {
-  min-height: 200px;
   display: grid;
   place-content: center;
   justify-items: center;
-  text-align: center;
+  min-height: 200px;
   color: var(--ipd-muted);
+  text-align: center;
 }
+
 .empty-state > div {
-  width: 56px;
-  height: 56px;
   display: grid;
   place-items: center;
+  width: 56px;
+  height: 56px;
+  font-size: 26px;
   color: var(--ipd-blue);
   background: #edf2ff;
   border-radius: 50%;
-  font-size: 26px;
 }
+
 .empty-state strong {
-  color: var(--ipd-text);
   margin: 12px 0 4px;
+  color: var(--ipd-text);
 }
+
 .empty-state p {
-  margin: 0;
   max-width: 340px;
+  margin: 0;
   font-size: 12px;
   line-height: 1.6;
 }
+
 .create-section,
 .batch-section,
 .admin-transfer {
   margin-bottom: 18px;
 }
+
 .create-form {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 14px;
-  padding: 16px 20px 20px;
   align-items: end;
+  padding: 16px 20px 20px;
 }
+
 .create-form label {
   display: grid;
   gap: 6px;
-  font-weight: 700;
   font-size: 12px;
+  font-weight: 700;
 }
+
 .create-form label.wide {
   grid-column: span 2;
 }
+
 .create-form input,
 .create-form select {
   height: 38px;
   padding: 0 10px;
+  font-weight: 400;
+  color: var(--ipd-text);
+  background: white;
   border: 1px solid #cfd6e1;
   border-radius: 6px;
-  background: white;
-  color: var(--ipd-text);
-  font-weight: 400;
 }
+
 .batch-results {
-  padding: 0 20px 16px;
   display: grid;
   gap: 8px;
+  padding: 0 20px 16px;
 }
+
 .batch-row {
   display: flex;
-  align-items: center;
   gap: 10px;
+  align-items: center;
   font-size: 12px;
 }
+
 .batch-row small {
   color: #a8071a;
 }
+
 .handover-pending {
   padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6b7a90;
   background: #f6f8fb;
   border: 1px dashed #cfd9e5;
   border-radius: 6px;
-  color: #6b7a90;
-  font-size: 12px;
-  line-height: 1.6;
 }
-/* V12-F3: 原 1100px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
-@media (max-width: 768px) {
-  .handover-inbox-grid {
-    grid-template-columns: 1fr;
-  }
-  .create-form {
-    grid-template-columns: 1fr 1fr;
-  }
-}
+
+/* 原型 styles.css 摘录；--blue/--line/--muted/--text/--green 映射为 --ipd-*。 */
 </style>

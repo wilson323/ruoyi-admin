@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { Page, useVbenModal } from '@vben/common-ui';
-import type { VbenFormProps } from '@vben/common-ui';
+
 import type { VxeGridProps } from '#/adapter/vxe-table';
-import { useVbenVxeGrid, vxeCheckboxChecked } from '#/adapter/vxe-table';
+import { useVbenVxeGrid } from '#/adapter/vxe-table';
 import { columns } from './data';
 import type { NodeInfo } from './index.d';
 import { workflowApi } from '#/api/aiflow';
-import { Modal, Popconfirm, Space, Button } from 'ant-design-vue';
+import { Space, Button } from 'ant-design-vue';
 import AddModal from './modal.vue';
 // const formOptions: VbenFormProps = {
 //   commonConfig: {
@@ -33,14 +33,8 @@ const gridOptions: VxeGridProps = {
   pagerConfig: {},
   proxyConfig: {
     ajax: {
-      query: async ({ page }, formValues = {}) => {
-        const result = await workflowApi.workflowComponents({
-          currentPage: page.currentPage,
-          pageSize: page.pageSize,
-          wfSearchReq: {
-            ...formValues,
-          },
-        });
+      query: async () => {
+        const result = await workflowApi.workflowComponents();
         // 转换数据结构以匹配 VXE 表格期望的格式
         return {
           rows: result,

@@ -1,9 +1,5 @@
 <script setup lang="ts">
-import type { Recordable } from '@vben/types';
-
-import { ref } from 'vue';
-
-import { Page, useVbenModal, type VbenFormProps } from '@vben/common-ui';
+import { Page, type VbenFormProps } from '@vben/common-ui';
 import { getVxePopupContainer } from '@vben/utils';
 
 import { Modal, Popconfirm, Space } from 'ant-design-vue';

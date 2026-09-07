@@ -6,14 +6,13 @@
 <script setup lang="ts">
 import type { RuleObject } from 'ant-design-vue/es/form';
 
-import type { InfoForm } from '#/api/system/info/model';
+import type { InfoForm } from '#/api/knowledge/info/model';
 
 import { computed, ref, watch } from 'vue';
 
 import { useVbenModal } from '@vben/common-ui';
 import { $t } from '@vben/locales';
 import { cloneDeep } from '@vben/utils';
-import { useAccessStore } from '@vben/stores';
 
 import {
   Form,
@@ -31,8 +30,6 @@ import { pick } from 'lodash-es';
 
 import { infoAdd, infoInfo, infoUpdate } from '#/api/knowledge/info';
 import { embeddingModelList, rerankModelList } from '#/api/chat/model';
-
-const accessStore = useAccessStore();
 
 const emit = defineEmits<{ reload: [] }>();
 
@@ -111,7 +108,7 @@ const { validate, validateInfos, resetFields } = Form.useForm(
 async function fetchEmbeddingModels() {
   try {
     const response = await embeddingModelList();
-    const models = Array.isArray(response) ? response : (response.rows || response.records || []);
+    const models = Array.isArray(response) ? response : (response.rows || []);
     embeddingModelOptions.value = models.map((model: any) => ({
       label: model.modelDescribe,
       value: model.modelName,
@@ -124,7 +121,7 @@ async function fetchEmbeddingModels() {
 async function fetchRerankModels() {
   try {
     const response = await rerankModelList();
-    const models = Array.isArray(response) ? response : (response.rows || response.records || []);
+    const models = Array.isArray(response) ? response : (response.rows || []);
     rerankModelOptions.value = models.map((model: any) => ({
       label: model.modelDescribe,
       value: model.modelName,
@@ -146,7 +143,7 @@ watch(() => formData.value.enableRerank, (newVal) => {
   if (newVal === 1) {
     // 启用重排序时，设置默认值
     if (!formData.value.rerankModel && rerankModelOptions.value.length > 0) {
-      formData.value.rerankModel = rerankModelOptions.value[0].value;
+      formData.value.rerankModel = rerankModelOptions.value[0]?.value;
     }
     if (!formData.value.rerankTopN) {
       formData.value.rerankTopN = Math.min(5, formData.value.retrieveLimit || 5);
@@ -182,10 +179,10 @@ const [BasicModal, modalApi] = useVbenModal({
     } else {
       // 设置默认值，embeddingModel 使用第一个可用的模型
       const defaultEmbeddingModel = embeddingModelOptions.value.length > 0
-        ? embeddingModelOptions.value[0].value
+        ? embeddingModelOptions.value[0]?.value
         : undefined;
       const defaultRerankModel = rerankModelOptions.value.length > 0
-        ? rerankModelOptions.value[0].value
+        ? rerankModelOptions.value[0]?.value
         : undefined;
 
       formData.value = {

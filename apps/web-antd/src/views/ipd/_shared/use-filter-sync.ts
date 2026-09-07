@@ -67,7 +67,6 @@ function serializeValue(value: string | string[], writeEmpty: boolean): string |
  */
 function deserializeValue(
   raw: string,
-  key: string,
   sample: string | string[],
   joiner: string,
 ): string | string[] {
@@ -97,8 +96,9 @@ export function useFilterSync<T extends FilterRecord>(
   for (const key of Object.keys(state)) {
     if (ignored.has(key)) continue;
     const sample = state[key];
+    if (sample === undefined) continue;
     const raw = readQueryScalar(route.query[key] as LocationQueryValue | LocationQueryValue[]);
-    const next = deserializeValue(raw, key, sample, joiner);
+    const next = deserializeValue(raw, sample, joiner);
     if (Array.isArray(sample)) {
       (state as FilterRecord)[key] = next as string[];
     } else if (raw || options.defaults?.[key] !== undefined) {
@@ -136,8 +136,9 @@ export function useFilterSync<T extends FilterRecord>(
       for (const key of Object.keys(state)) {
         if (ignored.has(key)) continue;
         const sample = state[key];
+        if (sample === undefined) continue;
         const raw = readQueryScalar(to.query[key] as LocationQueryValue | LocationQueryValue[]);
-        const nextValue = deserializeValue(raw, key, sample, joiner);
+        const nextValue = deserializeValue(raw, sample, joiner);
         if (Array.isArray(sample)) {
           (state as FilterRecord)[key] = nextValue as string[];
         } else if (raw || options.defaults?.[key] !== undefined) {

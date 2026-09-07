@@ -20,6 +20,8 @@ import { traceDetail } from '#/api/monitor/trace';
 
 // ======================== Types ========================
 
+type DisplayTraceNode = TraceNode & { children?: DisplayTraceNode[] };
+
 interface TreeNode {
   children?: TreeNode[];
   key: string;
@@ -30,7 +32,7 @@ interface TreeNode {
 // ======================== State ========================
 
 const currentRun = shallowRef<null | TraceRun>(null);
-const nodeList = ref<TraceNode[]>([]);
+const nodeList = ref<DisplayTraceNode[]>([]);
 const selectedKeys = ref<string[]>([]);
 const detailData = shallowRef<null | TraceDetail>(null);
 
@@ -78,7 +80,7 @@ const stats = computed(() => detailData.value?.statistics);
 
 // ======================== Helpers ========================
 
-function buildTree(nodes: TraceNode[]): TreeNode[] {
+function buildTree(nodes: DisplayTraceNode[]): TreeNode[] {
   if (nodes.some((node) => node.children?.length)) {
     return nodes.map((node, index) => toTreeNode(node, index));
   }
@@ -101,7 +103,7 @@ function buildTree(nodes: TraceNode[]): TreeNode[] {
   return roots;
 }
 
-function toTreeNode(node: TraceNode, index: number): TreeNode {
+function toTreeNode(node: DisplayTraceNode, index: number): TreeNode {
   const key = String(node.nodeId || `${node.traceId || 'trace-node'}-${index}`);
   const children = node.children?.map((child, childIndex) =>
     toTreeNode(child, childIndex),

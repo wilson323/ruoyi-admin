@@ -1,0 +1,91 @@
+name: typecheck-no-new-errors
+
+# 用途
+# - 红基线治理（W3-TYPE-01 选 B）：前端 typecheck 当前存在 21 个历史错误，
+#   本任务不修复（需协调兄弟会话 in-flight 与禁触区 `views/ipd/review/**`），
+#   仅在 CI 集成「不新增错误」门禁。
+# - 治理策略：CI 跑 vue-tsc，统计错误数；当前错误数 ≤ 已知基线 21 视为通过；
+#   修复错误时同步下调 workflow 的 `BASELINE` 环境变量，主动降基线。
+# - 触发限定 `apps/web-antd/**` paths，避免被 docs/、根级配置或脚本自身触发后误判。
+# - 关联看板卡：6c5878ba-39d2-4796-a9f4-6664e4c54d34（Wave 4-W3-TYPE-01）
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web-antd/**'
+      - '.github/workflows/typecheck-no-new-errors.yml'
+      - 'scripts/typecheck-error-count.mjs'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web-antd/**'
+      - '.github/workflows/typecheck-no-new-errors.yml'
+      - 'scripts/typecheck-error-count.mjs'
+
+# 取消同分支并发：避免两次 PR push 互相干扰基线计数
+concurrency:
+  group: typecheck-no-new-errors-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # 红基线（已知 HEAD 错误数）。修改此值即代表「主动降基线」，
+      # 必须先在 PR 中证明修复了对应数量的错误，再合并本 workflow 变更。
+      # 关联治理文档：docs/typecheck-baseline.md
+      BASELINE: '21'
+      MAX_NEW_ERRORS: '0'
+      # vue-tsc 在 turbo 中吞输出的回退：直接走 web-antd 子包命令
+      APPS_DIR: 'apps/web-antd'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 双路捕获：tee 留本地产物，tee /dev/stderr 保留到 GitHub Actions 日志
+      # 注：turbo 在某些版本会折叠 vue-tsc 子进程的 stderr；直接走子包命令更稳。
+      - name: Run typecheck (capture output)
+        run: |
+          set +e
+          pnpm --filter @vben/web-antd run typecheck > /tmp/typecheck-output.txt 2>&1
+          TYPECHECK_EXIT=$?
+          echo "vue-tsc exit code: ${TYPECHECK_EXIT}"
+          cat /tmp/typecheck-output.txt
+          # 故意不 exit，非零退出也继续——解析脚本要统计错误数，
+          # 由最后一步统一判定通过 / 失败。
+          exit 0
+
+      - name: Parse errors and compare with baseline
+        run: |
+          node scripts/typecheck-error-count.mjs \
+            --input=/tmp/typecheck-output.txt \
+            --baseline=${BASELINE} \
+            --max-new-errors=${MAX_NEW_ERRORS} \
+            --output=typecheck-report.json \
+            --exit-on-regression
+
+      - name: Upload typecheck report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typecheck-report
+          path: typecheck-report.json
+          if-no-files-found: ignore

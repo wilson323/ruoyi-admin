@@ -107,7 +107,11 @@ function asNullableNumber(value: unknown): null | number {
 }
 
 function normalizeProject(raw: unknown): Project {
-  const row = toRecord(raw);
+  const outer = toRecord(raw);
+  // 真机 2026-09-07 实证：GET /projects 列表行是 {project:{...}} 包裹（头注「裸 List」已漂移）——
+  // 不解开则 id/code/name 全空、表格全「待补充」；平铺形态（单查/创建返回）直通不受影响。
+  const nested = (outer as Record<string, unknown>).project;
+  const row = nested !== null && typeof nested === 'object' ? toRecord(nested) : outer;
   return {
     id: asString(row.id),
     code: asNullableString(row.code),

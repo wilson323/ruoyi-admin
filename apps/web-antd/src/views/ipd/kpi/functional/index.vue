@@ -5,7 +5,7 @@
  * 后端未交付；本页只读展示后端汇总计算结果（来源 × 权重 × 贡献），符合 G-06 五态准则。
  */
 import { computed, onMounted, ref } from 'vue';
-import { Alert, Button, Card, Empty, Input, Table, Tag, message } from 'ant-design-vue';
+import { Alert, Button, Card, Empty, Input, Table, Tag } from 'ant-design-vue';
 
 import { type KpiSourceItem, getFunctionalKpi } from '../../../../api/ipd/kpi';
 import { ipdErrorText, isTransportError } from '../../_shared/ipd-error-text';

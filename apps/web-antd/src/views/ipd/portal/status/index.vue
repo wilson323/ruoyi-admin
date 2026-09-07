@@ -150,7 +150,7 @@ async function queryTrace() {
 /* 查询码输入框用等宽字体，便于对照抄写 8 位码 */
 .portal-code-input :deep(input) {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  letter-spacing: 0.15em;
   text-transform: uppercase;
+  letter-spacing: 0.15em;
 }
 </style>

@@ -38,7 +38,7 @@ export const useWfStore = defineStore('wf-store', {
         return []
       }
     },
-    getStartOrFirstNode(state: any) {
+    getStartOrFirstNode() {
       return (wfUuid: string) => {
         const wf = this.getWorkflowInfo(wfUuid)
         if (!wf)
@@ -50,7 +50,7 @@ export const useWfStore = defineStore('wf-store', {
         return wf.nodes[0]
       }
     },
-    getStartNode(state: any) {
+    getStartNode() {
       return (wfUuid: string) => {
         const wf = this.getWorkflowInfo(wfUuid)
         if (!wf)
@@ -58,7 +58,7 @@ export const useWfStore = defineStore('wf-store', {
         return wf.nodes.find((item: any) => item.wfComponent && item.wfComponent.name === 'Start')
       }
     },
-    getStartNodeByWfId(state: any) {
+    getStartNodeByWfId() {
       return (wfId: string) => {
         const wf = this.getWorkflowInfoById(wfId)
         if (!wf)
@@ -107,7 +107,7 @@ export const useWfStore = defineStore('wf-store', {
         return wfRuntime
       }
     },
-    getRuntimeNode(state: any) {
+    getRuntimeNode() {
       return (wfRuntimeUuid: string, runtimeNodeUuid: string) => {
         const wfRuntime = this.getWfRuntime(wfRuntimeUuid)
         if (!wfRuntime)

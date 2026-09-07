@@ -2,8 +2,6 @@ import type { TabsProps } from './types';
 
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 
-import { VbenScrollbar } from '@vben-core/shadcn-ui';
-
 import { useDebounceFn } from '@vueuse/core';
 
 type DomElement = Element | null | undefined;
@@ -12,7 +10,7 @@ export function useTabsViewScroll(props: TabsProps) {
   let resizeObserver: null | ResizeObserver = null;
   let mutationObserver: MutationObserver | null = null;
   let tabItemCount = 0;
-  const scrollbarRef = ref<InstanceType<typeof VbenScrollbar> | null>(null);
+  const scrollbarRef = ref<{ $el: HTMLElement } | null>(null);
   const scrollViewportEl = ref<DomElement>(null);
   const showScrollButton = ref(false);
   const scrollIsAtLeft = ref(true);
@@ -58,9 +56,10 @@ export function useTabsViewScroll(props: TabsProps) {
       return;
     }
 
-    const viewportEl = scrollbarEl?.querySelector(
+    const viewportEl = scrollbarEl.querySelector<HTMLElement>(
       'div[data-radix-scroll-area-viewport]',
     );
+    if (!viewportEl) return;
 
     scrollViewportEl.value = viewportEl;
     calcShowScrollbarButton();
@@ -113,7 +112,7 @@ export function useTabsViewScroll(props: TabsProps) {
     const { scrollbarWidth } = getScrollClientWidth();
     const { scrollWidth } = viewportEl;
 
-    if (scrollbarWidth >= scrollWidth) {
+    if (scrollbarWidth === undefined || scrollbarWidth >= scrollWidth) {
       return;
     }
 
@@ -134,6 +133,7 @@ export function useTabsViewScroll(props: TabsProps) {
     const { scrollbarWidth } = getScrollClientWidth();
 
     showScrollButton.value =
+      scrollbarWidth !== undefined &&
       scrollViewportEl.value.scrollWidth > scrollbarWidth;
   }
 

@@ -480,37 +480,72 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* ============================================================================
- * 需求管理视觉对齐 —— 真值源：ZK-IPD 原型 styles.css（103-115 / 189-197 / 244 / 248-249）
- * 色板引用 ipd-theme.css 变量（--ipd-blue #245bf4 / --ipd-text / --ipd-muted / --ipd-line）
- * ============================================================================ */
+
+
+/* 响应式（原型 248/249 行断点） */
+
+/* V12-F3: 原 1050px 断点归一至 1024px 平板档（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 1024px) {
+  .ipd-req-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .ipd-req-demand-list article {
+    grid-template-columns: 110px 1fr;
+  }
+
+  .ipd-req-demand-actions {
+    grid-column: 2;
+  }
+}
+
+/* V12-F3: 原 760px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
+  .ipd-req {
+    padding: 20px 16px 48px;
+  }
+
+  .ipd-req-demand-list article {
+    grid-template-columns: 1fr;
+  }
+
+  .ipd-req-demand-actions {
+    grid-column: auto;
+  }
+
+  .ipd-req-metrics {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* .page-frame：28px 32px 60px，max-width 1600px 居中 */
 .ipd-req {
-  padding: 28px 32px 60px;
   max-width: 1600px;
+  padding: 28px 32px 60px;
   margin: auto;
 }
 
 /* .page-heading */
 .ipd-req-heading {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
   gap: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: 24px;
 }
+
 .ipd-req-heading h1 {
   margin: 0 0 8px;
   font-size: 25px;
-  letter-spacing: -0.02em;
-  color: var(--ipd-text, #172033);
   font-weight: 700;
+  color: var(--ipd-text, #172033);
+  letter-spacing: -0.02em;
 }
+
 .ipd-req-heading p {
   margin: 0;
-  color: var(--ipd-muted, #697388);
   font-size: 13px;
+  color: var(--ipd-muted, #697388);
 }
 
 /* ZK-IPD 规则提示条 */
@@ -522,31 +557,33 @@ onMounted(() => {
 .ipd-req-switch {
   display: flex;
   gap: 5px;
+  max-width: 360px;
   padding: 4px;
+  margin-bottom: 18px;
   background: #eef1f6;
   border-radius: 8px;
-  margin-bottom: 18px;
-  max-width: 360px;
 }
+
 .ipd-req-switch button {
-  flex: 1;
-  height: 40px;
-  border: 0;
-  background: transparent;
-  border-radius: 6px;
   display: flex;
+  flex: 1;
+  gap: 7px;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  height: 40px;
+  font-size: 13px;
   font-weight: 700;
   color: #667085;
   cursor: pointer;
-  font-size: 13px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
 }
+
 .ipd-req-switch button.active {
-  background: white;
   color: var(--ipd-blue, #245bf4);
-  box-shadow: 0 2px 8px rgba(18, 32, 57, 0.1);
+  background: white;
+  box-shadow: 0 2px 8px rgb(18 32 57 / 10%);
 }
 
 /* .metric-strip + .metric（requirement-metrics strong 25px） */
@@ -556,19 +593,22 @@ onMounted(() => {
   gap: 14px;
   margin-bottom: 18px;
 }
+
 .ipd-req-metric {
-  background: white;
-  border: 1px solid var(--ipd-line, #dfe4ed);
-  border-radius: 8px;
-  padding: 17px 20px;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 3px 10px;
+  padding: 17px 20px;
+  background: white;
+  border: 1px solid var(--ipd-line, #dfe4ed);
+  border-radius: 8px;
 }
+
 .ipd-req-metric > span {
-  color: var(--ipd-muted, #697388);
   font-size: 12px;
+  color: var(--ipd-muted, #697388);
 }
+
 .ipd-req-metric > strong {
   grid-row: 1 / 3;
   grid-column: 2;
@@ -576,72 +616,80 @@ onMounted(() => {
   font-variant-numeric: tabular-nums;
   color: var(--ipd-text, #172033);
 }
+
 .ipd-req-metric small {
-  color: #8d96a6;
   font-size: 12px;
+  color: #8d96a6;
 }
+
 .ipd-req-metric.warning > strong {
   color: var(--ipd-amber, #c98313);
 }
+
 .ipd-req-metric.danger > strong {
   color: var(--ipd-red, #e45757);
 }
 
 /* .surface + .business-toolbar */
 .ipd-req-surface {
+  overflow: hidden;
   background: white;
   border: 1px solid var(--ipd-line, #dfe4ed);
   border-radius: 8px;
-  overflow: hidden;
 }
+
 .ipd-req-toolbar {
-  min-height: 58px;
-  padding: 0 18px;
   display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  min-height: 58px;
+  padding: 0 18px;
   border-bottom: 1px solid var(--ipd-line, #dfe4ed);
 }
+
 .ipd-req-toolbar > span {
-  color: var(--ipd-muted, #697388);
   font-size: 12px;
+  color: var(--ipd-muted, #697388);
 }
+
 .ipd-req-toolbar select {
+  max-width: 260px;
   height: 34px;
-  border: 1px solid var(--ipd-line, #dfe4ed);
-  border-radius: 5px;
   padding: 0 9px;
-  background: white;
   font-size: 12px;
   color: var(--ipd-text, #172033);
-  max-width: 260px;
+  background: white;
+  border: 1px solid var(--ipd-line, #dfe4ed);
+  border-radius: 5px;
 }
 
 /* .segmented */
 .ipd-req-segmented {
   display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
   padding: 3px;
   background: #eef1f5;
   border-radius: 6px;
-  flex-wrap: wrap;
-  gap: 2px;
 }
+
 .ipd-req-segmented button {
-  border: 0;
   padding: 7px 12px;
-  color: #68748a;
-  background: transparent;
-  border-radius: 4px;
-  cursor: pointer;
   font-size: 11px;
+  color: #68748a;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
 }
+
 .ipd-req-segmented button.active {
+  font-weight: 700;
   color: var(--ipd-blue, #245bf4);
   background: white;
-  box-shadow: 0 1px 4px rgba(27, 42, 70, 0.12);
-  font-weight: 700;
+  box-shadow: 0 1px 4px rgb(27 42 70 / 12%);
 }
 
 /* .product-demand-list article：130px | 1fr | 150px */
@@ -653,67 +701,77 @@ onMounted(() => {
   padding: 16px 20px;
   border-bottom: 1px solid var(--ipd-line, #dfe4ed);
 }
+
 .ipd-req-demand-source {
   display: grid;
   gap: 5px;
 }
+
 .ipd-req-demand-source small,
 .ipd-req-demand-list article > div:nth-child(2) > small {
-  color: var(--ipd-muted, #697388);
   font-size: 12px;
+  color: var(--ipd-muted, #697388);
 }
+
 .ipd-req-demand-list article > div:nth-child(2) > small {
   display: block;
   margin-top: 4px;
 }
+
 .ipd-req-source-badge {
   width: fit-content;
   padding: 3px 6px;
-  border-radius: 4px;
-  background: #edf2ff;
-  color: var(--ipd-blue, #245bf4);
   font-size: 10px;
   font-weight: 700;
+  color: var(--ipd-blue, #245bf4);
+  background: #edf2ff;
+  border-radius: 4px;
 }
+
 .ipd-req-source-badge.guest {
   color: #905c0a;
   background: #fff3dd;
 }
+
 .ipd-req-demand-list h3 {
   margin: 0 0 7px;
   font-size: 14px;
   color: var(--ipd-text, #172033);
 }
+
 .ipd-req-demand-list p {
   margin: 0 0 8px;
-  color: #566176;
-  line-height: 1.55;
   font-size: 12px;
+  line-height: 1.55;
+  color: #566176;
 }
 
 /* .demand-actions */
 .ipd-req-demand-actions {
   display: grid;
-  justify-items: start;
   gap: 7px;
+  justify-items: start;
 }
+
 .ipd-req-demand-actions button {
-  border: 0;
-  background: transparent;
-  color: var(--ipd-blue, #245bf4);
+  padding: 0;
   font-size: 11px;
   font-weight: 700;
+  color: var(--ipd-blue, #245bf4);
   cursor: pointer;
-  padding: 0;
+  background: transparent;
+  border: 0;
 }
+
 .ipd-req-demand-actions button:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
+  opacity: 0.5;
 }
+
 .ipd-req-demand-actions .ipd-req-primary-link {
   padding: 7px 9px;
-  background: var(--ipd-blue, #245bf4);
   color: white;
+  background: var(--ipd-blue, #245bf4);
   border-radius: 5px;
 }
 
@@ -722,24 +780,28 @@ onMounted(() => {
   display: inline-flex;
   width: fit-content;
   padding: 4px 7px;
-  border-radius: 4px;
-  font-style: normal;
   font-size: 10px;
+  font-style: normal;
   font-weight: 700;
   white-space: nowrap;
+  border-radius: 4px;
 }
+
 .ipd-req-status-pill.amber {
   color: #9b6509;
   background: #fff4df;
 }
+
 .ipd-req-status-pill.blue {
   color: var(--ipd-blue, #245bf4);
   background: var(--ipd-blue-soft, #edf2ff);
 }
+
 .ipd-req-status-pill.green {
   color: var(--ipd-green, #2f9e52);
   background: #eaf7ed;
 }
+
 .ipd-req-status-pill.gray {
   color: #58657b;
   background: #eef1f5;
@@ -749,81 +811,90 @@ onMounted(() => {
 .ipd-req-table {
   overflow-x: auto;
 }
+
 .ipd-req-row {
-  min-width: 980px;
-  min-height: 74px;
   display: grid;
   grid-template-columns: 2.3fr 1.15fr 0.5fr 0.9fr 0.9fr 1.15fr;
   gap: 14px;
   align-items: center;
+  min-width: 980px;
+  min-height: 74px;
   padding: 10px 18px;
-  border-bottom: 1px solid #edf0f3;
   font-size: 11px;
   color: var(--ipd-text, #172033);
+  border-bottom: 1px solid #edf0f3;
 }
+
 .ipd-req-row.head {
   min-height: 40px;
+  font-weight: 700;
   color: var(--ipd-muted, #697388);
   background: #f7f8fa;
-  font-weight: 700;
 }
+
 .ipd-req-row > span {
   min-width: 0;
 }
+
 .ipd-req-row > span:first-child,
 .ipd-req-row > span:nth-child(2) {
   display: grid;
   gap: 5px;
 }
+
 .ipd-req-row small {
-  color: var(--ipd-muted, #697388);
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--ipd-muted, #697388);
+  white-space: nowrap;
 }
+
 .ipd-req-row > span:last-child {
   display: flex;
-  align-items: center;
-  gap: 7px;
   flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
 }
 
 /* .empty-state */
 .ipd-req-empty {
-  min-height: 260px;
   display: grid;
   place-content: center;
   justify-items: center;
-  text-align: center;
+  min-height: 260px;
   color: var(--ipd-muted, #697388);
+  text-align: center;
 }
+
 .ipd-req-empty > div {
-  width: 56px;
-  height: 56px;
   display: grid;
   place-items: center;
+  width: 56px;
+  height: 56px;
+  font-size: 28px;
   color: var(--ipd-blue, #245bf4);
   background: var(--ipd-blue-soft, #edf2ff);
   border-radius: 50%;
-  font-size: 28px;
 }
+
 .ipd-req-empty strong {
-  color: var(--ipd-text, #172033);
   margin: 12px 0 4px;
   font-size: 14px;
+  color: var(--ipd-text, #172033);
 }
+
 .ipd-req-empty p {
-  margin: 0;
   max-width: 380px;
+  margin: 0;
   font-size: 12px;
   line-height: 1.6;
 }
 
 .ipd-req-load-error {
-  margin: 0;
   padding: 14px 20px;
-  color: var(--ipd-red, #e45757);
+  margin: 0;
   font-size: 12px;
+  color: var(--ipd-red, #e45757);
 }
 
 /* 关联项目弹窗内容 */
@@ -832,39 +903,17 @@ onMounted(() => {
   font-size: 13px;
   color: var(--ipd-muted, #697388);
 }
+
 .ipd-req-link-tip strong {
   color: var(--ipd-text, #172033);
 }
+
 .ipd-req-link-select {
   width: 100%;
 }
 
-/* 响应式（原型 248/249 行断点） */
-/* V12-F3: 原 1050px 断点归一至 1024px 平板档（唯一断点常量见 _shared/ipd-breakpoints.ts） */
-@media (max-width: 1024px) {
-  .ipd-req-metrics {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .ipd-req-demand-list article {
-    grid-template-columns: 110px 1fr;
-  }
-  .ipd-req-demand-actions {
-    grid-column: 2;
-  }
-}
-/* V12-F3: 原 760px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
-@media (max-width: 768px) {
-  .ipd-req {
-    padding: 20px 16px 48px;
-  }
-  .ipd-req-demand-list article {
-    grid-template-columns: 1fr;
-  }
-  .ipd-req-demand-actions {
-    grid-column: auto;
-  }
-  .ipd-req-metrics {
-    grid-template-columns: 1fr;
-  }
-}
+/* ============================================================================
+ * 需求管理视觉对齐 —— 真值源：ZK-IPD 原型 styles.css（103-115 / 189-197 / 244 / 248-249）
+ * 色板引用 ipd-theme.css 变量（--ipd-blue #245bf4 / --ipd-text / --ipd-muted / --ipd-line）
+ * ============================================================================ */
 </style>

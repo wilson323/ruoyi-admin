@@ -5,7 +5,7 @@ import type { VxeGridProps } from '#/adapter/vxe-table';
 import type { McpMarket } from '#/api/mcp/market/model';
 
 import { useAccess } from '@vben/access';
-import { Page, useVbenDrawer, useVbenModal } from '@vben/common-ui';
+import { Page, useVbenDrawer } from '@vben/common-ui';
 import { getVxePopupContainer } from '@vben/utils';
 
 import { Modal, Popconfirm, Space, message } from 'ant-design-vue';

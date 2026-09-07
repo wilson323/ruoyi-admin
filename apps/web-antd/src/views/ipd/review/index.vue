@@ -288,70 +288,93 @@ async function submitStage(): Promise<void> {
 </template>
 
 <style scoped>
-/* 原型 styles.css 摘录；--blue/--line/--muted/--text/--green 映射为 --ipd-*，
-   --blue-soft/--blue-dark 原型字面量 #edf2ff/#1747d7 直接保留。 */
+
+/* V12-F3: 原 900px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
+  .change-project-selector {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .change-project-selector select {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 .rev-page {
-  padding: 28px 32px 60px;
   max-width: 1600px;
+  padding: 28px 32px 60px;
   margin: auto;
 }
+
 .page-heading {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
   gap: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: 24px;
 }
+
 .page-heading h1 {
   margin: 0 0 8px;
   font-size: 25px;
   letter-spacing: -0.02em;
 }
+
 .page-heading p {
   margin: 0;
-  color: var(--ipd-muted);
   font-size: 13px;
+  color: var(--ipd-muted);
 }
+
 .primary-button,
 .secondary-button {
-  border: 0;
-  min-height: 38px;
-  padding: 0 16px;
-  border-radius: 6px;
   display: inline-flex;
+  gap: 7px;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  min-height: 38px;
+  padding: 0 16px;
   font-weight: 700;
+  white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
-  white-space: nowrap;
+  border: 0;
+  border-radius: 6px;
 }
+
 .primary-button {
-  background: var(--ipd-blue);
   color: white;
+  background: var(--ipd-blue);
   box-shadow: 0 4px 12px rgb(36 91 244 / 18%);
 }
+
 .primary-button:hover {
   background: #1747d7;
 }
+
 .primary-button:disabled {
-  opacity: 0.6;
   cursor: not-allowed;
+  opacity: 0.6;
 }
+
 .secondary-button {
+  color: #465168;
   background: white;
   border: 1px solid #cdd4df;
-  color: #465168;
 }
+
 .rev-alert {
   margin-bottom: 16px;
 }
+
 .surface {
   background: white;
   border: 1px solid var(--ipd-line);
   border-radius: 8px;
 }
+
 .section-title {
   display: flex;
   align-items: center;
@@ -359,244 +382,274 @@ async function submitStage(): Promise<void> {
   padding: 18px 20px;
   border-bottom: 1px solid var(--ipd-line);
 }
+
 .section-title h2 {
   margin: 0;
   font-size: 15px;
 }
+
 .section-title > span {
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .section-title p {
   margin: 3px 0 0;
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .pill {
   display: inline-flex;
   align-items: center;
   width: fit-content;
-  border-radius: 4px;
   padding: 4px 8px;
-  font-style: normal;
   font-size: 11px;
+  font-style: normal;
   font-weight: 700;
+  border-radius: 4px;
 }
+
 .pill.blue {
   color: var(--ipd-blue);
   background: #edf2ff;
 }
+
 .pill.warning {
   color: #9a6509;
   background: #fff4df;
 }
+
 .pill.success {
   color: var(--ipd-green);
   background: #eaf7ed;
 }
+
 .review-layout {
   display: grid;
   grid-template-columns: 1.3fr 0.8fr;
   gap: 18px;
 }
+
 .review-row {
-  margin: 0 20px;
-  min-height: 72px;
   display: grid;
   grid-template-columns: 38px 1fr auto;
-  align-items: center;
   gap: 12px;
+  align-items: center;
+  min-height: 72px;
+  margin: 0 20px;
   border-bottom: 1px solid var(--ipd-line);
 }
+
 .review-icon {
-  width: 36px;
-  height: 36px;
   display: grid;
   place-items: center;
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
   color: var(--ipd-blue);
   background: #edf2ff;
   border-radius: 6px;
-  font-size: 20px;
 }
+
 .review-row p {
   margin: 5px 0 0;
-  color: var(--ipd-muted);
   font-size: 11px;
+  color: var(--ipd-muted);
 }
+
 .policy-list {
   padding: 16px 20px 8px;
 }
+
 .policy-list p {
   display: flex;
-  align-items: center;
   gap: 8px;
-  font-size: 12px;
+  align-items: center;
   margin: 0 0 10px;
+  font-size: 12px;
 }
+
 .policy-list :deep(.anticon) {
   color: var(--ipd-green);
 }
+
 .gate-status-card {
-  margin: 10px 20px 20px;
-  padding: 15px;
-  background: #fff8ec;
-  border-radius: 6px;
   display: grid;
   gap: 5px;
+  padding: 15px;
+  margin: 10px 20px 20px;
+  background: #fff8ec;
+  border-radius: 6px;
 }
+
 .gate-status-card span,
 .gate-status-card p {
-  color: #806b45;
-  font-size: 11px;
   margin: 0;
+  font-size: 11px;
+  color: #806b45;
 }
+
 .gate-status-card strong {
   color: #9b650b;
 }
+
 .handoff-note {
-  margin: 0 20px 18px;
-  padding: 12px;
   display: flex;
-  align-items: center;
   gap: 9px;
+  align-items: center;
+  padding: 12px;
+  margin: 0 20px 18px;
+  font-size: 12px;
   color: #56647c;
   background: #f2f6ff;
   border-radius: 6px;
-  font-size: 12px;
 }
+
 .handoff-note :deep(.anticon) {
   color: var(--ipd-blue);
 }
+
 .change-project-selector {
   display: flex;
-  align-items: center;
   gap: 12px;
+  align-items: center;
   padding: 14px 16px;
   margin-bottom: 16px;
   background: #edf5ff;
   border: 1px solid #c9ddf6;
   border-radius: 10px;
 }
+
 .change-project-selector :deep(.anticon) {
-  color: var(--ipd-blue);
   font-size: 17px;
+  color: var(--ipd-blue);
 }
+
 .change-project-selector label {
   display: flex;
-  align-items: center;
   gap: 10px;
+  align-items: center;
   font-weight: 700;
 }
+
 .change-project-selector select {
   min-width: 330px;
   height: 38px;
   padding: 0 10px;
+  color: var(--ipd-text);
+  background: white;
   border: 1px solid #cfd6e1;
   border-radius: 6px;
-  background: white;
-  color: var(--ipd-text);
 }
+
 .change-project-selector span {
   margin-left: auto;
   color: #587493;
 }
+
 .empty-state {
-  min-height: 260px;
   display: grid;
   place-content: center;
   justify-items: center;
-  text-align: center;
+  min-height: 260px;
   color: var(--ipd-muted);
+  text-align: center;
 }
+
 .empty-state > div {
-  width: 56px;
-  height: 56px;
   display: grid;
   place-items: center;
+  width: 56px;
+  height: 56px;
+  font-size: 28px;
   color: var(--ipd-blue);
   background: #edf2ff;
   border-radius: 50%;
-  font-size: 28px;
 }
+
 .empty-state strong {
-  color: var(--ipd-text);
   margin: 12px 0 4px;
+  color: var(--ipd-text);
 }
+
 .empty-state p {
-  margin: 0;
   max-width: 380px;
+  margin: 0;
   font-size: 12px;
   line-height: 1.6;
 }
+
 .decision-chain-panel,
 .biweekly-panel {
   padding: 20px;
   margin-top: 18px;
 }
+
 .decision-chain-panel .section-title,
 .biweekly-panel .section-title {
   padding: 0 0 14px;
 }
+
 .final-gates {
   margin: 18px 24px;
 }
+
 .panel-action {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
   height: 30px;
   padding: 0 11px;
-  border: 1px solid #cfd6e1;
-  border-radius: 5px;
-  background: white;
   color: var(--ipd-text);
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+  background: white;
+  border: 1px solid #cfd6e1;
+  border-radius: 5px;
 }
+
 .panel-action:disabled,
 .waiver-request button:disabled {
-  opacity: 0.6;
   cursor: not-allowed;
+  opacity: 0.6;
 }
+
 .rev-pending {
-  margin-top: 12px;
   padding: 10px 12px;
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6b7a90;
   background: #f6f8fb;
   border: 1px dashed #cfd9e5;
   border-radius: 6px;
-  color: #6b7a90;
-  font-size: 12px;
-  line-height: 1.6;
 }
+
 .waiver-section {
   margin-top: 18px;
   overflow: hidden;
 }
+
 .waiver-request {
-  padding: 16px 20px;
   display: flex;
   gap: 10px;
+  padding: 16px 20px;
 }
+
 .waiver-request input {
-  min-width: 0;
   flex: 1;
+  min-width: 0;
   height: 38px;
   padding: 0 10px;
+  color: var(--ipd-text);
   border: 1px solid #cfd6e1;
   border-radius: 6px;
-  color: var(--ipd-text);
 }
+
 .waiver-request input::placeholder {
   color: #98a5b6;
 }
-/* V12-F3: 原 900px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
-@media (max-width: 768px) {
-  .change-project-selector {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .change-project-selector select {
-    min-width: 0;
-    width: 100%;
-  }
-}
+
+/* 原型 styles.css 摘录；--blue/--line/--muted/--text/--green 映射为 --ipd-*，
+   --blue-soft/--blue-dark 原型字面量 #edf2ff/#1747d7 直接保留。 */
 </style>

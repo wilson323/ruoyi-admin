@@ -45,23 +45,22 @@ function setFromJson(key: string, json: string) {
     <div v-for="[k, v] in entries" :key="k" class="space-y-1">
       <div class="text-xs text-neutral-500">{{ k }}</div>
       <div v-if="typeof v === 'boolean'">
-        <Switch :checked="getVal(k)" @update:checked="(val: boolean) => setVal(k, val)" />
+        <Switch :checked="getVal(k)" @update:checked="(val) => setVal(k, val)" />
       </div>
       <div v-else-if="typeof v === 'number'">
-        <InputNumber :value="getVal(k)" @update:value="(val: number) => setVal(k, val)" class="w-full" />
+        <InputNumber :value="getVal(k)" @update:value="(val) => setVal(k, val)" class="w-full" />
       </div>
       <div v-else-if="typeof v === 'string'">
         <Input :value="getVal(k)" @update:value="(val: string) => setVal(k, val)" />
       </div>
       <div v-else-if="Array.isArray(v)">
-        <Input type="textarea" :value="toJson(getVal(k))" :auto-size="{ minRows: 3, maxRows: 12 }" @update:value="(val: string) => setFromJson(k, val)" />
+        <Input.TextArea :value="toJson(getVal(k))" :auto-size="{ minRows: 3, maxRows: 12 }" @update:value="(val: string) => setFromJson(k, val)" />
       </div>
       <div v-else-if="typeof v === 'object' && v !== null">
-        <Input type="textarea" :value="toJson(getVal(k))" :auto-size="{ minRows: 3, maxRows: 12 }" @update:value="(val: string) => setFromJson(k, val)" />
+        <Input.TextArea :value="toJson(getVal(k))" :auto-size="{ minRows: 3, maxRows: 12 }" @update:value="(val: string) => setFromJson(k, val)" />
       </div>
       <div v-else class="text-neutral-400">Unsupported</div>
     </div>
   </div>
 </template>
-
 

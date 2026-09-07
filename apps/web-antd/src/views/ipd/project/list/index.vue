@@ -11,7 +11,7 @@
  * - 返回裸 List<Project>，不做 IPage 分页；前端做分页仅作可视化提示。
  */
 import { computed, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { RouterView, useRoute, useRouter } from 'vue-router';
 import {
   Alert,
   Button,
@@ -44,7 +44,13 @@ import { createFilterState, useFilterSync } from '../../_shared/use-filter-sync'
 import '../../_shared/ipd-theme.css';
 
 const router = useRouter();
+const route = useRoute();
 const auth = useIpdAuthStore();
+
+/** 本组件挂在父路由 /ipd/projects 上：子路由（create/详情九页签）激活时退化为纯 RouterView 出口，
+ * 避免列表与子页叠加渲染（真机走查 2026-09-07 实证：缺出口时详情路由只改标题不渲染）；
+ * 无路由名（组件单测 mount）视作列表态。 */
+const isIndexRoute = computed(() => route.name === undefined || route.name === 'IpdProjects');
 
 const loading = ref(false);
 const loadError = ref<unknown>(null);
@@ -140,7 +146,8 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="p-4">
+  <RouterView v-if="!isIndexRoute" />
+  <div v-else class="p-4">
     <Card class="mb-4">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <Space wrap>

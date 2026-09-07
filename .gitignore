@@ -54,3 +54,7 @@ apps/web-antd/types/components.d.ts
 .history
 .cursor
 .claude
+
+# 本地 agent 运行时目录（非交付件）
+.evolver/
+.serena/

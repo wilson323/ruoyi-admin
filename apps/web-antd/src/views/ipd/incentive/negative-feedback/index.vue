@@ -138,17 +138,18 @@ onMounted(() => {
 
 <style scoped>
 .primary-button {
-  border: 0;
   min-height: 38px;
   padding: 0 16px;
-  border-radius: 6px;
-  background: var(--ipd-blue);
-  color: white;
   font-weight: 700;
+  color: white;
   cursor: pointer;
+  background: var(--ipd-blue);
+  border: 0;
+  border-radius: 6px;
 }
+
 .primary-button:disabled {
-  opacity: 0.6;
   cursor: not-allowed;
+  opacity: 0.6;
 }
 </style>

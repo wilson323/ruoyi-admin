@@ -31,8 +31,6 @@ import {
 import { message, Modal } from 'ant-design-vue';
 import { isEmpty, isNull } from 'lodash-es';
 
-import { useAuthStore } from '#/store';
-
 import { handleUnauthorizedLogout } from './helper';
 
 const { apiURL, clientId, enableEncrypt, rsaPublicKey, rsaPrivateKey } =
@@ -76,21 +74,25 @@ function createRequestClient(baseURL: string) {
   });
 
   /**
-   * 重新认证逻辑
+   * 重新认证逻辑（AI 平台桥改造，2026-09-06）：
+   * 平台票失效 ≠ IPD 会话失效——先用仍有效的 IPD 会话静默换新平台票续命；
+   * 换不上则回 IPD 工作台，由 IPD 守卫统一判定放行或回登录页（IPD 是唯一认证入口，
+   * 不再走基线登录弹窗/基线 login 页）。
    */
   async function doReAuthenticate() {
     console.warn('Access token or refresh token is invalid or expired. ');
     const accessStore = useAccessStore();
-    const authStore = useAuthStore();
     accessStore.setAccessToken(null);
-    if (
-      preferences.app.loginExpiredMode === 'modal' &&
-      accessStore.isAccessChecked
-    ) {
-      accessStore.setLoginExpired(true);
-    } else {
-      await authStore.logout();
-    }
+    try {
+      const { useIpdAuthStore } = await import('#/store/ipd-auth');
+      const ipdAuth = useIpdAuthStore();
+      if (ipdAuth.token) {
+        await ipdAuth.renewPlatformSession(true);
+        return;
+      }
+    } catch { /* IPD 会话也不可用：交给 IPD 守卫接管 */ }
+    const { router } = await import('#/router');
+    await router.replace('/ipd/workbench');
   }
 
   /**

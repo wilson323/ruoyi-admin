@@ -7,8 +7,8 @@
 import type { RuleObject } from 'ant-design-vue/es/form';
 import { computed, ref } from 'vue';
 
-import { Input, Textarea, Select, RadioGroup, CheckboxGroup, DatePicker, Form, FormItem } from 'ant-design-vue';
-import { ImageUpload, FileUpload } from '#/components/upload';
+import { Input, Textarea, Select, Form, FormItem } from 'ant-design-vue';
+
 import { Tinymce } from '#/components/tinymce';
 import { getPopupContainer } from '@vben/utils';
 import { pick } from 'lodash-es';
@@ -18,7 +18,6 @@ import { $t } from '@vben/locales';
 import { cloneDeep } from '@vben/utils';
 import { DictEnum } from '@vben/constants';
 
-import { useVbenForm } from '#/adapter/form';
 import { messageAdd, messageInfo, messageUpdate } from '#/api/chat/message';
 import type { MessageForm } from '#/api/chat/message/model';
 import { getDictItems } from '#/api/system/dict';
@@ -49,7 +48,12 @@ async function fetchBillingTypeDict() {
 /**
  * 定义默认值 用于reset
  */
-const defaultValues: Partial<MessageForm> = {
+// Legacy editor fields are view state, not an extension of the Java API contract.
+type MessageEditorForm = Partial<MessageForm> & {
+  deductCost?: number | string;
+  billingType?: string;
+};
+const defaultValues: MessageEditorForm = {
   id: undefined,
   sessionId: undefined,
   userId: undefined,
@@ -186,4 +190,3 @@ async function handleCancel() {
     </Form>
   </BasicModal>
 </template>
-

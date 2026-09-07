@@ -14,7 +14,7 @@
      改为 变更前快照/变更后快照（有·无）/市场PM 签署/研发PM 签署（自 signatures 解析）。
   3. 原型卡头 code/title；本仓无编号字段 → 「变更单 #{id}」+ changeType 作标题位。
   4. 发起弹窗：原型 排期影响/成本影响 数字输入 → 本仓为四维度影响快照 JSON（before/after）；
-     关联需求下拉因需求列表端点未交付，暂以需求 ID 录入。
+     关联需求下拉接入 DemandController.list（按当前项目 productId 过滤），2026-09-07 修复。
   5. 决策按钮：DRAFT→提交双签；PENDING_SIGN→拒绝/同意签署（服务端校验 MARKET_PM/RD_PM）。
   6. 「需求变更五节点链」面板：本仓为双PM两节点模型，五节点协作链（/api/collaboration）
      后端未交付，按原型渲染外壳与空态并如实登记，不做假数据。
@@ -39,11 +39,10 @@ import {
   type RequirementChange,
 } from '../../../api/ipd/change';
 import { listProjects, type Project } from '../../../api/ipd/project';
+import { fetchDemands, type IpdDemand } from '../../../api/ipd/demand';
 import { projectErrorText } from '../project/project-error';
 import {
   CHANGE_STATUS_MACHINE,
-  stateLabel as stateLabelFn,
-  stateTone as stateToneFn,
 } from '../_shared/ipd-state-machines';
 
 /** V6 系统漂移修复：状态机集中查表，本页仅留展示别名映射（CSS 类名 → tone）。 */
@@ -57,9 +56,7 @@ const STATUS_TONE: Record<string, string> = {
   REJECTED: 'rejected',
 };
 
-/** 未知 status 兜底（仅展示，不参与业务）。 */
-const FALLBACK_STATUS_LABEL = stateLabelFn(CHANGE_STATUS_MACHINE, 'UNKNOWN');
-const FALLBACK_STATUS_TONE = stateToneFn(CHANGE_STATUS_MACHINE, 'UNKNOWN');
+/** 未知 status 兜底由模板内联承担：label 兜底原始 code（?? item.status）、tone 兜底空串（?? ''）。 */
 
 const loading = ref(false);
 const loadError = ref('');
@@ -71,6 +68,8 @@ const modalOpen = ref(false);
 const submitting = ref(false);
 const createError = ref('');
 const createForm = ref({ afterSnapshot: '', beforeSnapshot: '', changeType: '', reason: '', requirementId: '' });
+const demands = ref<IpdDemand[]>([]);
+const demandsLoading = ref(false);
 
 const activeProject = computed(() => projects.value.find((project) => project.id === activeId.value) ?? null);
 const countBy = (status: string) => changes.value.filter((item) => item.status === status).length;
@@ -107,6 +106,24 @@ async function loadChanges(): Promise<void> {
   }
 }
 
+/** 加载当前项目所属产品的需求列表（用于发起变更时的关联需求下拉）。 */
+async function loadDemands(): Promise<void> {
+  const productId = activeProject.value?.productId;
+  if (!productId) {
+    demands.value = [];
+    return;
+  }
+  demandsLoading.value = true;
+  try {
+    const result = await fetchDemands({ productId });
+    demands.value = result.demands;
+  } catch {
+    demands.value = [];
+  } finally {
+    demandsLoading.value = false;
+  }
+}
+
 onMounted(async () => {
   try {
     projects.value = await listProjects();
@@ -114,11 +131,12 @@ onMounted(async () => {
   } catch (cause) {
     loadError.value = projectErrorText(cause);
   }
-  await loadChanges();
+  await Promise.all([loadChanges(), loadDemands()]);
 });
 
 watch(activeId, () => {
   void loadChanges();
+  void loadDemands();
 });
 
 async function submitForSign(item: RequirementChange): Promise<void> {
@@ -333,8 +351,11 @@ async function createChange(): Promise<void> {
             </select>
           </label>
           <label>
-            关联需求 ID
-            <input v-model="createForm.requirementId" placeholder="需求列表端点未交付，暂以需求 ID 录入" required />
+            关联需求
+            <select v-model="createForm.requirementId" required :disabled="demandsLoading">
+              <option value="" disabled>请选择需求（{{ demands.length }} 条）</option>
+              <option v-for="d in demands" :key="d.id" :value="d.id">{{ d.title ?? '未命名需求' }} · #{{ d.id }}</option>
+            </select>
           </label>
           <label>
             变更类型
@@ -372,131 +393,182 @@ async function createChange(): Promise<void> {
 </template>
 
 <style scoped>
-/* 原型 styles.css 摘录；--blue/--line/--muted/--text/--amber 映射为 --ipd-*。 */
+
+/* V12-F3: 原 900px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
+  .metric-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .change-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .change-impact {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .change-project-selector {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .change-project-selector select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .field-grid.two {
+    grid-template-columns: 1fr;
+  }
+}
+
 .chg-page {
-  padding: 28px 32px 60px;
   max-width: 1600px;
+  padding: 28px 32px 60px;
   margin: auto;
 }
+
 .page-heading {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
   gap: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: 24px;
 }
+
 .page-heading h1 {
   margin: 0 0 8px;
   font-size: 25px;
   letter-spacing: -0.02em;
 }
+
 .page-heading p {
   margin: 0;
-  color: var(--ipd-muted);
   font-size: 13px;
+  color: var(--ipd-muted);
 }
+
 .primary-button,
 .secondary-button {
-  border: 0;
-  min-height: 38px;
-  padding: 0 16px;
-  border-radius: 6px;
   display: inline-flex;
+  gap: 7px;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  min-height: 38px;
+  padding: 0 16px;
   font-weight: 700;
-  cursor: pointer;
   white-space: nowrap;
+  cursor: pointer;
+  border: 0;
+  border-radius: 6px;
 }
+
 .primary-button {
-  background: var(--ipd-blue);
   color: white;
+  background: var(--ipd-blue);
   box-shadow: 0 4px 12px rgb(36 91 244 / 18%);
 }
+
 .primary-button:hover {
   background: #1747d7;
 }
+
 .primary-button:disabled {
-  opacity: 0.6;
   cursor: not-allowed;
+  opacity: 0.6;
 }
+
 .secondary-button {
+  color: #465168;
   background: white;
   border: 1px solid #cdd4df;
-  color: #465168;
 }
+
 .chg-alert {
   margin-bottom: 16px;
 }
+
 .change-project-selector {
   display: flex;
-  align-items: center;
   gap: 12px;
+  align-items: center;
   padding: 14px 16px;
   margin-bottom: 16px;
   background: #edf5ff;
   border: 1px solid #c9ddf6;
   border-radius: 10px;
 }
+
 .change-project-selector :deep(.anticon) {
-  color: var(--ipd-blue);
   font-size: 17px;
+  color: var(--ipd-blue);
 }
+
 .change-project-selector label {
   display: flex;
-  align-items: center;
   gap: 10px;
+  align-items: center;
   font-weight: 700;
 }
+
 .change-project-selector select {
   min-width: 330px;
   height: 38px;
   padding: 0 10px;
+  color: var(--ipd-text);
+  background: white;
   border: 1px solid #cfd6e1;
   border-radius: 6px;
-  background: white;
-  color: var(--ipd-text);
 }
+
 .change-project-selector span {
   margin-left: auto;
   color: #587493;
 }
+
 .metric-strip {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 14px;
   margin-bottom: 18px;
 }
+
 .metric {
-  background: white;
-  border: 1px solid var(--ipd-line);
-  border-radius: 8px;
-  padding: 17px 20px;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 3px 10px;
+  padding: 17px 20px;
+  background: white;
+  border: 1px solid var(--ipd-line);
+  border-radius: 8px;
 }
+
 .metric > span {
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .metric > strong {
   grid-row: 1 / 3;
   grid-column: 2;
   font-size: 25px;
 }
+
 .metric small {
   color: #8d96a6;
 }
+
 .metric.warning > strong {
   color: var(--ipd-amber);
 }
+
 .surface {
   background: white;
   border: 1px solid var(--ipd-line);
   border-radius: 8px;
 }
+
 .section-title {
   display: flex;
   align-items: center;
@@ -504,332 +576,363 @@ async function createChange(): Promise<void> {
   padding: 18px 20px;
   border-bottom: 1px solid var(--ipd-line);
 }
+
 .section-title h2 {
   margin: 0;
   font-size: 15px;
 }
+
 .section-title > span {
-  color: var(--ipd-muted);
   font-size: 12px;
+  color: var(--ipd-muted);
 }
+
 .business-list {
   overflow: hidden;
 }
+
 .change-cards {
-  padding: 16px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+  padding: 16px;
 }
+
 .change-cards article {
   padding: 16px;
+  background: white;
   border: 1px solid var(--ipd-line);
   border-radius: 7px;
-  background: white;
 }
+
 .change-card-head {
   display: flex;
-  justify-content: space-between;
   gap: 14px;
+  justify-content: space-between;
 }
+
 .change-card-head > div > span {
-  color: var(--ipd-blue);
   font-size: 10px;
   font-weight: 750;
+  color: var(--ipd-blue);
 }
+
 .change-card-head h3 {
   margin: 5px 0;
   font-size: 15px;
 }
+
 .change-card-head p {
   margin: 0;
-  color: var(--ipd-muted);
   font-size: 10px;
+  color: var(--ipd-muted);
 }
+
 .status-pill {
   display: inline-flex;
   width: fit-content;
   padding: 4px 7px;
-  border-radius: 4px;
-  font-style: normal;
   font-size: 10px;
+  font-style: normal;
   font-weight: 700;
-  white-space: nowrap;
   color: #58657b;
+  white-space: nowrap;
   background: #eef1f5;
+  border-radius: 4px;
 }
+
 .status-pill.pending {
   color: #9b6509;
   background: #fff4df;
 }
+
 .status-pill.approved {
   color: var(--ipd-green);
   background: #eaf7ed;
 }
+
 .status-pill.rejected {
   color: #a33c3c;
   background: #ffeded;
 }
+
 .change-impact {
-  margin: 15px 0;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 1px;
-  border: 1px solid var(--ipd-line);
-  background: var(--ipd-line);
-  border-radius: 5px;
+  margin: 15px 0;
   overflow: hidden;
+  background: var(--ipd-line);
+  border: 1px solid var(--ipd-line);
+  border-radius: 5px;
 }
+
 .change-impact span {
-  padding: 9px;
   display: grid;
   gap: 5px;
+  padding: 9px;
   background: #f8f9fb;
 }
+
 .change-impact small {
-  color: var(--ipd-muted);
   font-size: 9px;
+  color: var(--ipd-muted);
 }
+
 .change-impact strong {
   font-size: 11px;
 }
+
 .change-reason {
   margin: 8px 0;
-  color: #5d687c;
   font-size: 10px;
   line-height: 1.6;
+  color: #5d687c;
 }
+
 .snapshot-details {
   margin: 8px 0 0;
   font-size: 11px;
   color: #68778a;
 }
+
 .snapshot-details summary {
-  cursor: pointer;
-  color: var(--ipd-blue);
   font-weight: 650;
+  color: var(--ipd-blue);
+  cursor: pointer;
 }
+
 .snapshot-details pre {
-  margin: 8px 0 0;
   padding: 9px 10px;
-  border-radius: 6px;
-  background: #f7f8fa;
-  white-space: pre-wrap;
-  word-break: break-all;
+  margin: 8px 0 0;
   font-size: 10px;
   line-height: 1.6;
   color: #39465d;
+  word-break: break-all;
+  white-space: pre-wrap;
+  background: #f7f8fa;
+  border-radius: 6px;
 }
+
 .decision-buttons {
   display: flex;
   gap: 6px;
 }
+
 .decision-buttons button {
   height: 30px;
   padding: 0 11px;
+  color: var(--ipd-text);
+  cursor: pointer;
+  background: white;
   border: 1px solid #cfd6e1;
   border-radius: 5px;
-  background: white;
-  cursor: pointer;
-  color: var(--ipd-text);
 }
+
 .decision-buttons button:last-child {
   color: white;
-  border-color: var(--ipd-blue);
   background: var(--ipd-blue);
+  border-color: var(--ipd-blue);
 }
+
 .change-actions {
-  margin-top: 13px;
   justify-content: flex-end;
+  margin-top: 13px;
 }
+
 .decision-chain-panel {
   padding: 20px;
   margin-top: 18px;
 }
+
 .decision-chain-panel .section-title {
   padding: 0 0 14px;
 }
+
 .chg-pending {
-  margin-top: 12px;
   padding: 10px 12px;
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #6b7a90;
   background: #f6f8fb;
   border: 1px dashed #cfd9e5;
   border-radius: 6px;
-  color: #6b7a90;
-  font-size: 12px;
-  line-height: 1.6;
 }
+
 .empty-state {
-  min-height: 200px;
   display: grid;
   place-content: center;
   justify-items: center;
-  text-align: center;
+  min-height: 200px;
   color: var(--ipd-muted);
+  text-align: center;
 }
+
 .empty-state > div {
-  width: 56px;
-  height: 56px;
   display: grid;
   place-items: center;
+  width: 56px;
+  height: 56px;
+  font-size: 28px;
   color: var(--ipd-blue);
   background: #edf2ff;
   border-radius: 50%;
-  font-size: 28px;
 }
+
 .empty-state strong {
-  color: var(--ipd-text);
   margin: 12px 0 4px;
+  color: var(--ipd-text);
 }
+
 .empty-state p {
-  margin: 0;
   max-width: 380px;
+  margin: 0;
   font-size: 12px;
   line-height: 1.6;
 }
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgb(7 20 38 / 56%);
   display: grid;
   place-items: center;
   padding: 24px;
+  background: rgb(7 20 38 / 56%);
 }
+
 .create-modal {
   width: min(560px, 100%);
-  border-radius: 10px;
-  background: white;
   overflow: hidden;
+  background: white;
+  border-radius: 10px;
   box-shadow: 0 24px 80px rgb(0 0 0 / 25%);
 }
+
 .wide-modal {
   width: min(700px, 100%);
 }
+
 .wide-modal .create-form {
   max-height: calc(100vh - 180px);
   overflow-y: auto;
 }
+
 .modal-head {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   padding: 20px 22px;
   border-bottom: 1px solid var(--ipd-line);
 }
+
 .modal-head > div {
   display: flex;
   gap: 10px;
   align-items: center;
 }
+
 .modal-head :deep(.anticon) {
-  color: var(--ipd-blue);
   font-size: 20px;
+  color: var(--ipd-blue);
 }
+
 .modal-head span {
   display: grid;
   gap: 4px;
 }
+
 .modal-head small {
   color: var(--ipd-muted);
 }
+
 .modal-head button {
-  border: 0;
-  background: transparent;
   cursor: pointer;
+  background: transparent;
+  border: 0;
 }
+
 .create-form {
   padding: 18px 22px;
 }
+
 .create-form label {
   display: grid;
   gap: 7px;
   margin-bottom: 15px;
-  color: #4d586c;
   font-size: 12px;
   font-weight: 650;
+  color: #4d586c;
 }
+
 .create-form input,
 .create-form select {
-  height: 40px;
   width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  color: var(--ipd-text);
+  background: white;
   border: 1px solid #cfd6e1;
   border-radius: 6px;
-  padding: 0 10px;
-  background: white;
-  color: var(--ipd-text);
 }
+
 .create-form textarea {
   width: 100%;
   min-height: 78px;
   padding: 9px 10px;
-  resize: vertical;
+  font-family: inherit;
   line-height: 1.55;
+  color: var(--ipd-text);
+  resize: vertical;
+  background: white;
   border: 1px solid #cfd6e1;
   border-radius: 6px;
-  background: white;
-  color: var(--ipd-text);
-  font-family: inherit;
 }
+
 .field-grid {
   display: grid;
   gap: 16px;
 }
+
 .field-grid.two {
   grid-template-columns: repeat(2, 1fr);
 }
+
 .handoff-note {
-  margin: 0 0 12px;
-  padding: 12px;
   display: flex;
-  align-items: center;
   gap: 9px;
+  align-items: center;
+  padding: 12px;
+  margin: 0 0 12px;
+  font-size: 12px;
   color: #56647c;
   background: #f2f6ff;
   border-radius: 6px;
-  font-size: 12px;
 }
+
 .handoff-note :deep(.anticon) {
   color: var(--ipd-green);
 }
+
 .form-error {
   display: flex;
   gap: 8px;
   align-items: center;
+  padding: 10px 12px;
+  font-size: 13px;
   color: #b43131;
   background: #fff1f1;
-  padding: 10px 12px;
   border-radius: 6px;
-  font-size: 13px;
 }
+
 .modal-actions {
   display: flex;
-  justify-content: flex-end;
   gap: 9px;
+  justify-content: flex-end;
   padding: 18px 20px;
   border-top: 1px solid var(--ipd-line);
 }
-/* V12-F3: 原 900px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
-@media (max-width: 768px) {
-  .metric-strip {
-    grid-template-columns: 1fr 1fr;
-  }
-  .change-cards {
-    grid-template-columns: 1fr;
-  }
-  .change-impact {
-    grid-template-columns: 1fr 1fr;
-  }
-  .change-project-selector {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .change-project-selector select {
-    min-width: 0;
-    width: 100%;
-  }
-  .field-grid.two {
-    grid-template-columns: 1fr;
-  }
-}
+
+/* 原型 styles.css 摘录；--blue/--line/--muted/--text/--amber 映射为 --ipd-*。 */
 </style>

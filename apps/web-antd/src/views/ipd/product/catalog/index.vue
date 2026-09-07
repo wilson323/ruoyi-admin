@@ -171,34 +171,41 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* ============================================================================
- * 产品目录视觉对齐 —— 真值源：ZK-IPD 原型 styles.css 245 行（catalog/drop-upload）
- *                                                                        + 189-191（表格/pill）
- * ============================================================================ */
+
+
+/* V12-F3: 原 1050px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
+  .ipd-cat-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
 .ipd-cat {
-  padding: 28px 32px 60px;
   max-width: 1600px;
+  padding: 28px 32px 60px;
   margin: auto;
 }
+
 .ipd-cat-heading {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
   gap: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: 24px;
 }
+
 .ipd-cat-heading h1 {
   margin: 0 0 8px;
   font-size: 25px;
-  letter-spacing: -0.02em;
-  color: var(--ipd-text, #172033);
   font-weight: 700;
+  color: var(--ipd-text, #172033);
+  letter-spacing: -0.02em;
 }
+
 .ipd-cat-heading p {
   margin: 0;
-  color: var(--ipd-muted, #697388);
   font-size: 13px;
+  color: var(--ipd-muted, #697388);
 }
 
 /* .catalog-grid：1.25fr .75fr */
@@ -208,12 +215,14 @@ onMounted(async () => {
   gap: 16px;
   margin-bottom: 16px;
 }
+
 .ipd-cat-surface {
+  overflow: hidden;
   background: white;
   border: 1px solid var(--ipd-line, #dfe4ed);
   border-radius: 8px;
-  overflow: hidden;
 }
+
 .ipd-cat-section-title {
   display: flex;
   align-items: center;
@@ -221,70 +230,81 @@ onMounted(async () => {
   padding: 18px 20px;
   border-bottom: 1px solid var(--ipd-line, #dfe4ed);
 }
+
 .ipd-cat-section-title h2 {
   margin: 0;
   font-size: 15px;
   color: var(--ipd-text, #172033);
 }
+
 .ipd-cat-section-title > span {
-  color: var(--ipd-muted, #697388);
   font-size: 12px;
+  color: var(--ipd-muted, #697388);
 }
 
 /* .drop-upload */
 .ipd-cat-drop {
-  margin: 18px;
-  padding: 24px;
   display: grid;
-  justify-items: center;
   gap: 10px;
+  justify-items: center;
+  padding: 24px;
+  margin: 18px;
   text-align: center;
+  background: #f8faff;
   border: 1px dashed #b9c7da;
   border-radius: 8px;
-  background: #f8faff;
 }
+
 .ipd-cat-drop > svg {
   font-size: 42px;
   color: var(--ipd-blue, #245bf4);
 }
+
 .ipd-cat-drop strong {
-  color: var(--ipd-text, #172033);
   font-size: 14px;
+  color: var(--ipd-text, #172033);
 }
+
 .ipd-cat-drop small {
   color: var(--ipd-muted, #697388);
 }
+
 .ipd-cat-file {
-  cursor: pointer;
-  border: 1px solid var(--ipd-line, #dfe4ed);
-  background: white;
-  border-radius: 4px;
   padding: 5px 10px;
   font-size: 12px;
   color: var(--ipd-text, #172033);
+  cursor: pointer;
+  background: white;
+  border: 1px solid var(--ipd-line, #dfe4ed);
+  border-radius: 4px;
 }
+
 .ipd-cat-file input {
   display: none;
 }
+
 .ipd-cat-file-name {
   font-size: 12px;
   color: var(--ipd-blue, #245bf4);
 }
+
 .ipd-cat-primary {
-  border: 0;
-  background: var(--ipd-blue, #245bf4);
-  color: white;
-  border-radius: 6px;
   height: 38px;
   padding: 0 16px;
   font-size: 14px;
   font-weight: 600;
+  color: white;
   cursor: pointer;
+  background: var(--ipd-blue, #245bf4);
+  border: 0;
+  border-radius: 6px;
 }
+
 .ipd-cat-primary:disabled {
-  opacity: 0.55;
   cursor: not-allowed;
+  opacity: 0.55;
 }
+
 .ipd-cat-note {
   font-size: 11px;
   color: #a13f3f;
@@ -292,10 +312,10 @@ onMounted(async () => {
 
 /* .import-history 空态 */
 .ipd-cat-history-empty {
-  margin: 0;
   padding: 26px 20px;
-  color: var(--ipd-muted, #697388);
+  margin: 0;
   font-size: 12px;
+  color: var(--ipd-muted, #697388);
   text-align: center;
 }
 
@@ -303,45 +323,52 @@ onMounted(async () => {
 .ipd-cat-table {
   overflow-x: auto;
 }
+
 .ipd-cat-row {
-  min-width: 860px;
-  min-height: 64px;
   display: grid;
   grid-template-columns: 1.3fr 1fr 0.6fr 0.8fr 0.6fr 0.8fr;
   gap: 14px;
   align-items: center;
+  min-width: 860px;
+  min-height: 64px;
   padding: 10px 20px;
-  border-bottom: 1px solid #edf0f3;
   font-size: 12px;
   color: var(--ipd-text, #172033);
+  border-bottom: 1px solid #edf0f3;
 }
+
 .ipd-cat-row.head {
   min-height: 40px;
+  font-weight: 700;
   color: var(--ipd-muted, #697388);
   background: #f7f8fa;
-  font-weight: 700;
 }
+
 .ipd-cat-row > span:first-child {
   display: grid;
   gap: 4px;
 }
+
 .ipd-cat-row strong {
   font-size: 13px;
 }
+
 .ipd-cat-row small {
   color: var(--ipd-muted, #697388);
 }
+
 .ipd-cat-table-empty {
   padding: 32px 20px;
-  text-align: center;
+  font-size: 12px;
   color: var(--ipd-muted, #697388);
-  font-size: 12px;
+  text-align: center;
 }
+
 .ipd-cat-error {
-  margin: 0;
   padding: 16px 20px;
-  color: var(--ipd-red, #e45757);
+  margin: 0;
   font-size: 12px;
+  color: var(--ipd-red, #e45757);
 }
 
 /* .status-pill */
@@ -349,24 +376,28 @@ onMounted(async () => {
   display: inline-flex;
   width: fit-content;
   padding: 4px 7px;
-  border-radius: 4px;
-  font-style: normal;
   font-size: 10px;
+  font-style: normal;
   font-weight: 700;
   white-space: nowrap;
+  border-radius: 4px;
 }
+
 .ipd-cat-pill.green {
   color: var(--ipd-green, #2f9e52);
   background: #eaf7ed;
 }
+
 .ipd-cat-pill.blue {
   color: var(--ipd-blue, #245bf4);
   background: var(--ipd-blue-soft, #edf2ff);
 }
+
 .ipd-cat-pill.red {
   color: #a33c3c;
   background: #ffeded;
 }
+
 .ipd-cat-pill.gray {
   color: #58657b;
   background: #eef1f5;
@@ -374,39 +405,40 @@ onMounted(async () => {
 
 /* 权限空态 */
 .ipd-cat-blank {
-  min-height: 260px;
   display: grid;
   place-content: center;
   justify-items: center;
-  text-align: center;
+  min-height: 260px;
   color: var(--ipd-muted, #697388);
+  text-align: center;
 }
+
 .ipd-cat-blank > div {
-  width: 56px;
-  height: 56px;
   display: grid;
   place-items: center;
+  width: 56px;
+  height: 56px;
+  font-size: 26px;
   color: var(--ipd-blue, #245bf4);
   background: var(--ipd-blue-soft, #edf2ff);
   border-radius: 50%;
-  font-size: 26px;
 }
+
 .ipd-cat-blank strong {
-  color: var(--ipd-text, #172033);
   margin: 12px 0 4px;
   font-size: 14px;
+  color: var(--ipd-text, #172033);
 }
+
 .ipd-cat-blank p {
-  margin: 0;
   max-width: 380px;
+  margin: 0;
   font-size: 12px;
   line-height: 1.6;
 }
 
-/* V12-F3: 原 1050px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
-@media (max-width: 768px) {
-  .ipd-cat-grid {
-    grid-template-columns: 1fr;
-  }
-}
+/* ============================================================================
+ * 产品目录视觉对齐 —— 真值源：ZK-IPD 原型 styles.css 245 行（catalog/drop-upload）
+ *                                                                        + 189-191（表格/pill）
+ * ============================================================================ */
 </style>

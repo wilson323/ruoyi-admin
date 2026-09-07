@@ -117,8 +117,9 @@ async function handleConfirm() {
       if (!data.providerIcon.startsWith('http')) {
         try {
           const ossFileList = await ossInfo(data.providerIcon);
-          if (ossFileList && ossFileList.length > 0) {
-            data.providerIcon = ossFileList[0].url;
+          const firstFile = ossFileList?.[0];
+          if (firstFile) {
+            data.providerIcon = firstFile.url;
           }
         } catch {
           // 失败时保持原值
@@ -152,7 +153,7 @@ async function handleCancel() {
       <FormItem label="厂商编码" v-bind="validateInfos.providerCode">
         <Select
           v-model:value="formData.providerCode"
-          :options="providerOptions"
+          :options="[...providerOptions]"
           :placeholder="$t('ui.formRules.required')"
           allow-clear
           show-search
@@ -189,4 +190,3 @@ async function handleCancel() {
     </Form>
   </BasicModal>
 </template>
-

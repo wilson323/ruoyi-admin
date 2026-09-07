@@ -218,107 +218,135 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* ============================================================================
- * 产品空间视觉对齐 —— 真值源：ZK-IPD 原型 styles.css 262 行（hero 渐变/双列/卡片）
- * ============================================================================ */
+
+
+/* V12-F3: 原 1000px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
+  .ipd-pw-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ipd-pw-hero {
+    flex-direction: column;
+    gap: 20px;
+    align-items: flex-start;
+  }
+
+  .ipd-pw-hero > div:last-child {
+    flex-wrap: wrap;
+  }
+}
 
 .ipd-pw {
-  padding: 28px 32px 60px;
   max-width: 1600px;
+  padding: 28px 32px 60px;
   margin: auto;
 }
 
 /* .page-heading */
 .ipd-pw-heading {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
   gap: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: 24px;
 }
+
 .ipd-pw-heading h1 {
   margin: 0 0 8px;
   font-size: 25px;
-  letter-spacing: -0.02em;
-  color: var(--ipd-text, #172033);
   font-weight: 700;
+  color: var(--ipd-text, #172033);
+  letter-spacing: -0.02em;
 }
+
 .ipd-pw-heading p {
   margin: 0;
-  color: var(--ipd-muted, #697388);
   font-size: 13px;
+  color: var(--ipd-muted, #697388);
 }
+
 .ipd-pw-actions {
   display: flex;
-  align-items: center;
   gap: 8px;
+  align-items: center;
 }
+
 .ipd-pw-actions select {
-  height: 36px;
   min-width: 240px;
-  border: 1px solid var(--ipd-line, #dfe4ed);
-  border-radius: 6px;
+  height: 36px;
   padding: 0 9px;
-  background: white;
   font-size: 13px;
   color: var(--ipd-text, #172033);
-}
-.ipd-pw-manage-link {
-  border: 1px solid var(--ipd-line, #dfe4ed);
   background: white;
-  color: var(--ipd-blue, #245bf4);
+  border: 1px solid var(--ipd-line, #dfe4ed);
   border-radius: 6px;
+}
+
+.ipd-pw-manage-link {
   height: 36px;
   padding: 0 12px;
   font-size: 12px;
   font-weight: 600;
+  color: var(--ipd-blue, #245bf4);
   cursor: pointer;
+  background: white;
+  border: 1px solid var(--ipd-line, #dfe4ed);
+  border-radius: 6px;
 }
 
 .ipd-pw-error {
   margin: 0 0 14px;
-  color: var(--ipd-red, #e45757);
   font-size: 12px;
+  color: var(--ipd-red, #e45757);
 }
 
 /* .product-space-hero：深蓝渐变 */
 .ipd-pw-hero {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   padding: 24px;
-  background: linear-gradient(130deg, #112f54, #1f5486);
   color: #fff;
+  background: linear-gradient(130deg, #112f54, #1f5486);
   border-radius: 8px;
 }
+
 .ipd-pw-hero h2 {
-  font-size: 24px;
   margin: 5px 0;
+  font-size: 24px;
   font-weight: 700;
 }
+
 .ipd-pw-hero p,
 .ipd-pw-hero span {
   color: #bfd0e4;
 }
+
 .ipd-pw-hero p {
   margin: 0;
   font-size: 13px;
 }
+
 .ipd-pw-hero > div:last-child {
   display: flex;
   gap: 26px;
 }
+
 .ipd-pw-hero > div:last-child span {
   text-align: center;
 }
+
 .ipd-pw-hero > div:last-child strong,
 .ipd-pw-hero > div:last-child small {
   display: block;
 }
+
 .ipd-pw-hero > div:last-child strong {
   font-size: 22px;
   color: #fff;
 }
+
 .ipd-pw-hero > div:last-child small {
   font-size: 12px;
 }
@@ -330,159 +358,168 @@ onMounted(() => {
   gap: 18px;
   margin-top: 18px;
 }
+
 .ipd-pw-surface {
+  padding: 20px;
   background: white;
   border: 1px solid var(--ipd-line, #dfe4ed);
   border-radius: 8px;
-  padding: 20px;
 }
 
 /* .section-title（卡内标题） */
 .ipd-pw-section-title {
   display: flex;
+  gap: 10px;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
   padding: 0 0 14px;
-  border-bottom: 1px solid var(--ipd-line, #dfe4ed);
   margin-bottom: 6px;
+  border-bottom: 1px solid var(--ipd-line, #dfe4ed);
 }
+
 .ipd-pw-section-title h2 {
   margin: 0;
   font-size: 15px;
   color: var(--ipd-text, #172033);
 }
+
 .ipd-pw-section-title > span {
-  color: var(--ipd-muted, #697388);
   font-size: 12px;
+  color: var(--ipd-muted, #697388);
 }
 
 /* .theme-card / .iteration-card */
 .ipd-pw-iteration-card {
   display: flex;
-  align-items: center;
   gap: 12px;
+  align-items: center;
   padding: 13px 0;
   border-bottom: 1px solid #edf0f4;
 }
+
 .ipd-pw-iteration-card > div {
   flex: 1;
   min-width: 0;
 }
+
 .ipd-pw-iteration-card strong,
 .ipd-pw-iteration-card small {
   display: block;
 }
+
 .ipd-pw-iteration-card strong {
-  color: var(--ipd-text, #172033);
   font-size: 13px;
+  color: var(--ipd-text, #172033);
 }
+
 .ipd-pw-iteration-card small {
-  color: #8a96a5;
-  font-size: 12px;
   margin-top: 3px;
+  font-size: 12px;
+  color: #8a96a5;
 }
+
 .ipd-pw-iteration-card > i {
+  flex: none;
   width: 10px;
   height: 10px;
-  border-radius: 50%;
   background: #efa63b;
-  flex: none;
+  border-radius: 50%;
 }
+
 .ipd-pw-iteration-card > i.completed {
   background: #2d9b70;
 }
+
 .ipd-pw-iteration-card > button {
-  border: 1px solid #cdd9e6;
-  background: #f8fbff;
-  color: #285f92;
-  border-radius: 7px;
   padding: 7px 10px;
   font-size: 12px;
-  cursor: pointer;
+  color: #285f92;
   white-space: nowrap;
+  cursor: pointer;
+  background: #f8fbff;
+  border: 1px solid #cdd9e6;
+  border-radius: 7px;
 }
 
 /* .raw-feedback */
 .ipd-pw-feedback {
   margin-top: 18px;
 }
+
 .ipd-pw-feedback-row {
   display: flex;
   gap: 12px;
   padding: 12px 0;
   border-bottom: 1px solid #edf0f4;
 }
+
 .ipd-pw-feedback-row:last-of-type {
   border-bottom: 0;
 }
+
 .ipd-pw-feedback-row span {
   flex: 1;
   min-width: 0;
 }
+
 .ipd-pw-feedback-row strong {
-  color: var(--ipd-text, #172033);
   font-size: 13px;
+  color: var(--ipd-text, #172033);
 }
+
 .ipd-pw-feedback-row p {
   margin: 4px 0;
-  color: #5f6e80;
   font-size: 12px;
   line-height: 1.55;
+  color: #5f6e80;
 }
+
 .ipd-pw-feedback-row small {
-  color: #8693a4;
   font-size: 11px;
+  color: #8693a4;
 }
 
 /* Blank 空态 */
 .ipd-pw-blank {
-  min-height: 220px;
   display: grid;
   place-content: center;
   justify-items: center;
-  text-align: center;
-  color: var(--ipd-muted, #697388);
+  min-height: 220px;
   padding: 20px;
+  color: var(--ipd-muted, #697388);
+  text-align: center;
 }
+
 .ipd-pw-blank-tight {
   min-height: 120px;
 }
+
 .ipd-pw-blank > div {
-  width: 56px;
-  height: 56px;
   display: grid;
   place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 4px;
+  font-size: 26px;
   color: var(--ipd-blue, #245bf4);
   background: var(--ipd-blue-soft, #edf2ff);
   border-radius: 50%;
-  font-size: 26px;
-  margin-bottom: 4px;
 }
+
 .ipd-pw-blank strong {
-  color: var(--ipd-text, #172033);
   margin: 8px 0 4px;
   font-size: 14px;
+  color: var(--ipd-text, #172033);
 }
+
 .ipd-pw-blank p {
-  margin: 0;
   max-width: 380px;
+  margin: 0;
   font-size: 12px;
   line-height: 1.6;
 }
 
-/* V12-F3: 原 1000px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
-@media (max-width: 768px) {
-  .ipd-pw-grid {
-    grid-template-columns: 1fr;
-  }
-  .ipd-pw-hero {
-    align-items: flex-start;
-    gap: 20px;
-    flex-direction: column;
-  }
-  .ipd-pw-hero > div:last-child {
-    flex-wrap: wrap;
-  }
-}
+/* ============================================================================
+ * 产品空间视觉对齐 —— 真值源：ZK-IPD 原型 styles.css 262 行（hero 渐变/双列/卡片）
+ * ============================================================================ */
 </style>

@@ -1,7 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router';
 
 import { LOGIN_PATH } from '@vben/constants';
-import { preferences } from '@vben/preferences';
 
 import { $t } from '#/locales';
 
@@ -35,7 +34,7 @@ const coreRoutes: RouteRecordRaw[] = [
     },
     name: 'Root',
     path: '/',
-    redirect: preferences.app.defaultHomePath,
+    redirect: '/ipd/workbench',
     children: [],
   },
   {
@@ -45,6 +44,18 @@ const coreRoutes: RouteRecordRaw[] = [
     },
     name: 'OAuthRedirect',
     path: '/social-callback',
+  },
+  /** IPD 登录页：全屏复刻 ZK-IPD 原型双栏布局（治理/ZK-IPD一致性红线 S1），
+   * 不套 AuthPageLayout，避免与原型双栏结构打架。 */
+  {
+    name: 'Login',
+    path: '/auth/login',
+    alias: '/login',
+    component: () => import('#/views/ipd/auth/login.vue'),
+    meta: {
+      hideInTab: true,
+      title: $t('page.auth.login'),
+    },
   },
   {
     component: AuthPageLayout,
@@ -57,12 +68,16 @@ const coreRoutes: RouteRecordRaw[] = [
     redirect: LOGIN_PATH,
     children: [
       {
-        name: 'Login',
-        path: 'login',
-        component: () => import('#/views/_core/authentication/login.vue'),
-        meta: {
-          title: $t('page.auth.login'),
-        },
+        name: 'IpdChangePassword',
+        path: 'change-password',
+        component: () => import('#/views/ipd/auth/change-password.vue'),
+        meta: { title: '首次登录安全设置', hideInTab: true },
+      },
+      {
+        name: 'IpdAccount',
+        path: '/ipd/account',
+        component: () => import('#/views/ipd/auth/account.vue'),
+        meta: { title: '我的账户', hideInTab: true },
       },
       {
         name: 'CodeLogin',

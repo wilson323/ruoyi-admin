@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, watch } from 'vue';
+import type { BadgeProps } from 'ant-design-vue';
+import type { AttachVO } from '#/api/knowledge/attach/model';
+import type { FragmentVO } from '#/api/knowledge/fragment/model';
 import {
   Button,
   Upload,
@@ -15,8 +18,6 @@ import {
   Spin,
   Badge,
   Switch,
-  Typography,
-  TypographyParagraph,
   Drawer,
 } from 'ant-design-vue';
 import { InboxOutlined, CopyOutlined } from '@ant-design/icons-vue';
@@ -39,21 +40,11 @@ const { apiURL, clientId } = useAppConfig(
 );
 const accessStore = useAccessStore();
 
-const attachmentData = ref([]);
-const uploadUrl = `${apiURL}/system/attach/upload`;
+const attachmentData = ref<AttachVO[]>([]);
 const loading = ref(false);
 const uploading = ref(false);
-const headers = {
-  Authorization: `Bearer ${accessStore.accessToken}`,
-  clientId,
-};
 
 const autoParse = ref(true);
-
-const uploadPayload = computed(() => ({
-  knowledgeId: props.knowledgeId,
-  autoParse: autoParse.value,
-}));
 
 const columns = [
   { title: '附件名称', dataIndex: 'name', key: 'name' },
@@ -64,7 +55,7 @@ const columns = [
   { title: '操作', key: 'action', width: 280 },
 ];
 
-const statusMap = {
+const statusMap: Partial<Record<number, Pick<BadgeProps, 'text' | 'status'>>> = {
   0: { text: '待解析', status: 'default' },
   1: { text: '解析中', status: 'processing' },
   2: { text: '已解析', status: 'success' },
@@ -73,7 +64,7 @@ const statusMap = {
 
 const fragmentVisible = ref(false);
 const fragmentLoading = ref(false);
-const fragmentData = ref([]);
+const fragmentData = ref<Array<FragmentVO & { _expanded: boolean }>>([]);
 const fragmentColumns = [
   { title: '序号', dataIndex: 'idx', key: 'idx', width: 80 },
   { title: '片段内容', dataIndex: 'content', key: 'content' },
@@ -221,11 +212,6 @@ async function handleFragment(record: any) {
   } finally {
     fragmentLoading.value = false;
   }
-}
-
-function closeFragment() {
-  fragmentVisible.value = false;
-  fragmentData.value = [];
 }
 
 async function handleViewFile(record: any) {

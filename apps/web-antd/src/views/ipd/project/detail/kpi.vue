@@ -223,7 +223,7 @@ const trendColumns = [
 
 <style scoped>
 .trend-missing :deep(td) {
-  color: #bfbfbf;
   font-style: italic;
+  color: #bfbfbf;
 }
 </style>

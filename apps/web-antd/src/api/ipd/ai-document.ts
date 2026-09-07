@@ -1,8 +1,9 @@
 /**
  * AI 文档版本链接口（页14 项目详情-文档与交付物 / 页42 AI 文档助手）。
  *
- * 真值：AiDocumentController（P1-10.1，版本链 v1 锚点 / 人工改版 HEAD 校验 / sha256 摘要 / 审核落名）。
- * 已交付端点：POST 登记 v1、POST /{id}/revise、POST /{id}/versions/{versionId}/review、GET /{id}/versions。
+ * 真值：AiDocumentController（P1-10.1 版本链 + P4-2.2 生成端点）。
+ * 已交付端点：POST /generate（AI 生成→登记 v1 待审核）、POST 登记 v1、POST /{id}/revise、
+ * POST /{id}/versions/{versionId}/review、GET /{id}/versions。
  * 未交付：按项目列出文档的 GET 端点——列表区由页面挂占位（G-06），不在本层封装。
  * 历史版本只读：内容与摘要无任何 HTTP 更新通道，修正 = 产生新版本。
  *
@@ -35,6 +36,14 @@ export interface AiDocument {
   tokenCompletion: null | number;
   tokenPrompt: null | number;
   versionNo: number;
+}
+
+/** AI 生成入参（P4-2.2 AiGenerateReq）：prompt = PM 录入的原始资料/生成指令（≤ 30000 字符）。 */
+export interface AiDocumentGenerateInput {
+  docType?: null | string;
+  projectId: string;
+  prompt: string;
+  title: string;
 }
 
 /** 登记 AI 原始输出 v1 的入参（AiDocumentController.CreateReq）。 */
@@ -96,6 +105,20 @@ export function parseAiDocument(data: unknown): AiDocument {
     tokenPrompt: typeof record.tokenPrompt === 'number' ? record.tokenPrompt : null,
     versionNo: record.versionNo,
   };
+}
+
+/**
+ * AI 生成（P4-2.2，AC-AI-02）：PM 录入原始资料 → 模型润色/补齐/标准化 → 登记 v1 待审核（BR-AI-02）。
+ * 护栏在服务端：60s 超时 / 并发限流（40011）/ 月度 token 预算（40013）；
+ * 输出透传不过滤（BR-AI-04），风险把控在人工审核 + UI 风险提示。
+ */
+export async function generateAiDocument(input: AiDocumentGenerateInput): Promise<AiDocument> {
+  return parseAiDocument(await ipdPost('/ai-documents/generate', {
+    docType: input.docType ?? undefined,
+    projectId: input.projectId,
+    prompt: input.prompt,
+    title: input.title,
+  }));
 }
 
 /** 登记 AI 原始输出 v1（版本链首环）。 */
