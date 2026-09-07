@@ -43,6 +43,14 @@ import { formatDateTime, formatMoney, formatPercent, PENDING_TEXT } from '../../
 import { ZK_RULE_BONUS_POOL_FORMULA, renderRulesDescription } from '../../_shared/zk-ipd-rules';
 import { bonusStateLabel, bonusStateTone, STATUS_TONE } from '../../_shared/ipd-enums';
 
+defineOptions({
+  name: 'IpdBonusPool',
+  meta: {
+    ipdBackend: 'BonusPoolController 已交付：GET /bonus-pool/list?projectId&status、POST /bonus-pool/compute、POST /{id}/freeze、POST /{id}/distribute、GET /{id}。',
+    ipdCard: 'P0-10.34',
+  },
+});
+
 /** V8 系统漂移修复：状态机 label/tone 走 _shared/ipd-enums 集中表，本地仅留极少量重命名覆写。 */
 const BONUS_STATUS_TEXT: Record<BonusStatus, string> = {
   CONFIRMED: bonusStateLabel('CONFIRMED'),
