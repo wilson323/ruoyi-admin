@@ -41,17 +41,19 @@ import {
 import { IpdRequestError } from '../../../../api/ipd/auth';
 import { formatDateTime, formatMoney, formatPercent, PENDING_TEXT } from '../../_shared/format';
 import { ZK_RULE_BONUS_POOL_FORMULA, renderRulesDescription } from '../../_shared/zk-ipd-rules';
+import { bonusStateLabel, bonusStateTone, STATUS_TONE } from '../../_shared/ipd-enums';
 
+/** V8 系统漂移修复：状态机 label/tone 走 _shared/ipd-enums 集中表，本地仅留极少量重命名覆写。 */
 const BONUS_STATUS_TEXT: Record<BonusStatus, string> = {
-  CONFIRMED: '已确认',
-  DISTRIBUTED: '已分配',
-  DRAFT: '草稿',
+  CONFIRMED: bonusStateLabel('CONFIRMED'),
+  DISTRIBUTED: bonusStateLabel('DISTRIBUTED'),
+  DRAFT: bonusStateLabel('DRAFT'),
 };
 
 const BONUS_STATUS_COLOR: Record<BonusStatus, string> = {
-  CONFIRMED: 'processing',
-  DISTRIBUTED: 'success',
-  DRAFT: 'default',
+  CONFIRMED: STATUS_TONE.CONFIRMED ?? bonusStateTone('CONFIRMED'),
+  DISTRIBUTED: STATUS_TONE.DISTRIBUTED ?? bonusStateTone('DISTRIBUTED'),
+  DRAFT: STATUS_TONE.DRAFT ?? bonusStateTone('DRAFT'),
 };
 
 const PROJECT_LEVELS: Array<{ value: 'A' | 'B' | 'S'; label: string; coefficient: number }> = [

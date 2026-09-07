@@ -40,6 +40,7 @@ import {
   templateText,
 } from '../project-display';
 import { isTransportError, projectErrorText } from '../project-error';
+import { createFilterState, useFilterSync } from '../../_shared/use-filter-sync';
 import '../../_shared/ipd-theme.css';
 
 const router = useRouter();
@@ -48,7 +49,9 @@ const auth = useIpdAuthStore();
 const loading = ref(false);
 const loadError = ref<unknown>(null);
 const rows = ref<Project[]>([]);
-const keyword = ref('');
+/** V7 系统漂移修复：关键词筛选走 URL ?keyword= 双向绑定，可分享 / 刷新不丢。 */
+const filters = createFilterState({ keyword: '' });
+useFilterSync(filters, { ignored: [] });
 
 const myPersonType = computed(() => auth.identity?.person.personType ?? '');
 
@@ -87,7 +90,7 @@ const columns = [
 
 /** 客户端按关键词过滤；规格 vs 代码差异：后端 ?keyword= 仅做服务端过滤，前端再叠一层。 */
 const filteredRows = computed(() => {
-  const kw = keyword.value.trim().toLowerCase();
+  const kw = filters.keyword.trim().toLowerCase();
   if (!kw) return rows.value;
   return rows.value.filter((row) =>
     [row.code, row.name].filter(Boolean).some((field) => String(field).toLowerCase().includes(kw)),
@@ -103,7 +106,7 @@ const pagination = computed(() => ({
 }));
 
 const emptyText = computed(() => {
-  if (keyword.value.trim()) return '暂无符合关键词的项目。可清空关键词或点击「刷新」重试。';
+  if (filters.keyword.trim()) return '暂无符合关键词的项目。可清空关键词或点击「刷新」重试。';
   if (canCreate.value) return '暂无项目。可点击「新建项目」创建，或由超级管理员「存量项目导入」补录。';
   return '暂无项目。请联系超级管理员或市场PM 创建。';
 });
@@ -125,7 +128,7 @@ async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
   try {
-    rows.value = await listProjects(keyword.value.trim() || undefined);
+    rows.value = await listProjects(filters.keyword.trim() || undefined);
   } catch (cause) {
     loadError.value = cause;
   } finally {
@@ -154,7 +157,7 @@ onMounted(load);
 
         <Space>
           <Input.Search
-            v-model:value="keyword"
+            v-model:value="filters.keyword"
             placeholder="按项目编码或名称搜索"
             class="!w-64"
             allow-clear
