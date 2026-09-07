@@ -31,12 +31,29 @@ onBeforeUnmount(clearNotice);
 
 
 /** 原型 App.jsx LoginPage「演示账号快捷选择」：点选即填入表单，不自动提交。
- *  原型密码输入框初始值即初始密码 IPD@2026，点选账号时一并填入等价净效果。 */
-const demoAccountNames = ['傅志谦', '段进科', '程龙', '杨波', '肖敬龙'] as const;
-function fillDemoAccount(name: string): void {
+ *  修复：原型的 5 个中文人名在 ipd_dev 库不存在（点选后必然登录失败＝死功能），
+ *  改映射为库中真实存在的 4 个 bootstrap 账号（真源：后端仓
+ *  .codex/ipd-dev/config/bootstrap-accounts.json，gitignore 未入库）。
+ *  各账号密码已轮换且互不相同，不写进源码：仅 dev 构建从本地未跟踪的
+ *  .env.development.local 读 VITE_IPD_DEMO_PASSWORDS="ipd-admin=x,ipd-leader=y,…"；
+ *  生产构建取不到即留空，且整个演示区块仅在 dev 渲染（避免向公网暴露内部账号名）。 */
+const isDev = import.meta.env.DEV;
+const demoAccounts = [
+  { label: '超管', username: 'ipd-admin' },
+  { label: '组长', username: 'ipd-leader' },
+  { label: '市场 PM', username: 'ipd-market' },
+  { label: '研发 PM', username: 'ipd-rd' },
+] as const;
+const demoPasswords: Record<string, string> = Object.fromEntries(
+  String(import.meta.env.VITE_IPD_DEMO_PASSWORDS ?? '')
+    .split(',')
+    .map((pair) => pair.split('='))
+    .filter((parts): parts is [string, string] => parts.length === 2 && parts[0] !== '' && parts[1] !== ''),
+);
+function fillDemoAccount(account: (typeof demoAccounts)[number]): void {
   if (auth.busy) return;
-  form.username = name;
-  form.password = 'IPD@2026';
+  form.username = account.username;
+  form.password = demoPasswords[account.username] ?? '';
 }
 
 async function submit() {
@@ -108,18 +125,18 @@ async function submit() {
           <button class="login-button" type="submit" :disabled="auth.busy">
             {{ auth.busy ? '正在登录…' : '登录工作台' }}
           </button>
-          <div class="demo-accounts">
+          <div v-if="isDev" class="demo-accounts">
             <strong>演示账号快捷选择</strong>
             <button
-              v-for="name in demoAccountNames"
-              :key="name"
+              v-for="account in demoAccounts"
+              :key="account.username"
               type="button"
               :disabled="auth.busy"
-              @click="fillDemoAccount(name)"
+              @click="fillDemoAccount(account)"
             >
-              {{ name }}
+              {{ account.label }}（{{ account.username }}）
             </button>
-            <span>初始密码：IPD@2026</span>
+            <span>开发库真实账号；密码自动填充需本地 .env.development.local 配置 VITE_IPD_DEMO_PASSWORDS</span>
           </div>
         </form>
         <div v-else class="wecom-login">
