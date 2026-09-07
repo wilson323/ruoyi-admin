@@ -30,6 +30,15 @@ onDeactivated(clearNotice);
 onBeforeUnmount(clearNotice);
 
 
+/** 原型 App.jsx LoginPage「演示账号快捷选择」：点选即填入表单，不自动提交。
+ *  原型密码输入框初始值即初始密码 IPD@2026，点选账号时一并填入等价净效果。 */
+const demoAccountNames = ['傅志谦', '段进科', '程龙', '杨波', '肖敬龙'] as const;
+function fillDemoAccount(name: string): void {
+  if (auth.busy) return;
+  form.username = name;
+  form.password = 'IPD@2026';
+}
+
 async function submit() {
   if (auth.busy) return;
   try {
@@ -99,6 +108,19 @@ async function submit() {
           <button class="login-button" type="submit" :disabled="auth.busy">
             {{ auth.busy ? '正在登录…' : '登录工作台' }}
           </button>
+          <div class="demo-accounts">
+            <strong>演示账号快捷选择</strong>
+            <button
+              v-for="name in demoAccountNames"
+              :key="name"
+              type="button"
+              :disabled="auth.busy"
+              @click="fillDemoAccount(name)"
+            >
+              {{ name }}
+            </button>
+            <span>初始密码：IPD@2026</span>
+          </div>
         </form>
         <div v-else class="wecom-login">
           <div class="qr-placeholder"><span>企业微信正式扫码</span></div>
@@ -260,7 +282,9 @@ async function submit() {
   justify-content: center;
   gap: 7px;
   font-weight: 700;
-  color: #667085;
+  /* V12/a11y color-contrast：#667085 on #eef1f6 = 4.02:1 < WCAG AA 4.5:1（axe serious）
+     加深至 #475467 = 6.79:1 达标（antd colorText 系） */
+  color: #475467;
   cursor: pointer;
 }
 
@@ -312,6 +336,32 @@ async function submit() {
 .login-button:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* 原型 styles.css 57-59 逐字复刻（var(--line) 以登录页输入框边框色落地） */
+.demo-accounts {
+  margin-top: 28px;
+  padding: 16px;
+  border: 1px solid #ccd3df;
+  border-radius: 8px;
+  background: #fafbfc;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.demo-accounts strong {
+  width: 100%;
+  color: #3a455b;
+}
+.demo-accounts button {
+  border: 1px solid #d6dce6;
+  background: white;
+  border-radius: 4px;
+  padding: 5px 8px;
+  cursor: pointer;
 }
 
 .form-error {
