@@ -471,7 +471,8 @@ onMounted(() => {
   line-height: 1.6;
 }
 
-@media (max-width: 1000px) {
+/* V12-F3: 原 1000px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
   .ipd-pw-grid {
     grid-template-columns: 1fr;
   }

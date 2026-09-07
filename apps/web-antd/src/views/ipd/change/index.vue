@@ -809,7 +809,8 @@ async function createChange(): Promise<void> {
   padding: 18px 20px;
   border-top: 1px solid var(--ipd-line);
 }
-@media (max-width: 900px) {
+/* V12-F3: 原 900px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
   .metric-strip {
     grid-template-columns: 1fr 1fr;
   }

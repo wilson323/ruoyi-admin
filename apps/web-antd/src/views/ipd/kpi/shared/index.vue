@@ -308,8 +308,9 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
   width: 160px;
   font-size: 14px;
 }
+/* V12-F1：移除 outline:none（全局 :focus-visible token 焦点环接管可见性）；
+ * 焦点边线归一到调色板主色（原 #006be6 离板）。 */
 .ipd-input:focus {
-  outline: none;
-  border-color: #006be6;
+  border-color: var(--ipd-blue);
 }
 </style>

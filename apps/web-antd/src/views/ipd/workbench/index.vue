@@ -60,16 +60,26 @@ const metrics = computed<MetricCard[]>(() => {
 
 const activeTab = ref<'completed' | 'followed' | 'initiated' | 'overdue' | 'pending'>('pending');
 
-/** LIVE 工作台责任队列筛选 tab（计数来自真实聚合）。 */
-const queueTabs = computed(() => {
+/** LIVE 工作台责任队列筛选 tab（计数来自真实聚合）。
+ *  「我发起的」「我的关注」：后端 /workbench/summary（WorkbenchService#summary）
+ *  仅交付 stats.pending/overdue/unread/completed，无对应聚合字段；
+ *  计数置 null 隐藏徽标，不展示未核实的 0（禁止造假数据）。 */
+interface QueueTab {
+  key: 'completed' | 'followed' | 'initiated' | 'overdue' | 'pending';
+  label: string;
+  count: null | number;
+}
+const queueTabs = computed<QueueTab[]>(() => {
   const s = summary.value?.stats;
   return [
     { key: 'pending', label: '待我处理', count: s ? s.pending : 0 },
-    { key: 'initiated', label: '我发起的', count: 0 },
+    // TODO(P4-3.1): 等聚合端点交付后恢复「我发起的」计数徽标
+    { key: 'initiated', label: '我发起的', count: null },
     { key: 'overdue', label: '临期/超期', count: s ? s.overdue : 0 },
     { key: 'completed', label: '已完成', count: s ? s.completed : 0 },
-    { key: 'followed', label: '我的关注', count: 0 },
-  ] as const;
+    // TODO(P4-3.1): 等聚合端点交付后恢复「我的关注」计数徽标
+    { key: 'followed', label: '我的关注', count: null },
+  ];
 });
 
 /** 责任队列：后端 tasks 平铺 → 按项目分组（真实 stage_action）。 */
@@ -188,7 +198,7 @@ onMounted(async () => {
           :class="['ipd-wb-tab', { active: activeTab === t.key }]"
           @click="activeTab = t.key"
         >
-          {{ t.label }}<span v-if="t.count > 0" class="ipd-wb-tab-count">{{ t.count }}</span>
+          {{ t.label }}<span v-if="t.count" class="ipd-wb-tab-count">{{ t.count }}</span>
         </button>
       </div>
 
@@ -459,7 +469,8 @@ onMounted(async () => {
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 20px;
 }
-@media (max-width: 1100px) {
+/* V12-F3: 原 1100px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
   .ipd-wb-queue-grid { grid-template-columns: 1fr; }
 }
 

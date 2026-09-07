@@ -599,7 +599,8 @@ async function goPage(next: number): Promise<void> {
 .report-note :deep(.anticon) {
   color: var(--ipd-blue);
 }
-@media (max-width: 1100px) {
+/* V12-F3: 原 1100px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
   .metric-strip {
     grid-template-columns: repeat(2, 1fr);
   }

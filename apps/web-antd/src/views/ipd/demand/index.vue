@@ -840,7 +840,8 @@ onMounted(() => {
 }
 
 /* 响应式（原型 248/249 行断点） */
-@media (max-width: 1050px) {
+/* V12-F3: 原 1050px 断点归一至 1024px 平板档（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 1024px) {
   .ipd-req-metrics {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -851,7 +852,8 @@ onMounted(() => {
     grid-column: 2;
   }
 }
-@media (max-width: 760px) {
+/* V12-F3: 原 760px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
   .ipd-req {
     padding: 20px 16px 48px;
   }

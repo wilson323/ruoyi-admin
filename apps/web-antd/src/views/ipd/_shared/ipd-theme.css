@@ -26,6 +26,12 @@
   --ipd-line: #dfe4ed;
   --ipd-surface: #ffffff;
   --ipd-bg: #f5f7fb;
+
+  /* V12-F1 统一焦点环 token（键盘焦点环必须可见；色值跟随 --ipd-blue，暗色自动翻转）
+   * 取值口径对齐 ZK-IPD 真理源 styles.css line 26 的 focus-visible 规则 */
+  --ipd-focus-ring-color: var(--ipd-blue);
+  --ipd-focus-ring-width: 2px;
+  --ipd-focus-ring-offset: 2px;
   /* ZK-IPD 字体栈（设计稿：Inter, Noto Sans SC, 微软雅黑） */
   --ipd-font:
     Inter, 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', system-ui,
@@ -97,6 +103,28 @@ a {
 }
 a:hover {
   color: var(--ipd-blue-dark);
+}
+
+/* ============================================================================
+ * V12-F1 统一键盘焦点环
+ *
+ * 全局 :focus-visible 规则：仅键盘导航（Tab）触发，鼠标点击不出现焦点环。
+ * 禁止以 outline: none / outline: 0 清除焦点环且无替代——如有自定义 :focus
+ * 样式，必须保留可见的替代指示（边线 / 阴影）或显式引用本 token。
+ * ============================================================================ */
+:focus-visible {
+  outline: var(--ipd-focus-ring-width) solid var(--ipd-focus-ring-color);
+  outline-offset: var(--ipd-focus-ring-offset);
+}
+
+/* Ant Design 组件焦点环统一走 token（antd 默认 shadow 焦点样式保留，outline 补强） */
+.ant-btn:focus-visible,
+.ant-input:focus-visible,
+.ant-input-affix-wrapper:focus-visible,
+.ant-select:focus-visible,
+.ant-select .ant-select-selector:focus-visible {
+  outline: var(--ipd-focus-ring-width) solid var(--ipd-focus-ring-color);
+  outline-offset: var(--ipd-focus-ring-offset);
 }
 
 /* ============================================================================

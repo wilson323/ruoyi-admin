@@ -719,7 +719,8 @@ async function submitAdminTransfer(): Promise<void> {
   font-size: 12px;
   line-height: 1.6;
 }
-@media (max-width: 1100px) {
+/* V12-F3: 原 1100px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
   .handover-inbox-grid {
     grid-template-columns: 1fr;
   }

@@ -588,7 +588,8 @@ async function submitStage(): Promise<void> {
 .waiver-request input::placeholder {
   color: #98a5b6;
 }
-@media (max-width: 900px) {
+/* V12-F3: 原 900px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
   .change-project-selector {
     align-items: flex-start;
     flex-direction: column;

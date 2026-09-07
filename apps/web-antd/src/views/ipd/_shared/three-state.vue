@@ -72,18 +72,24 @@ const isEmpty = computed(() => !props.loading && !hasError.value && props.items.
 
 <template>
   <div class="ipd-three-state">
-    <div v-if="loading" class="ipd-loading" :style="{ minHeight: height }">
+    <div
+      v-if="loading"
+      class="ipd-loading"
+      role="status"
+      :style="{ minHeight: height }"
+    >
       <Spin tip="加载中..." />
     </div>
 
     <Alert
       v-else-if="hasError"
       :message="isNetworkError ? '网络异常' : '加载失败'"
-      :description="errorMessage"
       :type="isNetworkError ? 'warning' : 'error'"
+      role="alert"
       show-icon
       class="ipd-error"
     >
+      <!-- description 只走插槽：antd Alert 的 prop 与插槽同供时 prop 优先，插槽内的重试按钮会被吞掉 -->
       <template #description>
         <div class="ipd-error-desc">
           <span>{{ errorMessage }}</span>

@@ -74,7 +74,7 @@ const columns = [
       type="warning"
     />
 
-    <Card v-access:code="IPD_PERMISSION_CODES.DELETION_REQUEST_PURGE" title="归档记录">
+    <Card v-if="isAdmin" v-access:code="IPD_PERMISSION_CODES.DELETION_REQUEST_PURGE" title="归档记录">
       <Table :columns="columns" :data-source="rows" :loading="loading" :pagination="false" row-key="id" size="small">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'entity'">{{ record.entityType }} / {{ record.entityId }}</template>

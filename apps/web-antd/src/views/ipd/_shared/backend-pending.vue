@@ -17,7 +17,7 @@ const note = computed(() => props.note ?? String(route.meta.ipdNote ?? ''));
 
 <template>
   <div class="flex min-h-[320px] items-center justify-center p-4">
-    <Card class="w-full max-w-[560px]">
+    <Card class="w-full max-w-[560px]" role="status">
       <Alert
         message="该页面已登记，后端接口尚未交付"
         show-icon

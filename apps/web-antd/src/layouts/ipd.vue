@@ -6,9 +6,9 @@
  *         与 src/styles.css 的 .app-shell/.topbar/.sidebar/.stage-rail 段（2026-09-06 实测）。
  * 结构：topbar(56px #071426 固定) + sidebar(164px #18253a) + main-area(#f5f7fb) + AI 悬浮入口。
  * 数据：项目下拉走 GET /projects（owner 字段后端未回传，暂显示 编号）；
- *       全局搜索 / 站内通知为占位壳，等待后端聚合接口（P4-3.1）。
+ *       全局搜索仍为占位壳（P4-3.1）；站内通知已接 /api/v1/notifications 消费侧 4 端点（卡 df7eba96）。
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 import {
@@ -36,12 +36,20 @@ import {
   PhX as X,
 } from '@phosphor-icons/vue';
 
+import {
+  fetchUnreadCount,
+  type IpdNotification,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from '../api/ipd/notification';
 import { listProjects, type Project } from '../api/ipd/project';
 import { useIpdAuthStore } from '../store/ipd-auth';
 import { enterPlatform } from '../router/ipd-guard';
 import avatarUrl from '../assets/product-manager-avatar.png';
 import ipdLogoUrl from '../assets/ipd-logo.png';
 import '../views/ipd/_shared/ipd-theme.css';
+import '../views/ipd/_shared/ipd-a11y.css';
 
 const auth = useIpdAuthStore();
 const route = useRoute();
@@ -136,6 +144,16 @@ onMounted(async () => {
   } catch {
     projects.value = [];
   }
+  void loadNotifications();
+  notifTimer = setInterval(() => {
+    fetchUnreadCount()
+      .then((count) => (unreadCount.value = count))
+      .catch(() => {});
+  }, 60_000);
+});
+
+onUnmounted(() => {
+  if (notifTimer) clearInterval(notifTimer);
 });
 
 const currentProject = computed(
@@ -160,6 +178,63 @@ const searchOpen = ref(false);
 const notificationsOpen = ref(false);
 const helpOpen = ref(false);
 
+/**
+ * 站内通知（页03 站内信 / OPS-05，卡 df7eba96）：消费侧 4 端点；
+ * receiver 恒从会话推导（SEC-API-01），readFlag "0"=未读。60s 轮询红点。
+ */
+const ipdNotifications = ref<IpdNotification[]>([]);
+const unreadCount = ref(0);
+const notifLoading = ref(false);
+const notifOnlyUnread = ref(false);
+
+async function loadNotifications() {
+  notifLoading.value = true;
+  try {
+    ipdNotifications.value = await listNotifications(notifOnlyUnread.value);
+    unreadCount.value = await fetchUnreadCount();
+  } catch {
+    // 拉取失败不打断 Shell：保留旧列表，红点等下轮刷新
+  } finally {
+    notifLoading.value = false;
+  }
+}
+
+function toggleNotifications() {
+  notificationsOpen.value = !notificationsOpen.value;
+  searchOpen.value = false;
+  if (notificationsOpen.value) void loadNotifications();
+}
+
+async function handleNotifRead(item: IpdNotification) {
+  try {
+    await markNotificationRead(item.id);
+    await loadNotifications();
+  } catch {
+    message.error('标记已读失败，请稍后重试');
+  }
+}
+
+async function handleNotifReadAll() {
+  try {
+    await markAllNotificationsRead();
+    message.success('全部已读');
+    await loadNotifications();
+  } catch {
+    message.error('操作失败，请稍后重试');
+  }
+}
+
+/** 点击通知：未读则先标读；携带站内 actionUrl 且为站内路径时跳转。 */
+function openNotification(n: IpdNotification) {
+  if (n.readFlag !== '1') void handleNotifRead(n);
+  if (n.actionUrl && n.actionUrl.startsWith('/')) {
+    notificationsOpen.value = false;
+    void router.push(n.actionUrl);
+  }
+}
+
+let notifTimer: undefined | ReturnType<typeof setInterval>;
+
 async function handleLogout() {
   await auth.logout();
   router.push('/auth/login');
@@ -168,6 +243,7 @@ async function handleLogout() {
 
 <template>
   <div class="ipd-app" :class="{ 'sidebar-collapsed': collapsed }">
+    <a class="ipd-skip-link" href="#main">跳到主内容</a>
     <header class="topbar">
       <div class="top-brand">
         <div class="top-logo"><img :src="ipdLogoUrl" alt="" /></div>
@@ -190,13 +266,9 @@ async function handleLogout() {
         <button aria-label="搜索" type="button" @click="searchOpen = !searchOpen; notificationsOpen = false">
           <MagnifyingGlass />
         </button>
-        <button
-          aria-label="通知"
-          class="notification"
-          type="button"
-          @click="notificationsOpen = !notificationsOpen; searchOpen = false"
-        >
+        <button aria-label="通知" class="notification" type="button" @click="toggleNotifications">
           <Bell />
+          <i v-if="unreadCount > 0" class="notif-dot" />
         </button>
         <button aria-label="帮助" type="button" @click="helpOpen = true">
           <Question />
@@ -216,10 +288,11 @@ async function handleLogout() {
     </header>
 
     <aside class="sidebar">
-      <nav data-testid="ipd-sidebar-nav">
+      <nav id="ipd-sidebar-nav" data-testid="ipd-sidebar-nav">
         <router-link
           v-for="item in visibleNav"
           :key="item.path"
+          :aria-current="isActive(item.path) ? 'page' : undefined"
           :class="{ active: isActive(item.path) }"
           :title="collapsed ? item.label : undefined"
           :to="item.path"
@@ -228,13 +301,20 @@ async function handleLogout() {
           <span>{{ item.label }}</span>
         </router-link>
       </nav>
-      <button class="collapse" type="button" @click="collapsed = !collapsed">
+      <button
+        aria-controls="ipd-sidebar-nav"
+        :aria-expanded="!collapsed"
+        :aria-label="collapsed ? '展开侧栏' : '收起侧栏'"
+        class="collapse"
+        type="button"
+        @click="collapsed = !collapsed"
+      >
         <ArrowLeft :size="16" />
         {{ collapsed ? '展开' : '收起' }}
       </button>
     </aside>
 
-    <main class="main-area">
+    <main id="main" class="main-area" tabindex="-1">
       <div class="stage-rail" data-testid="ipd-stage-rail">
         <div
           v-for="(stage, index) in stages"
@@ -256,6 +336,7 @@ async function handleLogout() {
     </main>
 
     <button
+      aria-label="切换到 AI 管理平台"
       class="global-ai-entry platform-switch"
       data-testid="ipd-platform-switch"
       :disabled="switching"
@@ -270,6 +351,7 @@ async function handleLogout() {
     </button>
 
     <button
+      aria-label="打开 AI 副驾"
       class="global-ai-entry"
       data-testid="ipd-ai-entry"
       type="button"
@@ -284,7 +366,12 @@ async function handleLogout() {
 
     <!-- 帮助弹窗：文案与原型 help-modal 1:1 -->
     <div v-if="helpOpen" class="modal-backdrop" @click.self="helpOpen = false">
-      <div class="create-modal help-modal">
+      <div
+        aria-label="当前页面帮助"
+        aria-modal="true"
+        class="create-modal help-modal"
+        role="dialog"
+      >
         <div class="modal-head">
           <div>
             <Question />
@@ -293,7 +380,7 @@ async function handleLogout() {
               <small>系统按“产品 → 项目 → 阶段 → 动作 → 跨角色任务”组织工作</small>
             </span>
           </div>
-          <button type="button" @click="helpOpen = false"><X /></button>
+          <button aria-label="关闭" type="button" @click="helpOpen = false"><X /></button>
         </div>
         <div class="create-form">
           <p>“我的工作台”汇总所有角色待办；进入项目动作时，左侧展示SOP、中央填写产物、右侧执行质量与AI检查。</p>
@@ -304,7 +391,12 @@ async function handleLogout() {
 
     <!-- 全局搜索 / 站内通知：壳与原型一致，数据等待 P4-3.1 聚合接口 -->
     <div v-if="searchOpen" class="modal-backdrop" @click.self="searchOpen = false">
-      <div class="create-modal help-modal">
+      <div
+        aria-label="全局搜索"
+        aria-modal="true"
+        class="create-modal help-modal"
+        role="dialog"
+      >
         <div class="modal-head">
           <div>
             <MagnifyingGlass />
@@ -313,7 +405,7 @@ async function handleLogout() {
               <small>项目 / 产品 / 需求 / 文档统一入口</small>
             </span>
           </div>
-          <button type="button" @click="searchOpen = false"><X /></button>
+          <button aria-label="关闭" type="button" @click="searchOpen = false"><X /></button>
         </div>
         <div class="create-form">
           <p>全局搜索等待后端聚合接口（P4-3.1）交付后接入。</p>
@@ -321,19 +413,57 @@ async function handleLogout() {
       </div>
     </div>
     <div v-if="notificationsOpen" class="modal-backdrop" @click.self="notificationsOpen = false">
-      <div class="create-modal help-modal">
+      <div
+        aria-label="站内通知"
+        aria-modal="true"
+        class="create-modal help-modal"
+        role="dialog"
+      >
         <div class="modal-head">
           <div>
             <Bell />
             <span>
               <strong>站内通知</strong>
-              <small>站内提醒不依赖企微</small>
+              <small>未读 {{ unreadCount }} 条 · 站内提醒不依赖企微</small>
             </span>
           </div>
-          <button type="button" @click="notificationsOpen = false"><X /></button>
+          <button aria-label="关闭" type="button" @click="notificationsOpen = false"><X /></button>
         </div>
         <div class="create-form">
-          <p>通知列表等待后端聚合接口（P4-3.1）交付后接入。</p>
+          <div class="mb-2 flex items-center justify-between">
+            <label class="flex items-center gap-1 text-sm">
+              <input v-model="notifOnlyUnread" type="checkbox" @change="loadNotifications" />
+              仅看未读
+            </label>
+            <button
+              :disabled="unreadCount === 0"
+              class="ipd-link-btn"
+              type="button"
+              @click="handleNotifReadAll"
+            >
+              全部已读
+            </button>
+          </div>
+          <p v-if="notifLoading" class="text-sm text-gray-400">正在加载通知……</p>
+          <p v-else-if="ipdNotifications.length === 0" class="text-sm text-gray-400">
+            {{ notifOnlyUnread ? '没有未读通知' : '暂无通知' }}
+          </p>
+          <ul v-else class="notif-list">
+            <li
+              v-for="n in ipdNotifications"
+              :key="n.id"
+              :class="{ 'is-unread': n.readFlag !== '1' }"
+              class="notif-item"
+              @click="openNotification(n)"
+            >
+              <div class="notif-title">
+                <em v-if="n.kind === 'ACTION'" class="notif-badge">待办</em>
+                {{ n.title ?? '(无标题)' }}
+              </div>
+              <p v-if="n.content" class="notif-content">{{ n.content }}</p>
+              <small class="text-gray-400">{{ n.createTime ?? '' }}</small>
+            </li>
+          </ul>
         </div>
       </div>
     </div>
@@ -341,21 +471,85 @@ async function handleLogout() {
 </template>
 
 <style>
+/* ==== 站内通知（卡 df7eba96）：铃铛红点 + 面板列表 ==== */
+.ipd-app .topbar .notification {
+  position: relative;
+}
+.ipd-app .notif-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  border: 1px solid var(--navy);
+}
+.ipd-app .notif-list {
+  max-height: 320px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.ipd-app .notif-item {
+  padding: 8px 6px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+}
+.ipd-app .notif-item.is-unread .notif-title {
+  font-weight: 700;
+}
+.ipd-app .notif-item:hover {
+  background: var(--blue-soft);
+}
+.ipd-app .notif-title {
+  font-size: 14px;
+}
+.ipd-app .notif-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-style: normal;
+  color: var(--blue);
+  background: var(--blue-soft);
+  border-radius: 8px;
+}
+.ipd-app .notif-content {
+  margin: 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ipd-app .ipd-link-btn {
+  font-size: 13px;
+  color: var(--blue);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+.ipd-app .ipd-link-btn:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
 /* ==== ZK-IPD Shell（1:1 搬运自原型 styles.css，作用域限定 .ipd-app）==== */
+/* V12-F2 暗色补全：局部色板别名改挂 ipd-theme.css 的 --ipd-* 全局 token，
+ * html.dark 下自动翻转（--navy #071426→#0d1b2a 等），浅色渲染值与原型 1:1 一致。 */
 .ipd-app {
-  --navy: #071426;
-  --navy-2: #18253a;
-  --blue: #245bf4;
-  --blue-dark: #1747d7;
-  --blue-soft: #edf2ff;
-  --green: #2f9e52;
-  --red: #e45757;
-  --amber: #c98313;
-  --text: #172033;
-  --muted: #697388;
-  --line: #dfe4ed;
+  --navy: var(--ipd-navy);
+  --navy-2: var(--ipd-navy-2);
+  --blue: var(--ipd-blue);
+  --blue-dark: var(--ipd-blue-dark);
+  --blue-soft: var(--ipd-blue-soft);
+  --green: var(--ipd-green);
+  --red: var(--ipd-red);
+  --amber: var(--ipd-amber);
+  --text: var(--ipd-text);
+  --muted: var(--ipd-muted);
+  --line: var(--ipd-line);
   min-height: 100vh;
-  background: #f5f7fb;
+  background: var(--ipd-bg);
   color: var(--text);
 }
 .ipd-app .topbar {
@@ -394,11 +588,16 @@ async function handleLogout() {
   color: white;
   background: transparent;
   border: 0;
-  outline: 0;
+  outline: none;
   appearance: none;
   font: inherit;
   font-weight: 650;
   cursor: pointer;
+}
+/* V12-F1：outline:none 的替代——键盘聚焦时显式 token 焦点环（同特异性压过上方 none） */
+.ipd-app .top-project select:focus-visible {
+  outline: var(--ipd-focus-ring-width) solid var(--ipd-focus-ring-color);
+  outline-offset: var(--ipd-focus-ring-offset);
 }
 .ipd-app .top-project select option { color: #253044; background: white; }
 .ipd-app .top-actions {
@@ -492,7 +691,7 @@ async function handleLogout() {
 
 .ipd-app .stage-rail {
   height: 72px;
-  background: white;
+  background: var(--ipd-surface);
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: stretch;
@@ -593,7 +792,7 @@ async function handleLogout() {
 }
 .ipd-app .create-modal {
   width: min(560px, 100%);
-  background: white;
+  background: var(--ipd-surface);
   border-radius: 12px;
   box-shadow: 0 24px 60px rgb(9 18 33 / 0.3);
   overflow: hidden;
@@ -622,4 +821,22 @@ async function handleLogout() {
 }
 .ipd-app .create-form { padding: 20px; display: grid; gap: 12px; }
 .ipd-app .create-form p { margin: 0; color: #4d586c; line-height: 1.7; font-size: 13px; }
+
+/* ==== V12-F2 暗色模式布局层补全 ====
+ * 浅色硬编码值保留 ZK-IPD 原型 1:1（真理源不暗色）；以下仅在 html.dark 下
+ * 把依附浅色表面的配套色（边线 / 文字 / 圆点 / 选项弹层）切到 --ipd-* token 体系。
+ * 容器 / 卡片 / 分隔线本体已在上方改挂 token（--ipd-bg / --ipd-surface / --line）。 */
+html.dark .ipd-app .topbar { border-bottom-color: #223049; }
+html.dark .ipd-app .top-brand { border-right-color: #223049; }
+html.dark .ipd-app .top-actions > button:hover { background: var(--ipd-navy-2); }
+html.dark .ipd-app .top-project select option {
+  color: var(--ipd-text);
+  background: var(--ipd-surface);
+}
+html.dark .ipd-app .stage-node { color: var(--ipd-muted); }
+html.dark .ipd-app .stage-node > span { background: #223049; }
+html.dark .ipd-app .stage-node i { background: var(--ipd-line); }
+html.dark .ipd-app .today { color: var(--ipd-muted); }
+html.dark .ipd-app .today small { color: var(--ipd-muted); }
+html.dark .ipd-app .create-form p { color: var(--ipd-muted); }
 </style>

@@ -1,0 +1,53 @@
+/* ============================================================================
+ * IPD 无障碍辅助样式（V12-F5）
+ *
+ * 范围：
+ * 1. skip-link「跳到主内容」—— Tab 首焦点可达，仅聚焦时视觉呈现；
+ * 2. @media (prefers-reduced-motion: reduce) —— 全局动效降级（前庭障碍用户）。
+ *
+ * 独立成文件原因：ipd.vue <style> 块由 V12-F2 并行改造中，本文件零侵入；
+ * 通过 apps/web-antd/src/layouts/ipd.vue 顶部 `import './ipd-a11y.css'`
+ * 随 IPD Shell（及其子页面）一起加载。色值沿用 ipd-theme.css 的 --ipd-* token。
+ * ============================================================================
+ */
+
+/* ---- F5-1 Skip link（跳到主内容）---- */
+.ipd-app .ipd-skip-link {
+  position: fixed;
+  top: -48px;
+  left: 12px;
+  z-index: 200;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  text-decoration: none;
+  background: var(--ipd-navy, #071426);
+  border-radius: 0 0 6px 6px;
+  transition: top 0.15s ease;
+}
+
+/* 键盘 Tab 聚焦时滑入视口（视觉上聚焦时出现）；鼠标点击不触发 focus-visible */
+.ipd-app .ipd-skip-link:focus,
+.ipd-app .ipd-skip-link:focus-visible {
+  top: 0;
+  outline: 2px solid var(--ipd-blue, #245bf4);
+  outline-offset: 2px;
+}
+
+/* skip-link 命中后主内容区编程式聚焦（tabindex="-1"），不展示双重焦点框 */
+.ipd-app .main-area:focus {
+  outline: none;
+}
+
+/* ---- F5-2 减弱动态效果（prefers-reduced-motion）---- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

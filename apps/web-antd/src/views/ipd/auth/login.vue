@@ -452,7 +452,8 @@ async function submit() {
   color: var(--blue);
 }
 
-@media (max-width: 960px) {
+/* V12-F3: 原 960px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
   .login-page {
     grid-template-columns: 1fr;
   }

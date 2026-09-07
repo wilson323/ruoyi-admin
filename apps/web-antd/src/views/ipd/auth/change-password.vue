@@ -356,7 +356,8 @@ async function logout() {
   margin-top: 10px;
   justify-content: center;
 }
-@media (max-width: 900px) {
+/* V12-F3: 原 900px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
+@media (max-width: 768px) {
   .login-page {
     grid-template-columns: 1fr;
   }
