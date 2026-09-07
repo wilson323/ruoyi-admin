@@ -142,7 +142,8 @@ async function submit() {
 .login-page {
   --navy: #071426;
   --blue: #245bf4;
-  --muted: #697388;
+  /* V12/a11y：#697388 对比不足（axe serious）加深至 #556479 = 5.36:1 on #eef1f6 */
+  --muted: #556479;
   --text: #172033;
 
   min-height: 100vh;
