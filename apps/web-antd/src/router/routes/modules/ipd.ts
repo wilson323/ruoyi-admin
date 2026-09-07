@@ -106,6 +106,13 @@ const ipdLayoutRoute: RouteRecordRaw = {
               name: 'IpdProjectChanges', path: 'changes',
             },
             {
+              // 页26 变更单详情 —— 2026-09-06 真实现：后端 GET /requirement-changes/{id} 已交付（P2-6.1），
+              //    前端 IpdChangeDetail 真组件 + getRequirementChange API 函数，五态齐全
+              component: () => import('#/views/ipd/project/change-detail/index.vue'),
+              meta: { activePath: '/ipd/projects', hideInMenu: true, ipdCard: 'P0-10.25', title: '变更单详情' },
+              name: 'IpdChangeDetail', path: 'change/:changeId',
+            },
+            {
               // 页32 项目详情-KPI —— 2026-09-06 接 W3-A6：后端 GET /kpi/{performance,functional,trend} 全交付
               //    + 前端 kpi.ts 3 函数封装 + 真组件 IpdProjectKpi（顶部 Alert 口径 + 三段预览卡片）
               component: () => import('#/views/ipd/project/detail/kpi.vue'),
@@ -237,8 +244,12 @@ const ipdLayoutRoute: RouteRecordRaw = {
       redirect: '/ipd/kpi/functional',
     },
     // ⑩ 全流程轨迹（原型 /timeline；无 timeline 聚合端点，audit-logs 已交付）
-    { ...pending('ZK-D2', '无 timeline 聚合端点，audit-logs 已交付；聚合轨迹待后端（现入口：审计日志/项目日志）', '全流程轨迹', { icon: 'lucide:book-open', order: 10 }),
-      name: 'IpdTimeline', path: 'timeline' },
+    //    2026-09-06 真实现：审计日志 + 工作台待办 + 奖金池三源融合，五态齐全。
+    {
+      component: () => import('#/views/ipd/timeline/index.vue'),
+      meta: { icon: 'lucide:book-open', ipdCard: 'ZK-D2', order: 10, title: '全流程轨迹' },
+      name: 'IpdTimeline', path: 'timeline',
+    },
     // ⑪ 报表分析（原型 /reports；2026-09-06 复刻：P4-4.1 月度绩效汇总+三类台账导出已交付为页面主区，
     //    原型 analytics 流程分析四卡/建议卡按原型渲染但数值区登记真缺口）
     {
@@ -272,7 +283,14 @@ const ipdLayoutRoute: RouteRecordRaw = {
           name: 'IpdKpiFunctional',
           path: 'functional',
         },
-        { ...pending('P0-10.30', '后端仅 POST /kpi/shared/deadline-scan 扫描触发，读端点缺', '共担 KPI 归集'), name: 'IpdKpiShared', path: 'shared' },
+        // 页29-30 共担 KPI 归集（按月聚合） —— 2026-09-06 真实现：SharedKpiController.listShared（W4-E）已交付，
+        //    GET /api/v1/kpi/shared?projectId&period 返回 List<KpiRecord>（按 revision DESC）；
+        //    前端 IpdKpiShared 真组件承载双 PM 各自归集 + revision 维度分组 + 关联奖金池列表。
+        {
+          component: () => import('#/views/ipd/kpi/shared/index.vue'),
+          meta: { access: [...PAGE_PERMISSIONS['/ipd/kpi/functional']], activePath: '/ipd/performance', ipdCard: 'P0-10.30', title: '共担 KPI 归集' },
+          name: 'IpdKpiShared', path: 'shared',
+        },
         {
           // 页31 项目绩效评定 —— 2026-09-06 复刻：ProjectScoreController（明细/结算）+ TaskController（scan）已交付为真组件
           component: () => import('#/views/ipd/kpi/project-score/index.vue'),
@@ -367,8 +385,13 @@ const ipdLayoutRoute: RouteRecordRaw = {
       path: 'product-catalog',
     },
     // ⑭ 人员同步〔超管〕（原型 /identity-sync；无 identity-source Controller，P2-2.3）
-    { ...pending('P0-10.44', '无 identity-source Controller，人员同步待后端（原型 /identity-sync，P2-2.3）', '人员同步', { authority: ['SUPER_ADMIN'], icon: 'lucide:database', order: 14 }),
-      name: 'IpdIdentitySync', path: 'identity-sync' },
+    //    2026-09-06 真实现：身份 / 同步源类型 / 来源实例 / 最近同步时间三类维度如实登记真缺口，
+    //    主体挂 GET /pm-directory（在职人员目录）真组件，IPD_PERMISSION_CODES.IDENTITY_SYNC_* 权限码走 _shared。
+    {
+      component: () => import('#/views/ipd/admin/identity-sync/index.vue'),
+      meta: { authority: ['SUPER_ADMIN'], icon: 'lucide:database', ipdCard: 'P0-10.44', order: 14, title: '人员同步' },
+      name: 'IpdIdentitySync', path: 'identity-sync',
+    },
     // ⑮ 超级管理〔超管〕（原型 /admin，页06/18/28/44-49）
     {
       component: () => import('#/views/_core/fallback/not-found.vue'),
