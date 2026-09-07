@@ -1,7 +1,7 @@
 /**
  * IPD 模块权限码集中常量（前端单一权威源）。
  *
- * 镜像后端 `org.ruoyi.ipd.security.IpdPermissionCode`（53 个码）。
+ * 镜像后端 `org.ruoyi.ipd.security.IpdPermissionCode`（66 个 key，65 distinct；STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 共享 'ipd:stage-action:add'）。
  * 路由表与按钮 v-access:code 引用本文件常量，禁止直接书写字面量。
  *
  * <p>使用方式：
@@ -17,21 +17,21 @@
 export const IPD_PERMISSION_CODES = {
   // 项目模块
   PROJECT_LIST: 'ipd:project:list',
-  PROJECT_QUERY: 'ipd:project:query',
+  PROJECT_QUERY: 'ipd:project:query', /* reserved (A23): 后端预留查询权限，前端走 keyword 搜索无独立按钮 */
   PROJECT_CREATE: 'ipd:project:add',
-  PROJECT_STATUS_CHANGE: 'ipd:project:edit',
+  PROJECT_STATUS_CHANGE: 'ipd:project:edit', /* reserved (A23): 项目状态切换按钮未实装 */
 
   // 产品模块
   PRODUCT_LIST: 'ipd:product:list',
   PRODUCT_QUERY: 'ipd:product:query',
   PRODUCT_CREATE: 'ipd:product:add',
-  PRODUCT_BIND_PROJECT: 'ipd:product:edit',
+  PRODUCT_BIND_PROJECT: 'ipd:product:edit', /* reserved (A23): 产品绑定项目语义与 workspace 切换按钮不一致 */
 
   // 阶段动作
-  STAGE_ACTION_LIST: 'ipd:stage-action:list',
+  STAGE_ACTION_LIST: 'ipd:stage-action:list', /* reserved (A23): 阶段动作列表无独立入口，详情页内联渲染 */
   STAGE_ACTION_EXECUTE: 'ipd:stage-action:edit',
   STAGE_ACTION_DELIVERABLE: 'ipd:stage-action:add',
-  STAGE_ACTION_INSTANTIATE: 'ipd:stage-action:add',
+  STAGE_ACTION_INSTANTIATE: 'ipd:stage-action:add', /* reserved (A23): 与 STAGE_ACTION_DELIVERABLE 共享同字面值（owner 决议点：是否拆分为两个独立码） */
 
   // 国别认证模板
   CERT_TEMPLATE_LIST: 'ipd:cert-template:list',
@@ -43,10 +43,10 @@ export const IPD_PERMISSION_CODES = {
   GATE_ELEMENT_CREATE: 'ipd:gate-element:add',
   GATE_ELEMENT_UPDATE: 'ipd:gate-element:edit',
   GATE_ELEMENT_DISABLE: 'ipd:gate-element:remove',
-  GATE_ELEMENT_PUBLISH: 'ipd:gate-element:publish',
-  GATE_ELEMENT_ARCHIVE: 'ipd:gate-element:archive',
-  GATE_ELEMENT_COPY: 'ipd:gate-element:copy',
-  GATE_ELEMENT_REVERT: 'ipd:gate-element:revert',
+  GATE_ELEMENT_PUBLISH: 'ipd:gate-element:publish', /* reserved (A23): 评审要素发布按钮未实装 */
+  GATE_ELEMENT_ARCHIVE: 'ipd:gate-element:archive', /* reserved (A23): 评审要素归档按钮未实装 */
+  GATE_ELEMENT_COPY: 'ipd:gate-element:copy', /* reserved (A23): 评审要素复制按钮未实装 */
+  GATE_ELEMENT_REVERT: 'ipd:gate-element:revert', /* reserved (A23): 评审要素历史恢复按钮未实装 */
 
   // 删除申请
   DELETION_REQUEST_ARCHIVE: 'ipd:deletion-request:archive',
@@ -61,12 +61,12 @@ export const IPD_PERMISSION_CODES = {
   GATE_REVIEW_APPROVE: 'ipd:gate-review:edit',
 
   // 系数提议/确认（AC-INC-15c）
-  COEFFICIENT_PROPOSE: 'ipd:coefficient:propose',
-  COEFFICIENT_CONFIRM: 'ipd:coefficient:confirm',
+  COEFFICIENT_PROPOSE: 'ipd:coefficient:propose', /* reserved (A23): kpi 模块未对应系数提议 UI */
+  COEFFICIENT_CONFIRM: 'ipd:coefficient:confirm', /* reserved (A23): kpi 模块未对应系数确认 UI */
 
   // 通知收件箱
-  NOTIFICATION_READ: 'ipd:notification:read',
-  NOTIFICATION_DISPATCH: 'ipd:notification:dispatch',
+  NOTIFICATION_READ: 'ipd:notification:read', /* reserved (A23): workbench 仅显示数量无显式按钮 */
+  NOTIFICATION_DISPATCH: 'ipd:notification:dispatch', /* reserved (A23): 通知管理端无对应视图 */
 
   // AI 文档助手（P1-10.1）
   AI_DOCUMENT_LIST: 'ipd:ai-document:list',
@@ -102,8 +102,8 @@ export const IPD_PERMISSION_CODES = {
   NEGATIVE_FEEDBACK_DECIDE: 'ipd:negative-feedback:decide',
 
   // 切换验收（P3-7.1）
-  SWITCHING_ACCEPTANCE_QUERY: 'ipd:switching-acceptance:query',
-  SWITCHING_ACCEPTANCE_ADMIN: 'ipd:switching-acceptance:admin',
+  SWITCHING_ACCEPTANCE_QUERY: 'ipd:switching-acceptance:query', /* reserved (A23): 切换验收查询无对应视图 */
+  SWITCHING_ACCEPTANCE_ADMIN: 'ipd:switching-acceptance:admin', /* reserved (A23): 切换验收管理端无对应视图 */
 
   // 审计日志（SEC-02）
   AUDIT_LOG_LIST: 'ipd:audit-log:list',
@@ -111,8 +111,8 @@ export const IPD_PERMISSION_CODES = {
   AUDIT_LOG_EXPORT: 'ipd:audit-log:export',
 
   // 合规（AC-COMP-01/04/05）
-  COMPLIANCE_READ: 'ipd:compliance:read',
-  COMPLIANCE_WRITE: 'ipd:compliance:write',
+  COMPLIANCE_READ: 'ipd:compliance:read', /* reserved (A23): 无合规视图 */
+  COMPLIANCE_WRITE: 'ipd:compliance:write', /* reserved (A23): 无合规视图 */
 
   // 系统参数
   SYSTEM_CONFIG_LIST: 'ipd:system-config:list',
@@ -128,7 +128,7 @@ export const IPD_PERMISSION_CODES = {
 
 export type IpdPermissionCode = (typeof IPD_PERMISSION_CODES)[keyof typeof IPD_PERMISSION_CODES];
 
-/** 全部 53 个权限码（用于测试断言、批量校验、初始化菜单树）。 */
+/** 全部 66 个 key（65 distinct；用于测试断言、批量校验、初始化菜单树）。 */
 export const ALL_IPD_PERMISSION_CODES: readonly IpdPermissionCode[] = Object.freeze(
   Object.values(IPD_PERMISSION_CODES),
 );

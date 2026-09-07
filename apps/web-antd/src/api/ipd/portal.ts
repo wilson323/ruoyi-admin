@@ -153,13 +153,20 @@ function parseProducts(data: unknown): PortalProduct[] {
   return items;
 }
 
-/** BR-REQ-03：响应查询码必须满足 8 位正则，否则视为响应异常而非提交成功。 */
+/** BR-REQ-03：响应查询码必须满足 8 位正则，否则视为响应异常而非提交成功。
+ *
+ * 字段双兼容（R1 风险收敛）：后端新契约（docs §3.1）以 `queryCode`/`initialStatus` 返回；
+ * 旧契约以 `code`/`status` 返回。优先读新字段名，回落旧字段名，确保跨部署版本与未升级
+ * 后端均能正确解析。对外仍以 `code`/`status` 暴露，调用方零侵入。
+ */
 function parseSubmitted(data: unknown): PortalDemandSubmitted {
-  if (!record(data) || typeof data.code !== 'string' || !PORTAL_CODE_PATTERN.test(data.code) ||
-      typeof data.status !== 'string' || data.status === '') {
+  if (!record(data)) throw new IpdRequestError(MALFORMED_ERROR_TEXT);
+  const code = asString(data.queryCode) ?? asString(data.code);
+  const status = asString(data.initialStatus) ?? asString(data.status);
+  if (!code || !PORTAL_CODE_PATTERN.test(code) || !status) {
     throw new IpdRequestError(MALFORMED_ERROR_TEXT);
   }
-  return { code: data.code, status: data.status };
+  return { code, status };
 }
 
 function parseTrace(data: unknown): PortalDemandTrace {

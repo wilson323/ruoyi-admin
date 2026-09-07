@@ -2,9 +2,11 @@
 /**
  * 页42 AI 文档助手（独立页）。
  *
- * 按 AiDocumentController（P1-10.1 + P4-2.2）已交付端点实现闭环：
- * 选择项目/文档类型 → AI 生成（原始资料 → 模型 → v1 待审核）→ 人工审核 → 版本对比；
- * 外部 AI 输出也可手工登记 v1。
+ * 按 AiDocumentController（P1-10.1 + P4-2.2 + P4-2.3）已交付端点实现闭环：
+ * 选择项目/文档类型 → AI 生成（原始资料 → 模型 → v1 待审核）→ 人工审核 / 拒绝 →
+ * 归档 → 版本对比 / 字段级 diff。
+ * 8 端点契约（docs/前端拉入派单登记-20260907.md §3.4）：generate / revise / review /
+ * archive / reject / versions / history / diff。
  * BR-AI-03：AI 输出未经审核不生效；BR-AI-04：系统不做内容过滤直接透传，UI 须有风险提示。
  * 未交付（页内提示，G-06）：按项目列出文档的读端点。
  * 人工改版入口在页14（项目详情-文档与交付物）；归档走 P0-6.2 删除审核流程。
@@ -16,11 +18,13 @@ import {
   Button,
   Card,
   Col,
+  Drawer,
   Empty,
   Form,
   FormItem,
   Input,
   InputNumber,
+  Modal,
   Row,
   Select,
   Space,
@@ -33,13 +37,18 @@ import {
 import { PENDING_TEXT } from '../_shared/format';
 import {
   type AiDocument,
+  type AiDocumentDiffField,
+  archiveAiDocumentVersion,
   generateAiDocument,
+  getAiDocumentDiff,
   ipdApiErrorText,
   listAiDocumentVersions,
   registerAiDocument,
+  rejectAiDocumentVersion,
   reviewAiDocumentVersion,
 } from '../../../api/ipd/ai-document';
 import { ipdGet } from '../../../api/ipd/http';
+import { IPD_PERMISSION_CODES } from '../_shared/ipd-permission-codes';
 
 interface ProjectOption {
   code: null | string;
@@ -65,6 +74,7 @@ const DOC_TYPE_TEXTS: Record<string, string> = Object.fromEntries(
 const STATUS_META: Record<string, { color: string; text: string }> = {
   ARCHIVED: { color: 'default', text: '已归档' },
   GENERATED: { color: 'warning', text: '待审核' },
+  REJECTED: { color: 'error', text: '已拒绝' },
   REVIEWED: { color: 'success', text: '已审核' },
 };
 
@@ -225,15 +235,17 @@ async function submitRegister() {
   }
 }
 
-// ---------- 版本链与人工审核 ----------
+// ---------- 版本链与人工审核 / 拒绝 / 归档 ----------
 const docIdInput = ref('');
 const chain = ref<AiDocument[]>([]);
 const chainLoading = ref(false);
 const chainError = ref<null | string>(null);
 const chainLoaded = ref(false);
 const reviewingVersionId = ref<null | string>(null);
+const archivingVersionId = ref<null | string>(null);
 
 const head = computed(() => (chain.value.length > 0 ? chain.value[chain.value.length - 1] : null));
+const currentDocId = computed(() => head.value?.id ?? (chain.value[0]?.id ?? null));
 
 function statusMeta(status: string) {
   return STATUS_META[status] ?? { color: 'processing', text: status };
@@ -269,6 +281,10 @@ async function loadChain(documentId: string) {
 
 async function submitReview(doc: AiDocument) {
   if (reviewingVersionId.value) return;
+  if (doc.status !== 'GENERATED') {
+    message.warning(`v${doc.versionNo} 当前状态 ${doc.status}，无需再次审核`);
+    return;
+  }
   reviewingVersionId.value = doc.id;
   try {
     await reviewAiDocumentVersion(doc.id, doc.id);
@@ -282,7 +298,117 @@ async function submitReview(doc: AiDocument) {
   }
 }
 
-// ---------- 版本对比 ----------
+// ---------- 拒绝 Modal（comment 必填） ----------
+interface RejectDraft {
+  comment: string;
+  doc: AiDocument | null;
+  docId: string | null;
+}
+const rejectModal = reactive<RejectDraft>({ comment: '', doc: null, docId: null });
+const rejectModalOpen = ref(false);
+const rejectSubmitting = ref(false);
+const rejectFormRef = ref();
+/** comment 非空才允许提交（双重保护：Form rule 报错 + 按钮 disabled 防绕过）。 */
+const rejectCommentReady = computed(() => rejectModal.comment.trim().length > 0);
+/** OK 按钮 disabled 计算属性：响应式传递给 Modal（inline 字面量不会被 Modal 反应式追踪）。 */
+const okButtonProps = computed(() => ({ disabled: !rejectCommentReady.value }));
+
+function openRejectModal(doc: AiDocument) {
+  if (doc.status !== 'GENERATED') {
+    message.warning(`v${doc.versionNo} 当前状态 ${doc.status}，无法拒绝`);
+    return;
+  }
+  rejectModal.doc = doc;
+  rejectModal.docId = doc.id;
+  rejectModal.comment = '';
+  rejectModalOpen.value = true;
+}
+
+async function submitReject() {
+  if (!rejectModal.doc || !rejectModal.docId || !currentDocId.value) return;
+  if (!rejectCommentReady.value) return;
+  rejectSubmitting.value = true;
+  try {
+    await rejectFormRef.value?.validate();
+    await rejectAiDocumentVersion(rejectModal.docId, rejectModal.docId, {
+      comment: rejectModal.comment.trim(),
+    });
+    message.success(`v${rejectModal.doc.versionNo} 已拒绝`);
+    rejectModalOpen.value = false;
+    await loadChain(currentDocId.value);
+  } catch (cause) {
+    if (cause && typeof cause === 'object' && 'errorFields' in cause) return; // AntDV validate 抛错
+    message.error(ipdApiErrorText(cause));
+  } finally {
+    rejectSubmitting.value = false;
+  }
+}
+
+// ---------- 归档（REVIEWED → ARCHIVED） ----------
+async function submitArchive(doc: AiDocument) {
+  if (archivingVersionId.value) return;
+  if (doc.status !== 'REVIEWED') {
+    message.warning(`v${doc.versionNo} 当前状态 ${doc.status}，需先审核通过才能归档`);
+    return;
+  }
+  archivingVersionId.value = doc.id;
+  try {
+    await archiveAiDocumentVersion(doc.id, doc.id);
+    message.success(`v${doc.versionNo} 已归档`);
+    const anchorId = doc.parentVersionId ?? doc.id;
+    await loadChain(anchorId);
+  } catch (cause) {
+    message.error(ipdApiErrorText(cause));
+  } finally {
+    archivingVersionId.value = null;
+  }
+}
+
+// ---------- 字段级 diff（P4-2.3 /ai-documents/{id}/diff?from=&to=） ----------
+const diffOpen = ref(false);
+const diffLoading = ref(false);
+const diffError = ref<null | string>(null);
+const diffFields = ref<AiDocumentDiffField[]>([]);
+const diffPair = ref<{ fromId: string; fromNo: number; toId: string; toNo: number } | null>(null);
+
+/** 字段级 diff 单行渲染：added=绿 / removed=红 / modified=黄 / unchanged=灰。 */
+function diffValueClass(changeType: 'added' | 'modified' | 'removed' | 'unchanged'): string {
+  if (changeType === 'added') return 'text-green-700';
+  if (changeType === 'removed') return 'text-red-700 line-through';
+  if (changeType === 'modified') return 'text-amber-700';
+  return 'text-muted-foreground';
+}
+
+async function openDiffWithPrevious() {
+  if (!head.value || chain.value.length < 2 || !currentDocId.value) {
+    message.warning('至少需要 2 个版本才能进行对比');
+    return;
+  }
+  const to = head.value;
+  const previousIndex = chain.value.length - 2;
+  const from = chain.value[previousIndex];
+  if (!from) return;
+  diffPair.value = {
+    fromId: from.id,
+    fromNo: from.versionNo,
+    toId: to.id,
+    toNo: to.versionNo,
+  };
+  diffOpen.value = true;
+  diffLoading.value = true;
+  diffError.value = null;
+  try {
+    const result = await getAiDocumentDiff(currentDocId.value, from.id, to.id);
+    diffFields.value = result.fields;
+  } catch (cause) {
+    diffFields.value = [];
+    diffError.value = ipdApiErrorText(cause, 'Diff 加载失败，请稍后重试');
+  } finally {
+    diffLoading.value = false;
+  }
+}
+
+// ---------- 版本对比（左右双栏） ----------
 const compareLeftId = ref<null | string>(null);
 const compareRightId = ref<null | string>(null);
 const compareLeftIdModel = selectModel(compareLeftId);
@@ -310,7 +436,7 @@ onMounted(() => {
 <template>
   <div class="flex flex-col gap-4 p-4">
     <Alert
-      message="AI 生成已接入（P4-2.2）：生成结果登记为待审核 v1，未经人工审核不得作为正式交付物（BR-AI-03）。系统不做内容过滤、直接透传模型输出（BR-AI-04），请人工把控内容风险。"
+      message="AI 生成已接入（P4-2.2）：生成结果登记为待审核 v1，未经人工审核不得作为正式交付物（BR-AI-03）。系统不做内容过滤、直接透传模型输出（BR-AI-04），请人工把控内容风险。归档状态机：GENERATED → REVIEWED → ARCHIVED；GENERATED 状态可通过「审核拒绝」进入 REJECTED。"
       show-icon
       type="warning"
     />
@@ -374,7 +500,7 @@ onMounted(() => {
         </FormItem>
         <FormItem label=" " :colon="false">
           <Space>
-            <Button :loading="generateSubmitting" type="primary" @click="submitGenerate">
+            <Button :loading="generateSubmitting" type="primary" v-access:code="IPD_PERMISSION_CODES.AI_DOCUMENT_CREATE" @click="submitGenerate">
               {{ generateSubmitting ? '生成中（约需数十秒）……' : '开始生成' }}
             </Button>
           </Space>
@@ -410,7 +536,7 @@ onMounted(() => {
           </Space>
         </FormItem>
         <FormItem label=" " :colon="false">
-          <Button :loading="registerSubmitting" type="primary" @click="submitRegister">登记 AI 输出</Button>
+          <Button :loading="registerSubmitting" type="primary" v-access:code="IPD_PERMISSION_CODES.AI_DOCUMENT_CREATE" @click="submitRegister">登记 AI 输出</Button>
         </FormItem>
       </Form>
       <Alert v-if="registerError" class="mt-2" show-icon type="error" role="alert" :message="registerError" />
@@ -420,7 +546,7 @@ onMounted(() => {
       </Alert>
     </Card>
 
-    <!-- ③ 版本链与人工审核 -->
+    <!-- ③ 版本链与人工审核 / 拒绝 / 归档 -->
     <Card title="版本链与人工审核">
       <Space compact class="mb-4">
         <Input
@@ -430,6 +556,14 @@ onMounted(() => {
           @press-enter="loadChain(docIdInput)"
         />
         <Button :loading="chainLoading" type="primary" @click="loadChain(docIdInput)">加载版本链</Button>
+        <Button
+          v-if="chain.length >= 2 && currentDocId"
+          :loading="diffLoading"
+          type="default"
+          @click="openDiffWithPrevious"
+        >
+          与上一版对比（diff）
+        </Button>
       </Space>
 
       <Alert v-if="chainError" class="mb-4" show-icon type="error" role="alert" :message="chainError" />
@@ -456,16 +590,61 @@ onMounted(() => {
           <div class="text-muted-foreground mt-1 font-mono text-xs">
             sha256：{{ doc.contentSha256 || PENDING_TEXT }}
           </div>
-          <Button
-            v-if="doc.status === 'GENERATED'"
-            :loading="reviewingVersionId === doc.id"
-            class="mt-2"
-            size="small"
-            type="primary"
-            @click="submitReview(doc)"
-          >
-            审核通过
-          </Button>
+          <!-- BR-AI-04：后端不审，前端 UI 校验义务；见下方 Alert 文案。 -->
+          <template v-if="doc.status === 'GENERATED'">
+            <Alert
+              class="mt-2"
+              description="确认无误请走审核流；后端不做内容过滤，前端风险提示为唯一校验锚点。"
+              message="AI 生成、未经审核"
+              role="alert"
+              show-icon
+              type="warning"
+            />
+            <Space class="mt-2">
+              <Button
+                :loading="reviewingVersionId === doc.id"
+                size="small"
+                type="primary"
+                v-access:code="IPD_PERMISSION_CODES.AI_DOCUMENT_REVIEW"
+                @click="submitReview(doc)"
+              >
+                审核通过
+              </Button>
+              <Button
+                :loading="rejectSubmitting && rejectModal.docId === doc.id"
+                danger
+                size="small"
+                v-access:code="IPD_PERMISSION_CODES.AI_DOCUMENT_REVIEW"
+                @click="openRejectModal(doc)"
+              >
+                审核拒绝
+              </Button>
+            </Space>
+          </template>
+          <!-- 状态机：archive 仅 REVIEWED 可用（后端 REQUIRED REVIEWED）。 -->
+          <template v-else-if="doc.status === 'REVIEWED'">
+            <Space class="mt-2">
+              <Button
+                :loading="archivingVersionId === doc.id"
+                size="small"
+                type="default"
+                v-access:code="IPD_PERMISSION_CODES.AI_DOCUMENT_REVISE"
+                @click="submitArchive(doc)"
+              >
+                归档
+              </Button>
+              <span class="text-muted-foreground text-xs">审核已通过；归档后不可再修改内容。</span>
+            </Space>
+          </template>
+          <template v-else-if="doc.status === 'REJECTED'">
+            <Alert
+              class="mt-2"
+              message="该版本已被驳回，不可再走 review/archive。"
+              show-icon
+              type="error"
+              role="alert"
+            />
+          </template>
         </li>
       </ul>
 
@@ -527,5 +706,104 @@ onMounted(() => {
         </Row>
       </template>
     </Card>
+
+    <!-- ⑤ 拒绝 Modal（comment 必填） -->
+    <Modal
+      v-model:open="rejectModalOpen"
+      :confirm-loading="rejectSubmitting"
+      :mask-closable="false"
+      :ok-button-props="okButtonProps"
+      cancel-text="取消"
+      ok-text="确认拒绝"
+      title="审核拒绝"
+      @ok="submitReject"
+    >
+      <Alert
+        class="mb-3"
+        message="拒绝原因将写入版本日志，用于回溯。请客观描述问题（如事实错误 / 风险不可接受 / 与产品定位不符）。"
+        show-icon
+        type="warning"
+      />
+      <Form ref="rejectFormRef" :model="rejectModal" layout="vertical">
+        <FormItem
+          label="拒绝原因"
+          name="comment"
+          required
+          :rules="[
+            { required: true, message: '请填写拒绝原因' },
+            { min: 2, message: '拒绝原因至少 2 个字符' },
+          ]"
+        >
+          <Input.TextArea
+            v-model:value="rejectModal.comment"
+            :maxlength="500"
+            :rows="4"
+            placeholder="例如：与 PRD 模板不符、需求边界不清晰、目标用户群定义错误等"
+            show-count
+          />
+        </FormItem>
+        <FormItem v-if="rejectModal.doc" label="目标版本">
+          <Tag color="warning">v{{ rejectModal.doc.versionNo }}</Tag>
+          <span class="ml-2">{{ rejectModal.doc.title }}</span>
+        </FormItem>
+      </Form>
+      <div class="text-muted-foreground text-xs">
+        comment 为必填项（后端 reject 端点强制校验）；拒绝后状态变更为 REJECTED，版本链只读。
+      </div>
+    </Modal>
+
+    <!-- ⑥ 字段级 diff 抽屉 -->
+    <Drawer
+      v-model:open="diffOpen"
+      :footer="null"
+      :title="diffPair ? `v${diffPair.fromNo} → v${diffPair.toNo} 字段级 diff` : '字段级 diff'"
+      width="720px"
+    >
+      <Spin v-if="diffLoading" tip="正在加载字段级 diff……" />
+      <Alert
+        v-else-if="diffError"
+        :message="diffError"
+        role="alert"
+        show-icon
+        type="error"
+      />
+      <Empty
+        v-else-if="diffFields.length === 0"
+        description="两版本字段完全一致，无 diff。"
+      />
+      <table v-else class="w-full border-collapse text-xs">
+        <thead>
+          <tr class="border-b text-left">
+            <th class="py-2 pr-2">字段</th>
+            <th class="py-2 pr-2">变化</th>
+            <th class="py-2 pr-2">from (v{{ diffPair?.fromNo ?? '' }})</th>
+            <th class="py-2 pr-2">to (v{{ diffPair?.toNo ?? '' }})</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="field in diffFields"
+            :key="field.field"
+            class="border-b align-top"
+          >
+            <td class="py-2 pr-2 font-mono">{{ field.field }}</td>
+            <td class="py-2 pr-2">
+              <Tag v-if="field.changeType === 'added'" color="green">新增</Tag>
+              <Tag v-else-if="field.changeType === 'removed'" color="red">删除</Tag>
+              <Tag v-else-if="field.changeType === 'modified'" color="orange">变更</Tag>
+              <Tag v-else color="default">未变</Tag>
+            </td>
+            <td :class="['py-2 pr-2', diffValueClass(field.changeType)]">
+              <span v-if="field.from === null" class="text-muted-foreground">∅</span>
+              <pre v-else class="max-h-40 overflow-auto whitespace-pre-wrap">{{ field.from }}</pre>
+            </td>
+            <td :class="['py-2 pr-2', diffValueClass(field.changeType)]">
+              <span v-if="field.to === null" class="text-muted-foreground">∅</span>
+              <pre v-else class="max-h-40 overflow-auto whitespace-pre-wrap">{{ field.to }}</pre>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </Drawer>
   </div>
 </template>

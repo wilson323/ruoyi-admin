@@ -31,6 +31,7 @@ import {
 } from '../../../../api/ipd/deletion';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { formatDateTime } from '../../_shared/format';
+import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 
 const auth = useIpdAuthStore();
 const personType = computed(() => auth.identity?.person.personType ?? '');
@@ -143,7 +144,7 @@ const overdueColumns = [
             <div class="mb-1 text-sm">意见说明（驳回时建议填写）</div>
             <Textarea v-model:value="decision.opinion" :rows="3" placeholder="审核意见，随申请记录与审计留存" />
           </div>
-          <Button :disabled="decision.id.trim() === ''" :loading="deciding" type="primary" @click="submitDecision">
+          <Button :disabled="decision.id.trim() === ''" :loading="deciding" type="primary" v-access:code="[IPD_PERMISSION_CODES.DELETION_REQUEST_LEADER, IPD_PERMISSION_CODES.DELETION_REQUEST_ADMIN]" @click="submitDecision">
             提交审核意见
           </Button>
         </div>
@@ -164,7 +165,7 @@ const overdueColumns = [
         <Card v-if="isAdmin" title="超期工具（仅超管）">
           <div class="mb-3 flex items-center justify-between">
             <span class="text-sm">将组长初审超期（2 个工作日）的申请一键升级至超管终审（AC-DEL-07，幂等）</span>
-            <Button :loading="escalating" @click="escalate">升级超期申请</Button>
+            <Button :loading="escalating" v-access:code="IPD_PERMISSION_CODES.DELETION_REQUEST_ADMIN" @click="escalate">升级超期申请</Button>
           </div>
           <div class="mb-2 text-sm font-medium">超管终审超期清单（{{ overdue.length }} 条）</div>
           <Table

@@ -40,6 +40,7 @@ import {
   removeCertTemplate,
 } from '../../../../api/ipd/cert-template';
 import { IpdRequestError } from '../../../../api/ipd/auth';
+import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 
 type Phase = 'error' | 'loading' | 'ready';
 
@@ -245,7 +246,7 @@ async function removeItem(record: CertTemplate) {
           </span>
         </template>
         <template #extra>
-          <Button type="primary" @click="openCreate">新增认证项</Button>
+          <Button type="primary" v-access:code="IPD_PERMISSION_CODES.CERT_TEMPLATE_CREATE" @click="openCreate">新增认证项</Button>
         </template>
         <Row :gutter="16">
           <Col :span="8">
@@ -301,6 +302,7 @@ async function removeItem(record: CertTemplate) {
                     :loading="rowBusy === `remove:${record.id}`"
                     danger
                     size="small"
+                    v-access:code="IPD_PERMISSION_CODES.CERT_TEMPLATE_DELETE"
                     @click="removeItem(asCertTemplate(record))"
                   >
                     删除

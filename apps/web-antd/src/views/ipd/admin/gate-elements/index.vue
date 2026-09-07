@@ -38,6 +38,7 @@ import {
   updateGateElement,
 } from '../../../../api/ipd/gate-element';
 import { IpdRequestError } from '../../../../api/ipd/auth';
+import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 
 type Phase = 'error' | 'loading' | 'ready';
 
@@ -200,7 +201,7 @@ async function disable(record: IpdGateElement) {
             @change="load"
           />
         </Space>
-        <Button type="primary" @click="openCreate">新增要素</Button>
+        <Button type="primary" v-access:code="IPD_PERMISSION_CODES.GATE_ELEMENT_CREATE" @click="openCreate">新增要素</Button>
       </div>
     </Card>
 
@@ -253,12 +254,12 @@ async function disable(record: IpdGateElement) {
             </template>
             <template v-else-if="column.key === 'actions'">
               <Space :size="4">
-                <Button size="small" @click="openEdit(asGateElement(record))">编辑</Button>
+                <Button size="small" v-access:code="IPD_PERMISSION_CODES.GATE_ELEMENT_UPDATE" @click="openEdit(asGateElement(record))">编辑</Button>
                 <Popconfirm
                   title="停用后该要素不再出现在评审要素列表，历史判定记录不受影响。确认停用？"
                   @confirm="disable(asGateElement(record))"
                 >
-                  <Button danger size="small">停用</Button>
+                  <Button danger size="small" v-access:code="IPD_PERMISSION_CODES.GATE_ELEMENT_DISABLE">停用</Button>
                 </Popconfirm>
               </Space>
             </template>

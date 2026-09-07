@@ -36,24 +36,30 @@ onBeforeUnmount(clearNotice);
  *  .codex/ipd-dev/config/bootstrap-accounts.json，gitignore 未入库）。
  *  各账号密码已轮换且互不相同，不写进源码：仅 dev 构建从本地未跟踪的
  *  .env.development.local 读 VITE_IPD_DEMO_PASSWORDS="ipd-admin=x,ipd-leader=y,…"；
- *  生产构建取不到即留空，且整个演示区块仅在 dev 渲染（避免向公网暴露内部账号名）。 */
+ *  生产构建取不到即留空，且整个演示区块仅在 dev 渲染，且字面量被
+ *  `if (import.meta.env.DEV)` 包裹由 Vite DCE 在 prod bundle 中抹除（v-if 模板
+ *  门禁+JS 字面量抹除双重保护，避免向公网暴露内部账号名）。 */
 const isDev = import.meta.env.DEV;
-const demoAccounts = [
-  { label: '超管', username: 'ipd-admin' },
-  { label: '组长', username: 'ipd-leader' },
-  { label: '市场 PM', username: 'ipd-market' },
-  { label: '研发 PM', username: 'ipd-rd' },
-] as const;
-const demoPasswords: Record<string, string> = Object.fromEntries(
-  String(import.meta.env.VITE_IPD_DEMO_PASSWORDS ?? '')
-    .split(',')
-    .map((pair) => pair.split('='))
-    .filter((parts): parts is [string, string] => parts.length === 2 && parts[0] !== '' && parts[1] !== ''),
-);
-function fillDemoAccount(account: (typeof demoAccounts)[number]): void {
-  if (auth.busy) return;
+const demoAccounts: { label: string; username: string }[] = [];
+const demoPasswords: Record<string, string> = {};
+function fillDemoAccount(account: { label: string; username: string }): void {
+  if (!isDev || auth.busy) return;
   form.username = account.username;
   form.password = demoPasswords[account.username] ?? '';
+}
+if (import.meta.env.DEV) {
+  demoAccounts.push(
+    { label: '超管', username: 'ipd-admin' },
+    { label: '组长', username: 'ipd-leader' },
+    { label: '市场 PM', username: 'ipd-market' },
+    { label: '研发 PM', username: 'ipd-rd' },
+  );
+  Object.assign(demoPasswords, Object.fromEntries(
+    String(import.meta.env.VITE_IPD_DEMO_PASSWORDS ?? '')
+      .split(',')
+      .map((pair) => pair.split('='))
+      .filter((parts): parts is [string, string] => parts.length === 2 && parts[0] !== '' && parts[1] !== ''),
+  ));
 }
 
 async function submit() {

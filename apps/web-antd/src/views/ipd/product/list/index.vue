@@ -36,6 +36,7 @@ import {
   listProducts,
 } from '../../../../api/ipd/product';
 import { IpdRequestError } from '../../../../api/ipd/auth';
+import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 
 type Phase = 'error' | 'loading' | 'ready';
 
@@ -263,7 +264,7 @@ async function runSampleImport() {
         </Space>
         <Space wrap>
           <Button @click="sampleImportOpen = true">批量导入在售型号</Button>
-          <Button type="primary" @click="goCreate">新增产品</Button>
+          <Button type="primary" v-access:code="IPD_PERMISSION_CODES.PRODUCT_CREATE" @click="goCreate">新增产品</Button>
         </Space>
       </div>
     </Card>

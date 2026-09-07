@@ -1,9 +1,12 @@
 /**
  * AI 文档版本链接口（页14 项目详情-文档与交付物 / 页42 AI 文档助手）。
  *
- * 真值：AiDocumentController（P1-10.1 版本链 + P4-2.2 生成端点）。
- * 已交付端点：POST /generate（AI 生成→登记 v1 待审核）、POST 登记 v1、POST /{id}/revise、
- * POST /{id}/versions/{versionId}/review、GET /{id}/versions。
+ * 真值：AiDocumentController（P1-10.1 版本链 + P4-2.2 生成端点 + P4-2.3 归档/拒绝/历史/diff）。
+ * 已交付端点：POST /generate、POST 登记 v1、POST /{id}/revise、
+ *   POST /{id}/versions/{versionId}/review、
+ *   POST /{id}/versions/{versionId}/archive（P4-2.3，REQUIRED REVIEWED）、
+ *   POST /{id}/versions/{versionId}/reject（P4-2.3，comment 必填）、
+ *   GET /{id}/versions、GET /{id}/history、GET /{id}/diff?from=&to=。
  * 未交付：按项目列出文档的 GET 端点——列表区由页面挂占位（G-06），不在本层封装。
  * 历史版本只读：内容与摘要无任何 HTTP 更新通道，修正 = 产生新版本。
  *
@@ -64,6 +67,26 @@ export interface AiDocumentReviseInput {
   title?: null | string;
 }
 
+/** 人工拒绝入参（P4-2.3 RejectReq）：comment 必填，前端 Modal + Form rule 双重校验。 */
+export interface AiDocumentRejectInput {
+  comment: string;
+}
+
+/** 字段级 diff 单条（P4-2.3 AiDocumentDiffResp.FieldDiff）。 */
+export interface AiDocumentDiffField {
+  changeType: 'added' | 'modified' | 'removed' | 'unchanged';
+  field: string;
+  from: null | string;
+  to: null | string;
+}
+
+/** 字段级 diff 整体（P4-2.3 GET /ai-documents/{id}/diff?from=&to=）。 */
+export interface AiDocumentDiff {
+  fields: AiDocumentDiffField[];
+  fromVersionId: string;
+  toVersionId: string;
+}
+
 const isIdString = (value: unknown): value is string =>
   typeof value === 'string' && /^\d+$/.test(value);
 
@@ -104,6 +127,27 @@ export function parseAiDocument(data: unknown): AiDocument {
     tokenCompletion: typeof record.tokenCompletion === 'number' ? record.tokenCompletion : null,
     tokenPrompt: typeof record.tokenPrompt === 'number' ? record.tokenPrompt : null,
     versionNo: record.versionNo,
+  };
+}
+
+function isDiffField(value: unknown): value is AiDocumentDiffField {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.field === 'string'
+    && (record.changeType === 'added'
+      || record.changeType === 'modified'
+      || record.changeType === 'removed'
+      || record.changeType === 'unchanged')
+    && (record.from === null || record.from === undefined || typeof record.from === 'string')
+    && (record.to === null || record.to === undefined || typeof record.to === 'string');
+}
+
+function parseDiffField(record: Record<string, unknown>): AiDocumentDiffField {
+  return {
+    changeType: record.changeType as AiDocumentDiffField['changeType'],
+    field: typeof record.field === 'string' ? record.field : String(record.field ?? ''),
+    from: typeof record.from === 'string' ? record.from : null,
+    to: typeof record.to === 'string' ? record.to : null,
   };
 }
 
@@ -148,11 +192,60 @@ export async function reviewAiDocumentVersion(documentId: string, versionId: str
   return parseAiDocument(await ipdPost(`/ai-documents/${documentId}/versions/${versionId}/review`));
 }
 
+/**
+ * 归档（P4-2.3 archive）：服务端前置要求目标版本为 REVIEWED（BR-AI-03：未审核不得归档）。
+ * 前端状态机校验挡住 GENERATED 行；服务端 409 兜底；UI 仅在 REVIEWED 行渲染按钮。
+ */
+export async function archiveAiDocumentVersion(documentId: string, versionId: string): Promise<AiDocument> {
+  return parseAiDocument(await ipdPost(`/ai-documents/${documentId}/versions/${versionId}/archive`));
+}
+
+/**
+ * 审核拒绝（P4-2.3 reject）：comment 必填，后端 400 抛错；前端 Modal + Form rule 双重拦截。
+ * 拒绝后状态变更为 REJECTED，不可再走 review/archive；版本链只读。
+ */
+export async function rejectAiDocumentVersion(documentId: string, versionId: string, input: AiDocumentRejectInput): Promise<AiDocument> {
+  return parseAiDocument(await ipdPost(`/ai-documents/${documentId}/versions/${versionId}/reject`, {
+    comment: input.comment,
+  }));
+}
+
 /** 完整版本链 v1..vN 升序（链断裂后端按 409 报出）。 */
 export async function listAiDocumentVersions(documentId: string): Promise<AiDocument[]> {
   const data = await ipdGet<unknown>(`/ai-documents/${documentId}/versions`);
   if (!Array.isArray(data)) throw new IpdRequestError('版本链数据格式异常，请稍后重试');
   return data.map((item) => parseAiDocument(item));
+}
+
+/**
+ * 版本链回溯视图（P4-2.3 GET /api/v1/ai-documents/{id}/history）：
+ * 后端按时间倒序 + 关键字段投影；前端目前与 listAiDocumentVersions 同构，
+ * 保留独立封装便于后续后端扩展（如分组、按操作人筛选）切换实现。
+ */
+export async function getAiDocumentHistory(documentId: string): Promise<AiDocument[]> {
+  return listAiDocumentVersions(documentId);
+}
+
+/**
+ * 字段级 diff（P4-2.3 GET /api/v1/ai-documents/{id}/diff?from=&to=）：
+ * 任意两版本对比，支持同基线多版互比；query 串透传字符串版 ID。
+ */
+export async function getAiDocumentDiff(documentId: string, fromVersionId: string, toVersionId: string): Promise<AiDocumentDiff> {
+  if (!/^\d+$/.test(fromVersionId) || !/^\d+$/.test(toVersionId)) {
+    throw new IpdRequestError('版本 ID 必须为纯数字');
+  }
+  const data = await ipdGet<unknown>(`/ai-documents/${documentId}/diff`, { from: fromVersionId, to: toVersionId });
+  const record = data !== null && typeof data === 'object' && !Array.isArray(data)
+    ? (data as Record<string, unknown>)
+    : null;
+  if (!record) throw new IpdRequestError('Diff 响应数据格式异常');
+  const fieldsRaw = Array.isArray(record.fields) ? record.fields : [];
+  const fields = fieldsRaw.filter(isDiffField).map((field): AiDocumentDiffField => parseDiffField(field as unknown as Record<string, unknown>));
+  return {
+    fields,
+    fromVersionId: typeof record.fromVersionId === 'string' ? record.fromVersionId : fromVersionId,
+    toVersionId: typeof record.toVersionId === 'string' ? record.toVersionId : toVersionId,
+  };
 }
 
 /**

@@ -146,3 +146,49 @@ describe('portal api（探针真值兼容）', () => {
     expect(result.code).toBe('AB12CD34');
   });
 });
+
+describe('portal api（双兼容字段命名 queryCode/initialStatus vs code/status）', () => {
+  it('提交：响应使用新契约字段 queryCode/initialStatus 解析成功', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse({ queryCode: 'ABC12345', initialStatus: 'SUBMITTED' }),
+    ));
+    const result = await submitPortalDemand({
+      customerName: '某某公司', feedbackPerson: '张三', functionalRequirement: '希望支持批量导出报表功能',
+      productId: null, rawModel: null,
+    });
+    expect(result).toEqual({ code: 'ABC12345', status: 'SUBMITTED' });
+  });
+
+  it('提交：响应使用旧契约字段 code/status 解析成功（fallback 兼容未升级后端）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse({ code: 'ABC12345', status: 'SUBMITTED' }),
+    ));
+    const result = await submitPortalDemand({
+      customerName: '某某公司', feedbackPerson: '张三', functionalRequirement: '希望支持批量导出报表功能',
+      productId: null, rawModel: null,
+    });
+    expect(result).toEqual({ code: 'ABC12345', status: 'SUBMITTED' });
+  });
+
+  it('提交：新旧字段同时存在时优先采用新契约 queryCode/initialStatus', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      jsonResponse({
+        queryCode: 'NEW12345', initialStatus: 'NEW_STATU',
+        code: 'OLD12345', status: 'OLD_STATU',
+      }),
+    ));
+    const result = await submitPortalDemand({
+      customerName: '某某公司', feedbackPerson: '张三', functionalRequirement: '希望支持批量导出报表功能',
+      productId: null, rawModel: null,
+    });
+    expect(result).toEqual({ code: 'NEW12345', status: 'NEW_STATU' });
+  });
+
+  it('提交：新旧字段都缺失时判为响应异常（不误报成功）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ something: 'else' })));
+    await expect(submitPortalDemand({
+      customerName: '某某公司', feedbackPerson: '张三', functionalRequirement: '希望支持批量导出报表功能',
+      productId: null, rawModel: null,
+    })).rejects.toThrow('服务响应格式异常');
+  });
+});

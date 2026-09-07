@@ -10,9 +10,18 @@ import { CheckCircleFilled } from '@ant-design/icons-vue';
 
 import { fetchPortalProducts, submitPortalDemand } from '../../../../api/ipd/portal';
 import PortalShell from '../portal-shell.vue';
+import {
+  DEFAULT_THROTTLE_SECONDS,
+  useSubmitThrottle,
+} from './throttle';
 import '../../_shared/ipd-theme.css';
 
 const router = useRouter();
+/**
+ * A6 R4 修复：限流业务码 40011 后 UI 节流 5s（按钮 disabled + 倒计时提示）。
+ * 蜜罐命中属于"机器人拒收"，不进节流，直接拒绝并提示。
+ */
+const throttle = useSubmitThrottle();
 const form = reactive({
   contact: '',
   customerName: '',
@@ -106,6 +115,13 @@ function onProductChange() {
 
 async function submitDemand() {
   if (submitting.value) return;
+  // 蜜罐命中：非空即被服务端拒绝并记审计 spam_rejected（页38 用例4）。
+  // 在前端的处理：直接拒绝并提示，不触发限流节流（机器人才会触发；不浪费节流配额）。
+  if (form.website.trim() !== '') {
+    errorText.value = '提交失败，请检查表单内容';
+    throttle.stopThrottle();
+    return;
+  }
   submitting.value = true;
   errorText.value = '';
   copied.value = false;
@@ -119,8 +135,18 @@ async function submitDemand() {
       rawModel: form.rawModel.trim() || null,
       website: form.website,
     });
+    throttle.stopThrottle();
   } catch (cause) {
-    errorText.value = cause instanceof Error ? cause.message : '提交失败，请稍后重试';
+    // A6 R4：限流错误识别（业务码 40011 / HTTP 429 / 文本匹配）→ 启动 5s UI 节流倒计时。
+    // 连续限流：active 为 true 时 triggerThrottle 内部幂等忽略叠加。
+    if (throttle.isThrottleError(cause)) {
+      throttle.triggerThrottle(DEFAULT_THROTTLE_SECONDS);
+      // 限流文案由 portal-submit-throttled Alert 接管，错误条留空避免重复
+      errorText.value = '';
+    } else {
+      errorText.value = cause instanceof Error ? cause.message : '提交失败，请稍后重试';
+      throttle.stopThrottle();
+    }
   } finally {
     submitting.value = false;
   }
@@ -138,6 +164,7 @@ function resetForAnother() {
   form.website = '';
   form.productChoice = '';
   attachments.value = [];
+  throttle.stopThrottle();
   void loadProducts();
 }
 
@@ -250,7 +277,10 @@ async function copyCode() {
       <div class="absolute -left-[9999px] top-0" aria-hidden="true">
         <label>Website<input v-model="form.website" type="text" tabindex="-1" autocomplete="off" /></label>
       </div>
-      <Button block type="primary" html-type="submit" size="large" :loading="submitting" data-testid="portal-submit-button">提交需求</Button>
+      <Alert v-if="throttle.active.value" class="mt-4" type="warning" show-icon
+        :message="throttle.message.value" data-testid="portal-submit-throttled" role="status" />
+      <Button block type="primary" html-type="submit" size="large" :loading="submitting"
+        :disabled="throttle.active.value" data-testid="portal-submit-button">提交需求</Button>
       </Form>
     </div>
   </PortalShell>
