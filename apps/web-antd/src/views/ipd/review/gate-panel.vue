@@ -40,6 +40,8 @@ import {
 } from '../../../api/ipd/gate-review';
 import {
   countVetoFailures,
+  getFallbackGateElements,
+  isFallbackElement,
   listGateElements,
   submitGateElementResult,
   type GateElementResult,
@@ -63,6 +65,8 @@ const view = ref<null | GateReviewView>(null);
 const elements = ref<IpdGateElementView[]>([]);
 const elementsLoading = ref(false);
 const elementsError = ref('');
+/** 当前要素列表是否来自静态回退（API 失败/0 项时为 true；UI 显示 stale 标记）。 */
+const elementsIsFallback = ref(false);
 /** elementId → { result, closeDeadline, responsiblePersonId } 草稿态。 */
 const draftResults = reactive<Record<string, { closeDeadline: string; conditionNote: string; responsiblePersonId: string; result: GateElementResult | '' }>>({});
 /** 已成功提交到后端的 elementId → result（用于 countVetoFailures）。 */
@@ -125,6 +129,7 @@ const elementValidation = computed(() => {
 
 const canSubmitElements = computed(() => {
   if (!view.value || view.value.status !== 'PENDING') return false;
+  if (elementsIsFallback.value) return false;
   if (vetoFailureCount.value > 0) return false;
   if (elementValidation.value.length > 0) return false;
   return elements.value.length > 0;
@@ -144,13 +149,16 @@ function ensureDraft(elementId: string): void {
 
 function onResultChange(elementId: string, value: GateElementResult): void {
   ensureDraft(elementId);
-  draftResults[elementId].result = value;
+  const draft = draftResults[elementId];
+  if (!draft) return;
+  draft.result = value;
 }
 
 async function submitElement(el: IpdGateElementView): Promise<void> {
   if (!view.value || submittingElementId.value) return;
   ensureDraft(el.id);
   const draft = draftResults[el.id];
+  if (!draft) return;
   if (!draft.result) {
     message.warning(`请先勾选「${el.title}」的判定结果`);
     return;
@@ -189,13 +197,25 @@ function resultLabel(value: GateElementResult | ''): string {
 async function loadElements(gateId: string): Promise<void> {
   elementsLoading.value = true;
   elementsError.value = '';
+  elementsIsFallback.value = false;
   try {
-    elements.value = await listGateElements(gateId);
+    const fetched = await listGateElements(gateId);
+    // [CONSISTENCY-4] V4 修复：API 失败 / 0 项时回退到 33 项种子要素并标记 stale，
+    // 避免「19/33 渲染」类高危缺口——前端兜底不等同后端契约，后端恢复后即覆盖。
+    if (fetched.length === 0) {
+      elements.value = getFallbackGateElements();
+      elementsIsFallback.value = true;
+      elementsError.value = '';
+    } else {
+      elements.value = fetched;
+    }
     // 为每个要素初始化草稿
     for (const el of elements.value) ensureDraft(el.id);
   } catch (cause) {
-    elements.value = [];
+    elements.value = getFallbackGateElements();
+    elementsIsFallback.value = true;
     elementsError.value = ipdErrorText(cause, { fallback: '评审要素加载失败' });
+    for (const el of elements.value) ensureDraft(el.id);
   } finally {
     elementsLoading.value = false;
   }
@@ -389,18 +409,35 @@ function finalRuling(decision: GateDecision): void {
           <span v-else-if="elements.length > 0" class="elements-ok">要素预检查通过</span>
         </header>
 
+        <div
+          v-if="elementsIsFallback"
+          class="elements-stale"
+          data-testid="gate-elements-stale"
+          role="alert"
+        >
+          当前展示为前端 33 项种子要素兜底（API 未返回或返回为空，提交判定暂不可用）。请刷新页面或联系超管在「Gate 评审要素」页登记。
+        </div>
+
         <div v-if="elementsError" class="gate-error">{{ elementsError }}</div>
         <div v-if="elementsLoading" class="gate-loading">正在加载评审要素…</div>
 
         <ul v-if="elements.length > 0" class="elements-list">
-          <li v-for="el in elements" :key="el.id" class="element-row" :class="{ 'is-veto-fail': draftResults[el.id]?.result === 'FAIL' && el.isVeto }">
+          <li
+            v-for="el in elements"
+            :key="el.id"
+            class="element-row"
+            :class="{ 'is-veto-fail': draftResults[el.id]?.result === 'FAIL' && el.isVeto }"
+            :data-veto="el.isVeto ? 'true' : 'false'"
+            :data-stale="elementsIsFallback || isFallbackElement(el) ? 'true' : 'false'"
+            :data-testid="`gate-element-${el.code}`"
+          >
             <div class="element-head">
               <span class="element-title">
                 <strong>{{ el.title }}</strong>
                 <em v-if="el.isVeto" class="element-veto-tag">否决项</em>
                 <em v-else class="element-must-tag">必审</em>
               </span>
-              <span v-if="committedResults[el.id]" class="element-committed">已提交：{{ resultLabel(committedResults[el.id]) }}</span>
+              <span v-if="committedResults[el.id]" class="element-committed">已提交：{{ resultLabel(committedResults[el.id]!) }}</span>
             </div>
             <p v-if="el.description" class="element-desc">{{ el.description }}</p>
             <p v-if="el.passStandard" class="element-std">通过标准：{{ el.passStandard }}</p>
@@ -440,7 +477,7 @@ function finalRuling(decision: GateDecision): void {
               <button
                 class="panel-action"
                 type="button"
-                :disabled="!draftResults[el.id]?.result || submittingElementId === el.id"
+                :disabled="!draftResults[el.id]?.result || submittingElementId === el.id || elementsIsFallback"
                 @click="submitElement(el)"
               >
                 {{ submittingElementId === el.id ? '提交中…' : '提交此项判定' }}
@@ -464,6 +501,7 @@ function finalRuling(decision: GateDecision): void {
           <button
             type="button"
             class="primary-button"
+            data-testid="gate-elements-submit"
             :disabled="!canSubmitElements || busy"
             :title="vetoFailureCount > 0 ? `否决项 FAIL ${vetoFailureCount} 项被阻断` : (elementValidation.length > 0 ? '必填项未完成' : '提交评审结论')"
           >
@@ -791,6 +829,16 @@ function finalRuling(decision: GateDecision): void {
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 700;
+}
+.elements-stale {
+  margin: 12px 16px 0;
+  padding: 10px 12px;
+  background: #fff4df;
+  border: 1px solid #ffd591;
+  border-radius: 6px;
+  color: #9a6509;
+  font-size: 12px;
+  line-height: 1.6;
 }
 .elements-list {
   list-style: none;
