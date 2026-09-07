@@ -1,11 +1,11 @@
 name: typecheck-no-new-errors
 
 # 用途
-# - 红基线治理（W3-TYPE-01 选 B）：前端 typecheck 当前存在 21 个历史错误，
-#   本任务不修复（需协调兄弟会话 in-flight 与禁触区 `views/ipd/review/**`），
-#   仅在 CI 集成「不新增错误」门禁。
-# - 治理策略：CI 跑 vue-tsc，统计错误数；当前错误数 ≤ 已知基线 21 视为通过；
-#   修复错误时同步下调 workflow 的 `BASELINE` 环境变量，主动降基线。
+# - 红基线治理（W3-TYPE-01 选 B）：前端 typecheck 当前基线 0（2026-09-07 wave 收口后），
+#   仅在 CI 集成「不新增错误」门禁——任何 push / PR 跑 vue-tsc 出错即失败。
+# - 历史：2026-09-06 开工时基线 21 个历史错误，由 W3-TYPE-01 治理 wave 在 2026-09-07
+#   全部修复（变更见 docs/typecheck-baseline.md § 八）。本 workflow BASELINE 已同步
+#   从 21 降至 0，等效"必须维持全绿"。
 # - 触发限定 `apps/web-antd/**` paths，避免被 docs/、根级配置或脚本自身触发后误判。
 # - 关联看板卡：6c5878ba-39d2-4796-a9f4-6664e4c54d34（Wave 4-W3-TYPE-01）
 
@@ -32,10 +32,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # 红基线（已知 HEAD 错误数）。修改此值即代表「主动降基线」，
-      # 必须先在 PR 中证明修复了对应数量的错误，再合并本 workflow 变更。
-      # 关联治理文档：docs/typecheck-baseline.md
-      BASELINE: '21'
+      # 红基线 = 0（2026-09-07 治理 wave 收口后）。
+      # 修改此值即代表「主动降基线」——必须先在 PR 中证明 typecheck 通过，
+      # 再合并本 workflow 变更。历史基线 21 → 0 详见 docs/typecheck-baseline.md § 八。
+      BASELINE: '0'
       MAX_NEW_ERRORS: '0'
       # vue-tsc 在 turbo 中吞输出的回退：直接走 web-antd 子包命令
       APPS_DIR: 'apps/web-antd'

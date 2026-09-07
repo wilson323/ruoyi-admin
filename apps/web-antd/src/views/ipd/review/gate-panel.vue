@@ -47,6 +47,7 @@ import {
   type GateElementResult,
   type IpdGateElementView,
 } from '../../../api/ipd/gate-element-result';
+import { IPD_PERMISSION_CODES } from '../_shared/ipd-permission-codes';
 
 const auth = useIpdAuthStore();
 const personType = computed(() => auth.identity?.person.personType ?? '');
@@ -299,7 +300,7 @@ function finalRuling(decision: GateDecision): void {
         placeholder="输入 Gate 编号定位评审（由审计/通知提供）"
         @keyup.enter="loadGate"
       />
-      <button :disabled="!gateIdInput.trim() || loading" class="primary-button" type="button" @click="loadGate">
+      <button v-access:code="IPD_PERMISSION_CODES.GATE_REVIEW_LIST" :disabled="!gateIdInput.trim() || loading" class="primary-button" type="button" @click="loadGate">
         加载评审视图
       </button>
     </div>
@@ -364,8 +365,8 @@ function finalRuling(decision: GateDecision): void {
               class="gate-opinion-input"
               placeholder="签署意见（可空）；驳回请写明整改要求"
             />
-            <button :disabled="busy" class="secondary-button" type="button" @click="sign('REJECT')">驳回</button>
-            <button :disabled="busy" class="primary-button" type="button" @click="sign('APPROVE')">
+            <button v-access:code="IPD_PERMISSION_CODES.GATE_REVIEW_APPROVE" :disabled="busy" class="secondary-button" type="button" @click="sign('REJECT')">驳回</button>
+            <button v-access:code="IPD_PERMISSION_CODES.GATE_REVIEW_APPROVE" :disabled="busy" class="primary-button" type="button" @click="sign('APPROVE')">
               签署通过本节点
             </button>
           </template>

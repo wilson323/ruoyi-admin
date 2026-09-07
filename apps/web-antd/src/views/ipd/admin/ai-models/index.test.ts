@@ -135,6 +135,37 @@ describe('页48 AI 模型配置', () => {
     wrapper.unmount();
   });
 
+  it('启用非生效配置触发 enable 端点并提示原生效配置自动让位', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path === '/api/v1/ai-models' && (!init?.method || init.method === 'GET')) return envelope(models);
+      if (path === '/api/v1/ai-models/702/enable' && init?.method === 'POST') {
+        return envelope({ ...models[1], enabled: '1' });
+      }
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mount(Index);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('glm-local'));
+    // 启用按钮仅对未生效配置显示（701 已生效，702 未生效）
+    const enableButtons = wrapper.findAll('button').filter((b) => buttonText(b) === '启用');
+    expect(enableButtons).toHaveLength(1);
+    // 直接触发 Popconfirm 的 confirm 事件（跳过 UI 浮层），验证让位契约
+    const popconfirms = wrapper.findAllComponents({ name: 'APopconfirm' });
+    expect(popconfirms).toHaveLength(1);
+    await popconfirms[0]!.vm.$emit('confirm');
+    await vi.waitFor(() => {
+      const call = fetcher.mock.calls.find(([target]) => String(target).endsWith('/702/enable'));
+      expect(call?.[1]?.method).toBe('POST');
+    });
+    // 让位成功后 reload：会再拉一次列表（与创建后行为一致）
+    await vi.waitFor(() => {
+      const listCalls = fetcher.mock.calls.filter(([target]) => String(target) === '/api/v1/ai-models' && (!fetcher.mock.calls.find(([, i]) => i?.method === 'POST') || true));
+      expect(listCalls.length).toBeGreaterThanOrEqual(2);
+    });
+    wrapper.unmount();
+  });
+
   it('连接测试展示服务端白名单结果（拼接在脱敏字段返回）', async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input);

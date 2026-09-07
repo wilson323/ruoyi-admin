@@ -54,7 +54,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
         // 页08 新建项目（从列表按钮进入）
         {
           component: () => import('#/views/ipd/project/create/index.vue'),
-          meta: { activePath: '/ipd/projects', hideInMenu: true, title: '新建项目' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/projects/create'] ?? [])], activePath: '/ipd/projects', hideInMenu: true, title: '新建项目' },
           name: 'IpdProjectCreate',
           path: 'create',
         },
@@ -159,7 +159,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     // ④ 产品空间（原型 /product-space，页16-17；2026-09-06 换挂一比一工作台，接 ProductWorkspaceController）
     {
       component: () => import('#/views/ipd/product/workspace/index.vue'),
-      meta: { icon: 'lucide:package', order: 4, title: '产品空间' },
+      meta: { access: [...(PAGE_PERMISSIONS['/ipd/products'] ?? [])], icon: 'lucide:package', order: 4, title: '产品空间' },
       name: 'IpdProducts',
       path: 'products',
       children: [
@@ -187,7 +187,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     // ⑤ 研发招募（原型 /recruitments，页19-22）—— fe-bid 整体覆盖
     {
       component: () => import('#/views/ipd/bid/list/index.vue'),
-      meta: { icon: 'lucide:handshake', order: 5, title: '研发招募' },
+      meta: { access: [...(PAGE_PERMISSIONS['/ipd/bids'] ?? [])], icon: 'lucide:handshake', order: 5, title: '研发招募' },
       name: 'IpdBids',
       path: 'bids',
       children: [
@@ -408,7 +408,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
         },
         {
           component: () => import('#/views/ipd/admin/config/index.vue'),
-          meta: { title: '参数配置' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/admin/config'] ?? [])], title: '参数配置' },
           name: 'IpdAdminConfig',
           path: 'config',
         },
@@ -435,7 +435,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
         // 页48 AI 模型配置 —— fe-admin 整体覆盖
         {
           component: () => import('#/views/ipd/admin/ai-models/index.vue'),
-          meta: { access: [IPD_PERMISSION_CODES.AI_MODEL_EDIT], title: 'AI 模型配置' },
+          meta: { access: [IPD_PERMISSION_CODES.AI_MODEL_LIST, IPD_PERMISSION_CODES.AI_MODEL_EDIT], title: 'AI 模型配置' },
           name: 'IpdAdminAiConfig',
           path: 'ai-config',
         },

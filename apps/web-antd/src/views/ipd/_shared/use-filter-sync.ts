@@ -132,7 +132,7 @@ export function useFilterSync<T extends FilterRecord>(
   // 此处用 try/catch 兜底，单测场景下跳过 route 同步，但 state ↔ query 双向绑定在
   // 真实路由环境仍生效（watch 持续运作）。
   try {
-    onBeforeRouteUpdate((to, _from, next) => {
+    onBeforeRouteUpdate((to, _from) => {
       for (const key of Object.keys(state)) {
         if (ignored.has(key)) continue;
         const sample = state[key];
@@ -145,7 +145,6 @@ export function useFilterSync<T extends FilterRecord>(
           (state as FilterRecord)[key] = (options.defaults?.[key] ?? raw) as string;
         }
       }
-      next();
     });
   } catch {
     // 静默降级：单测或非路由上下文环境跳过

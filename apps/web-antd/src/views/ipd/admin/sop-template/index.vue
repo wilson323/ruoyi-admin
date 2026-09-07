@@ -38,6 +38,7 @@ import {
   type IpdSopTemplateDetail,
 } from '../../../../api/ipd/sop-template';
 import { IpdRequestError } from '../../../../api/ipd/auth';
+import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 
 type Phase = 'error' | 'idle' | 'loading' | 'ready';
 
@@ -331,7 +332,7 @@ async function runRowAction(action: 'copy' | 'publish' | 'revert', record: IpdSo
             </template>
             <template v-else-if="column.key === 'actions'">
               <Space :size="4" wrap>
-                <Button size="small" @click="openDetail(asSop(record))">查看</Button>
+                <Button size="small" v-access:code="IPD_PERMISSION_CODES.SOP_TEMPLATE_LIST" @click="openDetail(asSop(record))">查看</Button>
                 <template v-if="record.status === 'DRAFT'">
                   <Button size="small" type="primary" @click="openEdit(asSop(record))">编辑</Button>
                   <Popconfirm

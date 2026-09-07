@@ -60,6 +60,7 @@ import {
   historyMarkText,
   projectDateTimeText,
 } from '../project-display';
+import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 
 const route = useRoute();
 const router = useRouter();
@@ -464,10 +465,10 @@ onMounted(load);
               />
 
               <Space>
-                <Button type="primary" :loading="busyAction === 'saveFields'" @click="saveFields">
+                <Button type="primary" v-access:code="IPD_PERMISSION_CODES.STAGE_ACTION_EXECUTE" :loading="busyAction === 'saveFields'" @click="saveFields">
                   保存字段
                 </Button>
-                <Button v-if="isDeep" :loading="busyAction === 'saveFields'" @click="openDeliverable">
+                <Button v-if="isDeep" v-access:code="IPD_PERMISSION_CODES.STAGE_ACTION_DELIVERABLE" :loading="busyAction === 'saveFields'" @click="openDeliverable">
                   登记交付物
                 </Button>
               </Space>

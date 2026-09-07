@@ -134,4 +134,49 @@ describe('useFocusTrap', () => {
     expect(document.activeElement).toBe(f.trigger);
     f.wrapper.unmount();
   });
+
+  it('无可聚焦子元素时：聚焦容器本身', async () => {
+    // 仅文案的容器（tabindex="-1" 自身被选择器排除）：打开时应聚焦容器而非 throw。
+    const dialog = ref<HTMLDivElement | null>(null);
+    const open = ref(false);
+    const Comp = defineComponent({
+      setup() {
+        useFocusTrap({ target: dialog, active: open });
+        return () =>
+          h(
+            'div',
+            {
+              ref: dialog,
+              role: 'dialog',
+              tabindex: '-1',
+              style: open.value ? '' : 'display:none',
+              'data-dialog': 'true',
+            },
+            'just text',
+          );
+      },
+    });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const wrapper = mount(Comp, { attachTo: host });
+    open.value = true;
+    await nextTick();
+    expect(document.activeElement).toBe(dialog.value);
+    wrapper.unmount();
+  });
+
+  it('previouslyFocused 已脱离 DOM 时：关闭不抛错', async () => {
+    // 触发钮在弹层打开后从 DOM 卸载（如父组件 v-if 重建）：
+    // close 时 isConnected 守卫应跳过 focus()，不抛错。
+    const f = setup();
+    f.trigger.focus();
+    f.open.value = true;
+    await nextTick();
+    f.trigger.remove();
+    expect(() => {
+      f.open.value = false;
+    }).not.toThrow();
+    await nextTick();
+    f.wrapper.unmount();
+  });
 });

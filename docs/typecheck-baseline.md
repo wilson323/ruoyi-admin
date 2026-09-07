@@ -4,6 +4,9 @@
 > 看板卡：`6c5878ba-39d2-4796-a9f4-6664e4c54d34`（Wave 4 · W3-TYPE-01）
 > 时间基线：2026-09-06
 > 关联记忆：`swarm-wave3-rootsystem-reflection-2026-09-06.md` §5
+>
+> **2026-09-07 更新**：基线 **21 → 0**。CI 门禁变体 `BASELINE=0` 实质等价于"必须维持全绿"。
+> 后续若 typecheck 重新报错，按本文档 §三 / §四 流程：先定位错误源 → 修复源 → 同步升 BASELINE → 永远不要 loosen tsconfig。
 
 ---
 
@@ -33,8 +36,6 @@
 
 **关键判定**：21 个错误中 **0 个归属本任务**。W3-A8 的 `allowance.ts` 注释修正确认：本任务工作区内 `api/ipd/allowance` 错误数 = 0，且改动仅限注释行（剥注释 diff 机器证明 0 差异）。换言之，21 个错误是**历史技术债 + 兄弟会话未跟踪**，本任务不夹带修复。
 
----
-
 ## 二、治理策略对比与决策
 
 ### 选项矩阵
@@ -60,8 +61,6 @@
   1. `TS6133` 未使用变量（4 个，机械删除即可，0 风险）
   2. `gate-panel.vue` 集中修复（占 14 个，工作量中、影响面集中；需协调 review 域解禁）
   3. `TS2345` 类型收窄（4 个，需逐个对 DTO 契约）
-
----
 
 ## 三、CI 门禁工作流
 
@@ -108,8 +107,6 @@ node scripts/typecheck-error-count.mjs \
 - regex 兼容项目根相对路径（自动 strip `apps/web-antd/` 前缀）
 - 仅当 `--exit-on-regression` 时退出码 1；缺省仅打印结果（便于调试）
 
----
-
 ## 四、维护流程
 
 ### 4.1 日常：任何 PR 不得新增错误
@@ -148,8 +145,6 @@ chore(typecheck): 修复 4 个 TS6133，基线 21 → 17
 - **本 workflow 与** W4-D'（前端 allowance.ts UI 接线）**无冲突**——W4-D' 走的是同一 apps 路径，但工作流只关心 typecheck 错误数；UI 接线即便新增错误，只要不超过 21 即通过（这正是"防回流"的含义）
 - **本 workflow 与** W4-E（后端 mvn + 前端 vitest）**无冲突**——W4-E 不改 typecheck
 
----
-
 ## 五、关键发现 / 教训（写入蜂群记忆）
 
 ### 5.1 typecheck 红基线 = "流程债"
@@ -169,8 +164,6 @@ chore(typecheck): 修复 4 个 TS6133，基线 21 → 17
 如果 workflow 触发条件太宽（如监听整个仓库），会因兄弟会话 in-flight 文件触发 typecheck 跑出不同结果。
 **解决方案**：paths 限定 `apps/web-antd/**`，且 `concurrency` 启用 `cancel-in-progress: true`。
 
----
-
 ## 六、文件清单
 
 | 文件 | 性质 | 字节数（约） | 责任 |
@@ -181,16 +174,23 @@ chore(typecheck): 修复 4 个 TS6133，基线 21 → 17
 
 3 文件均为本任务新增，**未 commit / 未 push**（按惯例留给 owner 审阅）。
 
----
-
 ## 七、参考与关联
 
 - W3-A8 探针：`/tmp/ipd-swarm/agent-w3-a8.summary.txt`（21 错实证）
 - 蜂群反思：`/Users/mac/.claude/projects/-Users-mac-Documents-ruoyi-ai/memory/swarm-wave3-rootsystem-reflection-2026-09-06.md` §5
 - 看板卡：`6c5878ba-39d2-4796-a9f4-6664e4c54d34`
 - vue-tsc 错误格式参考：https://www.typescriptlang.org/docs/handbook/compiler-options.html
-- GitHub Actions 安全指南：https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/
+- GitHub Actions 安全指南：https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-they-do/
+
+---
+
+## 八、2026-09-07 收口更新（CI C1+C2+C3+C5 wave）
+
+- C2/C3/C5 三张测试新增后，`pnpm --filter @vben/web-antd run typecheck` 仍 EXIT=0，0 errors。
+- 触发 baseline 下降的常见原因：测试断言中 `as unknown as ...` 风格 cast、测试用例 `{}` / `null` / `undefined` 入参。已审计本 wave 新增测试文件无 `@ts-ignore` / `@ts-expect-error`。
+- CI workflow BASELINE env 应同步从 `21` 降至 `0`。**owner 待办**（不在本 wave 自动改 CI 配置）。
 
 ---
 
 *W3-TYPE-01 子 agent 收口。2026-09-06。*
+*2026-09-07 C5 wave 增订 § 八。*

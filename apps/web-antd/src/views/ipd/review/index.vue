@@ -48,6 +48,7 @@ import {
 import { isTransportError, projectErrorText } from '../project/project-error';
 import { STAGE_ORDER, stageText } from '../project/project-display';
 import GatePanel from './gate-panel.vue';
+import { IPD_PERMISSION_CODES } from '../_shared/ipd-permission-codes';
 
 const loading = ref(false);
 const loadError = ref('');
@@ -137,6 +138,7 @@ async function submitStage(): Promise<void> {
         </p>
       </div>
       <button
+        v-access:code="IPD_PERMISSION_CODES.GATE_REVIEW_INITIATE"
         class="primary-button"
         :disabled="!project || submitting"
         :title="project ? '提交当前阶段确认，服务端校验门禁' : '先选择项目'"

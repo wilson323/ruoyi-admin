@@ -30,6 +30,7 @@ import {
   type DeletionRequest,
 } from '../../../../api/ipd/deletion';
 import { formatDateTime } from '../../_shared/format';
+import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 
 const route = useRoute() as unknown as { query?: Record<string, unknown> } | undefined;
 
@@ -124,7 +125,7 @@ async function withdraw() {
             <div class="mb-1 text-sm">补充说明（可选）</div>
             <Textarea v-model:value="form.snapshot" :rows="2" placeholder="替代资料、快照说明等补充信息" />
           </div>
-          <Button danger :disabled="!canSubmit" :loading="submitting" type="primary" @click="submit">
+          <Button danger :disabled="!canSubmit" :loading="submitting" type="primary" v-access:code="IPD_PERMISSION_CODES.DELETION_REQUEST_SUBMIT" @click="submit">
             发起删除申请
           </Button>
         </div>

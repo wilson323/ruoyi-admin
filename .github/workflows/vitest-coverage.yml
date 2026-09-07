@@ -1,0 +1,70 @@
+name: vitest-coverage
+
+# 用途
+# - 覆盖度门禁（A16 W4 安装 `@vitest/coverage-v8` 并在 `vitest.ipd.config.mts`
+#   配 lines/functions/branches/statements 阈值；本 workflow 把阈值从「本地默默生效」
+#   提升为「CI 强制门禁」——任何 push / PR 跑 `vitest --coverage` 触发
+#   阈值失败 / 测试失败即失败 CI。
+# - 与 `.github/workflows/typecheck-no-new-errors.yml` 平行：同样的并发取消、
+#   同样的 paths 限定（避免 docs/、根级配置或脚本自身触发后误判）。
+# - 关联看板卡：W5-A25（覆盖度门禁 wave）
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web-antd/**'
+      - 'vitest.ipd.config.mts'
+      - '.github/workflows/vitest-coverage.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web-antd/**'
+      - 'vitest.ipd.config.mts'
+      - '.github/workflows/vitest-coverage.yml'
+
+# 取消同分支并发：避免两次 PR push 互相干扰覆盖度报告
+concurrency:
+  group: vitest-coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # 锁定 IPD 专属配置：禁止 --coverage 串到 framework 范围
+      VITE_TEST_IPD_CONFIG: 'vitest.ipd.config.mts'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.3
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 单次命令：vitest --coverage 跑测 + 输出 v8 报告（text / html / lcov），
+      # 阈值失败 → 进程退出非零 → step 失败 → job 失败。无需额外解析脚本。
+      # --coverage 自动读取 vitest.ipd.config.mts 的 coverage.thresholds 配置。
+      - name: Run vitest with coverage
+        run: pnpm exec vitest run --config vitest.ipd.config.mts --coverage
+
+      - name: Upload coverage artifact (lcov)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipd-coverage-lcov
+          path: ./coverage/ipd/lcov.info
+          if-no-files-found: warn

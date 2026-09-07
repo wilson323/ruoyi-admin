@@ -122,14 +122,60 @@ describe('游客门户-提交需求（页38）', () => {
     });
   });
 
-  it('提交被拒（40011 限流）→ 展示业务码中文文案', async () => {
+  it('提交被拒（40011 限流）→ 触发 UI 节流：按钮 disabled + 倒计时提示', async () => {
     vi.stubGlobal('fetch', makeFetchMock(jsonResponse(productsFixture), jsonResponse(null, 429, 40011)));
     const wrapper = await mountPage(PortalSubmit);
     await fillValidForm(wrapper);
     await wrapper.find('form').trigger('submit');
     await flushPromises();
-    expect(wrapper.find('[data-testid="portal-submit-error"]').text()).toContain('请求过于频繁，请稍后再试');
     expect(wrapper.find('[data-testid="portal-submit-success"]').exists()).toBe(false);
+    // 节流期间：按钮 disabled + 顶部倒计时 Alert 渲染
+    const button = wrapper.find('[data-testid="portal-submit-button"]');
+    expect((button.element as HTMLButtonElement).disabled).toBe(true);
+    const notice = wrapper.find('[data-testid="portal-submit-throttled"]');
+    expect(notice.exists()).toBe(true);
+    expect(notice.text()).toMatch(/请等待 \d+ 秒后重试/);
+    // 限流原始文案不再出现于错误条——已被节流提示覆盖
+    expect(wrapper.find('[data-testid="portal-submit-error"]').exists()).toBe(false);
+  });
+
+  it('节流倒计时归零后按钮恢复可点', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('fetch', makeFetchMock(jsonResponse(productsFixture), jsonResponse(null, 429, 40011)));
+      const wrapper = await mountPage(PortalSubmit);
+      await fillValidForm(wrapper);
+      await wrapper.find('form').trigger('submit');
+      await flushPromises();
+      const button = wrapper.find('[data-testid="portal-submit-button"]');
+      expect((button.element as HTMLButtonElement).disabled).toBe(true);
+      // 推进 5s：默认 DEFAULT_THROTTLE_SECONDS=5
+      await vi.advanceTimersByTimeAsync(5_000);
+      await flushPromises();
+      expect((button.element as HTMLButtonElement).disabled).toBe(false);
+      expect(wrapper.find('[data-testid="portal-submit-throttled"]').exists()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('蜜罐字段非空：直接拒绝，不触发限流节流', async () => {
+    vi.stubGlobal('fetch', makeFetchMock(jsonResponse(productsFixture)));
+    const wrapper = await mountPage(PortalSubmit);
+    await fillValidForm(wrapper);
+    // 模拟机器人填了蜜罐字段
+    const honeypotInput = wrapper.find('input[autocomplete="off"][tabindex="-1"]');
+    expect(honeypotInput.exists()).toBe(true);
+    await honeypotInput.setValue('http://spam.example.com');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+    // 应展示错误条且**未**发起 POST /demands
+    expect(wrapper.find('[data-testid="portal-submit-error"]').text()).toContain('提交失败');
+    const postCalls = fetchCallLog().filter((url) => url.includes('/demands'));
+    expect(postCalls).toHaveLength(0);
+    // 节流未触发
+    expect(wrapper.find('[data-testid="portal-submit-throttled"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="portal-submit-button"]').attributes('disabled')).toBeUndefined();
   });
 
   it('断网时提交展示断网文案，可修正后重试', async () => {

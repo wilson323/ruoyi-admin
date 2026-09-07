@@ -78,7 +78,16 @@ function rejectText(cause: unknown): string {
   return cause instanceof Error ? cause.message : '操作失败，请稍后重试';
 }
 
-const canQuery = computed(() => filters.projectId.trim() !== '' && filters.period.trim() !== '');
+const canQuery = computed(() => {
+  const pid = filters.projectId;
+  const period = filters.period;
+  const projectOk =
+    typeof pid === 'number'
+      ? Number.isFinite(pid) && pid > 0
+      : typeof pid === 'string' && pid.trim().length > 0;
+  const periodOk = typeof period === 'string' && period.trim().length > 0;
+  return projectOk && periodOk;
+});
 
 async function loadShared(): Promise<void> {
   if (!canQuery.value) return;
@@ -102,7 +111,7 @@ async function loadBonus(): Promise<void> {
   loadingBonus.value = true;
   bonusError.value = '';
   try {
-    bonusEntries.value = await listBonusPools(filters.projectId.trim());
+    bonusEntries.value = await listBonusPools(String(filters.projectId));
   } catch (cause) {
     bonusEntries.value = [];
     bonusError.value = rejectText(cause);
@@ -149,10 +158,10 @@ const bonusColumns = [
   { title: '奖金池编号', dataIndex: 'id', key: 'id', width: 120 },
   { title: '周期', dataIndex: 'period', key: 'period', width: 90 },
   { title: '项目等级', key: 'projectLevel', width: 100 },
-  { title: '实际回款', key: 'receiptAmounts', width: 130 },
-  { title: '基数（5%）', key: 'basePool', width: 130 },
-  { title: '系数', key: 'coefficient', width: 90 },
-  { title: '终算奖池', key: 'finalPool', width: 140 },
+  { title: '实际回款', dataIndex: 'receiptAmounts', key: 'receiptAmounts', width: 130 },
+  { title: '基数（5%）', dataIndex: 'basePool', key: 'basePool', width: 130 },
+  { title: '系数', dataIndex: 'coefficient', key: 'coefficient', width: 90 },
+  { title: '终算奖池', dataIndex: 'finalPool', key: 'finalPool', width: 140 },
   { title: '状态', key: 'status', width: 100 },
 ];
 

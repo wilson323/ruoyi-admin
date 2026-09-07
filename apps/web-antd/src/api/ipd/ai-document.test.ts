@@ -2,11 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
 import {
+  archiveAiDocumentVersion,
   generateAiDocument,
+  getAiDocumentDiff,
+  getAiDocumentHistory,
   ipdApiErrorText,
   listAiDocumentVersions,
   parseAiDocument,
   registerAiDocument,
+  rejectAiDocumentVersion,
   reviewAiDocumentVersion,
   reviseAiDocument,
 } from './ai-document';
@@ -34,6 +38,17 @@ const docFixture = (overrides: Record<string, unknown> = {}): Record<string, unk
   tokenCompletion: 50,
   tokenPrompt: 100,
   versionNo: 1,
+  ...overrides,
+});
+
+const diffFixture = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  fields: [
+    { field: 'title', from: 'PRD 初稿', to: 'PRD v2', changeType: 'modified' },
+    { field: 'content', from: '正文', to: '新版正文', changeType: 'modified' },
+    { field: 'docType', from: null, to: 'PRD', changeType: 'added' },
+  ],
+  fromVersionId: '9007199254740993',
+  toVersionId: '9007199254740994',
   ...overrides,
 });
 
@@ -140,5 +155,84 @@ describe('AI 文档版本链接口', () => {
   it('未匹配路由（HTTP 200 + code=404 + message=null）映射为「接口不存在」文案，不暴露原 message', () => {
     expect(ipdApiErrorText(new IpdRequestError(null as unknown as string, 200, 404, 'http'))).toContain('接口不存在');
     expect(ipdApiErrorText(new IpdRequestError('success', 200, 404, 'http'))).toContain('接口不存在');
+  });
+
+  // ---------- P4-2.3 四端点：A5 封装层 ----------
+
+  it('archive 走 POST /ai-documents/{id}/versions/{vid}/archive，前端状态机校验由 UI 承担', async () => {
+    const fetcher = vi.fn().mockImplementation(() =>
+      Promise.resolve(response(docFixture({ status: 'ARCHIVED' }))),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const archived = await archiveAiDocumentVersion('1', '9007199254740993');
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/ai-documents/1/versions/9007199254740993/archive');
+    // archive 端点无请求体；requestIpd 对 undefined body 保持 undefined
+    expect(fetcher.mock.calls[0]?.[1].body).toBeUndefined();
+    expect(fetcher.mock.calls[0]?.[1].method).toBe('POST');
+    expect(archived.status).toBe('ARCHIVED');
+  });
+
+  it('reject 携带 comment，路径与请求体正确，缺 comment 由调用方传空字符串时仍透传（前端校验先于请求）', async () => {
+    const fetcher = vi.fn().mockImplementation(() =>
+      Promise.resolve(response(docFixture({ status: 'REJECTED' }))),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const rejected = await rejectAiDocumentVersion('1', '9007199254740993', { comment: '内容与产品定位不符' });
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/ai-documents/1/versions/9007199254740993/reject');
+    expect(JSON.parse(fetcher.mock.calls[0]?.[1].body)).toEqual({ comment: '内容与产品定位不符' });
+    expect(rejected.status).toBe('REJECTED');
+  });
+
+  it('history 走 GET /ai-documents/{id}/history（前端复用 /versions 列表同构，独立封装便于后端扩展）', async () => {
+    const fetcher = vi.fn().mockImplementation(() =>
+      Promise.resolve(response([
+        docFixture({ versionNo: 2 }),
+        docFixture({ id: '9007199254740993', versionNo: 1, parentVersionId: null }),
+      ])),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const history = await getAiDocumentHistory('1');
+    // 当前实现 = listAiDocumentVersions（= GET /versions）；保留端点便于后端独立扩展
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/ai-documents/1/versions');
+    expect(history).toHaveLength(2);
+  });
+
+  it('diff 走 GET /ai-documents/{id}/diff?from=&to=，解析 fields + changeType 分类', async () => {
+    const fetcher = vi.fn().mockImplementation(() => Promise.resolve(response(diffFixture())));
+    vi.stubGlobal('fetch', fetcher);
+    const diff = await getAiDocumentDiff('1', '9007199254740993', '9007199254740994');
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/ai-documents/1/diff?from=9007199254740993&to=9007199254740994');
+    expect(diff.fromVersionId).toBe('9007199254740993');
+    expect(diff.toVersionId).toBe('9007199254740994');
+    expect(diff.fields).toHaveLength(3);
+    const added = diff.fields.find((field) => field.changeType === 'added');
+    expect(added?.field).toBe('docType');
+    expect(added?.from).toBeNull();
+    expect(added?.to).toBe('PRD');
+  });
+
+  it('diff 非纯数字版本 ID 直接拒，不发请求', async () => {
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
+    await expect(getAiDocumentDiff('1', 'abc', '9007199254740994')).rejects.toThrow(IpdRequestError);
+    await expect(getAiDocumentDiff('1', '9007199254740993', '')).rejects.toThrow(IpdRequestError);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('diff 响应 fields 含非法 changeType 静默剔除，不抛错', async () => {
+    const fetcher = vi.fn().mockImplementation(() => Promise.resolve(response({
+      fields: [
+        { field: 'title', from: 'a', to: 'b', changeType: 'modified' },
+        { field: 'bad', from: 'x', to: 'y', changeType: 'unknown' },
+        { field: 'drop', from: 123, to: 'y', changeType: 'modified' },
+        'not-an-object',
+      ],
+      fromVersionId: '1',
+      toVersionId: '2',
+    })));
+    vi.stubGlobal('fetch', fetcher);
+    const diff = await getAiDocumentDiff('1', '1', '2');
+    expect(diff.fields).toHaveLength(1);
+    expect(diff.fields[0]?.field).toBe('title');
   });
 });
