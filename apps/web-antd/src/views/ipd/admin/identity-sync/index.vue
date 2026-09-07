@@ -186,7 +186,7 @@ onMounted(() => {
         </template>
       </Table>
 
-      <Empty v-if="!loading && !errorMsg.value && filteredEntries.length === 0" description="暂无符合条件的人员目录" />
+      <Empty v-if="!loading && !errorMsg && filteredEntries.length === 0" description="暂无符合条件的人员目录" />
 
       <Alert
         v-if="errorMsg"

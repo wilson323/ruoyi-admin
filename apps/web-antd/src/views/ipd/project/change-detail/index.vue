@@ -48,15 +48,18 @@ const projectId = computed(() => String(route.params.projectId ?? ''));
 const changeId = computed(() => String(route.params.changeId ?? ''));
 
 /** 状态机 label/tone —— V6 系统漂移修复：本页用 ipd-state-machines 集中查表。 */
-import { CHANGE_STATUS_MACHINE, stateLabel as stateLabelFn, stateTone as stateToneFn } from '../../_shared/ipd-state-machines';
+import { CHANGE_STATUS_MACHINE, type ChangeStatus, stateLabel as stateLabelFn, stateTone as stateToneFn } from '../../_shared/ipd-state-machines';
 const STATUS_LABEL: Record<string, string> = Object.fromEntries(
   CHANGE_STATUS_MACHINE.states.map((s) => [s.code, s.label]),
 );
 function statusText(status: RequirementChangeStatus): string {
-  return STATUS_LABEL[status] ?? stateLabelFn(status, 'CHANGE') ?? status || PENDING_TEXT;
+  if (STATUS_LABEL[status]) return STATUS_LABEL[status];
+  const fallback = stateLabelFn(CHANGE_STATUS_MACHINE, status as ChangeStatus) ?? '';
+  return fallback || status || PENDING_TEXT;
 }
 function statusTone(status: RequirementChangeStatus): string {
-  return stateToneFn(status, 'CHANGE') ?? 'default';
+  const tone = stateToneFn(CHANGE_STATUS_MACHINE, status as ChangeStatus) ?? '';
+  return tone || 'default';
 }
 
 const detail = ref<RequirementChange | null>(null);
@@ -126,7 +129,6 @@ const afterSnap = computed(() => parseSnapshot(detail.value?.afterSnapshot ?? nu
 
 const canSubmit = computed(() => detail.value?.status === 'DRAFT');
 const canSignApprove = computed(() => detail.value?.status === 'PENDING_SIGN');
-const canSignReject = computed(() => detail.value?.status === 'PENDING_SIGN');
 
 const myPersonType = computed(() => auth.identity?.person.personType ?? '');
 
@@ -306,7 +308,7 @@ const empty = computed(() => !loading.value && !errorMsg.value && !detail.value)
           <div class="text-sm">DRAFT（发起）</div>
           <div class="text-xs text-gray-500">{{ formatDateTime(detail.createTime) }}</div>
         </TimelineItem>
-        <TimelineItem :color="signatures.MARKET_PM || signatures.RD_PM ? 'blue' : 'gray'">
+        <TimelineItem :color="(typeof signatures === 'object' && (signatures.MARKET_PM || signatures.RD_PM)) ? 'blue' : 'gray'">
           <div class="text-sm">PENDING_SIGN（双签中）</div>
           <div class="text-xs text-gray-500">任一 REJECT ⇒ 整体 REJECTED；双 APPROVE ⇒ APPROVED</div>
         </TimelineItem>

@@ -1,4 +1,4 @@
-import type { RouteMeta, RouteRecordRaw } from 'vue-router';
+import type { RouteRecordRaw } from 'vue-router';
 
 import {
   IPD_PERMISSION_CODES,
@@ -19,14 +19,6 @@ import {
  * <p>权限码（V1 系统漂移修复）：所有页路由 meta.access 必须引用 _shared/ipd-permission-codes
  * 常量，禁止裸字面量；authority 仍为角色级（personType）门禁。
  */
-
-const BackendPending = () => import('#/views/ipd/_shared/backend-pending.vue');
-
-type PendingRoute = { component: () => Promise<unknown>; meta: RouteMeta };
-
-function pending(card: string, backend: string, title: string, extra: Partial<RouteMeta> = {}): PendingRoute {
-  return { component: BackendPending, meta: { ipdBackend: backend, ipdCard: card, title, ...extra } };
-}
 
 const ipdLayoutRoute: RouteRecordRaw = {
   // 2026-09-06 起改用 ipd.vue 自绘 Shell（严格 1:1 复刻 ZK-IPD 原型 topbar/sidebar/stage-rail），
