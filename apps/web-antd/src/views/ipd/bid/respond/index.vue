@@ -204,7 +204,9 @@
 // - D-2 状态机错误码：50002（非 spec 的 40001）；
 // - D-3~D-5：预计周期/资源投入/主要风险无独立通道，拼入 responseNote 文本；
 // - D-6：reconfirm 未实现，40002 分支仅做文案兜底，不阻塞主流程；
-// - D-7：solution_summary 映射 responseNote（40-500 字）。
+// - D-7：solution_summary 映射 responseNote（40-500 字）；
+// - U1-4（20260906 蜂群快修登记）：模板 v-else-if="invitation" 双用互斥致正文 Card
+//   不渲染 → 改 v-if="!invitation"（规则提示）/ v-if="invitation"（正文）两支（提交 005986b）。
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
