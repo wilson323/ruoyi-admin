@@ -108,7 +108,7 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await form.trigger('submit');
     expect(wrapper.text()).toContain('变更类型、变更原因与关联需求 ID 均为必填。');
     // 选择需求 + 填写变更类型与原因后可提交（select 只能选数字ID，不再触发数字校验断言）
-    await form.findAll('select')[1].setValue('5');
+    await form.findAll('select')[1]?.setValue('5');
     await form.findAll('input')[0]?.setValue('测试变更');
     await form.findAll('textarea')[0]?.setValue('因为渠道反馈');
     await form.trigger('submit');
@@ -124,7 +124,7 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await wrapper.get('.page-heading .primary-button').trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('发起需求变更'));
     const form = wrapper.get('form.create-modal');
-    await form.findAll('select')[1].setValue('5');
+    await form.findAll('select')[1]?.setValue('5');
     await form.findAll('input')[0]?.setValue('测试变更');
     await form.findAll('textarea')[0]?.setValue('因为渠道反馈');
     await form.trigger('submit');
