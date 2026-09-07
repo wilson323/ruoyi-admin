@@ -129,6 +129,14 @@ export const ZK_RULE_DEMAND_POOL_DUAL_REVIEW: ZkIpdRule = {
   promptRef: 'IPD产品经理管理系统·最终完整版AI开发Prompt §五.5',
 };
 
+/** ZK-IPD §五.6：共担 KPI 按 revision 累加 */
+export const ZK_RULE_SHARED_KPI_REVISION: ZkIpdRule = {
+  key: 'shared-kpi-revision',
+  chapter: '§五.6',
+  rule: '共担 KPI 双 PM 各自维护一份同 revision 的归集记录；多次归集 ⇒ revision 递增追加；服务层按 revision DESC 排序，综合分取最新条。',
+  promptRef: 'IPD产品经理管理系统·最终完整版AI开发Prompt §五.6',
+};
+
 /** 所有规则按页面归类（用于不同页面渲染不同集合） */
 export const RULES_BY_PAGE = {
   projectCreate: [ZK_RULE_ARCHIVED_READONLY, ZK_RULE_BONUS_POOL_FORMULA, ZK_RULE_ALLOWANCE_CAP],
@@ -136,6 +144,7 @@ export const RULES_BY_PAGE = {
   adminConfig: [ZK_RULE_SUPER_ADMIN_TRANSFER, ZK_RULE_AUDIT_EXPORTABLE],
   bidList: [ZK_RULE_BID_EXPIRED_NOTIFY, ZK_RULE_BID_CONDITIONS_CHANGE_NOTIFY, ZK_RULE_BID_ADMIN_ASSIGN_30D],
   workbench: [ZK_RULE_LONG_NO_OUTPUT_ALERT, ZK_RULE_SCORE_BELOW_60_STOP, ZK_RULE_ALLOWANCE_CAP],
+  demand: [ZK_RULE_DEMAND_POOL_DUAL_REVIEW],
 } as const;
 
 export type PageKey = keyof typeof RULES_BY_PAGE;
