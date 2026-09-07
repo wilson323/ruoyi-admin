@@ -43,7 +43,13 @@ import {
 import { IpdRequestError } from '../../../api/ipd/auth';
 import { formatDateTime, PENDING_TEXT } from '../_shared/format';
 
-defineOptions({ name: 'IpdTimeline', meta: { ipdCard: 'ZK-D2' } });
+defineOptions({
+  name: 'IpdTimeline',
+  meta: {
+    ipdBackend: '无 timeline 聚合端点；以审计日志（GET /audit-logs/scope）+ 工作台（GET /workbench/summary）+ 奖金池（GET /bonus-pool/list）三源融合按时间倒序。',
+    ipdCard: 'ZK-D2',
+  },
+});
 
 const keyword = ref('');
 const scopeFilter = ref<'ALL' | 'AUDIT' | 'WORKBENCH' | 'BONUS'>('ALL');
