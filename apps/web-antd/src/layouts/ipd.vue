@@ -11,6 +11,8 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
+
+import { useFocusTrap } from '../views/ipd/_shared/use-focus-trap';
 import {
   PhArrowLeft as ArrowLeft,
   PhArrowsClockwise as ArrowsClockwise,
@@ -177,6 +179,15 @@ const collapsed = ref(false);
 const searchOpen = ref(false);
 const notificationsOpen = ref(false);
 const helpOpen = ref(false);
+
+/** V12-a11y 收口：三弹窗共享键盘陷阱（开聚焦/Tab 循环/Esc 关闭/关还焦）。
+ *  陷阱对象独立避免打开态竞争（onEscape 只关自身，其他 ref 不动）。 */
+const searchDialog = ref<HTMLElement | null>(null);
+const notificationsDialog = ref<HTMLElement | null>(null);
+const helpDialog = ref<HTMLElement | null>(null);
+useFocusTrap({ target: searchDialog, active: searchOpen, onEscape: () => (searchOpen.value = false) });
+useFocusTrap({ target: notificationsDialog, active: notificationsOpen, onEscape: () => (notificationsOpen.value = false) });
+useFocusTrap({ target: helpDialog, active: helpOpen, onEscape: () => (helpOpen.value = false) });
 
 /**
  * 站内通知（页03 站内信 / OPS-05，卡 df7eba96）：消费侧 4 端点；
@@ -367,10 +378,12 @@ async function handleLogout() {
     <!-- 帮助弹窗：文案与原型 help-modal 1:1 -->
     <div v-if="helpOpen" class="modal-backdrop" @click.self="helpOpen = false">
       <div
+        ref="helpDialog"
         aria-label="当前页面帮助"
         aria-modal="true"
         class="create-modal help-modal"
         role="dialog"
+        tabindex="-1"
       >
         <div class="modal-head">
           <div>
@@ -392,10 +405,12 @@ async function handleLogout() {
     <!-- 全局搜索 / 站内通知：壳与原型一致，数据等待 P4-3.1 聚合接口 -->
     <div v-if="searchOpen" class="modal-backdrop" @click.self="searchOpen = false">
       <div
+        ref="searchDialog"
         aria-label="全局搜索"
         aria-modal="true"
         class="create-modal help-modal"
         role="dialog"
+        tabindex="-1"
       >
         <div class="modal-head">
           <div>
@@ -414,10 +429,12 @@ async function handleLogout() {
     </div>
     <div v-if="notificationsOpen" class="modal-backdrop" @click.self="notificationsOpen = false">
       <div
+        ref="notificationsDialog"
         aria-label="站内通知"
         aria-modal="true"
         class="create-modal help-modal"
         role="dialog"
+        tabindex="-1"
       >
         <div class="modal-head">
           <div>
