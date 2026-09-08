@@ -42,7 +42,7 @@ import {
   countVetoFailures,
   getFallbackGateElements,
   isFallbackElement,
-  listGateElements,
+  listGateElementViews,
   submitGateElementResult,
   type GateElementResult,
   type IpdGateElementView,
@@ -200,7 +200,7 @@ async function loadElements(gateId: string): Promise<void> {
   elementsError.value = '';
   elementsIsFallback.value = false;
   try {
-    const fetched = await listGateElements(gateId);
+    const fetched = await listGateElementViews(gateId);
     // [CONSISTENCY-4] V4 修复：API 失败 / 0 项时回退到 33 项种子要素并标记 stale，
     // 避免「19/33 渲染」类高危缺口——前端兜底不等同后端契约，后端恢复后即覆盖。
     if (fetched.length === 0) {

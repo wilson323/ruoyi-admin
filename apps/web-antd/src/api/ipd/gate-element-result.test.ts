@@ -3,7 +3,7 @@
  */
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { closeGateElementResult, countVetoFailures, listGateElements, submitGateElementResult } from './gate-element-result';
+import { closeGateElementResult, countVetoFailures, listGateElementViews, submitGateElementResult } from './gate-element-result';
 
 const envelope = (data: unknown) =>
   new Response(
@@ -23,7 +23,7 @@ describe('gate element result API contract', () => {
       { id: 'e-1', code: 'G1-01', gateCode: 'G1', title: 't1', isVeto: true, status: 'PUBLISHED', sortOrder: 1 },
     ]));
     vi.stubGlobal('fetch', fetcher);
-    const list = await listGateElements('gate-1');
+    const list = await listGateElementViews('gate-1');
     const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
     expect(url.pathname).toBe('/api/v1/gates/gate-1/elements');
     expect(list[0]!.isVeto).toBe(true);

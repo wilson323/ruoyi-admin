@@ -45,8 +45,10 @@ export interface IpdGateElementResultView extends IpdGateElementResultReq {
   operatorId: string;
 }
 
-/** 获取评审要素列表（含 33 项种子要素；后端按 gateId 透明过滤）。 */
-export function listGateElements(gateId: string): Promise<IpdGateElementView[]> {
+/** 获取评审要素列表（含 33 项种子要素；后端按 gateId 透明过滤）。
+ * 命名区分：gate-element.ts 的管理端要素库列表为 listGateElements（/api/v1/gate-elements），
+ * 本函数走 /gates/{gateId}/elements 返回视图态，不与其同名（规约 §2 禁同名导出）。 */
+export function listGateElementViews(gateId: string): Promise<IpdGateElementView[]> {
   return ipdGet<IpdGateElementView[]>(`/gates/${encodeURIComponent(gateId)}/elements`);
 }
 
