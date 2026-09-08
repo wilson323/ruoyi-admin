@@ -1,5 +1,8 @@
 /**
- * 负反馈 API 契约测试：list 端点过滤 + create 端点 POST。
+ * 负反馈 API 契约测试（2026-09-08 契约对齐后）：
+ * GET /negative-feedbacks?projectId=&status= 与 POST /negative-feedbacks。
+ * 历史教训：旧断言 /list /create 锁死了臆造路径——GET /list 会被后端
+ * GET /{id} 路由捕获，"list" 转 Long 失败 → 500/90001。
  */
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,24 +21,43 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('negative-feedback API contract', () => {
-  it('GET /negative-feedbacks/list with optional projectId/personId', async () => {
+  it('GET /negative-feedbacks with required projectId only', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope([]));
     vi.stubGlobal('fetch', fetcher);
-    await listNegativeFeedback({ projectId: 'p-1' });
+    await listNegativeFeedback('p-1');
     const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
-    expect(url.pathname).toBe('/api/v1/negative-feedbacks/list');
+    expect(url.pathname).toBe('/api/v1/negative-feedbacks');
     expect(url.searchParams.get('projectId')).toBe('p-1');
-    expect(url.searchParams.has('personId')).toBe(false);
+    expect(url.searchParams.has('status')).toBe(false);
   });
 
-  it('POST /negative-feedbacks/create', async () => {
+  it('GET /negative-feedbacks with optional status filter', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope([]));
+    vi.stubGlobal('fetch', fetcher);
+    await listNegativeFeedback('p-1', 'EXECUTED');
+    const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
+    expect(url.pathname).toBe('/api/v1/negative-feedbacks');
+    expect(url.searchParams.get('projectId')).toBe('p-1');
+    expect(url.searchParams.get('status')).toBe('EXECUTED');
+  });
+
+  it('POST /negative-feedbacks (bare path, NegativeFeedbackCreateReq body)', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope({ id: 'nf-1' }));
     vi.stubGlobal('fetch', fetcher);
     await createNegativeFeedback({
-      effectiveMonth: '2026-01', operatorId: 'op-1', personId: 'pm-1',
-      projectId: 'p-1', role: 'PRIMARY', trigger: 'QUALITY_INCIDENT',
+      projectId: 'p-1',
+      triggerEvidence: '证据材料',
+      triggerMonth: '2026-01',
+      triggerType: 'REWORK_EXCEEDED',
     });
-    expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/negative-feedbacks/create');
-    expect((fetcher.mock.calls[0]![1] as RequestInit).method).toBe('POST');
+    const [path, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(new URL(path, 'http://ipd.local').pathname).toBe('/api/v1/negative-feedbacks');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      projectId: 'p-1',
+      triggerEvidence: '证据材料',
+      triggerMonth: '2026-01',
+      triggerType: 'REWORK_EXCEEDED',
+    });
   });
 });

@@ -1,9 +1,12 @@
 /**
- * 项目评分 API 契约测试：list/submit/listMyScoreTasks 三端点。
+ * 项目评分 API 契约测试（2026-09-08 契约对齐后）：
+ * GET /project-scores/{projectId}/{personId} 单视图 + settle + POST 裸路径提交。
+ * 历史教训：旧断言 /list /submit /project-score-tasks/my 均为臆造路径
+ * （后端无这些端点；评分任务列表端点未交付，页内登记真缺口）。
  */
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { listMyScoreTasks, listProjectScores, submitProjectScore } from './project-score';
+import { getProjectScore, settleProjectScore, submitProjectScore } from './project-score';
 
 const envelope = (data: unknown) =>
   new Response(
@@ -18,32 +21,40 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('project score API contract', () => {
-  it('GET /project-scores/list with projectId+period', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope([]));
+  it('GET /project-scores/{projectId}/{personId} (single view)', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({ projectId: 'p-1' }));
     vi.stubGlobal('fetch', fetcher);
-    await listProjectScores('p-1', '2026-01');
+    await getProjectScore('p-1', 'pm-1');
     const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
-    expect(url.pathname).toBe('/api/v1/project-scores/list');
-    expect(url.searchParams.get('projectId')).toBe('p-1');
-    expect(url.searchParams.get('period')).toBe('2026-01');
+    expect(url.pathname).toBe('/api/v1/project-scores/p-1/pm-1');
+    expect(url.search).toBe('');
   });
 
-  it('POST /project-scores/submit', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope({ id: 'ps-1' }));
+  it('GET /project-scores/{projectId}/{personId}/settle', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({ projectId: 'p-1', settled: true }));
+    vi.stubGlobal('fetch', fetcher);
+    await settleProjectScore('p-1', 'pm-1');
+    const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
+    expect(url.pathname).toBe('/api/v1/project-scores/p-1/pm-1/settle');
+  });
+
+  it('POST /project-scores (bare path, ProjectScoreSubmitReq body)', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({ projectId: 'p-1' }));
     vi.stubGlobal('fetch', fetcher);
     await submitProjectScore({
-      period: '2026-01', personId: 'pm-1', projectId: 'p-1',
-      role: 'SELF', score: 80,
+      componentType: 'SELF',
+      personId: 'pm-1',
+      projectId: 'p-1',
+      score: 80,
     });
-    expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/project-scores/submit');
-    expect((fetcher.mock.calls[0]![1] as RequestInit).method).toBe('POST');
-  });
-
-  it('GET /project-score-tasks/my (no params)', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope([]));
-    vi.stubGlobal('fetch', fetcher);
-    await listMyScoreTasks();
-    const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
-    expect(url.pathname).toBe('/api/v1/project-score-tasks/my');
+    const [path, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(new URL(path, 'http://ipd.local').pathname).toBe('/api/v1/project-scores');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      componentType: 'SELF',
+      personId: 'pm-1',
+      projectId: 'p-1',
+      score: 80,
+    });
   });
 });

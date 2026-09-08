@@ -1,38 +1,99 @@
 /**
  * 负反馈接口（页36 负反馈执行；P3-8.1/8.2；AC-INC-36b~40；BR-INC-10）。
  *
- * 真值：NegativeFeedbackController（/api/v1/negative-feedbacks/...）。
- * 规则：主责停发 / 连带减半 / 奖金资格按规则；生效月和恢复时点明确；重复事件不重复扣减。
- * 触发表：需求返工率超标 / 质量事故 / 错过市场窗口（双 PM 共同担责，无主责/连带区分）。
+ * 真值：NegativeFeedbackController（/api/v1/negative-feedbacks）。
+ *
+ * ✅ 2026-09-08 契约对齐（全局梳理）：原 `/list`、`/create` 为臆造路径——
+ *   GET /list 会被后端 `GET /{id}` 路由捕获，"list" 转 Long 失败 → 500/90001
+ *   （16039 日志 MethodArgumentTypeMismatchException 实证）。现对齐后端真端点：
+ *   - GET  /api/v1/negative-feedbacks?projectId=&status=  — 项目下状态过滤（projectId 必填）
+ *   - POST /api/v1/negative-feedbacks                     — DRAFT 录入（operator 由会话推导）
+ *
+ * 触发表（BR-INC-10，服务端自动推导主责/连带与执行动作，不由前端指定）：
+ *   - REWORK_EXCEEDED 需求返工率超标：市场 PM 停发 + 研发 PM 减半
+ *   - QUALITY_ACCIDENT 质量事故：研发 PM 停发 + 市场 PM 减半
+ *   - SPEC_PILE_COPY 参数堆砌/对标抄袭：研发 PM 停发 + 市场 PM 减半
+ *   - MISSED_MARKET_WINDOW 错过市场窗口：双 PM 共同停发（无主次）
+ * 重复事件不重复扣减；生效月（triggerMonth）与恢复月（recoveryMonth）明确。
  */
 import { ipdGet, ipdPost } from './http';
 
-export type NegativeTrigger = 'DEFECT_REWORK' | 'MISSED_MARKET_WINDOW' | 'QUALITY_INCIDENT';
-export type NegativeRole = 'CO_RESPONSIBLE' | 'PRIMARY' | 'SECONDARY';
+/** 触发情形（NegativeFeedbackCreateReq @Pattern 四枚举）。 */
+export type NegativeTriggerType =
+  | 'MISSED_MARKET_WINDOW'
+  | 'QUALITY_ACCIDENT'
+  | 'REWORK_EXCEEDED'
+  | 'SPEC_PILE_COPY';
 
+/** 状态机（NegativeFeedbackService 常量）：DRAFT → PENDING_DECISION → EXECUTED / REJECTED；EXECUTED → LIFTED。 */
+export type NegativeStatus =
+  | 'DRAFT'
+  | 'EXECUTED'
+  | 'LIFTED'
+  | 'PENDING_DECISION'
+  | 'REJECTED';
+
+/** 执行动作：停发 / 减半（服务端按 triggerType 推导，BR-INC-10）。 */
+export type NegativeExecution = 'HALVE_ALLOWANCE' | 'STOP_ALLOWANCE';
+
+/** NegativeFeedbackView（21 字段，NegativeFeedbackService.toView 真值）。 */
 export interface NegativeFeedback {
-  confirmOperatorId?: null | string;
-  createTime: string;
-  effectiveMonth: string;
-  executeMonth: null | string;
-  id: string;
-  operatorId: string;
-  personId: string;
+  id: null | number | string;
+  projectId: null | number | string;
+  triggerType: null | NegativeTriggerType | string;
+  /** 主责角色（MARKET_PM / RD_PM / BOTH；服务端推导）。 */
+  mainRole: null | string;
+  mainPersonId: null | number | string;
+  mainExecution: null | NegativeExecution | string;
+  /** 连带角色（MISSED_MARKET_WINDOW 双 PM 共同担责时为空）。 */
+  relatedRole: null | string;
+  relatedPersonId: null | number | string;
+  relatedExecution: null | NegativeExecution | string;
+  /** 是否取消奖金资格。 */
+  bonusDisqualify: null | boolean;
+  /** 贡献度系数降低（默认 -0.50；BR-INC-10 贡献度系数联动）。 */
+  tierDelta: null | number | string;
+  /** 触发月份 YYYY-MM（录入必填）。 */
+  triggerMonth: null | string;
+  /** 恢复月份 YYYY-MM（可选）。 */
+  recoveryMonth: null | string;
+  triggerEvidence: null | string;
+  status: null | NegativeStatus | string;
+  triggeredBy: null | number | string;
+  decidedBy: null | number | string;
+  decidedAt: null | string;
+  liftedBy: null | number | string;
+  liftedAt: null | string;
+  decisionComment: null | string;
+}
+
+/**
+ * 负反馈列表（projectId 必填；status 可选过滤 5 态）。
+ *
+ * ✅ `GET /api/v1/negative-feedbacks`（NegativeFeedbackService.listByProject，按 createTime 倒序）。
+ * 权限：ipd:incentive:negative-feedback:query；后端另有项目可读性校验（Bug#4）。
+ */
+export function listNegativeFeedback(
+  projectId: string,
+  status?: NegativeStatus | string,
+): Promise<NegativeFeedback[]> {
+  return ipdGet<NegativeFeedback[]>(
+    '/negative-feedbacks',
+    status ? { projectId, status } : { projectId },
+  );
+}
+
+/**
+ * 录入负反馈 DRAFT（主责/连带映射与执行动作由 triggerType 服务端推导）。
+ *
+ * ✅ `POST /api/v1/negative-feedbacks`（NegativeFeedbackCreateReq；@Valid 400 拒绝非法枚举/月份）。
+ */
+export function createNegativeFeedback(req: {
   projectId: string;
-  recoveryMonth?: null | string;
-  role: NegativeRole;
-  trigger: NegativeTrigger;
-}
-
-/** 负反馈列表（projectId 可选；personId 可选按 PM 范围）。 */
-export function listNegativeFeedback(opts?: { personId?: string; projectId?: string }): Promise<NegativeFeedback[]> {
-  const params: Record<string, string> = {};
-  if (opts?.projectId) params.projectId = opts.projectId;
-  if (opts?.personId) params.personId = opts.personId;
-  return ipdGet<NegativeFeedback[]>('/negative-feedbacks/list', Object.keys(params).length ? params : undefined);
-}
-
-/** 创建负反馈记录（仅超管 / 产品组长；权限码 ipd:incentive:execute）。 */
-export function createNegativeFeedback(req: Omit<NegativeFeedback, 'confirmOperatorId' | 'createTime' | 'executeMonth' | 'id' | 'recoveryMonth'>): Promise<NegativeFeedback> {
-  return ipdPost<NegativeFeedback>('/negative-feedbacks/create', req);
+  triggerEvidence?: string;
+  triggerMonth: string;
+  triggerType: NegativeTriggerType;
+  recoveryMonth?: string;
+}): Promise<NegativeFeedback> {
+  return ipdPost<NegativeFeedback>('/negative-feedbacks', req);
 }

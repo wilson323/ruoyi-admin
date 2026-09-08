@@ -1,170 +1,121 @@
 <script setup lang="ts">
 /**
- * 页31 项目绩效评定（卡 P0-10.31；后端 ProjectScoreController + ProjectScoreTaskController 已交付）。
- * 五态齐全：loading / success / empty / error / 断网；按角色权重 0.2 / 0.4 / 0.4 自评+双组长评。
+ * 页31 项目绩效评定（卡 P0-10.31；后端 ProjectScoreController 已交付）。
+ * 2026-09-08 契约对齐：改 GET /project-scores/{projectId}/{personId} 单视图
+ * （三角色并排 + 加权 + 版本），原 /list /project-score-tasks/my 为臆造路径。
+ * 「我的评分任务」列表端点后端未交付（仅超管 POST /project-score-tasks/scan），
+ * 页内登记真缺口。
  */
-import { computed, onMounted, ref } from 'vue';
-import { Alert, Button, Card, Empty, Input, Table, Tag } from 'ant-design-vue';
+import { computed, ref } from 'vue';
+import { Alert, Button, Card, Descriptions, DescriptionsItem, Empty, Input, Tag } from 'ant-design-vue';
 
 import {
-  type ProjectScore,
-  type ScoreRole,
-  listMyScoreTasks,
-  listProjectScores,
+  type ProjectScoreView,
+  getProjectScore,
+  settleProjectScore,
 } from '../../../../api/ipd/project-score';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
-import { formatDateTime } from '../../_shared/format';
 
 defineOptions({ name: 'IpdKpiScore', meta: { ipdCard: 'P0-10.31' } });
 
-const roleText: Record<ScoreRole, string> = {
-  SELF: '自评',
-  MARKET_LEADER: '市场组长',
-  RD_LEADER: '研发组长',
-};
-
-const roleColor: Record<ScoreRole, string> = {
-  SELF: 'blue',
-  MARKET_LEADER: 'cyan',
-  RD_LEADER: 'purple',
-};
-
 const projectId = ref('');
-const period = ref(defaultPeriod());
-const scores = ref<ProjectScore[]>([]);
-const tasks = ref<ProjectScore[]>([]);
+const personId = ref('');
+const view = ref<null | ProjectScoreView>(null);
 const loading = ref(false);
 const errorMsg = ref('');
 const loaded = ref(false);
 
-function defaultPeriod(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-}
-
-const columns = [
-  { title: '项目编号', dataIndex: 'projectId', key: 'projectId', width: 130 },
-  { title: '核算周期', dataIndex: 'period', key: 'period', width: 100 },
-  { title: '评定人', key: 'role', width: 110 },
-  { title: '评分', dataIndex: 'score', key: 'score', width: 90 },
-  { title: '权重', key: 'weight', width: 100 },
-  { title: '加权得分', dataIndex: 'weightedScore', key: 'weightedScore', width: 110 },
-  { title: '意见', dataIndex: 'comment', key: 'comment' },
-  { title: '提交时间', key: 'createTime', width: 150 },
-];
-
-function roleWeight(record: ProjectScore): string {
-  if (record.role === 'SELF') return String(record.weightSelf ?? '0.2');
-  if (record.role === 'MARKET_LEADER') return String(record.weightMarketLeader ?? '0.4');
-  return String(record.weightRdLeader ?? '0.4');
-}
-
 async function load(): Promise<void> {
-  if (!projectId.value.trim() || !period.value.trim() || loading.value) return;
+  const pid = projectId.value.trim();
+  const uid = personId.value.trim();
+  if (!pid || !uid || loading.value) return;
   loading.value = true;
   errorMsg.value = '';
   try {
-    const [listResult, taskResult] = await Promise.all([
-      listProjectScores(projectId.value.trim(), period.value.trim()),
-      listMyScoreTasks().catch(() => [] as ProjectScore[]),
-    ]);
-    scores.value = listResult;
-    tasks.value = taskResult;
+    view.value = await getProjectScore(pid, uid);
     loaded.value = true;
   } catch (cause) {
-    scores.value = [];
-    tasks.value = [];
+    view.value = null;
     errorMsg.value = ipdErrorText(cause, { fallback: '项目绩效加载失败' });
   } finally {
     loading.value = false;
   }
 }
 
-async function loadTasks(): Promise<void> {
+async function settle(): Promise<void> {
+  const pid = projectId.value.trim();
+  const uid = personId.value.trim();
+  if (!pid || !uid || loading.value) return;
   loading.value = true;
   errorMsg.value = '';
   try {
-    tasks.value = await listMyScoreTasks();
+    view.value = await settleProjectScore(pid, uid);
     loaded.value = true;
   } catch (cause) {
-    tasks.value = [];
-    errorMsg.value = ipdErrorText(cause, { fallback: '当前评分任务加载失败' });
+    errorMsg.value = ipdErrorText(cause, { fallback: '结算失败' });
   } finally {
     loading.value = false;
   }
 }
 
-const isEmpty = computed(() => loaded.value && !errorMsg.value && scores.value.length === 0 && tasks.value.length === 0);
-
-onMounted(() => {
-  void loadTasks();
-});
+const isEmpty = computed(() => loaded.value && !errorMsg.value && !view.value);
 </script>
 
 <template>
   <div class="p-4">
     <Alert
       class="mb-4"
-      message="项目绩效：自评 0.2 + 市场组长 0.4 + 研发组长 0.4；三者之和必须 = 1.0。"
+      message="项目绩效：自评 0.2 + 市场组长 0.4 + 研发组长 0.4，三者之和必须 = 1.0；双 PM 项目分独立；重提生成新版本，三角色齐备后可结算。"
       show-icon
       type="info"
     />
 
-    <Card class="mb-4" title="按项目+周期查询">
+    <Card class="mb-4" title="按项目 + 人员查询（双 PM 各自独立评分）">
       <div class="flex flex-wrap items-end gap-3">
         <div>
-          <div class="mb-1 text-xs text-gray-500">项目编号</div>
+          <div class="mb-1 text-xs text-gray-500">项目编号（必填）</div>
           <Input v-model:value="projectId" placeholder="请输入项目编号" style="width: 200px" />
         </div>
         <div>
-          <div class="mb-1 text-xs text-gray-500">核算周期（YYYY-MM）</div>
-          <Input v-model:value="period" placeholder="2026-09" style="width: 140px" />
+          <div class="mb-1 text-xs text-gray-500">人员编号（必填，被评 PM）</div>
+          <Input v-model:value="personId" placeholder="请输入被评 PM 人员编号" style="width: 200px" />
         </div>
-        <Button type="primary" :loading="loading" :disabled="!projectId.trim() || !period.trim()" @click="load">查询评分</Button>
+        <Button type="primary" :loading="loading" :disabled="!projectId.trim() || !personId.trim()" @click="load">
+          查询评分
+        </Button>
+        <Button
+          :disabled="!projectId.trim() || !personId.trim() || loading || !view"
+          :loading="loading"
+          @click="settle"
+        >
+          结算当前版本
+        </Button>
       </div>
     </Card>
 
-    <Card class="mb-4" title="项目评分明细">
-      <Table
-        :columns="columns"
-        :data-source="scores"
-        :loading="loading"
-        :pagination="false"
-        row-key="id"
-        size="small"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'role'">
-            <Tag :color="roleColor[record.role as ScoreRole]">{{ roleText[record.role as ScoreRole] }}</Tag>
-          </template>
-          <template v-else-if="column.key === 'weight'">{{ roleWeight(record as ProjectScore) }}</template>
-          <template v-else-if="column.key === 'createTime'">{{ formatDateTime(record.createTime) }}</template>
-        </template>
-        <template #emptyText>
-          <Empty :description="errorMsg || (isEmpty ? '当前查询无评分记录' : (loaded ? '请输入项目编号+周期后查询' : '请先查询'))" />
-        </template>
-      </Table>
+    <Card class="mb-4" title="评分视图">
+      <Empty v-if="errorMsg || isEmpty || !view" :description="errorMsg || (isEmpty ? '该项目人员暂无评分记录' : '请输入项目 + 人员编号后查询')" />
+      <Descriptions v-else :column="3" bordered size="small">
+        <DescriptionsItem label="项目编号">{{ view.projectId }}</DescriptionsItem>
+        <DescriptionsItem label="被评 PM">{{ view.personId }}</DescriptionsItem>
+        <DescriptionsItem label="PM 角色">{{ view.pmRole ?? '—' }}</DescriptionsItem>
+        <DescriptionsItem label="自评（权重 0.2）">{{ view.selfScore ?? '未提交' }}</DescriptionsItem>
+        <DescriptionsItem label="市场组长评（权重 0.4）">{{ view.marketLeaderScore ?? '未提交' }}</DescriptionsItem>
+        <DescriptionsItem label="研发组长评（权重 0.4）">{{ view.rdLeaderScore ?? '未提交' }}</DescriptionsItem>
+        <DescriptionsItem label="加权得分">{{ view.weightedScore ?? '—' }}</DescriptionsItem>
+        <DescriptionsItem label="评分版本">v{{ view.versionNo ?? '—' }}（规则 v{{ view.ruleVersion ?? '—' }}）</DescriptionsItem>
+        <DescriptionsItem label="结算状态">
+          <Tag :color="view.settled ? 'green' : 'default'">{{ view.settled ? '已结算' : '未结算' }}</Tag>
+        </DescriptionsItem>
+      </Descriptions>
     </Card>
 
     <Card title="我的评分任务">
-      <Table
-        :columns="columns"
-        :data-source="tasks"
-        :pagination="false"
-        row-key="id"
-        size="small"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'role'">
-            <Tag :color="roleColor[record.role as ScoreRole]">{{ roleText[record.role as ScoreRole] }}</Tag>
-          </template>
-          <template v-else-if="column.key === 'weight'">{{ roleWeight(record as ProjectScore) }}</template>
-          <template v-else-if="column.key === 'createTime'">{{ formatDateTime(record.createTime) }}</template>
-        </template>
-        <template #emptyText>
-          <Empty :description="loaded ? '暂无待评分任务' : '加载中…'" />
-        </template>
-      </Table>
+      <Alert
+        message="真缺口登记：「评定人在途评分任务」列表端点后端未交付（ProjectScoreTaskController 仅提供超管 POST /api/v1/project-score-tasks/scan 扫描），待后端补 GET 评分任务端点后接线。当前请通过上方「按项目 + 人员查询」查看评分进度。"
+        show-icon
+        type="warning"
+      />
     </Card>
   </div>
 </template>

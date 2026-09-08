@@ -1,134 +1,112 @@
 <script setup lang="ts">
 /**
  * 页35 贡献度评定（卡 P0-10.35；后端 ContributionController 已交付）。
- * 规则：市场 PM 40-65% / 研发 PM 35-60%；上市 90 天复盘三方评定；归档版本可追溯。
+ * 2026-09-08 契约对齐：改 GET /contributions/{projectId} 单项目视图
+ * （占比 + 五维 + 系数 + 决策链），原 /versions /current /submit 为臆造路径。
+ * 「版本历史列表」端点后端未交付（仅当前视图），页内登记真缺口。
  */
-import { computed, onMounted, ref } from 'vue';
-import { Alert, Button, Card, Empty, Input, Table, Tag } from 'ant-design-vue';
+import { computed, ref } from 'vue';
+import { Alert, Button, Card, Descriptions, DescriptionsItem, Empty, Input, Tag } from 'ant-design-vue';
 
 import {
-  type ContributionVersion,
-  getCurrentContribution,
-  listContributionVersions,
+  type ContributionView,
+  getContribution,
 } from '../../../../api/ipd/contribution';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
-import { formatPercent, formatDateTime } from '../../_shared/format';
+import { formatDateTime } from '../../_shared/format';
 
 defineOptions({ name: 'IpdContribution', meta: { ipdCard: 'P0-10.35' } });
 
 const projectId = ref('');
-const period = ref(defaultPeriod());
-const versions = ref<ContributionVersion[]>([]);
-const current = ref<null | ContributionVersion>(null);
+const view = ref<null | ContributionView>(null);
 const loading = ref(false);
 const errorMsg = ref('');
 const loaded = ref(false);
 
-function defaultPeriod(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+function sharePercent(value: null | number | string): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const num = Number(value);
+  return Number.isFinite(num) ? `${(num * 100).toFixed(1)}%` : String(value);
 }
 
-const statusText: Record<ContributionVersion['status'], string> = {
-  CONFIRMED: '已确认',
-  DRAFT: '草稿',
-};
-
-const statusColor: Record<ContributionVersion['status'], string> = {
-  CONFIRMED: 'success',
-  DRAFT: 'default',
-};
-
-const columns = [
-  { title: '版本号', dataIndex: 'version', key: 'version', width: 80 },
-  { title: '状态', key: 'status', width: 100 },
-  { title: '市场 PM 占比', key: 'market', width: 130 },
-  { title: '研发 PM 占比', key: 'rd', width: 130 },
-  { title: '市场 PM 占比下限', dataIndex: 'contributionMarketMin', key: 'marketMin', width: 150 },
-  { title: '研发 PM 占比上限', dataIndex: 'contributionRdMax', key: 'rdMax', width: 150 },
-  { title: '归档时间', key: 'archivedAt', width: 160 },
-];
-
 async function load(): Promise<void> {
-  if (!projectId.value.trim() || !period.value.trim() || loading.value) return;
+  const pid = projectId.value.trim();
+  if (!pid || loading.value) return;
   loading.value = true;
   errorMsg.value = '';
   try {
-    versions.value = await listContributionVersions(projectId.value.trim(), period.value.trim());
-    try {
-      current.value = await getCurrentContribution(projectId.value.trim(), period.value.trim());
-    } catch {
-      current.value = null;
-    }
+    view.value = await getContribution(pid);
     loaded.value = true;
   } catch (cause) {
-    versions.value = [];
-    current.value = null;
-    errorMsg.value = ipdErrorText(cause, { fallback: '贡献度版本加载失败' });
+    view.value = null;
+    errorMsg.value = ipdErrorText(cause, { fallback: '贡献度加载失败' });
   } finally {
     loading.value = false;
   }
 }
 
-const isEmpty = computed(() => loaded.value && !errorMsg.value && versions.value.length === 0);
+const isEmpty = computed(() => loaded.value && !errorMsg.value && !view.value);
 
-onMounted(() => {
-  // 首次进入不自动拉（必须先填 projectId），避免误跨项目。
-});
+const decisionText: Record<string, string> = {
+  APPROVE: '通过',
+  REJECT: '驳回',
+};
 </script>
 
 <template>
   <div class="p-4">
     <Alert
       class="mb-4"
-      message="贡献度：市场 PM 40-65% / 研发 PM 35-60%；归档版本可追溯，奖金引用同一版本。"
+      message="贡献度：市场 PM 40-65% / 研发 PM 35-60%（联动）；上市 90 天复盘三方评定；组长确认后奖金引用同一版本；退出/移交不静默重新分配。"
       show-icon
       type="info"
     />
 
-    <Card class="mb-4" title="按项目+周期查询">
+    <Card class="mb-4" title="按项目查询（贡献度按项目归档，无周期维度）">
       <div class="flex flex-wrap items-end gap-3">
         <div>
-          <div class="mb-1 text-xs text-gray-500">项目编号</div>
-          <Input v-model:value="projectId" placeholder="请输入项目编号" style="width: 200px" />
+          <div class="mb-1 text-xs text-gray-500">项目编号（必填）</div>
+          <Input v-model:value="projectId" placeholder="请输入项目编号" style="width: 220px" />
         </div>
-        <div>
-          <div class="mb-1 text-xs text-gray-500">核算周期（YYYY-MM）</div>
-          <Input v-model:value="period" placeholder="2026-09" style="width: 140px" />
-        </div>
-        <Button type="primary" :loading="loading" :disabled="!projectId.trim() || !period.trim()" @click="load">查询版本</Button>
+        <Button type="primary" :loading="loading" :disabled="!projectId.trim()" @click="load">查询贡献度</Button>
       </div>
     </Card>
 
-    <Card v-if="current" class="mb-4" :title="`当前生效版本 v${current.version}`">
-      <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div><span class="text-xs text-gray-500">市场 PM 占比：</span><strong>{{ formatPercent(current.marketPmShare) }}</strong></div>
-        <div><span class="text-xs text-gray-500">研发 PM 占比：</span><strong>{{ formatPercent(current.rdPmShare) }}</strong></div>
-        <div><span class="text-xs text-gray-500">状态：</span><Tag :color="statusColor[current.status]">{{ statusText[current.status] }}</Tag></div>
-      </div>
+    <Card class="mb-4" title="当前贡献度视图">
+      <Empty v-if="errorMsg || isEmpty || !view" :description="errorMsg || (isEmpty ? '该项目暂无贡献度记录' : '请输入项目编号后查询')" />
+      <Descriptions v-else :column="3" bordered size="small">
+        <DescriptionsItem label="项目编号">{{ view.projectId }}</DescriptionsItem>
+        <DescriptionsItem label="状态">
+          <Tag :color="view.status === 'CONFIRMED' ? 'success' : 'default'">
+            {{ view.status === 'CONFIRMED' ? '已确认' : (view.status ?? '—') }}
+          </Tag>
+        </DescriptionsItem>
+        <DescriptionsItem label="权重合法性">
+          <Tag :color="view.weightsValid ? 'green' : 'red'">{{ view.weightsValid ? '合法' : '非法' }}</Tag>
+        </DescriptionsItem>
+        <DescriptionsItem label="市场 PM 占比">{{ sharePercent(view.marketShare) }}</DescriptionsItem>
+        <DescriptionsItem label="研发 PM 占比">{{ sharePercent(view.rdShare) }}</DescriptionsItem>
+        <DescriptionsItem label="贡献度系数">{{ view.tierCoefficient ?? '—' }}</DescriptionsItem>
+        <DescriptionsItem label="主动性">{{ view.dimInitiation ?? '—' }}</DescriptionsItem>
+        <DescriptionsItem label="创新性">{{ view.dimInnovation ?? '—' }}</DescriptionsItem>
+        <DescriptionsItem label="上市达成">{{ view.dimLaunch ?? '—' }}</DescriptionsItem>
+        <DescriptionsItem label="市场结果">{{ view.dimMarketResult ?? '—' }}</DescriptionsItem>
+        <DescriptionsItem label="领导力">{{ view.dimLeadership ?? '—' }}</DescriptionsItem>
+        <DescriptionsItem label="提交时间">{{ view.submittedAt ? formatDateTime(view.submittedAt) : '—' }}</DescriptionsItem>
+        <DescriptionsItem label="组长决策">
+          {{ view.leaderDecision ? (decisionText[view.leaderDecision] ?? view.leaderDecision) : '待决策' }}
+        </DescriptionsItem>
+        <DescriptionsItem label="决策时间">{{ view.leaderDecidedAt ? formatDateTime(view.leaderDecidedAt) : '—' }}</DescriptionsItem>
+        <DescriptionsItem label="组长意见">{{ view.leaderOpinion ?? '—' }}</DescriptionsItem>
+      </Descriptions>
     </Card>
 
-    <Card title="贡献度版本列表（含历史归档）">
-      <Table
-        :columns="columns"
-        :data-source="versions"
-        :loading="loading"
-        :pagination="false"
-        row-key="id"
-        size="small"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'status'">
-            <Tag :color="statusColor[record.status as ContributionVersion['status']]">{{ statusText[record.status as ContributionVersion['status']] ?? record.status }}</Tag>
-          </template>
-          <template v-else-if="column.key === 'market'">{{ formatPercent(record.marketPmShare) }}</template>
-          <template v-else-if="column.key === 'rd'">{{ formatPercent(record.rdPmShare) }}</template>
-          <template v-else-if="column.key === 'archivedAt'">{{ formatDateTime(record.archivedAt) }}</template>
-        </template>
-        <template #emptyText>
-          <Empty :description="errorMsg || (isEmpty ? '该项目当前周期无版本记录' : (loaded ? '请输入项目编号+周期后查询' : '请先查询'))" />
-        </template>
-      </Table>
+    <Card title="版本历史">
+      <Alert
+        message="真缺口登记：「归档版本历史列表」端点后端未交付（GET /api/v1/contributions/{projectId} 仅返回当前视图，无版本列表端点），待后端补版本追溯端点后接线。保存/预览/调整/确认等写操作入口在项目详情激励流程中，本页当前为只读查询。"
+        show-icon
+        type="warning"
+      />
     </Card>
   </div>
 </template>

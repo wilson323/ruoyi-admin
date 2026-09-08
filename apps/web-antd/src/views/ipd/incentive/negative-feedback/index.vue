@@ -1,74 +1,95 @@
 <script setup lang="ts">
 /**
  * 页36 负反馈执行（卡 P0-10.36；后端 NegativeFeedbackController 已交付）。
- * 规则：主责停发 / 连带减半；触发表含需求返工/质量事故/错过市场窗口。
+ * 规则：主责停发 / 连带减半 / 双 PM 共同担责；主责/连带映射由 triggerType 服务端推导。
+ * 2026-09-08 契约对齐：查询改 GET /negative-feedbacks?projectId=&status=
+ * （projectId 必填；原 /list 会被后端 {id} 路由捕获转 Long 失败 → 500）。
  */
-import { computed, onMounted, ref } from 'vue';
-import { Alert, Card, Empty, Input, Table, Tag } from 'ant-design-vue';
+import { computed, ref } from 'vue';
+import { Alert, Card, Empty, Input, Select, Table, Tag } from 'ant-design-vue';
 
 import {
+  type NegativeExecution,
   type NegativeFeedback,
-  type NegativeRole,
-  type NegativeTrigger,
+  type NegativeStatus,
+  type NegativeTriggerType,
   listNegativeFeedback,
 } from '../../../../api/ipd/negative-feedback';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
-import { formatDateTime } from '../../_shared/format';
 
 defineOptions({ name: 'IpdNegativeFeedback', meta: { ipdCard: 'P0-10.36' } });
 
 const projectId = ref('');
-const personId = ref('');
+const status = ref<'' | NegativeStatus>('');
 const items = ref<NegativeFeedback[]>([]);
 const loading = ref(false);
 const errorMsg = ref('');
 const loaded = ref(false);
 
-const triggerText: Record<NegativeTrigger, string> = {
-  DEFECT_REWORK: '需求返工率超标',
+const triggerText: Record<NegativeTriggerType, string> = {
+  QUALITY_ACCIDENT: '质量事故',
   MISSED_MARKET_WINDOW: '错过市场窗口',
-  QUALITY_INCIDENT: '质量事故',
+  REWORK_EXCEEDED: '需求返工率超标',
+  SPEC_PILE_COPY: '参数堆砌/对标抄袭',
 };
 
-const triggerColor: Record<NegativeTrigger, string> = {
-  DEFECT_REWORK: 'orange',
-  MISSED_MARKET_WINDOW: 'red',
-  QUALITY_INCIDENT: 'volcano',
+const triggerColor: Record<NegativeTriggerType, string> = {
+  QUALITY_ACCIDENT: 'red',
+  MISSED_MARKET_WINDOW: 'magenta',
+  REWORK_EXCEEDED: 'orange',
+  SPEC_PILE_COPY: 'volcano',
 };
 
-const roleText: Record<NegativeRole, string> = {
-  PRIMARY: '主责（停发）',
-  SECONDARY: '次责（减半）',
-  CO_RESPONSIBLE: '共同担责',
+const statusText: Record<NegativeStatus, string> = {
+  DRAFT: '草稿',
+  EXECUTED: '已执行',
+  LIFTED: '已解除',
+  PENDING_DECISION: '待认定',
+  REJECTED: '已驳回',
 };
 
-const roleColor: Record<NegativeRole, string> = {
-  PRIMARY: 'red',
-  SECONDARY: 'orange',
-  CO_RESPONSIBLE: 'gold',
+const statusColor: Record<NegativeStatus, string> = {
+  DRAFT: 'default',
+  EXECUTED: 'red',
+  LIFTED: 'green',
+  PENDING_DECISION: 'processing',
+  REJECTED: 'warning',
 };
+
+const executionText: Record<NegativeExecution, string> = {
+  HALVE_ALLOWANCE: '减半',
+  STOP_ALLOWANCE: '停发',
+};
+
+const statusOptions = (Object.keys(statusText) as NegativeStatus[]).map((value) => ({
+  label: statusText[value],
+  value,
+}));
 
 const columns = [
-  { title: '编号', dataIndex: 'id', key: 'id', width: 110 },
-  { title: '项目', dataIndex: 'projectId', key: 'projectId', width: 110 },
-  { title: '人员', dataIndex: 'personId', key: 'personId', width: 110 },
-  { title: '触发原因', key: 'trigger', width: 150 },
-  { title: '责任', key: 'role', width: 130 },
-  { title: '生效月', dataIndex: 'effectiveMonth', key: 'effectiveMonth', width: 110 },
-  { title: '执行月', dataIndex: 'executeMonth', key: 'executeMonth', width: 130 },
-  { title: '恢复月', dataIndex: 'recoveryMonth', key: 'recoveryMonth', width: 130 },
-  { title: '登记时间', key: 'createTime', width: 150 },
+  { title: '编号', dataIndex: 'id', key: 'id', width: 150 },
+  { title: '项目', dataIndex: 'projectId', key: 'projectId', width: 150 },
+  { title: '触发类型', key: 'triggerType', width: 140 },
+  { title: '主责（执行动作）', key: 'main', width: 150 },
+  { title: '连带（执行动作）', key: 'related', width: 150 },
+  { title: '触发月', dataIndex: 'triggerMonth', key: 'triggerMonth', width: 100 },
+  { title: '恢复月', dataIndex: 'recoveryMonth', key: 'recoveryMonth', width: 100 },
+  { title: '奖金资格', key: 'bonus', width: 90 },
+  { title: '状态', key: 'status', width: 100 },
 ];
 
+function executionTag(execution: null | string): string {
+  const value = execution as NegativeExecution | null;
+  return value ? (executionText[value] ?? value) : '—';
+}
+
 async function load(): Promise<void> {
-  if (loading.value) return;
+  const pid = projectId.value.trim();
+  if (!pid || loading.value) return;
   loading.value = true;
   errorMsg.value = '';
   try {
-    items.value = await listNegativeFeedback({
-      projectId: projectId.value.trim() || undefined,
-      personId: personId.value.trim() || undefined,
-    });
+    items.value = await listNegativeFeedback(pid, status.value || undefined);
     loaded.value = true;
   } catch (cause) {
     items.value = [];
@@ -79,32 +100,36 @@ async function load(): Promise<void> {
 }
 
 const isEmpty = computed(() => loaded.value && !errorMsg.value && items.value.length === 0);
-
-onMounted(() => {
-  void load();
-});
 </script>
 
 <template>
   <div class="p-4">
     <Alert
       class="mb-4"
-      message="负反馈：主责停发 / 连带减半 / 共同担责（双 PM 共同担责无主次区分）；重复事件不重复扣减。"
+      message="负反馈：主责停发 / 连带减半 / 双 PM 共同担责（错过市场窗口无主次之分）；重复事件不重复扣减；录入与认定操作走待办/超管入口。"
       show-icon
       type="info"
     />
 
-    <Card class="mb-4" title="过滤条件">
+    <Card class="mb-4" title="过滤条件（项目编号必填）">
       <div class="flex flex-wrap items-end gap-3">
         <div>
-          <div class="mb-1 text-xs text-gray-500">项目编号（可选）</div>
-          <Input v-model:value="projectId" placeholder="按项目过滤" style="width: 200px" />
+          <div class="mb-1 text-xs text-gray-500">项目编号（必填）</div>
+          <Input v-model:value="projectId" placeholder="按项目过滤" style="width: 220px" />
         </div>
         <div>
-          <div class="mb-1 text-xs text-gray-500">人员编号（可选）</div>
-          <Input v-model:value="personId" placeholder="按 PM 范围过滤" style="width: 200px" />
+          <div class="mb-1 text-xs text-gray-500">状态（可选）</div>
+          <Select
+            v-model:value="status"
+            :options="statusOptions"
+            allow-clear
+            placeholder="全部状态"
+            style="width: 160px"
+          />
         </div>
-        <button class="primary-button" type="button" @click="load">查询负反馈</button>
+        <button class="primary-button" :disabled="!projectId.trim() || loading" type="button" @click="load">
+          查询负反馈
+        </button>
       </div>
     </Card>
 
@@ -118,18 +143,31 @@ onMounted(() => {
         size="small"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'trigger'">
-            <Tag :color="triggerColor[record.trigger as NegativeTrigger]">{{ triggerText[record.trigger as NegativeTrigger] ?? record.trigger }}</Tag>
+          <template v-if="column.key === 'triggerType'">
+            <Tag :color="triggerColor[record.triggerType as NegativeTriggerType]">
+              {{ triggerText[record.triggerType as NegativeTriggerType] ?? record.triggerType }}
+            </Tag>
           </template>
-          <template v-else-if="column.key === 'role'">
-            <Tag :color="roleColor[record.role as NegativeRole]">{{ roleText[record.role as NegativeRole] ?? record.role }}</Tag>
+          <template v-else-if="column.key === 'main'">
+            {{ record.mainPersonId ?? '—' }}（{{ executionTag(record.mainExecution) }}）
           </template>
-          <template v-else-if="column.key === 'executeMonth'">{{ record.executeMonth ?? '—' }}</template>
+          <template v-else-if="column.key === 'related'">
+            {{ record.relatedPersonId ?? '—' }}（{{ executionTag(record.relatedExecution) }}）
+          </template>
           <template v-else-if="column.key === 'recoveryMonth'">{{ record.recoveryMonth ?? '—' }}</template>
-          <template v-else-if="column.key === 'createTime'">{{ formatDateTime(record.createTime) }}</template>
+          <template v-else-if="column.key === 'bonus'">
+            <Tag :color="record.bonusDisqualify ? 'red' : 'green'">
+              {{ record.bonusDisqualify ? '取消资格' : '保留' }}
+            </Tag>
+          </template>
+          <template v-else-if="column.key === 'status'">
+            <Tag :color="statusColor[record.status as NegativeStatus]">
+              {{ statusText[record.status as NegativeStatus] ?? record.status }}
+            </Tag>
+          </template>
         </template>
         <template #emptyText>
-          <Empty :description="errorMsg || (isEmpty ? '当前过滤条件下无负反馈记录' : (loaded ? '请调整过滤条件后查询' : '加载中…'))" />
+          <Empty :description="errorMsg || (isEmpty ? '当前过滤条件下无负反馈记录' : '请输入项目编号后查询')" />
         </template>
       </Table>
     </Card>
