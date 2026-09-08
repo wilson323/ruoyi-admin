@@ -1,5 +1,5 @@
 /**
- * auth 契约测试：
+ * auth 纯逻辑契约测试（Wave 7 / agent A32）：
  *   A) 登录坏凭据枚举文案钉死（IpdAuthService.login 唯一固定值；与「账号已停用」「登录尝试过于频繁」共用 code 400+10001，
  *      文案本身即判别依据——锁死后任何替换会引发回归红）。
  *   B) parseIdentity happy path
@@ -7,6 +7,13 @@
  *   D) IpdRequestError 形态（5 字段 + name + Error 兼容）
  *   E) BUSINESS_CODE_MESSAGES 全量冒烟（通过 requestIpd 公有表面对所有枚举 code 间接断言，
  *      含未知 code 落到 HTTP-status 兜底文案的旁路）
+ *
+ * 与 auth-live.test.ts 的关系（docs/真HTTP验收规范-20260907.md §二）：
+ *   - 本文件（B 桶）：纯逻辑测试，**允许 vi.mock**，验证 parser / 错误码字符串映射 / 异常形态
+ *   - auth-live.test.ts：业务测试，**必须真 HTTP loopback**，
+ *     默认 skipIf(!IPD_LIVE_ACCEPTANCE)，跑通端到端 login → me → refresh → logout
+ *
+ * 拆分不增量：原 79 cases → 本文件纯逻辑 72 + auth-live.test.ts 业务 8 = 80 总数。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -418,6 +425,10 @@ describe('IpdRequestError shape', () => {
 // E. BUSINESS_CODE_MESSAGES coverage (smoke via public surface requestIpd)
 //    私有表 + 私有 helper 不可直接 import，故借 requestIpd 的 messageFromCode 分支间接断言：
 //    任意非 /auth/login 路径 + 200 OK + code !== 0 → 抛 IpdRequestError(messageFromCode(code))。
+//
+//    说明：本组测试**保留为 Mock 测试**（Bucket A）。理由：messageFromCode 是纯函数映射表，
+//    输入 code → 输出 string，测试运行结果不依赖后端实际行为。
+//    真实后端响应解析路径（login → envelope.code=0 等业务流）由 auth-live.test.ts 覆盖。
 // ──────────────────────────────────────────────────────────────────────────────
 describe('BUSINESS_CODE_MESSAGES coverage via requestIpd', () => {
   // 后端 ApiV1ErrorCode.java 实际下发的全部 21 个枚举（40001~40006 + 40010~40013 + 跳号 40007~40009 与后端一致缺失）。
