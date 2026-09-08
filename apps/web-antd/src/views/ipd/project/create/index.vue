@@ -35,7 +35,7 @@ import {
 
 import type { Project, ProjectCreateBody, ProjectLevel, TemplateType } from '../../../../api/ipd/project';
 import { createProject } from '../../../../api/ipd/project';
-import { isTransportError, projectErrorText } from '../project-error';
+import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import { RULES_BY_PAGE, renderRulesDescription } from '../../_shared/zk-ipd-rules';
 import '../../_shared/ipd-theme.css';
 
@@ -209,7 +209,7 @@ function cancel(): void {
         :message="submitError
           ? (isTransportError(submitError)
             ? '无法连接服务，请检查网络后重试'
-            : projectErrorText(submitError, {
+            : ipdErrorText(submitError, { domain: 'project',
                 fallback: '创建项目失败，请稍后重试',
                 codeTexts: {
                   40001: '阶段门禁未通过，请联系管理员',

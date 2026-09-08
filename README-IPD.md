@@ -16,4 +16,7 @@ pnpm run build:antd
 pnpm --filter @vben/web-antd run dev
 ```
 
+> ⚠️ `pnpm run dev` 在 macOS 下卡 read syscall，代理不响应。必须直 node：
+> `node /Users/mac/Documents/ruoyi-ipd-web/node_modules/vite/bin/vite.js --mode development --host 127.0.0.1 --port 15666`
+
 当前15666服务由DOC-09启动；复用已存在服务。依赖恢复保持pnpm10.14.0及frozen-lockfile，禁用未审阅生命周期脚本。未经用户明确要求不提交、推送或新建业务分支。

@@ -74,13 +74,13 @@ describe('页09 存量项目导入', () => {
 
   it('10001 missingHistoryAck=false → 后端拒绝', async () => {
     api.legacyImportProject.mockRejectedValueOnce(new IpdRequestError('x', 400, 10001, 'http'));
-    const { projectErrorText } = await import('../project-error');
-    const msg = projectErrorText(new IpdRequestError('x', 400, 10001, 'http'));
+    const { ipdErrorText } = await import('../../_shared/ipd-error-text');
+    const msg = ipdErrorText(new IpdRequestError('x', 400, 10001, 'http'), { domain: 'project' });
     expect(msg).toContain('输入信息');
   });
 
   it('transport 异常 → 网络异常文案', async () => {
-    const { isTransportError } = await import('../project-error');
+    const { isTransportError } = await import('../../_shared/ipd-error-text');
     expect(isTransportError(new IpdRequestError('x', 0, 0, 'transport'))).toBe(true);
   });
 

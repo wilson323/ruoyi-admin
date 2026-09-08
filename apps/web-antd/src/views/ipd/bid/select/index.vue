@@ -10,7 +10,7 @@
       <Alert
         v-if="loadError"
         class="mb-4"
-        :message="bidErrorText(loadError, { fallback: '遴选信息加载失败，请稍后重试', codeTexts: { 50001: '招标单不存在或已被删除', 90001: '招标单不存在或服务暂时不可用，请稍后重试' } })"
+        :message="ipdErrorText(loadError, { domain: 'bid', fallback: '遴选信息加载失败，请稍后重试', codeTexts: { 50001: '招标单不存在或已被删除', 90001: '招标单不存在或服务暂时不可用，请稍后重试' } })"
         type="error"
         show-icon
         role="alert"
@@ -164,7 +164,7 @@ import {
 import { getBidInvitation, listBidResponses, selectBidInvitation } from '../../../../api/ipd/bid';
 import type { BidInvitation, BidResponse } from '../../../../api/ipd/bid';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
-import { bidErrorText } from '../bid-error';
+import { ipdErrorText } from '../../_shared/ipd-error-text';
 import {
   bidModeText,
   bidResponseStatusColor,
@@ -255,7 +255,7 @@ async function doSelect(): Promise<void> {
     message.success('遴选完成，招标单已进入「已遴选」状态');
     await load();
   } catch (cause) {
-    selectError.value = bidErrorText(cause, {
+    selectError.value = ipdErrorText(cause, { domain: 'bid',
       fallback: '遴选失败，请稍后重试',
       codeTexts: {
         30001: '仅招标发起人可执行遴选',

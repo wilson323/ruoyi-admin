@@ -117,7 +117,7 @@ import { useRouter } from 'vue-router';
 import { Alert, Button, Card, DatePicker, Form, Input, Radio, message } from 'ant-design-vue';
 import { createBidInvitation } from '../../../../api/ipd/bid';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
-import { bidErrorText } from '../bid-error';
+import { ipdErrorText } from '../../_shared/ipd-error-text';
 import '../../_shared/ipd-theme.css';
 
 const router = useRouter();
@@ -195,7 +195,7 @@ async function submit(): Promise<void> {
     message.success('招标单已创建，当前状态：招标中');
     router.push('/ipd/bids');
   } catch (cause) {
-    submitError.value = bidErrorText(cause, {
+    submitError.value = ipdErrorText(cause, { domain: 'bid',
       fallback: '创建失败，请稍后重试',
       codeTexts: { 10001: '输入信息不符合要求，请检查各字段后重试', 30001: '当前账号无权发起招标，请联系管理员' },
     });

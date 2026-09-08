@@ -8,13 +8,13 @@ import { computed, onMounted, ref } from 'vue';
 import { Alert, Button, Card, Popconfirm, Table, message } from 'ant-design-vue';
 
 import {
-  DELETION_STATUS_TEXT,
   listDeletionArchive,
   purgeDeletionRequest,
   type DeletionRequest,
 } from '../../../../api/ipd/deletion';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { formatDateTime } from '../../_shared/format';
+import { DELETION_STATUS_TEXT } from '../../_shared/ipd-enums';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 
 const auth = useIpdAuthStore();

@@ -49,23 +49,15 @@ import {
   proposeLaunchDateChange,
 } from '../../../../api/ipd/change';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
+import { COEF_CHANGE_STATUS_TEXT, DECISION_LABEL } from '../../_shared/ipd-enums';
 
 const route = useRoute();
 const auth = useIpdAuthStore();
 
 const projectId = computed(() => String(route.params.projectId ?? ''));
 
-const STATUS_TEXTS: Record<string, string> = {
-  CONFIRMED: '已确认生效',
-  PENDING_LEADER: '待产品组长确认',
-  PENDING_SECOND: '待对方确认',
-  REJECTED: '已驳回',
-};
-
-const DECISION_LABEL: Record<string, string> = {
-  APPROVE: '通过',
-  REJECT: '驳回',
-};
+/** 系数/上市日变更审批状态（仅本页用，非通用状态机；走 SSOT 见 _shared/ipd-enums.COEF_CHANGE_STATUS_TEXT）。 */
+const STATUS_TEXTS: Record<string, string> = COEF_CHANGE_STATUS_TEXT;
 
 function statusText(status: null | string): string {
   return status ? (STATUS_TEXTS[status] ?? status) : PENDING_TEXT;

@@ -45,7 +45,7 @@ import {
   type GateChecklistView,
   type Project,
 } from '../../../api/ipd/project';
-import { isTransportError, projectErrorText } from '../project/project-error';
+import { isTransportError, ipdErrorText } from '../_shared/ipd-error-text';
 import { STAGE_ORDER, stageText } from '../project/project-display';
 import GatePanel from './gate-panel.vue';
 import { IPD_PERMISSION_CODES } from '../_shared/ipd-permission-codes';
@@ -88,7 +88,7 @@ async function loadProject(id: string): Promise<void> {
     project.value = detail;
     checklist.value = gate;
   } catch (cause) {
-    loadError.value = projectErrorText(cause);
+    loadError.value = ipdErrorText(cause, { domain: 'project' });
   } finally {
     loading.value = false;
   }
@@ -99,7 +99,7 @@ onMounted(async () => {
     projects.value = await listProjects();
     activeId.value = projects.value[0]?.id ?? '';
   } catch (cause) {
-    loadError.value = projectErrorText(cause);
+    loadError.value = ipdErrorText(cause, { domain: 'project' });
   }
   await loadProject(activeId.value);
 });
@@ -120,7 +120,7 @@ async function submitStage(): Promise<void> {
   } catch (cause) {
     advanceError.value = isTransportError(cause)
       ? '服务暂不可用，请稍后重试。'
-      : projectErrorText(cause);
+      : ipdErrorText(cause, { domain: 'project' });
   } finally {
     submitting.value = false;
   }

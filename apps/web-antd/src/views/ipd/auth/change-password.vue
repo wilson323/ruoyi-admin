@@ -23,21 +23,15 @@ import { DatabaseOutlined, LeftOutlined, WarningFilled } from '@ant-design/icons
 import ipdLogoUrl from '../../../assets/ipd-logo.png';
 import { IPD_LOGIN } from '../../../router/ipd-guard';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
+import { ROLE_TEXT } from '../_shared/ipd-enums';
 import { validateNewPassword } from './password-rules';
-
-const PERSON_TYPE_TEXT: Record<string, string> = {
-  GROUP_LEADER: '产品组长',
-  MARKET_PM: '市场PM',
-  RD_PM: '研发PM',
-  SUPER_ADMIN: '超级管理员',
-};
 
 const auth = useIpdAuthStore();
 const router = useRouter();
 const form = reactive({ confirmation: '', currentPassword: '', newPassword: '' });
 const validationError = ref('');
 const roleText = computed(
-  () => PERSON_TYPE_TEXT[auth.identity?.person.personType ?? ''] ?? 'IPD 成员',
+  () => ROLE_TEXT[auth.identity?.person.personType ?? ''] ?? 'IPD 成员',
 );
 function clearFields() {
   form.currentPassword = form.newPassword = form.confirmation = '';

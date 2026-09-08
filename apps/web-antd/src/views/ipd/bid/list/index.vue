@@ -27,11 +27,11 @@
         <Button v-else type="primary" @click="goCreate">发起招标</Button>
       </div>
 
-      <!-- 拒绝/断网态：错误码到中文文案的映射见 bid-error.ts -->
+      <!-- 拒绝/断网态：错误码到中文文案的映射见 _shared/ipd-error-text.ts（domain: 'bid'） -->
       <Alert
         v-if="loadError"
         class="mb-4"
-        :message="bidErrorText(loadError, { fallback: '招标单加载失败，请稍后重试' })"
+        :message="ipdErrorText(loadError, { domain: 'bid', fallback: '招标单加载失败，请稍后重试' })"
         type="error"
         show-icon
         role="alert"
@@ -95,7 +95,7 @@
               </Popconfirm>
             </Space>
             <div v-if="actionError === record.id" class="mt-1 text-xs">
-              <span class="text-destructive">{{ bidErrorText(actionErrorCause, { fallback: '操作失败，请稍后重试' }) }}</span>
+              <span class="text-destructive">{{ ipdErrorText(actionErrorCause, { domain: 'bid', fallback: '操作失败，请稍后重试' }) }}</span>
               <Button size="small" type="link" @click="load">刷新列表</Button>
               <Button size="small" type="link" @click="actionError = null">知道了</Button>
             </div>
@@ -109,7 +109,7 @@
       <Spin :spinning="detailLoading">
         <Alert
           v-if="detailError"
-          :message="bidErrorText(detailError, { fallback: '招标单详情加载失败' })"
+          :message="ipdErrorText(detailError, { domain: 'bid', fallback: '招标单详情加载失败' })"
           type="error"
           show-icon
         />
@@ -165,7 +165,7 @@ import {
 } from '../../../../api/ipd/bid';
 import type { BidInvitation, IpdPage } from '../../../../api/ipd/bid';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
-import { bidErrorText } from '../bid-error';
+import { ipdErrorText } from '../../_shared/ipd-error-text';
 import { bidModeText, bidStatusColor, bidStatusText, bidTimeText } from '../bid-display';
 import { RULES_BY_PAGE, renderRulesDescription } from '../../_shared/zk-ipd-rules';
 import '../../_shared/ipd-theme.css';

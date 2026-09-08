@@ -22,7 +22,6 @@ import {
 
 import {
   DELETION_ENTITY_TYPES,
-  DELETION_STATUS_TEXT,
   submitDeletionRequest,
   withinWithdrawWindow,
   withdrawDeletionRequest,
@@ -30,6 +29,7 @@ import {
   type DeletionRequest,
 } from '../../../../api/ipd/deletion';
 import { formatDateTime } from '../../_shared/format';
+import { DELETION_STATUS_TEXT } from '../../_shared/ipd-enums';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 
 const route = useRoute() as unknown as { query?: Record<string, unknown> } | undefined;

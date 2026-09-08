@@ -14,6 +14,7 @@ import type { WorkbenchSummary, WorkbenchTask } from '../../../api/ipd/workbench
 import { useIpdAuthStore } from '../../../store/ipd-auth';
 import '../_shared/ipd-theme.css';
 import { RULES_BY_PAGE, renderRulesDescription } from '../_shared/zk-ipd-rules';
+import { WORKBENCH_TASK_STATUS_TEXT } from '../_shared/ipd-enums';
 
 const auth = useIpdAuthStore();
 const workbenchRules = computed(() => renderRulesDescription(RULES_BY_PAGE.workbench));
@@ -89,11 +90,7 @@ interface TaskGroup {
   items: { kind: string; title: string; desc: string; code: string; initiator: string; time: string; overdue: boolean }[];
 }
 
-const STATUS_TEXT: Record<string, string> = {
-  IN_PROGRESS: '进行中',
-  NOT_STARTED: '未开始',
-  DELAYED: '已延期',
-};
+const STATUS_TEXT: Record<string, string> = WORKBENCH_TASK_STATUS_TEXT;
 
 function formatDue(iso: null | number | string): string {
   if (!iso) return '无截止';

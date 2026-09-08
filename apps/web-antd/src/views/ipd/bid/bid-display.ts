@@ -1,56 +1,35 @@
 /**
  * 招标组队域展示辅助（状态/方式中文映射、应标说明组装与校验）。
  *
+ * 状态/方式/应标状态的中文标签与配色已迁入 `_shared/ipd-state-machines.ts`（BID_STATUS_MACHINE /
+ * BID_RESPONSE_STATUS_MACHINE）与 `_shared/ipd-enums.ts`（BID_MODE_TEXT），本文件只保留：
+ * - view 层友好接口（兜底「待补充」）；
+ * - bidTimeText 时间归一；
+ * - 应标字段组装与校验契约（D-3~D-5）。
+ *
  * 真值来源：
  * - 状态机与术语：docs/开发说明/spec/_公共规范.md（G-06：未知值显示「待补充」，禁止绝对化文案）；
  * - 应标字段规则：spec batch-02 页21 + 后端 BidResponseService（solution_summary 映射列 response_note，40-500 字）。
  */
 import { formatDateTime } from '../_shared/format';
 import type { BidMode } from '../../../api/ipd/bid';
+import {
+  BID_MODE_TEXT,
+  bidResponseStatusLabel,
+  bidResponseStatusTone,
+  bidStatusLabel,
+  bidStatusTone,
+} from '../_shared/ipd-enums';
 
 /** G-06：未知值一律显示「待补充」，不留空白。 */
 export const BID_UNKNOWN = '待补充';
 
-const BID_STATUS_TEXT: Record<string, string> = {
-  CLOSED: '已关闭',
-  EXPIRED: '已过期',
-  OPEN: '招标中',
-  SELECTED: '已遴选',
-};
-
-const BID_STATUS_COLOR: Record<string, string> = {
-  CLOSED: 'default',
-  EXPIRED: 'warning',
-  OPEN: 'processing',
-  SELECTED: 'success',
-};
-
-const BID_MODE_TEXT: Record<string, string> = {
-  ONE_TO_ONE: '定向邀请',
-  PUBLIC: '公开征集',
-};
-
-const RESPONSE_STATUS_TEXT: Record<string, string> = {
-  ACCEPTED: '已中标',
-  PENDING: '已应标（待遴选）',
-  REJECTED: '已落选',
-  WITHDRAWN: '已撤回',
-};
-
-const RESPONSE_STATUS_COLOR: Record<string, string> = {
-  ACCEPTED: 'success',
-  PENDING: 'processing',
-  REJECTED: 'default',
-  WITHDRAWN: 'default',
-};
-
 export function bidStatusText(status: null | string | undefined): string {
-  if (!status) return BID_UNKNOWN;
-  return BID_STATUS_TEXT[status] ?? BID_UNKNOWN;
+  return bidStatusLabel(status, BID_UNKNOWN);
 }
 
 export function bidStatusColor(status: null | string | undefined): string {
-  return BID_STATUS_COLOR[status ?? ''] ?? 'default';
+  return bidStatusTone(status);
 }
 
 export function bidModeText(mode: null | BidMode | undefined): string {
@@ -59,12 +38,11 @@ export function bidModeText(mode: null | BidMode | undefined): string {
 }
 
 export function bidResponseStatusText(status: null | string | undefined): string {
-  if (!status) return BID_UNKNOWN;
-  return RESPONSE_STATUS_TEXT[status] ?? BID_UNKNOWN;
+  return bidResponseStatusLabel(status, BID_UNKNOWN);
 }
 
 export function bidResponseStatusColor(status: null | string | undefined): string {
-  return RESPONSE_STATUS_COLOR[status ?? ''] ?? 'default';
+  return bidResponseStatusTone(status);
 }
 
 /**

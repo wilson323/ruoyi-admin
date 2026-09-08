@@ -44,7 +44,7 @@ import type {
   TemplateType,
 } from '../../../../api/ipd/project';
 import { legacyImportProject } from '../../../../api/ipd/project';
-import { isTransportError, projectErrorText } from '../project-error';
+import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import { stageText } from '../project-display';
 
 const router = useRouter();
@@ -238,7 +238,7 @@ function gotoDetail(): void {
         :message="submitError
           ? (isTransportError(submitError)
             ? '无法连接服务，请检查网络后重试'
-            : projectErrorText(submitError, { fallback: '导入失败，请检查输入后重试' }))
+            : ipdErrorText(submitError, { domain: 'project', fallback: '导入失败，请检查输入后重试' }))
           : ''"
         type="error"
         show-icon

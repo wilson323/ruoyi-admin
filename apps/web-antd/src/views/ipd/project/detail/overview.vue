@@ -27,7 +27,7 @@ import {
   type ProjectStatus,
 } from '../../../../api/ipd/project';
 import { PENDING_TEXT } from '../../_shared/format';
-import { isTransportError, projectErrorText } from '../project-error';
+import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import {
   catchupText,
   coefficientText,
@@ -94,7 +94,7 @@ async function transit(target: ProjectStatus, label: string): Promise<void> {
     message.error(
       isTransportError(cause)
         ? '无法连接服务，请检查网络后重试'
-        : projectErrorText(cause, { fallback: '状态流转失败，请稍后重试' }),
+        : ipdErrorText(cause, { domain: 'project', fallback: '状态流转失败，请稍后重试' }),
     );
   } finally {
     transiting.value = '';
@@ -124,7 +124,7 @@ const catchupBanner = computed(() => {
       v-else-if="loadError"
       :message="isTransportError(loadError)
         ? '无法连接服务，请检查网络后重试'
-        : projectErrorText(loadError, { fallback: '项目概览加载失败，请稍后重试' })"
+        : ipdErrorText(loadError, { domain: 'project', fallback: '项目概览加载失败，请稍后重试' })"
       show-icon
       type="error"
     >

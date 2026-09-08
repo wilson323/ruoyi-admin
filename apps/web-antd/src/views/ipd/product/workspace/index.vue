@@ -20,6 +20,7 @@ import { listProductGroups, listProducts } from '../../../../api/ipd/product';
 import type { Product } from '../../../../api/ipd/product';
 import { fetchProductWorkspace } from '../../../../api/ipd/product-workspace';
 import type { ProductWorkspace } from '../../../../api/ipd/product-workspace';
+import { PRODUCT_STATUS_TEXT } from '../../_shared/ipd-enums';
 import '../../_shared/ipd-theme.css';
 
 const router = useRouter();
@@ -31,13 +32,7 @@ const data = ref<null | ProductWorkspace>(null);
 const loadError = ref('');
 const loading = ref(false);
 
-/** 产品状态 → 原型 lifecycle 展示词（后端无 lifecycle_status，按 listing status 映射）。 */
-const PRODUCT_STATUS_TEXT: Record<string, string> = {
-  ACTIVE: '启用',
-  INACTIVE: '停用',
-  IN_RD: '研发中',
-  ON_SALE: '在售',
-};
+/** 产品状态 → 原型 lifecycle 展示词（后端无 lifecycle_status，按 listing status 映射）。来源 _shared/ipd-enums.PRODUCT_STATUS_TEXT。 */
 
 function groupNameOf(id: null | string): string {
   return id ? (groups.value.get(id) ?? '') : '';

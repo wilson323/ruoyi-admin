@@ -24,32 +24,15 @@ import { listProducts } from '../../../api/ipd/product';
 import type { Product } from '../../../api/ipd/product';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
 import { RULES_BY_PAGE, renderRulesDescription } from '../_shared/zk-ipd-rules';
+import { DEMAND_STATUS_TONE, demandStateLabel } from '../_shared/ipd-enums';
 import '../_shared/ipd-theme.css';
 
 const auth = useIpdAuthStore();
 const isSuperAdmin = computed(() => auth.identity?.person.personType === 'SUPER_ADMIN');
 const demandRules = computed(() => renderRulesDescription(RULES_BY_PAGE.demand));
 
-/** 展示名沿用原型词汇；ACCEPTED/PROCESSING/CLOSED/ARCHIVED 为后端 v3 值域新增。 */
-const DEMAND_STATUS_TEXT: Record<string, string> = {
-  SUBMITTED: '新提交',
-  ACCEPTED: '已受理',
-  EVALUATING: '分析中',
-  SCHEDULED: '已规划',
-  PROCESSING: '处理中',
-  CLOSED: '已关闭',
-  ARCHIVED: '已归档',
-};
-/** pill 色调沿用原型既有色系（candidate 琥珀 / evaluating 蓝 / baselined 绿 / p2 灰）。 */
-const DEMAND_STATUS_TONE: Record<string, string> = {
-  SUBMITTED: 'amber',
-  ACCEPTED: 'blue',
-  EVALUATING: 'blue',
-  SCHEDULED: 'green',
-  PROCESSING: 'blue',
-  CLOSED: 'gray',
-  ARCHIVED: 'gray',
-};
+/** 状态中文标签走 _shared/ipd-state-machines.DEMAND_STATUS_MACHINE（SSOT），通过 demandStateLabel() 调用。 */
+/** pill 色调沿用原型既有色系（candidate 琥珀 / evaluating 蓝 / baselined 绿 / p2 灰），由 _shared/ipd-enums.DEMAND_STATUS_TONE 提供。 */
 
 const STATUS_ORDER = [
   'SUBMITTED',
@@ -200,7 +183,7 @@ async function onTriage(demand: IpdDemand, next: string) {
   try {
     await triageDemand(demand.id, { status: next });
     await loadDemands();
-    message.success(`需求 ${demand.id} 已更新为${DEMAND_STATUS_TEXT[next] ?? next}`);
+    message.success(`需求 ${demand.id} 已更新为${demandStateLabel(next, next)}`);
   } catch (error) {
     message.error(error instanceof Error ? error.message : '分流失败，请稍后重试');
   } finally {
@@ -320,7 +303,7 @@ onMounted(() => {
               type="button"
               @click="statusFilter = s"
             >
-              {{ s === 'all' ? '全部' : DEMAND_STATUS_TEXT[s] }}
+              {{ s === 'all' ? '全部' : demandStateLabel(s, s) }}
             </button>
           </div>
           <select
@@ -359,7 +342,7 @@ onMounted(() => {
             </div>
             <div class="ipd-req-demand-actions">
               <i :class="DEMAND_STATUS_TONE[d.status]" class="ipd-req-status-pill">
-                {{ DEMAND_STATUS_TEXT[d.status] ?? d.status }}
+                {{ demandStateLabel(d.status, d.status) }}
               </i>
               <button v-if="canStart(d)" :disabled="busyId === d.id" type="button" @click="onTriage(d, 'EVALUATING')">
                 开始分析
@@ -412,7 +395,7 @@ onMounted(() => {
               type="button"
               @click="projectStatusFilter = s"
             >
-              {{ s === 'all' ? '全部' : DEMAND_STATUS_TEXT[s] }}
+              {{ s === 'all' ? '全部' : demandStateLabel(s, s) }}
             </button>
           </div>
           <span>{{ visibleProjectDemands.length }} 条需求</span>
@@ -444,7 +427,7 @@ onMounted(() => {
             <span>{{ [d.marketPmName, d.rdPmName].filter(Boolean).join(' · ') || '—' }}</span>
             <span>
               <i :class="DEMAND_STATUS_TONE[d.status]" class="ipd-req-status-pill">
-                {{ DEMAND_STATUS_TEXT[d.status] ?? d.status }}
+                {{ demandStateLabel(d.status, d.status) }}
               </i>
             </span>
           </div>

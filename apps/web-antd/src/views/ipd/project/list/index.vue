@@ -39,7 +39,7 @@ import {
   stageText,
   templateText,
 } from '../project-display';
-import { isTransportError, projectErrorText } from '../project-error';
+import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import { createFilterState, useFilterSync } from '../../_shared/use-filter-sync';
 import '../../_shared/ipd-theme.css';
 
@@ -190,7 +190,7 @@ onMounted(load);
         :message="loadError
           ? (isTransportError(loadError)
             ? '无法连接服务，请检查网络后重试'
-            : projectErrorText(loadError, { fallback: '项目列表加载失败，请稍后重试' }))
+            : ipdErrorText(loadError, { domain: 'project', fallback: '项目列表加载失败，请稍后重试' }))
           : ''"
         type="error"
         show-icon

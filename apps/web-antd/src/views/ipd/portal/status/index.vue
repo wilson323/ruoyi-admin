@@ -21,7 +21,12 @@ const trace = ref<PortalDemandTrace | null>(null);
 /** 是否已发起过查询（区分「未查询」空态与查询中/失败）。 */
 const queried = ref(false);
 
-/** 页39 状态徽章映射（规格 8 态；未知值显式「待补充」，G-06 禁止空白）。 */
+/** 页39 状态徽章映射（规格 8 态；未知值显式「待补充」，G-06 禁止空白）。
+ *
+ * 注意：本页文案与 `_shared/ipd-state-machines.DEMAND_STATUS_MACHINE` 故意不同 —
+ *  游客侧强调动作进展（「已提交待受理」/「评估中」/「已排期」），内部侧强调状态归档（「新提交」/「分析中」/「已规划」）。
+ *  若未来打通，应同步更新 SSOT + 此处，不应改一边。
+ */
 const STATUS_TEXT: Record<string, string> = {
   SUBMITTED: '已提交待受理',
   ACCEPTED: '已受理',

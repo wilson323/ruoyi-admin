@@ -40,15 +40,19 @@ import {
 } from '../../../api/ipd/change';
 import { listProjects, type Project } from '../../../api/ipd/project';
 import { fetchDemands, type IpdDemand } from '../../../api/ipd/demand';
-import { projectErrorText } from '../project/project-error';
-import {
-  CHANGE_STATUS_MACHINE,
-} from '../_shared/ipd-state-machines';
+import { ipdErrorText } from '../_shared/ipd-error-text';
+import { changeStateLabel } from '../_shared/ipd-enums';
 
-/** V6 系统漂移修复：状态机集中查表，本页仅留展示别名映射（CSS 类名 → tone）。 */
-const STATUS_TEXT: Record<string, string> = Object.fromEntries(
-  CHANGE_STATUS_MACHINE.states.map((s) => [s.code, s.label]),
-);
+/** V6 系统漂移修复：状态机集中查表（_shared/ipd-state-machines.CHANGE_STATUS_MACHINE），
+ *  本页仅留展示别名映射（CSS 类名 → tone）。 */
+const STATUS_TEXT: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  for (const code of ['DRAFT', 'PENDING_SIGN', 'APPROVED', 'REJECTED']) {
+    const label = changeStateLabel(code, code);
+    if (label !== code) map[code] = label;
+  }
+  return map;
+})();
 const STATUS_TONE: Record<string, string> = {
   APPROVED: 'approved',
   DRAFT: 'draft',
@@ -100,7 +104,7 @@ async function loadChanges(): Promise<void> {
     changes.value = page.records;
     total.value = page.total;
   } catch (cause) {
-    loadError.value = projectErrorText(cause);
+    loadError.value = ipdErrorText(cause, { domain: 'project' });
   } finally {
     loading.value = false;
   }
@@ -129,7 +133,7 @@ onMounted(async () => {
     projects.value = await listProjects();
     activeId.value = projects.value[0]?.id ?? '';
   } catch (cause) {
-    loadError.value = projectErrorText(cause);
+    loadError.value = ipdErrorText(cause, { domain: 'project' });
   }
   await Promise.all([loadChanges(), loadDemands()]);
 });
@@ -145,7 +149,7 @@ async function submitForSign(item: RequirementChange): Promise<void> {
     message.success('变更单已进入双签队列');
     await loadChanges();
   } catch (cause) {
-    message.error(projectErrorText(cause));
+    message.error(ipdErrorText(cause, { domain: 'project' }));
   }
 }
 
@@ -161,7 +165,7 @@ async function sign(item: RequirementChange, decision: 'APPROVE' | 'REJECT'): Pr
     );
     await loadChanges();
   } catch (cause) {
-    message.error(projectErrorText(cause));
+    message.error(ipdErrorText(cause, { domain: 'project' }));
   }
 }
 
@@ -196,7 +200,7 @@ async function createChange(): Promise<void> {
     message.success('变更单草稿已创建，确认四维度快照后可提交双签');
     await loadChanges();
   } catch (cause) {
-    createError.value = projectErrorText(cause);
+    createError.value = ipdErrorText(cause, { domain: 'project' });
   } finally {
     submitting.value = false;
   }

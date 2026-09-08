@@ -2,6 +2,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ACTION_STATUS_MACHINE,
+  BID_RESPONSE_STATUS_MACHINE,
+  BID_STATUS_MACHINE,
   BONUS_STATUS_MACHINE,
   CHANGE_STATUS_MACHINE,
   DELETION_STATUS_MACHINE,
@@ -104,5 +107,37 @@ describe('通用 fallback 语义', () => {
     expect(stateLabel(PROJECT_STATUS_MACHINE, null)).toBe('待补充');
     expect(stateLabel(PROJECT_STATUS_MACHINE, undefined)).toBe('待补充');
     expect(stateTone(PROJECT_STATUS_MACHINE, null)).toBe('default');
+  });
+});
+
+describe('A28 新增状态机', () => {
+  it('BID_STATUS 4 态迁移：OPEN → SELECTED/EXPIRED/CLOSED', () => {
+    const next = nextStates(BID_STATUS_MACHINE, 'OPEN');
+    expect(next).toContain('SELECTED');
+    expect(next).toContain('EXPIRED');
+    expect(next).toContain('CLOSED');
+  });
+
+  it('BID_STATUS EXPIRED/CLOSED 终态', () => {
+    expect(nextStates(BID_STATUS_MACHINE, 'EXPIRED')).toEqual([]);
+    expect(nextStates(BID_STATUS_MACHINE, 'CLOSED')).toEqual([]);
+  });
+
+  it('BID_RESPONSE_STATUS PENDING → 三路（ACCEPTED/REJECTED/WITHDRAWN）', () => {
+    const next = nextStates(BID_RESPONSE_STATUS_MACHINE, 'PENDING');
+    expect(next).toContain('ACCEPTED');
+    expect(next).toContain('REJECTED');
+    expect(next).toContain('WITHDRAWN');
+  });
+
+  it('ACTION_STATUS 5 态：IN_PROGRESS → DONE/DELAYED', () => {
+    const next = nextStates(ACTION_STATUS_MACHINE, 'IN_PROGRESS');
+    expect(next).toContain('DONE');
+    expect(next).toContain('DELAYED');
+  });
+
+  it('ACTION_STATUS DONE/NA 终态', () => {
+    expect(nextStates(ACTION_STATUS_MACHINE, 'DONE')).toEqual([]);
+    expect(nextStates(ACTION_STATUS_MACHINE, 'NA')).toEqual([]);
   });
 });

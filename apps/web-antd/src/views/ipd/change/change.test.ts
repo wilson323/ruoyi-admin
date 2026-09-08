@@ -27,7 +27,14 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 interface ApiCall { body: unknown; method: string; url: string }
 
-function stubApi() {
+interface StubOptions {
+  projectsResponse?: { data: unknown[]; status?: number; code?: number };
+  changesResponse?: { data: { records: RequirementChange[]; total: number } | null; status?: number; code?: number; ok?: boolean };
+  demandsResponse?: { data: { demands: unknown[]; total: number } | null; status?: number; code?: number; ok?: boolean };
+  createResponse?: { data: RequirementChange | null; status?: number; code?: number; ok?: boolean };
+}
+
+function stubApi(options: StubOptions = {}) {
   setActivePinia(createPinia());
   const calls: ApiCall[] = [];
   // 服务端状态机语义：动作成功后列表 GET 反映新状态（与真实后端一致）
@@ -41,10 +48,37 @@ function stubApi() {
     const url = String(input);
     const method = (init?.method ?? 'GET').toUpperCase();
     calls.push({ body: init?.body ? JSON.parse(String(init.body)) : null, method, url });
-    if (method === 'GET' && url === '/api/v1/projects') return response([project]);
-    if (method === 'GET' && url.startsWith('/api/v1/demands?')) return response({ demands: [{ id: '5', title: '测试需求条目', productId: '10', status: 'SUBMITTED', source: 'INTERNAL', customerName: null, marketPmId: null, marketPmName: null, projectId: null, rdPmId: null, rdPmName: null, submitterName: null, createdAt: null }], total: 1 });
-    if (method === 'GET' && url.startsWith('/api/v1/requirement-changes?')) return response({ records: rows.map((row) => ({ ...row })), total: rows.length });
+    if (method === 'GET' && url === '/api/v1/projects') {
+      if (options.projectsResponse) {
+        return response(options.projectsResponse.data, options.projectsResponse.status ?? 200, options.projectsResponse.code ?? 0);
+      }
+      return response([project]);
+    }
+    if (method === 'GET' && url.startsWith('/api/v1/demands?')) {
+      if (options.demandsResponse) {
+        if (options.demandsResponse.ok === false) throw new TypeError('network unavailable');
+        return response(options.demandsResponse.data, options.demandsResponse.status ?? 200, options.demandsResponse.code ?? 0);
+      }
+      return response({ demands: [{ id: '5', title: '测试需求条目', productId: '10', status: 'SUBMITTED', source: 'INTERNAL', customerName: null, marketPmId: null, marketPmName: null, projectId: null, rdPmId: null, rdPmName: null, submitterName: null, createdAt: null }], total: 1 });
+    }
+    if (method === 'GET' && url.startsWith('/api/v1/requirement-changes?')) {
+      if (options.changesResponse) {
+        if (options.changesResponse.ok === false) throw new TypeError('network unavailable');
+        if (!options.changesResponse.data) {
+          return response(null, options.changesResponse.status ?? 500, options.changesResponse.code ?? 90001);
+        }
+        return response(options.changesResponse.data, options.changesResponse.status ?? 200, options.changesResponse.code ?? 0);
+      }
+      return response({ records: rows.map((row) => ({ ...row })), total: rows.length });
+    }
     if (method === 'POST' && url === '/api/v1/requirement-changes') {
+      if (options.createResponse) {
+        if (options.createResponse.ok === false) throw new TypeError('network unavailable');
+        if (!options.createResponse.data) {
+          return response(null, options.createResponse.status ?? 500, options.createResponse.code ?? 90001);
+        }
+        return response(options.createResponse.data, options.createResponse.status ?? 200, options.createResponse.code ?? 0);
+      }
       // noUncheckedIndexedAccess：不 spread 数组元素（类型含 undefined），显式完整构造
       const created: RequirementChange = {
         afterSnapshot: null, beforeSnapshot: null, changeType: '测试变更', createTime: null,
@@ -150,5 +184,502 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await vi.waitFor(() => expect(calls.some((call) => call.url === '/api/v1/requirement-changes/31/sign?decision=REJECT')).toBe(true));
     wrapper.unmount();
   });
-});
 
+  // ========== Flow 1: 列表/空态/错误/项目切换 ==========
+
+  it('shows empty state when the project has no changes', async () => {
+    stubApi({ changesResponse: { data: { records: [], total: 0 }, ok: true } });
+    const wrapper = mount(Change);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已加载 0 条变更单'));
+    expect(wrapper.text()).toContain('暂无变更申请单');
+    expect(wrapper.text()).toContain('该项目尚未发起需求变更');
+    // 空态时 metric 计数全 0
+    expect(wrapper.findAll('.metric-strip .metric strong').map((node) => node.text())).toEqual(['0', '0', '0', '0']);
+    wrapper.unmount();
+  });
+
+  it('renders error alert when listRequirementChanges fails (transport)', async () => {
+    stubApi({ changesResponse: { data: null, ok: false } });
+    const wrapper = mount(Change);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('无法连接服务'));
+    // Alert 组件渲染：description prop 文本可断言（happy-dom slot 不可见）
+    const alert = wrapper.find('.chg-alert');
+    expect(alert.exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('renders error alert when listProjects fails', async () => {
+    stubApi({ projectsResponse: { data: [], status: 500, code: 90001 } });
+    const wrapper = mount(Change);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('数据不存在或服务暂时不可用'));
+    // 没有项目可选 → 触发 loadChanges 的 activeId 空分支 → 列表/总量为 0
+    expect(wrapper.text()).toContain('已加载 0 条变更单');
+    wrapper.unmount();
+  });
+
+  it('switches project and reloads changes for the newly selected project', async () => {
+    const calls = stubApi();
+    const wrapper = await mountChange();
+    // 切到第二个项目需要 mock 两条记录；这里通过 stubApi 把列表回放检查
+    const select = wrapper.get('.change-project-selector select');
+    // 直接改 activeId 触发 watch → loadChanges + loadDemands 重跑
+    await select.setValue('7');
+    // 默认 fixtures 已覆盖同一 projectId；至少应再次触发 GET /requirement-changes 与 /demands
+    const changesCalls = calls.filter((call) => call.url.startsWith('/api/v1/requirement-changes?'));
+    expect(changesCalls.length).toBeGreaterThanOrEqual(2);
+    wrapper.unmount();
+  });
+
+  it('counts DRAFT/PENDING_SIGN/APPROVED/REJECTED in the metric strip', async () => {
+    stubApi({
+      changesResponse: {
+        data: {
+          records: [
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'a', createTime: null, id: '1', projectId: '7', reason: 'r', requirementId: '1', signatures: null, status: 'DRAFT' },
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'b', createTime: null, id: '2', projectId: '7', reason: 'r', requirementId: '2', signatures: null, status: 'DRAFT' },
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'c', createTime: null, id: '3', projectId: '7', reason: 'r', requirementId: '3', signatures: 'MARKET_PM:12=APPROVE', status: 'PENDING_SIGN' },
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'd', createTime: null, id: '4', projectId: '7', reason: 'r', requirementId: '4', signatures: 'MARKET_PM:12=APPROVE;RD_PM:34=APPROVE', status: 'APPROVED' },
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'e', createTime: null, id: '5', projectId: '7', reason: 'r', requirementId: '5', signatures: 'MARKET_PM:12=REJECT', status: 'REJECTED' },
+          ],
+          total: 5,
+        },
+        ok: true,
+      },
+    });
+    const wrapper = mount(Change);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已加载 5 条变更单'));
+    // metric-strip 顺序：全部 / 待双签 / 已批准 / 已驳回
+    expect(wrapper.findAll('.metric-strip .metric strong').map((node) => node.text())).toEqual(['5', '1', '1', '1']);
+    wrapper.unmount();
+  });
+
+  // ========== Flow 3: 状态机 + 动作链 ==========
+
+  it('renders status pill labels via ipd-state-machines CHANGE_STATUS_MACHINE', async () => {
+    stubApi({
+      changesResponse: {
+        data: {
+          records: [
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'a', createTime: null, id: '1', projectId: '7', reason: 'r', requirementId: '1', signatures: null, status: 'DRAFT' },
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'b', createTime: null, id: '2', projectId: '7', reason: 'r', requirementId: '2', signatures: 'MARKET_PM:12=APPROVE', status: 'PENDING_SIGN' },
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'c', createTime: null, id: '3', projectId: '7', reason: 'r', requirementId: '3', signatures: 'MARKET_PM:12=APPROVE;RD_PM:34=APPROVE', status: 'APPROVED' },
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'd', createTime: null, id: '4', projectId: '7', reason: 'r', requirementId: '4', signatures: 'MARKET_PM:12=REJECT', status: 'REJECTED' },
+          ],
+          total: 4,
+        },
+        ok: true,
+      },
+    });
+    const wrapper = mount(Change);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已加载 4 条变更单'));
+    const pills = wrapper.findAll('i.status-pill');
+    expect(pills.length).toBe(4);
+    // 状态机 SSOT：草稿 / 待双签 / 已批准 / 已驳回
+    expect(pills.map((pill) => pill.text())).toEqual(['草稿', '待双签', '已批准', '已驳回']);
+    wrapper.unmount();
+  });
+
+  it('renders the correct status-pill tone class per state (approved/pending/rejected/draft)', async () => {
+    stubApi({
+      changesResponse: {
+        data: {
+          records: [
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'a', createTime: null, id: '1', projectId: '7', reason: 'r', requirementId: '1', signatures: null, status: 'DRAFT' },
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'b', createTime: null, id: '2', projectId: '7', reason: 'r', requirementId: '2', signatures: 'MARKET_PM:12=APPROVE', status: 'PENDING_SIGN' },
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'c', createTime: null, id: '3', projectId: '7', reason: 'r', requirementId: '3', signatures: 'MARKET_PM:12=APPROVE;RD_PM:34=APPROVE', status: 'APPROVED' },
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'd', createTime: null, id: '4', projectId: '7', reason: 'r', requirementId: '4', signatures: 'MARKET_PM:12=REJECT', status: 'REJECTED' },
+          ],
+          total: 4,
+        },
+        ok: true,
+      },
+    });
+    const wrapper = mount(Change);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已加载 4 条变更单'));
+    const pills = wrapper.findAll('i.status-pill');
+    // DRAFT 不在 STATUS_TONE 表里，className 不含任何 tone
+    expect(pills[0]?.classes()).not.toContain('approved');
+    expect(pills[0]?.classes()).not.toContain('pending');
+    expect(pills[0]?.classes()).not.toContain('rejected');
+    expect(pills[1]?.classes()).toContain('pending');
+    expect(pills[2]?.classes()).toContain('approved');
+    expect(pills[3]?.classes()).toContain('rejected');
+    wrapper.unmount();
+  });
+
+  it('shows only submit button for DRAFT, no buttons for APPROVED/REJECTED', async () => {
+    stubApi({
+      changesResponse: {
+        data: {
+          records: [
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'a', createTime: null, id: '1', projectId: '7', reason: 'r', requirementId: '1', signatures: null, status: 'DRAFT' },
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'c', createTime: null, id: '3', projectId: '7', reason: 'r', requirementId: '3', signatures: 'MARKET_PM:12=APPROVE;RD_PM:34=APPROVE', status: 'APPROVED' },
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'd', createTime: null, id: '4', projectId: '7', reason: 'r', requirementId: '4', signatures: 'MARKET_PM:12=REJECT', status: 'REJECTED' },
+          ],
+          total: 3,
+        },
+        ok: true,
+      },
+    });
+    const wrapper = mount(Change);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已加载 3 条变更单'));
+    const articles = wrapper.findAll('.change-cards article');
+    const draftBtns = articles[0]?.findAll('.decision-buttons button').map((btn) => btn.text());
+    expect(draftBtns).toEqual(['提交双签']);
+    const approvedBtns = articles[1]?.findAll('.decision-buttons button') ?? [];
+    expect(approvedBtns.length).toBe(0);
+    const rejectedBtns = articles[2]?.findAll('.decision-buttons button') ?? [];
+    expect(rejectedBtns.length).toBe(0);
+    wrapper.unmount();
+  });
+
+  it('shows reject + approve buttons for PENDING_SIGN', async () => {
+    stubApi({
+      changesResponse: {
+        data: {
+          records: [
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'a', createTime: null, id: '1', projectId: '7', reason: 'r', requirementId: '1', signatures: 'MARKET_PM:12=APPROVE', status: 'PENDING_SIGN' },
+          ],
+          total: 1,
+        },
+        ok: true,
+      },
+    });
+    const wrapper = mount(Change);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已加载 1 条变更单'));
+    const btns = wrapper.findAll('.change-cards article')[0]?.findAll('.decision-buttons button').map((btn) => btn.text());
+    expect(btns).toEqual(['拒绝', '同意签署']);
+    wrapper.unmount();
+  });
+
+  it('submit failure surfaces a projectErrorText message', async () => {
+    const calls = stubApi();
+    const wrapper = await mountChange();
+    // 把 submit 端点替换为 500 抛错
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      calls.push({ body: init?.body ? JSON.parse(String(init.body)) : null, method, url });
+      if (method === 'PUT' && url === '/api/v1/requirement-changes/33/submit') {
+        return response(null, 500, 90001);
+      }
+      // 其他端点走原默认
+      if (method === 'GET' && url === '/api/v1/projects') return response([project]);
+      if (method === 'GET' && url.startsWith('/api/v1/demands?')) return response({ demands: [], total: 0 });
+      if (method === 'GET' && url.startsWith('/api/v1/requirement-changes?')) {
+        return response({ records: changes.map((row) => ({ ...row })), total: changes.length });
+      }
+      return response(null, 404, 40400);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    await wrapper.findAll('.change-cards article')[2]?.findAll('button').find((button) => button.text() === '提交双签')?.trigger('click');
+    // 错误走 message.error → antdv message，会注入到 document.body
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('数据不存在或服务暂时不可用');
+    });
+    wrapper.unmount();
+  });
+
+  it('sign REJECT success path triggers reload', async () => {
+    const calls = stubApi();
+    const wrapper = await mountChange();
+    const before = calls.filter((call) => call.url.startsWith('/api/v1/requirement-changes?')).length;
+    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '拒绝')?.trigger('click');
+    await vi.waitFor(() => expect(calls.some((call) => call.url === '/api/v1/requirement-changes/31/sign?decision=REJECT')).toBe(true));
+    // loadChanges 在 sign 成功后被调用
+    await vi.waitFor(() => {
+      const after = calls.filter((call) => call.url.startsWith('/api/v1/requirement-changes?')).length;
+      expect(after).toBeGreaterThan(before);
+    });
+    wrapper.unmount();
+  });
+
+  it('sign failure surfaces a projectErrorText message via message.error', async () => {
+    const calls = stubApi();
+    const wrapper = await mountChange();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      calls.push({ body: init?.body ? JSON.parse(String(init.body)) : null, method, url });
+      if (method === 'PUT' && url.startsWith('/api/v1/requirement-changes/') && url.includes('/sign')) {
+        return response(null, 500, 90001);
+      }
+      if (method === 'GET' && url === '/api/v1/projects') return response([project]);
+      if (method === 'GET' && url.startsWith('/api/v1/demands?')) return response({ demands: [], total: 0 });
+      if (method === 'GET' && url.startsWith('/api/v1/requirement-changes?')) {
+        return response({ records: changes.map((row) => ({ ...row })), total: changes.length });
+      }
+      return response(null, 404, 40400);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '拒绝')?.trigger('click');
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('数据不存在或服务暂时不可用');
+    });
+    wrapper.unmount();
+  });
+
+  // ========== Flow 4: 创建/编辑 ==========
+
+  it('closes the create modal via the cancel button', async () => {
+    stubApi();
+    const wrapper = await mountChange();
+    await wrapper.get('.page-heading .primary-button').trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('发起需求变更'));
+    await wrapper.findAll('button').find((button) => button.text() === '取消')?.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).not.toContain('发起需求变更'));
+    wrapper.unmount();
+  });
+
+  it('closes the create modal via the X close button in modal-head', async () => {
+    stubApi();
+    const wrapper = await mountChange();
+    await wrapper.get('.page-heading .primary-button').trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('发起需求变更'));
+    // X 按钮是 .modal-head > button（非 secondary-button）
+    await wrapper.get('.modal-head button').trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).not.toContain('发起需求变更'));
+    wrapper.unmount();
+  });
+
+  it('closes the create modal via backdrop self-click', async () => {
+    stubApi();
+    const wrapper = await mountChange();
+    await wrapper.get('.page-heading .primary-button').trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('发起需求变更'));
+    // backdrop 自身点击（@click.self）：trigger('click') 会冒泡到 backdrop，需模拟 self
+    const backdrop = wrapper.get('.modal-backdrop');
+    backdrop.element.dispatchEvent(new Event('click', { bubbles: false }));
+    await vi.waitFor(() => expect(wrapper.text()).not.toContain('发起需求变更'));
+    wrapper.unmount();
+  });
+
+  it('does not close the create modal when clicking inside the form', async () => {
+    stubApi();
+    const wrapper = await mountChange();
+    await wrapper.get('.page-heading .primary-button').trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('发起需求变更'));
+    await wrapper.get('form.create-modal').trigger('click');
+    expect(wrapper.text()).toContain('发起需求变更');
+    wrapper.unmount();
+  });
+
+  it('resets form fields when reopening the create modal', async () => {
+    stubApi();
+    const wrapper = await mountChange();
+    await wrapper.get('.page-heading .primary-button').trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('发起需求变更'));
+    const form = wrapper.get('form.create-modal');
+    await form.findAll('select')[1]?.setValue('5');
+    await form.findAll('input')[0]?.setValue('临时变更');
+    await form.findAll('textarea')[0]?.setValue('临时原因');
+    // 关闭并重新打开
+    await wrapper.findAll('button').find((button) => button.text() === '取消')?.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).not.toContain('发起需求变更'));
+    await wrapper.get('.page-heading .primary-button').trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('发起需求变更'));
+    // openModal 把 createForm 重置为全空串
+    const reopened = wrapper.get('form.create-modal');
+    expect((reopened.findAll('input')[0]?.element as HTMLInputElement).value).toBe('');
+    expect((reopened.findAll('textarea')[0]?.element as HTMLTextAreaElement).value).toBe('');
+    wrapper.unmount();
+  });
+
+  it('allows leaving snapshot fields blank on draft creation', async () => {
+    const calls = stubApi();
+    const wrapper = await mountChange();
+    await wrapper.get('.page-heading .primary-button').trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('发起需求变更'));
+    const form = wrapper.get('form.create-modal');
+    await form.findAll('select')[1]?.setValue('5');
+    await form.findAll('input')[0]?.setValue('功能范围调整');
+    await form.findAll('textarea')[0]?.setValue('客户要求砍掉离线模块');
+    // 前后快照两 textarea 留空（textarea[1] beforeSnapshot、textarea[2] afterSnapshot）
+    expect(form.findAll('textarea').length).toBeGreaterThanOrEqual(3);
+    await form.trigger('submit');
+    await vi.waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/v1/requirement-changes')).toBe(true));
+    const post = calls.find((call) => call.method === 'POST' && call.url === '/api/v1/requirement-changes');
+    // component 端把空快照 trim 后传 null
+    expect(post?.body).toMatchObject({ afterSnapshot: null, beforeSnapshot: null });
+    wrapper.unmount();
+  });
+
+  it('submits with full snapshot data when both before/after are filled', async () => {
+    const calls = stubApi();
+    const wrapper = await mountChange();
+    await wrapper.get('.page-heading .primary-button').trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('发起需求变更'));
+    const form = wrapper.get('form.create-modal');
+    await form.findAll('select')[1]?.setValue('5');
+    await form.findAll('input')[0]?.setValue('性能目标修订');
+    await form.findAll('textarea')[0]?.setValue('Benchmark 复测');
+    // textarea[1] = beforeSnapshot、textarea[2] = afterSnapshot
+    await form.findAll('textarea')[1]?.setValue('{"scope":"含离线"}');
+    await form.findAll('textarea')[2]?.setValue('{"scope":"不含离线"}');
+    await form.trigger('submit');
+    await vi.waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/v1/requirement-changes')).toBe(true));
+    const post = calls.find((call) => call.method === 'POST' && call.url === '/api/v1/requirement-changes');
+    expect(post?.body).toMatchObject({
+      afterSnapshot: '{"scope":"不含离线"}',
+      beforeSnapshot: '{"scope":"含离线"}',
+      changeType: '性能目标修订',
+      projectId: '7',
+      reason: 'Benchmark 复测',
+      requirementId: '5',
+    });
+    wrapper.unmount();
+  });
+
+  it('shows API error inside the create modal form on POST failure', async () => {
+    stubApi({ createResponse: { data: null, status: 500, code: 90001 } });
+    const wrapper = await mountChange();
+    await wrapper.get('.page-heading .primary-button').trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('发起需求变更'));
+    const form = wrapper.get('form.create-modal');
+    await form.findAll('select')[1]?.setValue('5');
+    await form.findAll('input')[0]?.setValue('测试变更');
+    await form.findAll('textarea')[0]?.setValue('因为渠道反馈');
+    await form.trigger('submit');
+    await vi.waitFor(() => {
+      const errorBlock = wrapper.find('.form-error');
+      expect(errorBlock.exists()).toBe(true);
+      expect(errorBlock.text()).toContain('数据不存在或服务暂时不可用');
+    });
+    // 模态保持打开（错误回填到 createError）
+    expect(wrapper.text()).toContain('发起需求变更');
+    wrapper.unmount();
+  });
+
+  // ========== signatures 解析（SSOT 解析逻辑） ==========
+
+  it('parses MARKET_PM=APPROVE / RD_PM=APPROVE dual signatures', async () => {
+    stubApi();
+    const wrapper = await mountChange();
+    // #32 已有双签齐的 signatures
+    const articles = wrapper.findAll('.change-cards article');
+    const card32 = articles[1]?.text() ?? '';
+    expect(card32).toContain('已同意');
+    // #32 市场PM 和 研发PM 都应显示「已同意」
+    expect((card32.match(/已同意/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    wrapper.unmount();
+  });
+
+  it('parses MARKET_PM=APPROVE while RD_PM is still 待签', async () => {
+    stubApi();
+    const wrapper = await mountChange();
+    // #31 signatures='MARKET_PM:12=APPROVE'（无 RD_PM 段）
+    const articles = wrapper.findAll('.change-cards article');
+    const card31 = articles[0]?.text() ?? '';
+    expect(card31).toContain('已同意');
+    expect(card31).toContain('待签');
+    wrapper.unmount();
+  });
+
+  it('treats null signatures as 待签 for both PMs', async () => {
+    stubApi({
+      changesResponse: {
+        data: {
+          records: [
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'a', createTime: null, id: '1', projectId: '7', reason: 'r', requirementId: '1', signatures: null, status: 'DRAFT' },
+          ],
+          total: 1,
+        },
+        ok: true,
+      },
+    });
+    const wrapper = mount(Change);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已加载 1 条变更单'));
+    const card = wrapper.findAll('.change-cards article')[0]?.text() ?? '';
+    // MARKET_PM 与 RD_PM 都应渲染为「待签」
+    expect((card.match(/待签/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    wrapper.unmount();
+  });
+
+  // ========== 快照详情展开/收起 ==========
+
+  it('hides snapshot details when both beforeSnapshot and afterSnapshot are null', async () => {
+    stubApi({
+      changesResponse: {
+        data: {
+          records: [
+            { afterSnapshot: null, beforeSnapshot: null, changeType: 'a', createTime: null, id: '1', projectId: '7', reason: 'r', requirementId: '1', signatures: null, status: 'DRAFT' },
+          ],
+          total: 1,
+        },
+        ok: true,
+      },
+    });
+    const wrapper = mount(Change);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已加载 1 条变更单'));
+    expect(wrapper.findAll('details.snapshot-details').length).toBe(0);
+    wrapper.unmount();
+  });
+
+  it('shows snapshot details when beforeSnapshot is present', async () => {
+    stubApi({
+      changesResponse: {
+        data: {
+          records: [
+            { afterSnapshot: null, beforeSnapshot: '{"scope":"old"}', changeType: 'a', createTime: null, id: '1', projectId: '7', reason: 'r', requirementId: '1', signatures: null, status: 'DRAFT' },
+          ],
+          total: 1,
+        },
+        ok: true,
+      },
+    });
+    const wrapper = mount(Change);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已加载 1 条变更单'));
+    const details = wrapper.find('details.snapshot-details');
+    expect(details.exists()).toBe(true);
+    expect(wrapper.text()).toContain('变更前：{"scope":"old"}');
+    wrapper.unmount();
+  });
+
+  it('shows snapshot details when afterSnapshot is present', async () => {
+    stubApi({
+      changesResponse: {
+        data: {
+          records: [
+            { afterSnapshot: '{"latency":"200ms"}', beforeSnapshot: null, changeType: 'a', createTime: null, id: '1', projectId: '7', reason: 'r', requirementId: '1', signatures: null, status: 'DRAFT' },
+          ],
+          total: 1,
+        },
+        ok: true,
+      },
+    });
+    const wrapper = mount(Change);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已加载 1 条变更单'));
+    expect(wrapper.text()).toContain('变更后：{"latency":"200ms"}');
+    wrapper.unmount();
+  });
+
+  // ========== 关联需求下拉（demands 加载与失败容错） ==========
+
+  it('issues GET /demands with the active productId', async () => {
+    const calls = stubApi();
+    const wrapper = await mountChange();
+    const demandCall = calls.find((call) => call.url.startsWith('/api/v1/demands?'));
+    expect(demandCall).toBeDefined();
+    expect(demandCall?.url).toContain('productId=10');
+    wrapper.unmount();
+  });
+
+  it('does not crash when fetchDemands fails (page still renders list)', async () => {
+    stubApi({ demandsResponse: { data: null, ok: false } });
+    const wrapper = mount(Change);
+    // 列表仍能渲染（demands 失败容错）
+    await vi.waitFor(() => expect(wrapper.text()).toContain('变更单 #31'));
+    expect(wrapper.text()).toContain('变更管理');
+    wrapper.unmount();
+  });
+
+  it('renders the empty-demand placeholder when product has no demands', async () => {
+    stubApi({ demandsResponse: { data: { demands: [], total: 0 }, ok: true } });
+    const wrapper = await mountChange();
+    await wrapper.get('.page-heading .primary-button').trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('发起需求变更'));
+    // 关联需求下拉的 placeholder：「请选择需求（0 条）」
+    expect(wrapper.text()).toContain('请选择需求（0 条）');
+    wrapper.unmount();
+  });
+});

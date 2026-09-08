@@ -70,21 +70,22 @@ describe('页08 新建项目', () => {
   it('40004 角色冲突 → 中文错误提示', async () => {
     api.createProject.mockRejectedValueOnce(new IpdRequestError('x', 409, 40004, 'http'));
     // 验证：错误码映射函数返回预期中文
-    const { projectErrorText } = await import('../project-error');
-    const msg = projectErrorText(new IpdRequestError('x', 409, 40004, 'http'), {
+    const { ipdErrorText } = await import('../../_shared/ipd-error-text');
+    const msg = ipdErrorText(new IpdRequestError('x', 409, 40004, 'http'), {
+      domain: 'project',
       codeTexts: { 40004: '市场PM 与研发PM 不能由同一人担任，请确认后重试' },
     });
     expect(msg).toContain('市场PM');
   });
 
   it('50002 乐观锁/状态冲突 → 提示刷新', async () => {
-    const { projectErrorText } = await import('../project-error');
-    const msg = projectErrorText(new IpdRequestError('x', 409, 50002, 'http'));
+    const { ipdErrorText } = await import('../../_shared/ipd-error-text');
+    const msg = ipdErrorText(new IpdRequestError('x', 409, 50002, 'http'), { domain: 'project' });
     expect(msg).toContain('状态已变更');
   });
 
   it('transport 异常 → 网络异常文案', async () => {
-    const { isTransportError } = await import('../project-error');
+    const { isTransportError } = await import('../../_shared/ipd-error-text');
     const err = new IpdRequestError('x', 0, 0, 'transport');
     expect(isTransportError(err)).toBe(true);
   });

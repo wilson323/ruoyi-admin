@@ -49,7 +49,7 @@ import {
   recordStageActionFields,
   transitStageAction,
 } from '../../../../api/ipd/stage-action';
-import { isTransportError, projectErrorText } from '../project-error';
+import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import {
   actionStatusColor,
   actionStatusText,
@@ -72,14 +72,14 @@ const loading = ref(false);
 const loadError = ref<unknown>(null);
 const action = ref<StageAction | null>(null);
 
-/** 区分 IpdRequestError / 普通 Error：业务拒绝走 projectErrorText，本地判定走原 message。 */
+/** 区分 IpdRequestError / 普通 Error：业务拒绝走 ipdErrorText（domain: 'project'），本地判定走原 message。 */
 const loadErrorText = computed(() => {
   if (!loadError.value) return '';
   if (isTransportError(loadError.value)) return '无法连接服务，请检查网络后重试';
   if (loadError.value instanceof Error && !(loadError.value as { kind?: string }).kind) {
     return loadError.value.message || '动作详情加载失败，请稍后重试';
   }
-  return projectErrorText(loadError.value, { fallback: '动作详情加载失败，请稍后重试' });
+  return ipdErrorText(loadError.value, { domain: 'project', fallback: '动作详情加载失败，请稍后重试' });
 });
 
 const statusOptions: Array<{ label: string; value: StageActionStatus }> = [
@@ -328,7 +328,7 @@ onMounted(load);
         :message="submitError
           ? (isTransportError(submitError)
             ? '无法连接服务，请检查网络后重试'
-            : projectErrorText(submitError, {
+            : ipdErrorText(submitError, { domain: 'project',
                 fallback: '操作失败，请稍后重试',
                 codeTexts: {
                   50002: '状态已变更（可能其他人已编辑），请刷新后重试',

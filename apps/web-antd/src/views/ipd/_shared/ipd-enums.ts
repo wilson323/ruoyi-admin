@@ -16,6 +16,9 @@
  */
 
 import {
+  ACTION_STATUS_MACHINE,
+  BID_RESPONSE_STATUS_MACHINE,
+  BID_STATUS_MACHINE,
   BONUS_STATUS_MACHINE,
   CHANGE_STATUS_MACHINE,
   DELETION_STATUS_MACHINE,
@@ -159,3 +162,173 @@ export const changeStateLabel = (code: null | string | undefined, fallback?: str
 
 export const changeStateTone = (code: null | string | undefined, fallback?: string) =>
   stateTone(CHANGE_STATUS_MACHINE, code, fallback);
+
+/** 阶段动作状态中文（由 ACTION_STATUS_MACHINE 派生）。 */
+export const actionStatusLabel = (code: null | string | undefined, fallback?: string) =>
+  stateLabel(ACTION_STATUS_MACHINE, code, fallback);
+
+export const actionStatusTone = (code: null | string | undefined, fallback?: string) =>
+  stateTone(ACTION_STATUS_MACHINE, code, fallback);
+
+/** 招标单状态中文（由 BID_STATUS_MACHINE 派生）。 */
+export const bidStatusLabel = (code: null | string | undefined, fallback?: string) =>
+  stateLabel(BID_STATUS_MACHINE, code, fallback);
+
+export const bidStatusTone = (code: null | string | undefined, fallback?: string) =>
+  stateTone(BID_STATUS_MACHINE, code, fallback);
+
+/** 应标状态中文（由 BID_RESPONSE_STATUS_MACHINE 派生）。 */
+export const bidResponseStatusLabel = (code: null | string | undefined, fallback?: string) =>
+  stateLabel(BID_RESPONSE_STATUS_MACHINE, code, fallback);
+
+export const bidResponseStatusTone = (code: null | string | undefined, fallback?: string) =>
+  stateTone(BID_RESPONSE_STATUS_MACHINE, code, fallback);
+
+/** 项目角色中文（仅 GROUP_LEADER/MARKET_PM/RD_PM/SUPER_ADMIN；INTERNAL 不属于项目级角色显示）。 */
+export const PERSON_TYPE_TEXT_FROM_ROLE: Record<string, string> = {
+  GROUP_LEADER: '产品组长',
+  MARKET_PM: '市场PM',
+  RD_PM: '研发PM',
+  SUPER_ADMIN: '超级管理员',
+};
+
+export function personTypeText(type: null | string | undefined, fallback = '待补充'): string {
+  if (!type) return fallback;
+  return PERSON_TYPE_TEXT_FROM_ROLE[type] ?? fallback;
+}
+
+// ============ 显示映射表（非状态机；仅 label/tone 查表）============
+/** 招标单状态中文（由 BID_STATUS_MACHINE 派生）。 */
+export const BID_STATUS_TEXT: Record<string, string> = Object.fromEntries(
+  BID_STATUS_MACHINE.states.map((s) => [s.code, s.label]),
+);
+export const BID_STATUS_COLOR: Record<string, string> = Object.fromEntries(
+  BID_STATUS_MACHINE.states.map((s) => [s.code, s.tone]),
+);
+
+/** 招标方式中文（静态映射；非状态机）。 */
+export const BID_MODE_TEXT: Record<string, string> = {
+  ONE_TO_ONE: '定向邀请',
+  PUBLIC: '公开征集',
+};
+
+/** 应标状态中文（由 BID_RESPONSE_STATUS_MACHINE 派生）。 */
+export const BID_RESPONSE_STATUS_TEXT: Record<string, string> = Object.fromEntries(
+  BID_RESPONSE_STATUS_MACHINE.states.map((s) => [s.code, s.label]),
+);
+export const BID_RESPONSE_STATUS_COLOR: Record<string, string> = Object.fromEntries(
+  BID_RESPONSE_STATUS_MACHINE.states.map((s) => [s.code, s.tone]),
+);
+
+/** 阶段动作状态中文（由 ACTION_STATUS_MACHINE 派生）。 */
+export const ACTION_STATUS_TEXT: Record<string, string> = Object.fromEntries(
+  ACTION_STATUS_MACHINE.states.map((s) => [s.code, s.label]),
+);
+export const ACTION_STATUS_COLOR: Record<string, string> = Object.fromEntries(
+  ACTION_STATUS_MACHINE.states.map((s) => [s.code, s.tone]),
+);
+
+/** 六阶段 UI 配色（含 label；CONCEPT→PLAN→DEV→VALID→LAUNCH→LIFECYCLE）。 */
+export const STAGE_TEXT: Record<string, string> = {
+  CONCEPT: '概念阶段',
+  DEV: '开发阶段',
+  LAUNCH: '发布阶段',
+  LIFECYCLE: '生命周期',
+  PLAN: '计划阶段',
+  VALID: '验证阶段',
+};
+
+/** 立项级别 S/A/B（前端仅展示文本，coefficient 由后端 ProjectLevelCoefficient 决定）。 */
+export const LEVEL_TEXT: Record<string, string> = {
+  A: 'A 级（标准）',
+  B: 'B 级（差异化下调）',
+  S: 'S 级（战略）',
+};
+
+/** 模板类型 HARDWARE/SOFTWARE/SOLUTION（BR-PROD-02 三模板分支）。 */
+export const TEMPLATE_TEXT: Record<string, string> = {
+  HARDWARE: '硬件',
+  SOFTWARE: '软件',
+  SOLUTION: '解决方案',
+};
+
+/** 项目来源 NEW/LEGACY（存量导入）。 */
+export const SOURCE_TEXT: Record<string, string> = {
+  LEGACY: '存量导入',
+  NEW: '新建',
+};
+
+/** 补齐状态（存量项目 IN_PROGRESS/COMPLETE）。 */
+export const CATCHUP_TEXT: Record<string, string> = {
+  COMPLETE: '已补齐',
+  IN_PROGRESS: '补齐中',
+};
+
+/** 动作深度 DEEP/LIGHT（公共规范第六节 + BR-IPD-03/04）。 */
+export const DEPTH_TEXT: Record<string, string> = {
+  DEEP: '深管动作',
+  LIGHT: '轻管动作',
+};
+export const DEPTH_COLOR: Record<string, string> = {
+  DEEP: 'processing',
+  LIGHT: 'default',
+};
+
+/** 算法分类 FINGERPRINT/FACE/PALM/VEIN/MULTI。 */
+export const ALGO_TEXT: Record<string, string> = {
+  FACE: '人脸',
+  FINGERPRINT: '指纹',
+  MULTI: '多模态',
+  PALM: '掌纹',
+  VEIN: '指静脉',
+};
+
+/** 产品 workspace 状态 → 原型 lifecycle 展示词（后端无 lifecycle_status，按 listing status 映射）。 */
+export const PRODUCT_STATUS_TEXT: Record<string, string> = {
+  ACTIVE: '启用',
+  INACTIVE: '停用',
+  IN_RD: '研发中',
+  ON_SALE: '在售',
+};
+
+/** 工作台任务状态中文（NOT_STARTED/IN_PROGRESS/DELAYED）。 */
+export const WORKBENCH_TASK_STATUS_TEXT: Record<string, string> = {
+  DELAYED: '已延期',
+  IN_PROGRESS: '进行中',
+  NOT_STARTED: '未开始',
+};
+
+/** 决策动作 APPROVE/REJECT（系数变更等审批页用）。 */
+export const DECISION_LABEL: Record<string, string> = {
+  APPROVE: '通过',
+  REJECT: '驳回',
+};
+
+/** 系数变更审批状态（项目详情 changes 页自定义 4 态；非通用状态机）。 */
+export const COEF_CHANGE_STATUS_TEXT: Record<string, string> = {
+  CONFIRMED: '已确认生效',
+  PENDING_LEADER: '待产品组长确认',
+  PENDING_SECOND: '待对方确认',
+  REJECTED: '已驳回',
+};
+
+/** 需求状态色调补充（demand/index.vue 原型色系；非业务状态机 tone）。 */
+export const DEMAND_STATUS_TONE: Record<string, string> = {
+  ACCEPTED: 'blue',
+  ARCHIVED: 'gray',
+  CLOSED: 'gray',
+  EVALUATING: 'blue',
+  PROCESSING: 'blue',
+  SCHEDULED: 'green',
+  SUBMITTED: 'amber',
+};
+
+/** 删除申请状态中文（api/ipd/deletion 实际使用的 code 与 _shared/ipd-state-machines.DELETION_STATUS_MACHINE 不同，
+ *  前端展示仍按此 5 态：ADMIN_REVIEW/DELETED/LEADER_REVIEW/REJECTED/WITHDRAWN）。 */
+export const DELETION_STATUS_TEXT: Record<string, string> = {
+  ADMIN_REVIEW: '超管终审中',
+  DELETED: '已删除（归档）',
+  LEADER_REVIEW: '组长初审中',
+  REJECTED: '已驳回',
+  WITHDRAWN: '已撤回',
+};

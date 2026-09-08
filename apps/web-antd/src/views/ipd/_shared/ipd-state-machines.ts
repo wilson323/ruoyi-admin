@@ -39,6 +39,10 @@ export type DeletionStatus =
   | 'ARCHIVED';
 export type GateStatus = 'PENDING' | 'IN_PROGRESS' | 'PASSED' | 'FAILED';
 export type ChangeStatus = 'DRAFT' | 'PENDING_SIGN' | 'APPROVED' | 'REJECTED';
+export type BidStatus = 'OPEN' | 'SELECTED' | 'EXPIRED' | 'CLOSED';
+export type BidMode = 'PUBLIC' | 'ONE_TO_ONE';
+export type BidResponseStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN';
+export type ActionStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'DONE' | 'DELAYED' | 'NA';
 
 export interface StateNode<S extends string> {
   code: S;
@@ -174,6 +178,62 @@ export const CHANGE_STATUS_MACHINE: StateMachine<ChangeStatus> = buildMachine(
     PENDING_SIGN: ['APPROVED', 'REJECTED'],
     APPROVED: [],
     REJECTED: [],
+  },
+);
+
+// ============ 招标单状态机（4 态）============
+const BID_STATES: readonly StateNode<BidStatus>[] = [
+  { code: 'OPEN', label: '招标中', tone: 'processing' },
+  { code: 'SELECTED', label: '已遴选', tone: 'success' },
+  { code: 'EXPIRED', label: '已过期', tone: 'warning' },
+  { code: 'CLOSED', label: '已关闭', tone: 'default' },
+];
+export const BID_STATUS_MACHINE: StateMachine<BidStatus> = buildMachine(
+  'BID_STATUS',
+  BID_STATES,
+  {
+    OPEN: ['SELECTED', 'EXPIRED', 'CLOSED'],
+    SELECTED: ['CLOSED'],
+    EXPIRED: [],
+    CLOSED: [],
+  },
+);
+
+// ============ 应标状态机（4 态）============
+const BID_RESPONSE_STATES: readonly StateNode<BidResponseStatus>[] = [
+  { code: 'PENDING', label: '已应标（待遴选）', tone: 'processing' },
+  { code: 'ACCEPTED', label: '已中标', tone: 'success' },
+  { code: 'REJECTED', label: '已落选', tone: 'default' },
+  { code: 'WITHDRAWN', label: '已撤回', tone: 'default' },
+];
+export const BID_RESPONSE_STATUS_MACHINE: StateMachine<BidResponseStatus> = buildMachine(
+  'BID_RESPONSE_STATUS',
+  BID_RESPONSE_STATES,
+  {
+    PENDING: ['ACCEPTED', 'REJECTED', 'WITHDRAWN'],
+    ACCEPTED: [],
+    REJECTED: [],
+    WITHDRAWN: [],
+  },
+);
+
+// ============ 阶段动作状态机（5 态）============
+const ACTION_STATES: readonly StateNode<ActionStatus>[] = [
+  { code: 'NOT_STARTED', label: '未开始', tone: 'default' },
+  { code: 'IN_PROGRESS', label: '进行中', tone: 'processing' },
+  { code: 'DONE', label: '已完成', tone: 'success' },
+  { code: 'DELAYED', label: '已逾期', tone: 'warning' },
+  { code: 'NA', label: '不适用', tone: 'default' },
+];
+export const ACTION_STATUS_MACHINE: StateMachine<ActionStatus> = buildMachine(
+  'ACTION_STATUS',
+  ACTION_STATES,
+  {
+    NOT_STARTED: ['IN_PROGRESS'],
+    IN_PROGRESS: ['DONE', 'DELAYED'],
+    DONE: [],
+    DELAYED: ['IN_PROGRESS', 'DONE'],
+    NA: [],
   },
 );
 

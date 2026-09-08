@@ -32,7 +32,7 @@ import {
   type Project,
 } from '../../../../api/ipd/project';
 import { listStageActions, type StageAction } from '../../../../api/ipd/stage-action';
-import { isTransportError, projectErrorText } from '../project-error';
+import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import {
   STAGE_ORDER,
   actionStatusColor,
@@ -128,7 +128,7 @@ async function advance(): Promise<void> {
   } catch (cause) {
     advanceError.value = isTransportError(cause)
       ? '无法连接服务，请检查网络后重试'
-      : projectErrorText(cause, { fallback: '阶段推进失败，请检查门禁清单' });
+      : ipdErrorText(cause, { domain: 'project', fallback: '阶段推进失败，请检查门禁清单' });
     await loadChecklist();
   } finally {
     advancing.value = false;
@@ -177,7 +177,7 @@ const actionPagination = computed(() => ({
       v-else-if="loadError"
       :message="isTransportError(loadError)
         ? '无法连接服务，请检查网络后重试'
-        : projectErrorText(loadError, { fallback: 'IPD 流程加载失败，请稍后重试' })"
+        : ipdErrorText(loadError, { domain: 'project', fallback: 'IPD 流程加载失败，请稍后重试' })"
       show-icon
       type="error"
     >

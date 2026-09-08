@@ -22,7 +22,6 @@ import {
 } from 'ant-design-vue';
 
 import {
-  DELETION_STATUS_TEXT,
   adminDecideDeletion,
   escalateOverdueLeaderReview,
   leaderDecideDeletion,
@@ -31,6 +30,7 @@ import {
 } from '../../../../api/ipd/deletion';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { formatDateTime } from '../../_shared/format';
+import { DELETION_STATUS_TEXT } from '../../_shared/ipd-enums';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 
 const auth = useIpdAuthStore();

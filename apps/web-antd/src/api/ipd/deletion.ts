@@ -18,13 +18,8 @@ export const DELETION_ENTITY_TYPES: { label: string; value: DeletionEntityType }
   { value: 'gates', label: 'Gate 评审' },
 ];
 
-export const DELETION_STATUS_TEXT: Record<string, string> = {
-  ADMIN_REVIEW: '超管终审中',
-  DELETED: '已删除（归档）',
-  LEADER_REVIEW: '组长初审中',
-  REJECTED: '已驳回',
-  WITHDRAWN: '已撤回',
-};
+/** DELETION_STATUS_TEXT 已迁出至 _shared/ipd-enums.DELETION_STATUS_TEXT（与 _shared/ipd-state-machines.DELETION_STATUS_MACHINE
+ *  的 6 态不同，前端展示按此 5 态），消费方请从 @/views/ipd/_shared/ipd-enums 导入。 */
 
 export interface DeletionRequest {
   id: string;

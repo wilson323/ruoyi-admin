@@ -10,7 +10,7 @@
       <Alert
         v-if="loadError"
         class="mb-4"
-        :message="bidErrorText(loadError, { fallback: '招标单加载失败，请稍后重试', codeTexts: { 50001: '招标单不存在或已被删除', 90001: '招标单不存在或服务暂时不可用，请稍后重试' } })"
+        :message="ipdErrorText(loadError, { domain: 'bid', fallback: '招标单加载失败，请稍后重试', codeTexts: { 50001: '招标单不存在或已被删除', 90001: '招标单不存在或服务暂时不可用，请稍后重试' } })"
         type="error"
         show-icon
         role="alert"
@@ -230,7 +230,7 @@ import {
 } from '../../../../api/ipd/bid';
 import type { BidInvitation, BidResponse } from '../../../../api/ipd/bid';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
-import { bidErrorText } from '../bid-error';
+import { ipdErrorText } from '../../_shared/ipd-error-text';
 import {
   bidModeText,
   bidResponseStatusColor,
@@ -368,7 +368,7 @@ async function doAccept(): Promise<void> {
     message.success('应标已提交，等待招标发起人遴选');
     await load();
   } catch (cause) {
-    actionError.value = bidErrorText(cause, {
+    actionError.value = ipdErrorText(cause, { domain: 'bid',
       fallback: '应标提交失败，请稍后重试',
       codeTexts: {
         10001: '应标说明须为 40-500 字，请调整后重试',
@@ -394,7 +394,7 @@ async function doReject(): Promise<void> {
     rejectedLocal.value = true;
     await load();
   } catch (cause) {
-    actionError.value = bidErrorText(cause, {
+    actionError.value = ipdErrorText(cause, { domain: 'bid',
       fallback: '操作失败，请稍后重试',
       codeTexts: { 30001: '您不在本招标单的邀请名单内' },
     });
@@ -412,7 +412,7 @@ async function doWithdraw(): Promise<void> {
     message.success('应标已撤回，可重新提交');
     await load();
   } catch (cause) {
-    actionError.value = bidErrorText(cause, {
+    actionError.value = ipdErrorText(cause, { domain: 'bid',
       fallback: '撤回失败，请稍后重试',
       codeTexts: {
         30001: '仅应标本人可撤回',

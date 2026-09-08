@@ -2,12 +2,33 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ACTION_STATUS_TEXT,
+  ALGO_TEXT,
+  BID_MODE_TEXT,
+  BID_RESPONSE_STATUS_TEXT,
+  BID_STATUS_TEXT,
+  CATCHUP_TEXT,
+  COEF_CHANGE_STATUS_TEXT,
+  DECISION_LABEL,
+  DELETION_STATUS_TEXT,
+  DEMAND_STATUS_TONE,
+  DEPTH_COLOR,
+  DEPTH_TEXT,
+  LEVEL_TEXT,
+  PERSON_TYPE_TEXT_FROM_ROLE,
   PRIORITY_TEXT,
   PRIORITY_TONE,
+  PRODUCT_STATUS_TEXT,
   ROLE_TEXT,
   SEVERITY_TEXT,
   SEVERITY_TONE,
+  SOURCE_TEXT,
   STAGE_TONE,
+  TEMPLATE_TEXT,
+  WORKBENCH_TASK_STATUS_TEXT,
+  actionStatusLabel,
+  bidResponseStatusLabel,
+  bidStatusLabel,
   bonusStateLabel,
   bonusStateTone,
   changeStateLabel,
@@ -15,6 +36,7 @@ import {
   demandStateLabel,
   deletionStateLabel,
   gateStateLabel,
+  personTypeText,
   priorityText,
   priorityTone,
   projectStateLabel,
@@ -37,6 +59,15 @@ describe('ROLE_TEXT 内部 5 角色', () => {
     expect(roleText('WEIRD')).toBe('未知角色');
     expect(roleText(null)).toBe('未知角色');
     expect(roleText('WEIRD', '兜底')).toBe('兜底');
+  });
+
+  it('personTypeText 仅含项目级 4 角色（不含 INTERNAL）', () => {
+    expect(personTypeText('GROUP_LEADER')).toBe('产品组长');
+    expect(personTypeText('SUPER_ADMIN')).toBe('超级管理员');
+    expect(personTypeText('INTERNAL')).toBe('待补充');
+    expect(Object.keys(PERSON_TYPE_TEXT_FROM_ROLE).sort()).toEqual(
+      ['GROUP_LEADER', 'MARKET_PM', 'RD_PM', 'SUPER_ADMIN'].sort(),
+    );
   });
 });
 
@@ -88,5 +119,86 @@ describe('业务状态机 label/tone 转发', () => {
     expect(gateStateLabel('PASSED')).toBe('已通过');
     expect(demandStateLabel('EVALUATING')).toBe('分析中');
     expect(deletionStateLabel('LEADER_APPROVED')).toBe('组长已审');
+  });
+
+  it('bid / bid-response / action 状态机转发（A28 新增）', () => {
+    expect(bidStatusLabel('OPEN')).toBe('招标中');
+    expect(bidResponseStatusLabel('ACCEPTED')).toBe('已中标');
+    expect(actionStatusLabel('DELAYED')).toBe('已逾期');
+  });
+});
+
+describe('A28 新增显示映射表 SSOT', () => {
+  it('招标单状态中文与 SSOT 一致', () => {
+    expect(BID_STATUS_TEXT.OPEN).toBe('招标中');
+    expect(BID_STATUS_TEXT.SELECTED).toBe('已遴选');
+    expect(BID_STATUS_TEXT.EXPIRED).toBe('已过期');
+    expect(BID_STATUS_TEXT.CLOSED).toBe('已关闭');
+  });
+
+  it('招标方式与应标状态中文 SSOT', () => {
+    expect(BID_MODE_TEXT.PUBLIC).toBe('公开征集');
+    expect(BID_MODE_TEXT.ONE_TO_ONE).toBe('定向邀请');
+    expect(BID_RESPONSE_STATUS_TEXT.PENDING).toBe('已应标（待遴选）');
+    expect(BID_RESPONSE_STATUS_TEXT.WITHDRAWN).toBe('已撤回');
+  });
+
+  it('项目级别/模板/来源/补齐中文 SSOT', () => {
+    expect(LEVEL_TEXT.S).toBe('S 级（战略）');
+    expect(LEVEL_TEXT.A).toBe('A 级（标准）');
+    expect(LEVEL_TEXT.B).toBe('B 级（差异化下调）');
+    expect(TEMPLATE_TEXT.HARDWARE).toBe('硬件');
+    expect(TEMPLATE_TEXT.SOFTWARE).toBe('软件');
+    expect(TEMPLATE_TEXT.SOLUTION).toBe('解决方案');
+    expect(SOURCE_TEXT.NEW).toBe('新建');
+    expect(SOURCE_TEXT.LEGACY).toBe('存量导入');
+    expect(CATCHUP_TEXT.IN_PROGRESS).toBe('补齐中');
+    expect(CATCHUP_TEXT.COMPLETE).toBe('已补齐');
+  });
+
+  it('动作深度 + 阶段动作状态 SSOT', () => {
+    expect(DEPTH_TEXT.DEEP).toBe('深管动作');
+    expect(DEPTH_TEXT.LIGHT).toBe('轻管动作');
+    expect(DEPTH_COLOR.DEEP).toBe('processing');
+    expect(ACTION_STATUS_TEXT.NOT_STARTED).toBe('未开始');
+    expect(ACTION_STATUS_TEXT.DONE).toBe('已完成');
+    expect(ACTION_STATUS_TEXT.NA).toBe('不适用');
+  });
+
+  it('算法分类 + 产品状态 SSOT', () => {
+    expect(ALGO_TEXT.FACE).toBe('人脸');
+    expect(ALGO_TEXT.MULTI).toBe('多模态');
+    expect(PRODUCT_STATUS_TEXT.ACTIVE).toBe('启用');
+    expect(PRODUCT_STATUS_TEXT.IN_RD).toBe('研发中');
+    expect(PRODUCT_STATUS_TEXT.ON_SALE).toBe('在售');
+  });
+
+  it('工作台任务状态 + 决策标签 SSOT', () => {
+    expect(WORKBENCH_TASK_STATUS_TEXT.NOT_STARTED).toBe('未开始');
+    expect(WORKBENCH_TASK_STATUS_TEXT.IN_PROGRESS).toBe('进行中');
+    expect(WORKBENCH_TASK_STATUS_TEXT.DELAYED).toBe('已延期');
+    expect(DECISION_LABEL.APPROVE).toBe('通过');
+    expect(DECISION_LABEL.REJECT).toBe('驳回');
+  });
+
+  it('系数变更审批状态 SSOT', () => {
+    expect(COEF_CHANGE_STATUS_TEXT.PENDING_LEADER).toBe('待产品组长确认');
+    expect(COEF_CHANGE_STATUS_TEXT.PENDING_SECOND).toBe('待对方确认');
+    expect(COEF_CHANGE_STATUS_TEXT.CONFIRMED).toBe('已确认生效');
+    expect(COEF_CHANGE_STATUS_TEXT.REJECTED).toBe('已驳回');
+  });
+
+  it('需求状态色调 SSOT（原型色系）', () => {
+    expect(DEMAND_STATUS_TONE.SUBMITTED).toBe('amber');
+    expect(DEMAND_STATUS_TONE.ACCEPTED).toBe('blue');
+    expect(DEMAND_STATUS_TONE.SCHEDULED).toBe('green');
+  });
+
+  it('删除申请状态中文 SSOT（与状态机 6 态不同，按此 5 态展示）', () => {
+    expect(DELETION_STATUS_TEXT.LEADER_REVIEW).toBe('组长初审中');
+    expect(DELETION_STATUS_TEXT.ADMIN_REVIEW).toBe('超管终审中');
+    expect(DELETION_STATUS_TEXT.DELETED).toBe('已删除（归档）');
+    expect(DELETION_STATUS_TEXT.REJECTED).toBe('已驳回');
+    expect(DELETION_STATUS_TEXT.WITHDRAWN).toBe('已撤回');
   });
 });
