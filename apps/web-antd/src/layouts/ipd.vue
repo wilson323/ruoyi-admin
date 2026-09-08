@@ -78,21 +78,21 @@ async function goPlatform() {
 
 /** 原型 App.jsx navItems 15 项（12 全员 + 3 超管），path 映射到本仓 /ipd/* 路由。 */
 const navItems = [
-  { path: '/ipd/workbench', label: '我的工作台', icon: House },
-  { path: '/ipd/projects', label: '项目空间', icon: Target },
-  { path: '/ipd/requirements', label: '需求管理', icon: ClipboardText },
-  { path: '/ipd/products', label: '产品空间', icon: Package },
-  { path: '/ipd/bids', label: '研发招募', icon: Handshake },
+  { path: '/ipd/workbench', label: '工作台', icon: House },
+  { path: '/ipd/projects', label: '我的项目', icon: Target },
+  { path: '/ipd/requirements', label: '需求池', icon: ClipboardText },
+  { path: '/ipd/products', label: '产品管理', icon: Package },
+  { path: '/ipd/bids', label: '招标组队', icon: Handshake },
   { path: '/ipd/changes', label: '变更管理', icon: ArrowsClockwise },
-  { path: '/ipd/documents', label: '资料库', icon: FolderOpen },
-  { path: '/ipd/reviews', label: '阶段确认', icon: ShieldCheck },
-  { path: '/ipd/performance', label: '协同绩效', icon: ChartBar },
+  { path: '/ipd/documents', label: 'AI 文档助手', icon: FolderOpen },
+  { path: '/ipd/reviews', label: 'Gate 评审', icon: ShieldCheck },
+  { path: '/ipd/performance', label: 'KPI 考核', icon: ChartBar },
   { path: '/ipd/timeline', label: '全流程轨迹', icon: BookOpen },
   { path: '/ipd/reports', label: '报表分析', icon: ChartBar },
   { path: '/ipd/handover', label: '项目移交', icon: Users },
   { path: '/ipd/product-catalog', label: '产品目录', icon: Package, adminOnly: true },
   { path: '/ipd/identity-sync', label: '人员同步', icon: Database, adminOnly: true },
-  { path: '/ipd/admin', label: '超级管理', icon: Gear, adminOnly: true },
+  { path: '/ipd/admin', label: '系统管理', icon: Gear, adminOnly: true },
 ];
 
 const roleNames: Record<string, string> = {
