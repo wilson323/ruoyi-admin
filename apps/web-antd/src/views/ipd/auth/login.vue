@@ -32,8 +32,9 @@ onBeforeUnmount(clearNotice);
 
 /** 原型 App.jsx LoginPage「演示账号快捷选择」：点选即填入表单，不自动提交。
  *  修复：原型的 5 个中文人名在 ipd_dev 库不存在（点选后必然登录失败＝死功能），
- *  改映射为库中真实存在的 4 个 bootstrap 账号（真源：后端仓
- *  .codex/ipd-dev/config/bootstrap-accounts.json，gitignore 未入库）。
+ *  改映射为库中真实存在的 4 个 bootstrap 账号。账号清单/角色/密码配置方法的
+ *  单一信源文档：apps/web-antd 同仓 docs/dev-accounts.md；运行时真源为后端仓
+ *  .codex/ipd-dev/config/bootstrap-accounts.json（gitignore 未入库）。
  *  各账号密码已轮换且互不相同，不写进源码：仅 dev 构建从本地未跟踪的
  *  .env.development.local 读 VITE_IPD_DEMO_PASSWORDS="ipd-admin=x,ipd-leader=y,…"；
  *  生产构建取不到即留空，且整个演示区块仅在 dev 渲染，且字面量被
@@ -61,9 +62,20 @@ if (import.meta.env.DEV) {
       .filter((parts): parts is [string, string] => parts.length === 2 && parts[0] !== '' && parts[1] !== ''),
   ));
 }
+/* fail-fast 不用全局 throw：无 .env.development.local 的会话/成员不该被挡在应用外。
+   缺配置降级为「可见警告 + 只填用户名」，配置方法单一信源见 docs/dev-accounts.md。 */
+const demoPasswordsMissing = isDev && Object.keys(demoPasswords).length === 0;
+if (demoPasswordsMissing) {
+  console.warn('[ipd-login] VITE_IPD_DEMO_PASSWORDS 未配置：演示账号仅填充用户名，密码需手动输入。配置方法见 docs/dev-accounts.md');
+}
 
 async function submit() {
   if (auth.busy) return;
+  // 空凭据守卫：给明确文案，避免空密码打到后端换来误导性的「用户名或密码不对」。
+  if (!form.username.trim() || !form.password) {
+    auth.error = '请输入用户名和密码';
+    return;
+  }
   try {
     await auth.login(form.username.trim(), form.password);
     form.password = '';
@@ -142,7 +154,10 @@ async function submit() {
             >
               {{ account.label }}（{{ account.username }}）
             </button>
-            <span>开发库真实账号；密码自动填充需本地 .env.development.local 配置 VITE_IPD_DEMO_PASSWORDS</span>
+            <span v-if="demoPasswordsMissing" class="demo-password-missing">
+              未配置 VITE_IPD_DEMO_PASSWORDS：快捷选择只填用户名，密码请手动输入（配置方法见 docs/dev-accounts.md）
+            </span>
+            <span v-else>开发库真实账号；密码已从本地 .env.development.local 自动填充</span>
           </div>
         </form>
         <div v-else class="wecom-login">
@@ -409,6 +424,13 @@ async function submit() {
   width: 100%;
   color: #3a455b;
 }
+
+.demo-password-missing {
+  width: 100%;
+  color: #8a5a12;
+}
+
+/* a11y：#8a5a12 on #fafbfc ≈ 5.1:1，缺失警告需可读 */
 
 .demo-accounts button {
   padding: 5px 8px;

@@ -71,14 +71,14 @@ export default defineConfig(async () => {
           // IPD contracts keep their /api/v1 prefix on the Java backend.
           '/api/v1': {
             changeOrigin: true,
-            target: 'http://127.0.0.1:16049',
+            target: 'http://127.0.0.1:16039',
             ws: true,
           },
           '/api': {
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api/, ''),
             // Project-local RuoYi backend; no hosted API fallback.
-            target: 'http://127.0.0.1:16049',
+            target: 'http://127.0.0.1:16039',
             ws: true,
           },
         },

@@ -6,7 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import Login from './login.vue';
 
 beforeEach(() => { sessionStorage.clear(); setActivePinia(createPinia()); });
-afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 function mountLogin(): ReturnType<typeof mount> {
   const router = createRouter({
@@ -57,6 +57,40 @@ describe('login.vue demo accounts DCE guard', () => {
       for (const username of ['ipd-admin', 'ipd-leader', 'ipd-market', 'ipd-rd']) {
         expect(wrapper.text()).not.toContain(username);
       }
+    } finally { wrapper.unmount(); }
+  });
+
+  it('shows a visible missing-config hint and fills no password when VITE_IPD_DEMO_PASSWORDS is unset in dev', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_IPD_DEMO_PASSWORDS', '');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const wrapper = await mountLogin();
+    try {
+      // 配置缺失必须显式可见（不能用全局 throw 把没配 .env 的会话挡在应用外）
+      expect(wrapper.text()).toContain('未配置 VITE_IPD_DEMO_PASSWORDS');
+      const buttons = wrapper.findAll('.demo-accounts button');
+      expect(buttons).toHaveLength(4);
+      await buttons[0]?.trigger('click');
+      const inputs = wrapper.findAll('input');
+      expect(inputs[0]?.element.value).toBe('ipd-admin');
+      expect(inputs[1]?.element.value).toBe('');
+    } finally { wrapper.unmount(); }
+  });
+
+  it('rejects empty credentials with a clear message and never hits the network', async () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_IPD_DEMO_PASSWORDS', '');
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 200 })));
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = await mountLogin();
+    try {
+      const inputs = wrapper.findAll('input');
+      await inputs[0]?.setValue('sysadmin');
+      await inputs[1]?.setValue('');
+      await wrapper.find('form').trigger('submit');
+      // 明确文案替代误导性的「用户名或密码不对」；守卫拦截后不发任何请求
+      expect(wrapper.text()).toContain('请输入用户名和密码');
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally { wrapper.unmount(); }
   });
 });

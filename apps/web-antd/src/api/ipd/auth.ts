@@ -74,6 +74,8 @@ export function parseIdentity(data: unknown): IpdIdentity {
     throw new IpdRequestError('身份信息格式异常，请重新登录');
   }
   const p = data.person;
+  // groupId 严格校验是契约漂移报警器：后端全局 Jackson NON_NULL 吞 null 键时（键缺失）在此报错。
+  // 后端 IpdAuthController.PersonView.groupId 已加 @JsonInclude(ALWAYS) 显式输出 null，勿在前端放宽。
   if (
     typeof p.id !== 'string' || !/^\d+$/.test(p.id) ||
     typeof p.name !== 'string' || typeof p.username !== 'string' ||

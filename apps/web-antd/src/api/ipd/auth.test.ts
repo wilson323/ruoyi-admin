@@ -131,6 +131,16 @@ describe('parseIdentity happy path', () => {
     ).not.toThrow();
   });
 
+  it('rejects groupId key absent — Jackson NON_NULL 契约漂移报警器（修复在后端 ALWAYS，见 IpdAuthController.PersonView）', () => {
+    const { groupId: _omitted, ...personWithoutGroupKey } = VALID_PERSON;
+    expect(() =>
+      parseIdentity({
+        ...VALID_IDENTITY_INPUT,
+        person: personWithoutGroupKey,
+      }),
+    ).toThrow(IpdRequestError);
+  });
+
   it('accepts multi-digit id (JS MAX_SAFE_INTEGER width)', () => {
     expect(() =>
       parseIdentity({
