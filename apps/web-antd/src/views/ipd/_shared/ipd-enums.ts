@@ -291,12 +291,44 @@ export const PRODUCT_STATUS_TEXT: Record<string, string> = {
   ON_SALE: '在售',
 };
 
-/** 工作台任务状态中文（NOT_STARTED/IN_PROGRESS/DELAYED）。 */
+/** 工作台任务状态中文（后端各聚合器 status 值域全集）。 */
 export const WORKBENCH_TASK_STATUS_TEXT: Record<string, string> = {
+  ADMIN_REVIEW: '待终审',
+  CONFIRMED: '已确认',
+  DRAFT: '待确认',
   DELAYED: '已延期',
   IN_PROGRESS: '进行中',
+  LEADER_REVIEW: '待初审',
   NOT_STARTED: '未开始',
+  PENDING: '待处理',
+  SUBMITTED: '待评定',
 };
+
+/** 工作台任务类型中文（17 类 taskType，按 spec batch-01 页03:165）。 */
+export const WORKBENCH_TASK_TYPE_TEXT: Record<string, string> = {
+  bonus_lock: '奖金锁定',
+  capacity_approval: '产能审批',
+  change_implementation: '变更实施',
+  change_verify: '变更验收',
+  closeout: '项目收尾',
+  contribution_confirm: '贡献确认',
+  deletion_review: '删除审批',
+  handover: '项目移交',
+  key_gate: '关键 Gate 评审',
+  key_gate_arbitration: 'Gate 仲裁',
+  kpi_fill: 'KPI 填写',
+  rd_replacement: '研发替补',
+  receipt_review: '回执审核',
+  retirement_review: '退役评审',
+  stage_sign: '阶段签署',
+  strategic_change: '战略变更',
+  waiver_review: '豁免审批',
+};
+
+/** taskType 查表函数（未知值原样返回，便于渲染层 fallback）。 */
+export function taskTypeText(value: string): string {
+  return WORKBENCH_TASK_TYPE_TEXT[value] ?? value;
+}
 
 /** 决策动作 APPROVE/REJECT（系数变更等审批页用）。 */
 export const DECISION_LABEL: Record<string, string> = {

@@ -15,6 +15,8 @@ export interface WorkbenchStats {
   overdue: number;
   unread: number;
   completed: number;
+  /** 按类型计数（P1.4，设计 §5）：17 类 taskType key 预置 0；旧后端（16039 未重启）无此键，可选。 */
+  pendingType?: Record<string, number>;
 }
 
 export interface WorkbenchTask {
@@ -28,8 +30,8 @@ export interface WorkbenchTask {
   status: string;
   priority: 'high' | 'normal';
   ownerRole: null | string;
-  /** 后端 Date 全局序列化为毫秒时间戳（number）。 */
-  dueDate: null | number | string;
+  /** 后端 Date 全局序列化为毫秒时间戳（number）；全局 NON_NULL 会剔除 null 值键，无期限卡实际是 undefined。 */
+  dueDate?: null | number | string;
   isBlocking: null | string;
   deepLink: string;
 }

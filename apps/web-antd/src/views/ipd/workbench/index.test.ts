@@ -18,13 +18,13 @@ const fullSummary: WorkbenchSummary = {
   tasks: [
     {
       id: '1', projectId: '10', projectName: 'Alpha 项目', projectCode: 'P-001',
-      actionCode: 'A-1', title: '需求评审', taskType: 'STAGE_ACTION',
+      actionCode: 'A-1', title: '需求评审', taskType: 'stage_sign',
       status: 'IN_PROGRESS', priority: 'normal', ownerRole: 'MARKET_PM',
       dueDate: Date.now() + 86_400_000, isBlocking: '1', deepLink: '/ipd/projects/10/actions/1',
     },
     {
       id: '2', projectId: '10', projectName: 'Alpha 项目', projectCode: 'P-001',
-      actionCode: 'A-2', title: '代码评审', taskType: 'STAGE_ACTION',
+      actionCode: 'A-2', title: '代码评审', taskType: 'stage_sign',
       status: 'NOT_STARTED', priority: 'normal', ownerRole: 'RD_PM',
       dueDate: Date.now() + 172_800_000, isBlocking: null, deepLink: '/ipd/projects/10/actions/2',
     },
@@ -197,5 +197,37 @@ describe('页03 我的工作台', () => {
     await vi.waitFor(() => expect(metricValue(second, '待我处理')).toBe('0'));
     expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThanOrEqual(2);
     second.unmount();
+  });
+
+  it('WB-17-1 P0：deletion_review 任务卡按「删除审批」分组，desc 用 17 类字典文案，kind 显示待初审', async () => {
+    loginAs('GROUP_LEADER', '组长甲');
+    const summary: WorkbenchSummary = {
+      ...fullSummary,
+      stats: { pending: 3, overdue: 0, unread: 0, completed: 0 },
+      tasks: [
+        fullSummary.tasks[0]!,
+        {
+          id: 'DEL-501', projectId: '', projectName: '删除审批', projectCode: 'project',
+          actionCode: 'DEL-REVIEW-501', title: '删除初审：project #10', taskType: 'deletion_review',
+          status: 'LEADER_REVIEW', priority: 'normal', ownerRole: null,
+          dueDate: null, isBlocking: '1', deepLink: '/ipd/deletion/review',
+        },
+      ],
+      deletionPending: 1,
+    };
+    stubSummary(summary);
+    const wrapper = mount(Workbench);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('删除初审：project #10'));
+    // 分组：删除审批独立成组（projectName 分组口径，B4 拍板②）
+    const groups = wrapper.findAll('.ipd-wb-group-title');
+    expect(groups.some((g) => g.text().includes('删除审批'))).toBe(true);
+    // kind 标签：LEADER_REVIEW → 待初审（状态字典）
+    const kinds = wrapper.findAll('.ipd-wb-task-kind').map((k) => k.text());
+    expect(kinds).toContain('待初审');
+    // desc：deletion 卡显示字典文案「删除审批」且无「责任角色」；stage_sign 卡保留责任角色
+    const descs = wrapper.findAll('.ipd-wb-task-desc').map((d) => d.text());
+    expect(descs.some((d) => d.startsWith('删除审批 · 阻断项'))).toBe(true);
+    expect(descs.some((d) => d.includes('责任角色 MARKET_PM'))).toBe(true);
+    wrapper.unmount();
   });
 });

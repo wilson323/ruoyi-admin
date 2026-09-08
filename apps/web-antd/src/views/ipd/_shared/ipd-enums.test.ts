@@ -26,6 +26,7 @@ import {
   STAGE_TONE,
   TEMPLATE_TEXT,
   WORKBENCH_TASK_STATUS_TEXT,
+  WORKBENCH_TASK_TYPE_TEXT,
   actionStatusLabel,
   bidResponseStatusLabel,
   bidStatusLabel,
@@ -44,6 +45,7 @@ import {
   roleText,
   severityText,
   severityTone,
+  taskTypeText,
 } from './ipd-enums';
 
 describe('ROLE_TEXT 内部 5 角色', () => {
@@ -202,3 +204,63 @@ describe('A28 新增显示映射表 SSOT', () => {
     expect(DELETION_STATUS_TEXT.WITHDRAWN).toBe('已撤回');
   });
 });
+
+describe('WORKBENCH_TASK_TYPE_TEXT 工作台任务类型 17 类', () => {
+  it('17 类 taskType 齐全（spec batch-01 页03:165）', () => {
+    expect(Object.keys(WORKBENCH_TASK_TYPE_TEXT).sort()).toEqual(
+      [
+        'bonus_lock',
+        'capacity_approval',
+        'change_implementation',
+        'change_verify',
+        'closeout',
+        'contribution_confirm',
+        'deletion_review',
+        'handover',
+        'key_gate',
+        'key_gate_arbitration',
+        'kpi_fill',
+        'rd_replacement',
+        'receipt_review',
+        'retirement_review',
+        'stage_sign',
+        'strategic_change',
+        'waiver_review',
+      ].sort(),
+    );
+  });
+
+  it('关键 key 中文映射正确', () => {
+    expect(WORKBENCH_TASK_TYPE_TEXT.stage_sign).toBe('阶段签署');
+    expect(WORKBENCH_TASK_TYPE_TEXT.key_gate).toBe('关键 Gate 评审');
+    expect(WORKBENCH_TASK_TYPE_TEXT.key_gate_arbitration).toBe('Gate 仲裁');
+    expect(WORKBENCH_TASK_TYPE_TEXT.deletion_review).toBe('删除审批');
+    expect(WORKBENCH_TASK_TYPE_TEXT.waiver_review).toBe('豁免审批');
+    expect(WORKBENCH_TASK_TYPE_TEXT.handover).toBe('项目移交');
+    expect(WORKBENCH_TASK_TYPE_TEXT.rd_replacement).toBe('研发替补');
+    expect(WORKBENCH_TASK_TYPE_TEXT.contribution_confirm).toBe('贡献确认');
+    expect(WORKBENCH_TASK_TYPE_TEXT.receipt_review).toBe('回执审核');
+    expect(WORKBENCH_TASK_TYPE_TEXT.retirement_review).toBe('退役评审');
+    expect(WORKBENCH_TASK_TYPE_TEXT.strategic_change).toBe('战略变更');
+    expect(WORKBENCH_TASK_TYPE_TEXT.capacity_approval).toBe('产能审批');
+    expect(WORKBENCH_TASK_TYPE_TEXT.kpi_fill).toBe('KPI 填写');
+    expect(WORKBENCH_TASK_TYPE_TEXT.change_implementation).toBe('变更实施');
+    expect(WORKBENCH_TASK_TYPE_TEXT.change_verify).toBe('变更验收');
+    expect(WORKBENCH_TASK_TYPE_TEXT.bonus_lock).toBe('奖金锁定');
+    expect(WORKBENCH_TASK_TYPE_TEXT.closeout).toBe('项目收尾');
+  });
+
+  it('taskTypeText 已知值返回中文', () => {
+    expect(taskTypeText('stage_sign')).toBe('阶段签署');
+    expect(taskTypeText('closeout')).toBe('项目收尾');
+    expect(taskTypeText('key_gate_arbitration')).toBe('Gate 仲裁');
+    expect(taskTypeText('kpi_fill')).toBe('KPI 填写');
+  });
+
+  it('taskTypeText 未知值原样返回（passthrough fallback）', () => {
+    expect(taskTypeText('UNKNOWN_TYPE')).toBe('UNKNOWN_TYPE');
+    expect(taskTypeText('legacy_type')).toBe('legacy_type');
+    expect(taskTypeText('')).toBe('');
+  });
+});
+

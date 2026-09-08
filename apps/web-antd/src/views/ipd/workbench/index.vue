@@ -14,7 +14,7 @@ import type { WorkbenchSummary, WorkbenchTask } from '../../../api/ipd/workbench
 import { useIpdAuthStore } from '../../../store/ipd-auth';
 import '../_shared/ipd-theme.css';
 import { RULES_BY_PAGE, renderRulesDescription } from '../_shared/zk-ipd-rules';
-import { WORKBENCH_TASK_STATUS_TEXT } from '../_shared/ipd-enums';
+import { WORKBENCH_TASK_STATUS_TEXT, taskTypeText } from '../_shared/ipd-enums';
 
 const auth = useIpdAuthStore();
 const workbenchRules = computed(() => renderRulesDescription(RULES_BY_PAGE.workbench));
@@ -83,7 +83,7 @@ const queueTabs = computed<QueueTab[]>(() => {
   ];
 });
 
-/** 责任队列：后端 tasks 平铺 → 按项目分组（真实 stage_action）。 */
+/** 责任队列：后端 tasks 平铺 → 按项目分组（stage_sign + deletion_review，WB-17-1 P0）。 */
 interface TaskGroup {
   projectName: string;
   count: number;
@@ -92,7 +92,7 @@ interface TaskGroup {
 
 const STATUS_TEXT: Record<string, string> = WORKBENCH_TASK_STATUS_TEXT;
 
-function formatDue(iso: null | number | string): string {
+function formatDue(iso: null | number | string | undefined): string {
   if (!iso) return '无截止';
   const d = new Date(iso);
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -116,7 +116,8 @@ const taskGroups = computed<TaskGroup[]>(() => {
     items: items.map((t) => ({
       kind: STATUS_TEXT[t.status] ?? t.status,
       title: t.title ?? t.actionCode ?? '阶段动作',
-      desc: `责任角色 ${t.ownerRole ?? 'BOTH'} · ${t.isBlocking === '1' ? '阻断项' : '非阻断'}`,
+      // WB-17-1 P0：任务类型用 taskType 字典展示（阶段签署/删除审批等 17 类）；ownerRole 仅 stage_sign 有值
+      desc: `${taskTypeText(t.taskType)}${t.ownerRole ? ` · 责任角色 ${t.ownerRole}` : ''} · ${t.isBlocking === '1' ? '阻断项' : '非阻断'}`,
       code: t.projectCode ?? '',
       initiator: '',
       time: formatDue(t.dueDate),
