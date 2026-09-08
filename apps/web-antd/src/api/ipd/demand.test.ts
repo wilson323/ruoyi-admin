@@ -116,14 +116,23 @@ describe('demand API — triageDemand 分流', () => {
     expect(body).toEqual({ status: 'SCHEDULED' });
   });
 
-  it('id 含特殊字符按字面拼接：当前实现未做 URL 编码（与 product.ts 对比，潜在预存问题）', async () => {
-    // G-04：triageDemand 与 linkDemandProject 均直接 `${id}` 拼接，未走 encodeURIComponent。
-    // 后端 ID 在真实场景下为 Long 字符串（不含特殊字符），行为无害；但与 project.ts 的
-    // getProject（encodeURIComponent）形成契约不一致。读到这里不要修复——独立技术债项。
+  it('id 含特殊字符：走 encodeURIComponent 编码（与 project.ts getProject 对齐）', async () => {
+    // W6 A24 调研 + W9 A37 修复：triageDemand 与 linkDemandProject 现统一走 encodeURIComponent，
+    // 与 project.ts 的 getProject/advanceProjectStage 等保持契约一致。
+    // 真实场景 ID 为 Long 字符串（无特殊字符），行为等价；但特殊字符 ID 现在安全。
     const fetcher = vi.fn().mockResolvedValue(envelope({ id: 'a b/c', status: 'CLOSED' }));
     vi.stubGlobal('fetch', fetcher);
     await triageDemand('a b/c', { status: 'CLOSED' });
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/demands/a b/c/triage');
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/demands/a%20b%2Fc/triage');
+  });
+
+  it('id 含 + / ? 等特殊字符：编码后查询语义不被破坏', async () => {
+    // encodeURIComponent 不编码 -_.!~*'() 但会编码 + ? # / & = 等 URL 保留字符；
+    // 这保证后端解析时 id 仍是完整字符串而非被截断或误判为查询参数分隔符。
+    const fetcher = vi.fn().mockResolvedValue(envelope({ id: 'a+b?c', status: 'ARCHIVED' }));
+    vi.stubGlobal('fetch', fetcher);
+    await triageDemand('a+b?c', { status: 'ARCHIVED' });
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/demands/a%2Bb%3Fc/triage');
   });
 });
 
@@ -150,6 +159,16 @@ describe('demand API — linkDemandProject 关联项目', () => {
     vi.stubGlobal('fetch', fetcher);
     const result = await linkDemandProject('303', 'p-X');
     expect(result.status).toBe('SCHEDULED');
+  });
+
+  it('id 含特殊字符：link-project 路径也走 encodeURIComponent', async () => {
+    // 与 triageDemand 同源修复；保证两个端点对 id 的处理一致。
+    const fetcher = vi.fn().mockResolvedValue(envelope({
+      id: 'a b/c', projectId: 'p-1', status: 'SCHEDULED',
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    await linkDemandProject('a b/c', 'p-1');
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/demands/a%20b%2Fc/link-project');
   });
 });
 

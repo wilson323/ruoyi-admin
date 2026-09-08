@@ -53,10 +53,23 @@ const projects = ref<Project[]>([]);
 const selectedId = ref('');
 const nameOf = (id: string) => directory.value.find((entry) => entry.id === id)?.name ?? `人员${id}`;
 
+/**
+ * 「待我接收」= 收件人是我 + 状态 DRAFT（待办；COMPLETED 已落幕）。
+ * 「我发起的」= 我作为发起人的全部移交（DRAFT/已生效统一展示，列表即为历史视图）。
+ *   显式枚举状态而非不过滤，避免后端 inbox 增量返回含意外状态时把噪音混进历史。
+ */
+const HANDOFF_INBOUND_STATUSES = ['DRAFT'] as const;
+const HANDOFF_INITIATED_STATUSES = ['DRAFT', 'COMPLETED'] as const;
 const received = computed(() =>
-  inbox.value.filter((item) => item.toPersonId === meId.value && item.status === 'DRAFT'),
+  inbox.value.filter(
+    (item) => item.toPersonId === meId.value && (HANDOFF_INBOUND_STATUSES as readonly string[]).includes(item.status),
+  ),
 );
-const initiated = computed(() => inbox.value.filter((item) => item.fromPersonId === meId.value));
+const initiated = computed(() =>
+  inbox.value.filter(
+    (item) => item.fromPersonId === meId.value && (HANDOFF_INITIATED_STATUSES as readonly string[]).includes(item.status),
+  ),
+);
 const selected = computed(() => inbox.value.find((item) => item.id === selectedId.value) ?? null);
 const canAccept = computed(
   () => selected.value?.status === 'DRAFT' && selected.value.toPersonId === meId.value,
@@ -86,6 +99,18 @@ onMounted(async () => {
   } catch { /* 发起表单的项目候选加载失败不阻断收件箱 */ }
 });
 
+/**
+ * HandoverRole → 接任人 personType 一致性映射（HandoverService.HANDOVER_ROLES：
+ * 接任人 personType 必须与 role 完全一致，否则后端拒收）。
+ * 此处同时用于前端候选过滤与发起前的客户端二次断言，避免目录快照陈旧时漏判。
+ */
+const ROLE_TO_PERSON_TYPE: Record<HandoverRole, string> = {
+  MARKET_PM: 'MARKET_PM',
+  RD_PM: 'RD_PM',
+};
+
+const personTypeForRole = (value: HandoverRole): string => ROLE_TO_PERSON_TYPE[value];
+
 /** —— 发起移交（单项目） —— */
 const projectId = ref('');
 const role = ref<HandoverRole>('MARKET_PM');
@@ -93,12 +118,27 @@ const toPersonId = ref('');
 const note = ref('请接收项目、未完成责任、资料与完整决策历史。');
 const approvalRef = ref('');
 const initiating = ref(false);
-const candidates = computed(() => directory.value.filter((entry) => entry.personType === role.value));
+const candidates = computed(() =>
+  directory.value.filter(
+    (entry) => entry.personType === role.value && entry.id !== meId.value,
+  ),
+);
 
 async function submitInitiate(): Promise<void> {
   if (!projectId.value || !toPersonId.value || initiating.value) return;
   initiating.value = true;
   try {
+    // Bug 4: 客户端二次断言接任人 personType 与 role 一致；快照陈旧时也绝不漏判
+    const successor = directory.value.find((entry) => entry.id === toPersonId.value);
+    if (!successor) {
+      throw new Error('所选接任人不在当前在职目录中，请刷新后重选');
+    }
+    const expected = personTypeForRole(role.value);
+    if (successor.personType !== expected) {
+      throw new Error(
+        `接任人角色类型不匹配：role=${role.value} 要求 personType=${expected}，实际 ${successor.personType}`,
+      );
+    }
     await initiateHandover({
       approvalRef: approvalRef.value.trim() || undefined,
       note: note.value.trim() || undefined,
@@ -109,7 +149,9 @@ async function submitInitiate(): Promise<void> {
     message.success('移交已发起，接任人收件箱已收到任务');
     await load();
   } catch (cause) {
-    message.error(ipdErrorText(cause, { fallback: '发起失败，请稍后重试' }));
+    message.error(
+      cause instanceof Error ? cause.message : ipdErrorText(cause, { fallback: '发起失败，请稍后重试' }),
+    );
   } finally {
     initiating.value = false;
   }
@@ -137,12 +179,16 @@ async function accept(): Promise<void> {
 const batchFrom = ref('');
 const batchRole = ref<HandoverRole>('MARKET_PM');
 const batchTo = ref('');
+const batchNote = ref('');
 const batchProjects = ref('');
 const batchApprovalRef = ref('');
 const batchBusy = ref(false);
 const batchResults = ref<HandoverBatchResult[]>([]);
 const batchCandidates = computed(
-  () => directory.value.filter((entry) => entry.personType === batchRole.value),
+  () =>
+    directory.value.filter(
+      (entry) => entry.personType === batchRole.value && entry.id !== meId.value,
+    ),
 );
 async function submitBatch(): Promise<void> {
   if (!batchFrom.value || !batchTo.value || batchBusy.value) return;
@@ -152,7 +198,7 @@ async function submitBatch(): Promise<void> {
     batchResults.value = await batchHandover({
       approvalRef: batchApprovalRef.value.trim() || undefined,
       fromPersonId: batchFrom.value,
-      note: note.value.trim() || undefined,
+      note: batchNote.value.trim() || undefined,
       projectIds: ids.length ? ids : undefined,
       role: batchRole.value,
       toPersonId: batchTo.value,
@@ -368,6 +414,10 @@ async function submitAdminTransfer(): Promise<void> {
           <label>
             统一备案号
             <input v-model="batchApprovalRef" />
+          </label>
+          <label class="wide">
+            统一交接说明
+            <input v-model="batchNote" placeholder="本批移交的总体说明（与单项目发起表单相互独立）" />
           </label>
           <button :disabled="!batchFrom || !batchTo || batchBusy" class="primary-button" type="button" @click="submitBatch">
             批量移交

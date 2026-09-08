@@ -61,7 +61,7 @@ export function triageDemand(
   id: string,
   body: { marketPmId?: string; rdPmId?: string; status: string },
 ): Promise<{ id: string; status: string }> {
-  return ipdPost<{ id: string; status: string }>(`/demands/${id}/triage`, body);
+  return ipdPost<{ id: string; status: string }>(`/demands/${encodeURIComponent(id)}/triage`, body);
 }
 
 /** 关联项目（绑定后 SUBMITTED/ACCEPTED 自动置 SCHEDULED）。 */
@@ -70,7 +70,7 @@ export function linkDemandProject(
   projectId: string,
 ): Promise<{ id: string; projectId: string; status: string }> {
   return ipdPost<{ id: string; projectId: string; status: string }>(
-    `/demands/${id}/link-project`,
+    `/demands/${encodeURIComponent(id)}/link-project`,
     { projectId },
   );
 }

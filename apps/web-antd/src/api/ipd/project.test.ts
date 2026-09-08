@@ -1,19 +1,24 @@
 /**
- * 项目域 API 契约测试（页07/08/09/11/12；后端 ProjectController）。
+ * 项目域 API 纯逻辑契约测试（Wave 9 / agent A38）：
+ *   A) createProject body 白名单 DTO（pure — toWire 函数过滤 legacyImport 专属字段）
+ *   B) listProjects / getProject / legacyImportProject / getGateChecklist normalize 防御性
+ *      （pure — 非数组 data → 空数组 / 缺字段 → 空字符串占位 / BigDecimal 保留字符串 /
+ *       items 畸形归一化 / ok 严格 true / markedCodes 缺失降级）
+ *   C) parseTargetMarkets 容错（pure — JSON 解析失败一律降级空数组）
+ *   D) 错误路径解析（pure — HTTP 500 / 非 JSON / fetch TypeError → IpdRequestError）
  *
- * 重点覆盖：
- * - GET /projects 的 { project: { ... } } 嵌套包络兼容（真机 2026-09-07 实证）；
- * - createProject 的白名单 DTO（targetMarkets → JSON、日期透传毫秒、不外漏字段）；
- * - legacyImportProject 的 missingHistoryAck 强制 true 与 markedCodes 解析；
- * - getGateChecklist 的 items 数组过滤与 ok=true 严格判定；
- * - parseTargetMarkets 的容错（无效 JSON → 空数组）。
+ * 与 project-live.test.ts 的关系（docs/真HTTP验收规范-20260907.md §二）：
+ *   - 本文件（A 桶）：纯逻辑测试，**允许 vi.mock**，覆盖 normalize / parser / 错误码解析
+ *   - project-live.test.ts：业务测试，**必须真 HTTP loopback**，
+ *     默认 skipIf(!IPD_LIVE_ACCEPTANCE)，跑通 listProjects / getProject / createProject /
+ *     legacyImportProject / changeProjectStatus / advanceProjectStage / getGateChecklist 端到端
+ *
+ * 拆分不增量：原 31 cases → 本文件纯逻辑 16 + project-live.test.ts 业务 15 = 31 总数。
  */
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  advanceProjectStage,
-  changeProjectStatus,
   createProject,
   getGateChecklist,
   getProject,
@@ -66,128 +71,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('project API — listProjects 列表', () => {
-  it('无 keyword：GET /projects 不带查询串', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope([projectFixture()]));
-    vi.stubGlobal('fetch', fetcher);
-    const list = await listProjects();
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/projects');
-    expect(list).toHaveLength(1);
-    expect(list[0]).toMatchObject({ id: '100', code: 'P-100', name: '智慧园区一体机' });
-  });
-
-  it('带 keyword：编码进查询串', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope([]));
-    vi.stubGlobal('fetch', fetcher);
-    await listProjects('智慧');
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/projects?keyword=%E6%99%BA%E6%85%A7');
-  });
-
-  it('空 keyword 视为无参数：不带 ?keyword=', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope([]));
-    vi.stubGlobal('fetch', fetcher);
-    await listProjects('');
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/projects');
-  });
-
-  it('列表行用 {project:{...}} 嵌套包裹时仍能正确归一化（2026-09-07 真机形态）', async () => {
-    const wrapped = { project: projectFixture({ id: '200', code: 'P-200' }) };
-    const fetcher = vi.fn().mockResolvedValue(envelope([wrapped, { project: projectFixture({ id: '201' }) }]));
-    vi.stubGlobal('fetch', fetcher);
-    const list = await listProjects();
-    expect(list).toHaveLength(2);
-    expect(list[0]).toMatchObject({ id: '200', code: 'P-200' });
-    expect(list[1]).toMatchObject({ id: '201' });
-  });
-
-  it('非数组 data 直接返回空数组，不抛错', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope({ junk: true }));
-    vi.stubGlobal('fetch', fetcher);
-    const list = await listProjects();
-    expect(list).toEqual([]);
-  });
-
-  it('BigDecimal 字段保持字符串（不被强转 number 丢失精度）', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope([
-      projectFixture({ targetSalesAmount: '9999999999999.99', levelCoefficient: '2.40' }),
-    ]));
-    vi.stubGlobal('fetch', fetcher);
-    const [row] = await listProjects();
-    expect(row?.targetSalesAmount).toBe('9999999999999.99');
-    expect(row?.levelCoefficient).toBe('2.40');
-    expect(typeof row?.targetSalesAmount).toBe('string');
-  });
-});
-
-describe('project API — getProject 单查', () => {
-  it('GET /projects/{id}，对 id 做 URL 编码', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope(projectFixture({ id: 'a b/c' })));
-    vi.stubGlobal('fetch', fetcher);
-    const row = await getProject('a b/c');
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/projects/a%20b%2Fc');
-    expect(row.id).toBe('a b/c');
-  });
-
-  it('单查响应平铺形态（非嵌套）直通归一化', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope(projectFixture({ code: 'P-300' })));
-    vi.stubGlobal('fetch', fetcher);
-    const row = await getProject('300');
-    expect(row.code).toBe('P-300');
-  });
-
-  it('缺字段时返回空字符串占位 id/name（不抛错）', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope({}));
-    vi.stubGlobal('fetch', fetcher);
-    const row = await getProject('x');
-    expect(row.id).toBe('');
-    expect(row.name).toBe('');
-    expect(row.code).toBeNull();
-  });
-});
-
-describe('project API — createProject 新建', () => {
-  it('POST /projects，targetMarkets 数组转 JSON 字符串；日期透传毫秒', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope(projectFixture()));
-    vi.stubGlobal('fetch', fetcher);
-    const created = await createProject({
-      launchDate: 1735660800000,
-      level: 'S',
-      levelCoefficient: 1.2,
-      levelCoefficientReason: 'S 级',
-      mainGroupId: 'g-1',
-      name: '智慧园区一体机',
-      productId: 'p-001',
-      targetChannelCount: 30,
-      targetMarkets: ['SA', 'AE'],
-      targetNps: 60,
-      targetSalesAmount: 5000000,
-      targetSceneCount: 5,
-      templateType: 'HARDWARE',
-    });
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/projects');
-    const body = JSON.parse(String((fetcher.mock.calls[0]?.[1] as RequestInit).body));
-    expect(body).toEqual({
-      name: '智慧园区一体机',
-      productId: 'p-001',
-      templateType: 'HARDWARE',
-      targetMarkets: '["SA","AE"]',
-      level: 'S',
-      levelCoefficient: 1.2,
-      levelCoefficientReason: 'S 级',
-      targetSalesAmount: 5000000,
-      targetChannelCount: 30,
-      targetNps: 60,
-      targetSceneCount: 5,
-      mainGroupId: 'g-1',
-      launchDate: 1735660800000,
-      legacyEffectiveAt: undefined,
-      declaredStage: undefined,
-      missingHistoryAck: undefined,
-    });
-    expect(created.id).toBe('100');
-  });
-
-  it('白名单 DTO：legacyImport 专属字段经 JSON.stringify 后被剔除（undefined 不可序列化）', async () => {
+// ──────────────────────────────────────────────────────────────────────────────
+// A. createProject body 白名单 DTO（pure — toWire 函数过滤 legacyImport 专属字段）
+//    评审 Important-1：missingHistoryAck 等 legacyImport 字段混入 createProject body
+//    会被后端误判为存量导入请求；toWire 必须对 undefined 字段不序列化。
+// ──────────────────────────────────────────────────────────────────────────────
+describe('project API — createProject body 白名单 DTO (pure)', () => {
+  it('legacyImport 专属字段经 JSON.stringify 后被剔除（undefined 不可序列化）', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope(projectFixture()));
     vi.stubGlobal('fetch', fetcher);
     await createProject({
@@ -217,54 +107,43 @@ describe('project API — createProject 新建', () => {
     expect('declaredStage' in body).toBe(false);
     expect('legacyEffectiveAt' in body).toBe(false);
   });
+});
 
-  it('创建响应被 {project:{...}} 包裹时仍能解析（与列表一致）', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope({ project: projectFixture({ id: '999' }) }));
+// ──────────────────────────────────────────────────────────────────────────────
+// B. normalize 防御性（pure — 与后端响应形态无关，仅前端容错）
+// ──────────────────────────────────────────────────────────────────────────────
+describe('project API — listProjects normalize 防御性 (pure)', () => {
+  it('非数组 data 直接返回空数组，不抛错', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({ junk: true }));
     vi.stubGlobal('fetch', fetcher);
-    const row = await createProject({
-      launchDate: null, level: 'B', levelCoefficient: 1.1, levelCoefficientReason: null,
-      mainGroupId: 'g-1', name: 'B', productId: 'p', targetChannelCount: 1,
-      targetMarkets: [], targetNps: 1, targetSalesAmount: 1, targetSceneCount: 1,
-      templateType: 'SOLUTION',
-    });
-    expect(row.id).toBe('999');
+    const list = await listProjects();
+    expect(list).toEqual([]);
+  });
+
+  it('BigDecimal 字段保持字符串（不被强转 number 丢失精度）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope([
+      projectFixture({ targetSalesAmount: '9999999999999.99', levelCoefficient: '2.40' }),
+    ]));
+    vi.stubGlobal('fetch', fetcher);
+    const [row] = await listProjects();
+    expect(row?.targetSalesAmount).toBe('9999999999999.99');
+    expect(row?.levelCoefficient).toBe('2.40');
+    expect(typeof row?.targetSalesAmount).toBe('string');
   });
 });
 
-describe('project API — legacyImportProject 存量导入', () => {
-  it('强制 missingHistoryAck=true；POST /projects/legacy-import', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope({
-      markedCodes: ['OLD-1', 'OLD-2'],
-      project: projectFixture({ id: '500', code: 'P-500' }),
-    }));
+describe('project API — getProject normalize 防御性 (pure)', () => {
+  it('缺字段时返回空字符串占位 id/name（不抛错）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({}));
     vi.stubGlobal('fetch', fetcher);
-    const result = await legacyImportProject({
-      declaredStage: 'VALID',
-      legacyEffectiveAt: 1700000000000,
-      level: 'S',
-      levelCoefficient: 1.2,
-      levelCoefficientReason: '历史 S 级',
-      mainGroupId: 'g-1',
-      missingHistoryAck: true,
-      name: '历史存量 A',
-      productId: 'p-001',
-      targetChannelCount: 20,
-      targetMarkets: ['CN'],
-      targetNps: 50,
-      targetSalesAmount: 3000000,
-      targetSceneCount: 4,
-      templateType: 'HARDWARE',
-    });
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/projects/legacy-import');
-    const body = JSON.parse(String((fetcher.mock.calls[0]?.[1] as RequestInit).body));
-    expect(body.missingHistoryAck).toBe(true);
-    expect(body.declaredStage).toBe('VALID');
-    expect(body.legacyEffectiveAt).toBe(1700000000000);
-    expect(body.targetMarkets).toBe('["CN"]');
-    expect(result.project.id).toBe('500');
-    expect(result.markedCodes).toEqual(['OLD-1', 'OLD-2']);
+    const row = await getProject('x');
+    expect(row.id).toBe('');
+    expect(row.name).toBe('');
+    expect(row.code).toBeNull();
   });
+});
 
+describe('project API — legacyImportProject normalize 防御性 (pure)', () => {
   it('markedCodes 缺失/非数组时降级为空数组，不抛错', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope({ project: projectFixture() }));
     vi.stubGlobal('fetch', fetcher);
@@ -279,67 +158,7 @@ describe('project API — legacyImportProject 存量导入', () => {
   });
 });
 
-describe('project API — changeProjectStatus 状态流转', () => {
-  it('POST /projects/{id}/status，target 走查询串', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope(projectFixture({ status: 'TEAMING' })));
-    vi.stubGlobal('fetch', fetcher);
-    const row = await changeProjectStatus('100', 'TEAMING');
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/projects/100/status?target=TEAMING');
-    expect(row.status).toBe('TEAMING');
-  });
-
-  it('可传入任意字符串 target（非法迁移由后端拒绝）', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope(
-      projectFixture({ status: 'TEAMING' }),
-      400, 10001,
-    ));
-    vi.stubGlobal('fetch', fetcher);
-    await expect(changeProjectStatus('100', 'INVALID_JUMP')).rejects.toBeInstanceOf(IpdRequestError);
-  });
-});
-
-describe('project API — advanceProjectStage 进入下一阶段', () => {
-  it('POST /projects/{id}/advance-stage，无 body', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope(projectFixture({ currentStage: 'DEV' })));
-    vi.stubGlobal('fetch', fetcher);
-    const row = await advanceProjectStage('100');
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/projects/100/advance-stage');
-    expect((fetcher.mock.calls[0]?.[1] as RequestInit).method).toBe('POST');
-    expect(row.currentStage).toBe('DEV');
-  });
-
-  it('门禁失败 400/10001 抛出 IpdRequestError', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope(null, 400, 10001));
-    vi.stubGlobal('fetch', fetcher);
-    await expect(advanceProjectStage('100')).rejects.toBeInstanceOf(IpdRequestError);
-  });
-});
-
-describe('project API — getGateChecklist 门禁清单', () => {
-  it('不带 stage：GET /projects/{id}/gate-checklist', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope({
-      configVersion: 'v3', items: [
-        { code: 'TEAM_OK', name: '团队齐备', ok: true, reason: '', stage: 'CONCEPT', status: 'OK' },
-        { code: 'BUDGET', name: '预算已审', ok: false, reason: '待补', stage: 'CONCEPT', status: 'PENDING' },
-      ], level: 'S', projectId: '100', stage: 'CONCEPT',
-    }));
-    vi.stubGlobal('fetch', fetcher);
-    const view = await getGateChecklist('100');
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/projects/100/gate-checklist');
-    expect(view.items).toHaveLength(2);
-    expect(view.items[0]).toMatchObject({ code: 'TEAM_OK', ok: true, status: 'OK' });
-    expect(view.items[1]).toMatchObject({ code: 'BUDGET', ok: false, reason: '待补' });
-  });
-
-  it('带 stage：编码进查询串', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope({
-      configVersion: null, items: [], level: null, projectId: '100', stage: 'DEV',
-    }));
-    vi.stubGlobal('fetch', fetcher);
-    await getGateChecklist('100', 'DEV');
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/projects/100/gate-checklist?stage=DEV');
-  });
-
+describe('project API — getGateChecklist normalize 防御性 (pure)', () => {
   it('items 缺省/非数组时降级为空数组', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope({
       configVersion: null, level: null, projectId: '100', stage: null,
@@ -370,7 +189,10 @@ describe('project API — getGateChecklist 门禁清单', () => {
   });
 });
 
-describe('project API — parseTargetMarkets 容错', () => {
+// ──────────────────────────────────────────────────────────────────────────────
+// C. parseTargetMarkets 容错（pure — JSON 解析失败一律降级空数组）
+// ──────────────────────────────────────────────────────────────────────────────
+describe('project API — parseTargetMarkets 容错 (pure)', () => {
   it('解析合法 JSON 数组字符串', () => {
     expect(parseTargetMarkets('["SA","AE"]')).toEqual(['SA', 'AE']);
   });
@@ -398,7 +220,10 @@ describe('project API — parseTargetMarkets 容错', () => {
   });
 });
 
-describe('project API — 错误传播', () => {
+// ──────────────────────────────────────────────────────────────────────────────
+// D. 错误路径解析（pure — 与后端实际响应解耦）
+// ──────────────────────────────────────────────────────────────────────────────
+describe('project API — 错误传播 (pure)', () => {
   it('HTTP 500 + envelope.code != 0 抛 IpdRequestError', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope(null, 500, 99999));
     vi.stubGlobal('fetch', fetcher);
