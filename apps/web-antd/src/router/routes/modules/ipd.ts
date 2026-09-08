@@ -268,7 +268,10 @@ const ipdLayoutRoute: RouteRecordRaw = {
     },
     // KPI 考核 + 激励管理（页29-36）：原型归入协同绩效，路由保留降为隐藏
     {
-      component: () => import('#/views/_core/fallback/not-found.vue'),
+      // 纯分组/重定向父路由：省略 component（对齐同文件 IpdPerformance 无-component 约定），子页由
+      // ipd.vue 的 plain <router-view> 经 vue-router depth-skip（!matched.components 则跳过）渲染。
+      // 勿挂 not-found.vue（纯 <Fallback 404> 无 outlet）——会吞掉 functional/shared/project-score 子页，
+      // 菜单⑨协同绩效 redirect 到此，点进去全见 404（2026-09-08 根因根除）。
       meta: { hideInMenu: true, icon: 'lucide:target', title: 'KPI 考核' },
       name: 'IpdKpi',
       path: 'kpi',
@@ -302,7 +305,8 @@ const ipdLayoutRoute: RouteRecordRaw = {
     },
     // ⑧ 激励管理（页33-36）：并入协同绩效，路由保留降为隐藏
     {
-      component: () => import('#/views/_core/fallback/not-found.vue'),
+      // 纯分组/重定向父路由：省略 component，子页由 ipd.vue plain <router-view> depth-skip 渲染；
+      // 勿挂 not-found.vue（无 outlet 会吞掉 allowance/bonus-pool/contribution/negative-feedback 子页 → 404）。
       meta: { hideInMenu: true, icon: 'lucide:coins', title: '激励管理' },
       name: 'IpdIncentive',
       path: 'incentive',
@@ -351,7 +355,8 @@ const ipdLayoutRoute: RouteRecordRaw = {
     },
     // 删除审核（页04/05/43）—— 原型非一级路由（统一软删除机制），路由保留降为隐藏
     {
-      component: () => import('#/views/_core/fallback/not-found.vue'),
+      // 纯分组/重定向父路由：省略 component，子页由 ipd.vue plain <router-view> depth-skip 渲染；
+      // 勿挂 not-found.vue（无 outlet 会吞掉 my-requests/review/archive 子页 → 404）。
       meta: { hideInMenu: true, icon: 'lucide:trash-2', title: '删除审核' },
       name: 'IpdDeletion',
       path: 'deletion',
@@ -394,7 +399,8 @@ const ipdLayoutRoute: RouteRecordRaw = {
     },
     // ⑮ 超级管理〔超管〕（原型 /admin，页06/18/28/44-49）
     {
-      component: () => import('#/views/_core/fallback/not-found.vue'),
+      // 纯分组/重定向父路由：省略 component，子页由 ipd.vue plain <router-view> depth-skip 渲染；
+      // 勿挂 not-found.vue（无 outlet 会吞掉 org 等超管子页 → 404）。
       meta: { authority: ['SUPER_ADMIN'], icon: 'lucide:settings', order: 15, title: '超级管理' },
       name: 'IpdAdmin',
       path: 'admin',
