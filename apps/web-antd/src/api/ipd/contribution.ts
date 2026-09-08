@@ -11,8 +11,8 @@
  *   - POST /api/v1/contributions/{projectId}/market-share        — 调市场 PM 比例（0.40-0.65）
  *   - POST /api/v1/contributions/{projectId}/confirm             — 组长确认（APPROVE/REJECT）
  *
- * 📌 真缺口登记：原「版本历史列表」（归档版本可追溯）后端无列表端点
- *   （GET /{projectId} 仅返回当前视图），页内已登记。
+ * ✅ 2026-09-08 后端补交：归档版本可追溯端点已交付（BR-INC-09）：
+ *   - GET  /api/v1/contributions/{projectId}/versions — 历次确认归档快照（versionNo 降序）
  *
  * 规则：市场 PM 40-65% / 研发 PM 35-60%（联动）；上市 90 天复盘三方评定；
  * 奖金引用同一版本；退出/移交不静默重新分配。
@@ -116,4 +116,41 @@ export function confirmContribution(
   const query: Record<string, unknown> = { decision };
   if (opinion) query.opinion = opinion;
   return ipdPost<ContributionView>(`/contributions/${projectId}/confirm`, undefined, query);
+}
+
+/** 确认归档快照（ContributionVersionView；BR-INC-09 归档版本可追溯）。 */
+export interface ContributionVersion {
+  id: null | number | string;
+  projectId: null | number | string;
+  /** 确认版次（同项目从 1 递增；REJECT 退回后重确认产生新版本）。 */
+  versionNo: null | number;
+  /** 恒为 CONFIRMED（归档点即确认点）。 */
+  status: null | string;
+  marketShare: null | number | string;
+  rdShare: null | number | string;
+  dimInitiation: null | number | string;
+  dimInnovation: null | number | string;
+  dimLaunch: null | number | string;
+  dimMarketResult: null | number | string;
+  dimLeadership: null | number | string;
+  tierCoefficient: null | number | string;
+  marketComment: null | string;
+  rdComment: null | string;
+  leaderId: null | number | string;
+  leaderDecision: null | string;
+  leaderDecidedAt: null | string;
+  leaderOpinion: null | string;
+  submittedAt: null | string;
+  archivedBy: null | number | string;
+  archivedAt: null | string;
+}
+
+/**
+ * 历次确认归档快照（versionNo 降序，最新确认在前；每次组长 APPROVE 归档一份）。
+ *
+ * ✅ `GET /api/v1/contributions/{projectId}/versions`（ContributionService.listVersions）。
+ * 权限：ipd:incentive:contribution:query。
+ */
+export function listContributionVersions(projectId: string): Promise<ContributionVersion[]> {
+  return ipdGet<ContributionVersion[]>(`/contributions/${projectId}/versions`);
 }

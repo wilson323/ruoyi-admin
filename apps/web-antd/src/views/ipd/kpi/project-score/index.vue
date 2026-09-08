@@ -3,15 +3,17 @@
  * 页31 项目绩效评定（卡 P0-10.31；后端 ProjectScoreController 已交付）。
  * 2026-09-08 契约对齐：改 GET /project-scores/{projectId}/{personId} 单视图
  * （三角色并排 + 加权 + 版本），原 /list /project-score-tasks/my 为臆造路径。
- * 「我的评分任务」列表端点后端未交付（仅超管 POST /project-score-tasks/scan），
- * 页内登记真缺口。
+ * 2026-09-08 后端补交：GET /project-score-tasks/my 已交付，本页「我的评分任务」
+ * 卡片已接线（我的自评 + 我当组长的成员评审，均限 PENDING）。
  */
-import { computed, ref } from 'vue';
-import { Alert, Button, Card, Descriptions, DescriptionsItem, Empty, Input, Tag } from 'ant-design-vue';
+import { computed, onMounted, ref } from 'vue';
+import { Alert, Button, Card, Descriptions, DescriptionsItem, Empty, Input, Table, Tag } from 'ant-design-vue';
 
 import {
+  type MyScoreTask,
   type ProjectScoreView,
   getProjectScore,
+  listMyScoreTasks,
   settleProjectScore,
 } from '../../../../api/ipd/project-score';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
@@ -59,6 +61,39 @@ async function settle(): Promise<void> {
 }
 
 const isEmpty = computed(() => loaded.value && !errorMsg.value && !view.value);
+
+/* ===== 我的在途评分任务（GET /project-score-tasks/my；2026-09-08 后端补交后接线） ===== */
+const myTasks = ref<MyScoreTask[]>([]);
+const myTasksLoading = ref(false);
+const myTasksError = ref('');
+
+const myTaskColumns = [
+  { title: '项目编码', dataIndex: 'projectCode', key: 'projectCode' },
+  {
+    title: '类型',
+    dataIndex: 'targetType',
+    key: 'targetType',
+  },
+  { title: '被评人', dataIndex: 'personName', key: 'personName' },
+  { title: '截止时间', dataIndex: 'dueAt', key: 'dueAt' },
+  { title: '状态', dataIndex: 'status', key: 'status' },
+];
+
+async function loadMyTasks(): Promise<void> {
+  if (myTasksLoading.value) return;
+  myTasksLoading.value = true;
+  myTasksError.value = '';
+  try {
+    myTasks.value = await listMyScoreTasks();
+  } catch (cause) {
+    myTasks.value = [];
+    myTasksError.value = ipdErrorText(cause, { fallback: '我的评分任务加载失败' });
+  } finally {
+    myTasksLoading.value = false;
+  }
+}
+
+onMounted(loadMyTasks);
 </script>
 
 <template>
@@ -110,12 +145,39 @@ const isEmpty = computed(() => loaded.value && !errorMsg.value && !view.value);
       </Descriptions>
     </Card>
 
-    <Card title="我的评分任务">
+    <Card title="我的评分任务（在途 PENDING；我的自评 + 我当组长的成员评审）">
+      <Alert v-if="myTasksError" :message="myTasksError" show-icon type="error" class="mb-3" />
       <Alert
-        message="真缺口登记：「评定人在途评分任务」列表端点后端未交付（ProjectScoreTaskController 仅提供超管 POST /api/v1/project-score-tasks/scan 扫描），待后端补 GET 评分任务端点后接线。当前请通过上方「按项目 + 人员查询」查看评分进度。"
+        v-else-if="!myTasksLoading && myTasks.length === 0"
+        message="当前无在途评分待办（任务由上市 30/90 日扫描生成；全部完成或未到期限时为空）。"
         show-icon
-        type="warning"
+        type="info"
       />
+      <Table
+        v-else
+        :columns="myTaskColumns"
+        :data-source="myTasks"
+        :loading="myTasksLoading"
+        :pagination="false"
+        :row-key="(r: MyScoreTask) => `${r.projectId}-${r.targetType}-${r.personId}`"
+        size="small"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'targetType'">
+            <Tag :color="record.targetType === 'SELF_SCORING' ? 'blue' : 'purple'">
+              {{ record.targetType === 'SELF_SCORING' ? '自评（上市 30 日）' : '组长评审（上市 90 日）' }}
+            </Tag>
+          </template>
+          <template v-else-if="column.key === 'dueAt'">
+            <span :class="record.overdue ? 'text-red-500 font-medium' : ''">
+              {{ record.dueAt ?? '—' }}{{ record.overdue ? '（已逾期）' : '' }}
+            </span>
+          </template>
+          <template v-else-if="column.key === 'status'">
+            <Tag color="orange">{{ record.status ?? '—' }}</Tag>
+          </template>
+        </template>
+      </Table>
     </Card>
   </div>
 </template>

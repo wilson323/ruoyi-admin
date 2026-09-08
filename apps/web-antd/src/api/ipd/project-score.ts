@@ -9,9 +9,8 @@
  *   - GET  /api/v1/project-scores/{projectId}/{personId}/settle  — 结算（锁定三角色齐备的最新版本）
  *   - POST /api/v1/project-scores                                 — 单组件提交（幂等，重提生成新版本）
  *
- * 📌 真缺口登记：原「我的评分任务」列表（评定人在途评分项）后端无对应端点
- *   （ProjectScoreTaskController 仅交付超管 POST /api/v1/project-score-tasks/scan），
- *   页面已改为按项目+人员查询真视图，缺口在页内登记。
+ * ✅ 2026-09-08 后端补交：评定人在途任务列表端点已交付
+ *   - GET  /api/v1/project-score-tasks/my — 我的在途评分待办（自评 + 我当组长的成员评审，PENDING）
  *
  * 规则：自评 0.2 + 市场组长 0.4 + 研发组长 0.4，三者之和 = 1.0；
  * 两 PM 项目分独立；权重参数后台可改。
@@ -71,4 +70,33 @@ export function submitProjectScore(req: {
   score: number | string;
 }): Promise<ProjectScoreView> {
   return ipdPost<ProjectScoreView>('/project-scores', req);
+}
+
+/** 我的在途评分待办（MyScoreTaskView；SELF_SCORING=我的自评 / LEADER_REVIEW=我当组长的成员评审）。 */
+export interface MyScoreTask {
+  projectId: null | number | string;
+  /** 项目编码。 */
+  projectCode: null | string;
+  /** 被评人（SELF=自己；LEADER_REVIEW=被评成员）。 */
+  personId: null | number | string;
+  personName: null | string;
+  /** SELF_SCORING / LEADER_REVIEW。 */
+  targetType: null | string;
+  /** 截止时间（上市+30/90 日）。 */
+  dueAt: null | string;
+  /** 恒为 PENDING（在途；DONE/CANCELLED 不返回）。 */
+  status: null | string;
+  actionUrl: null | string;
+  /** dueAt 已过今天。 */
+  overdue: boolean;
+}
+
+/**
+ * 我的在途评分待办（PENDING；dueAt 升序）。
+ *
+ * ✅ `GET /api/v1/project-score-tasks/my`（ProjectScoreScheduleService.myTasks）。
+ * 权限：ipd:kpi:query。
+ */
+export function listMyScoreTasks(): Promise<MyScoreTask[]> {
+  return ipdGet<MyScoreTask[]>('/project-score-tasks/my');
 }

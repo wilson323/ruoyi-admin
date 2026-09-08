@@ -1,12 +1,12 @@
 /**
  * 项目评分 API 契约测试（2026-09-08 契约对齐后）：
  * GET /project-scores/{projectId}/{personId} 单视图 + settle + POST 裸路径提交。
- * 历史教训：旧断言 /list /submit /project-score-tasks/my 均为臆造路径
- * （后端无这些端点；评分任务列表端点未交付，页内登记真缺口）。
+ * 历史教训：旧断言 /list /submit /project-score-tasks/my 均为臆造路径。
+ * 2026-09-08 后端补交：GET /project-score-tasks/my 已交付（评定人在途任务列表）。
  */
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getProjectScore, settleProjectScore, submitProjectScore } from './project-score';
+import { getProjectScore, listMyScoreTasks, settleProjectScore, submitProjectScore } from './project-score';
 
 const envelope = (data: unknown) =>
   new Response(
@@ -56,5 +56,14 @@ describe('project score API contract', () => {
       projectId: 'p-1',
       score: 80,
     });
+  });
+
+  it('GET /project-score-tasks/my (my pending score tasks; backend delivered 2026-09-08)', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope([]));
+    vi.stubGlobal('fetch', fetcher);
+    await listMyScoreTasks();
+    const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
+    expect(url.pathname).toBe('/api/v1/project-score-tasks/my');
+    expect(url.search).toBe('');
   });
 });

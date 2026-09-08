@@ -1,6 +1,7 @@
 /**
  * 贡献度 API 契约测试（2026-09-08 契约对齐后）：
  * GET /contributions/{projectId} 单视图 + save/preview/market-share/confirm 端点组。
+ * 2026-09-08 后端补交：GET /{projectId}/versions 归档快照列表（BR-INC-09）。
  */
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +9,7 @@ import {
   adjustMarketShare,
   confirmContribution,
   getContribution,
+  listContributionVersions,
   previewContribution,
   saveContribution,
 } from './contribution';
@@ -83,5 +85,14 @@ describe('contribution API contract', () => {
     expect(url.searchParams.get('decision')).toBe('APPROVE');
     expect(url.searchParams.get('opinion')).toBe('同意');
     expect(init.method).toBe('POST');
+  });
+
+  it('GET /contributions/{projectId}/versions (archived snapshots; backend delivered 2026-09-08)', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope([]));
+    vi.stubGlobal('fetch', fetcher);
+    await listContributionVersions('p-1');
+    const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
+    expect(url.pathname).toBe('/api/v1/contributions/p-1/versions');
+    expect(url.search).toBe('');
   });
 });

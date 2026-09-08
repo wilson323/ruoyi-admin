@@ -3,14 +3,17 @@
  * 页35 贡献度评定（卡 P0-10.35；后端 ContributionController 已交付）。
  * 2026-09-08 契约对齐：改 GET /contributions/{projectId} 单项目视图
  * （占比 + 五维 + 系数 + 决策链），原 /versions /current /submit 为臆造路径。
- * 「版本历史列表」端点后端未交付（仅当前视图），页内登记真缺口。
+ * 2026-09-08 后端补交：GET /{projectId}/versions 归档快照列表已交付，
+ * 本页「版本历史」卡片已接线（每次组长 APPROVE 确认归档一份，BR-INC-09）。
  */
 import { computed, ref } from 'vue';
-import { Alert, Button, Card, Descriptions, DescriptionsItem, Empty, Input, Tag } from 'ant-design-vue';
+import { Alert, Button, Card, Descriptions, DescriptionsItem, Empty, Input, Table, Tag } from 'ant-design-vue';
 
 import {
+  type ContributionVersion,
   type ContributionView,
   getContribution,
+  listContributionVersions,
 } from '../../../../api/ipd/contribution';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
 import { formatDateTime } from '../../_shared/format';
@@ -34,6 +37,7 @@ async function load(): Promise<void> {
   if (!pid || loading.value) return;
   loading.value = true;
   errorMsg.value = '';
+  versionsError.value = '';
   try {
     view.value = await getContribution(pid);
     loaded.value = true;
@@ -43,6 +47,15 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false;
   }
+  // 版本历史随查询同拉（独立容错：失败不影响当前视图展示）
+  if (pid) {
+    try {
+      versions.value = await listContributionVersions(pid);
+    } catch (cause) {
+      versions.value = [];
+      versionsError.value = ipdErrorText(cause, { fallback: '版本历史加载失败' });
+    }
+  }
 }
 
 const isEmpty = computed(() => loaded.value && !errorMsg.value && !view.value);
@@ -51,6 +64,19 @@ const decisionText: Record<string, string> = {
   APPROVE: '通过',
   REJECT: '驳回',
 };
+
+/* ===== 版本历史（GET /{projectId}/versions；确认时刻归档快照） ===== */
+const versions = ref<ContributionVersion[]>([]);
+const versionsError = ref('');
+
+const versionColumns = [
+  { title: '版次', dataIndex: 'versionNo', key: 'versionNo' },
+  { title: '市场占比', dataIndex: 'marketShare', key: 'marketShare' },
+  { title: '研发占比', dataIndex: 'rdShare', key: 'rdShare' },
+  { title: '系数', dataIndex: 'tierCoefficient', key: 'tierCoefficient' },
+  { title: '组长决策', dataIndex: 'leaderDecision', key: 'leaderDecision' },
+  { title: '归档时间', dataIndex: 'archivedAt', key: 'archivedAt' },
+];
 </script>
 
 <template>
@@ -101,12 +127,37 @@ const decisionText: Record<string, string> = {
       </Descriptions>
     </Card>
 
-    <Card title="版本历史">
+    <Card title="版本历史（历次确认归档快照；REJECT 退回后重新确认产生新版本）">
+      <Alert v-if="versionsError" :message="versionsError" show-icon type="error" class="mb-3" />
       <Alert
-        message="真缺口登记：「归档版本历史列表」端点后端未交付（GET /api/v1/contributions/{projectId} 仅返回当前视图，无版本列表端点），待后端补版本追溯端点后接线。保存/预览/调整/确认等写操作入口在项目详情激励流程中，本页当前为只读查询。"
+        v-else-if="!loading && versions.length === 0"
+        message="暂无确认归档版本（每次组长 APPROVE 确认时归档一份快照；尚未确认或被驳回未重提时为空）。"
         show-icon
-        type="warning"
+        type="info"
       />
+      <Table
+        v-else
+        :columns="versionColumns"
+        :data-source="versions"
+        :loading="loading"
+        :pagination="false"
+        :row-key="(r: ContributionVersion) => String(r.id)"
+        size="small"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'versionNo'">
+            <Tag color="green">v{{ record.versionNo ?? '—' }}</Tag>
+          </template>
+          <template v-else-if="column.key === 'marketShare'">{{ sharePercent(record.marketShare) }}</template>
+          <template v-else-if="column.key === 'rdShare'">{{ sharePercent(record.rdShare) }}</template>
+          <template v-else-if="column.key === 'leaderDecision'">
+            {{ record.leaderDecision ? (decisionText[record.leaderDecision] ?? record.leaderDecision) : '—' }}
+          </template>
+          <template v-else-if="column.key === 'archivedAt'">
+            {{ record.archivedAt ? formatDateTime(record.archivedAt) : '—' }}
+          </template>
+        </template>
+      </Table>
     </Card>
   </div>
 </template>
