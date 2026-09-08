@@ -67,6 +67,13 @@ describe('portal api（游客免登录封装）', () => {
     await expect(fetchPortalProducts()).rejects.toThrow('无法连接服务，请检查网络后重试');
   });
 
+  it('超时中止（AbortError）判为「请求超时」，不误报断网（2026-09-08 与 requestIpd 同步）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(
+      Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }),
+    ));
+    await expect(fetchPortalProducts()).rejects.toThrow('请求超时，请稍后重试');
+  });
+
   it('产品列表：GET /api/v1/public/products，过滤畸形条目并派生 listingStatus 兜底', async () => {
     const fetcher = vi.fn().mockResolvedValue(jsonResponse([
       { id: '101', productName: 'ZK-X100', modelCode: 'ZK-X100', status: 'ACTIVE', listingStatus: 'ON_SALE' },

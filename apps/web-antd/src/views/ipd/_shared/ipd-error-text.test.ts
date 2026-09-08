@@ -62,6 +62,11 @@ describe('ipdErrorText 错误类型分派', () => {
     expect(ipdErrorText(err)).toBe('无法连接服务，请检查网络后重试');
   });
 
+  it('timeout 类错误返回「请求超时」文案（2026-09-08：超时不再误报断网）', () => {
+    const err = new IpdRequestError('其他', 0, 0, 'timeout');
+    expect(ipdErrorText(err)).toBe('请求超时，请稍后重试');
+  });
+
   it('cancelled 类错误返回「登录状态已变化」文案', () => {
     const err = new IpdRequestError('其他', 0, 0, 'cancelled');
     expect(ipdErrorText(err)).toBe('登录状态已变化，请重新操作');
@@ -178,9 +183,10 @@ describe('isTransportError 网络异常识别', () => {
     expect(isTransportError(new IpdRequestError('x', 0, 0, 'transport'))).toBe(true);
   });
 
-  it('http / protocol / cancelled 返回 false', () => {
+  it('http / protocol / timeout / cancelled 返回 false', () => {
     expect(isTransportError(new IpdRequestError('x', 400, 10001, 'http'))).toBe(false);
     expect(isTransportError(new IpdRequestError('x'))).toBe(false);
+    expect(isTransportError(new IpdRequestError('x', 0, 0, 'timeout'))).toBe(false);
     expect(isTransportError(new IpdRequestError('x', 0, 0, 'cancelled'))).toBe(false);
   });
 

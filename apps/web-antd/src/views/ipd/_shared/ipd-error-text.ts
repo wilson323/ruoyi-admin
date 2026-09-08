@@ -103,6 +103,8 @@ export interface IpdErrorOptions {
 export function ipdErrorText(error: unknown, options: IpdErrorOptions = {}): string {
   if (error instanceof IpdRequestError) {
     if (error.kind === 'transport') return '无法连接服务，请检查网络后重试';
+    // 2026-09-08：15s 超时中止单独归类——后端可能已在处理，与真断网分开报，避免误导用户排查网络。
+    if (error.kind === 'timeout') return '请求超时，请稍后重试';
     if (error.kind === 'cancelled') return '登录状态已变化，请重新操作';
     // 2026-09-06 第六批判例补：形状校验类（protocol）错误自带专属用户文案，不得降级为通用 fallback
     if (error.kind === 'protocol') return error.message;
@@ -136,7 +138,8 @@ export function withCodeTextOverrides(
     });
 }
 
-/** 是否为断网/传输层异常（用于页面区分"网络异常"与"业务拒绝"两种失败形态）。 */
+/** 是否为断网/传输层异常（用于页面区分"网络异常"与"业务拒绝"两种失败形态）。
+ *  注意：超时中止（kind='timeout'）不算断网——它有自己的文案与语义，页面重试提示应区分。 */
 export function isTransportError(error: unknown): boolean {
   return error instanceof IpdRequestError && error.kind === 'transport';
 }

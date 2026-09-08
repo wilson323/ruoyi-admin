@@ -23,10 +23,16 @@ export interface IpdLoginResult extends IpdIdentity {
 }
 
 export class IpdRequestError extends Error {
-  constructor(message: string, readonly status = 0, readonly code = 0, readonly kind: 'http' | 'protocol' | 'transport' | 'cancelled' = 'protocol', readonly envelopeMessage?: string) {
+  constructor(message: string, readonly status = 0, readonly code = 0, readonly kind: 'http' | 'protocol' | 'timeout' | 'transport' | 'cancelled' = 'protocol', readonly envelopeMessage?: string) {
     super(message);
     this.name = 'IpdRequestError';
   }
+}
+
+/** AbortController 超时中止的拒绝形态识别（浏览器为 DOMException/AbortError，Node 形态不一，按 name 判）。
+ *  2026-09-08：15s 超时中止与真断网分开归类，慢响应不再误报「无法连接服务」。 */
+export function isAbortRejection(error: unknown): boolean {
+  return (error as { name?: unknown } | null | undefined)?.name === 'AbortError';
 }
 
 /** 后端登录坏凭据的固定枚举文案（IpdAuthService.login 唯一固定值；离职/禁用/限流同落 400+10001 但 message 不同）。
@@ -151,6 +157,11 @@ export async function requestIpd(
     return envelope.data;
   } catch (error) {
     if (error instanceof IpdRequestError) throw error;
+    // 15s 定时器 abort 的拒绝单独归类为 timeout：后端可能已在处理，与真断网分开报，
+    // 避免把慢响应误报成网络故障（验证场景见 auth.test.ts requestIpd transport/timeout 分派）。
+    if (isAbortRejection(error)) {
+      throw new IpdRequestError('请求超时，请稍后重试', 0, 0, 'timeout');
+    }
     throw new IpdRequestError('无法连接服务，请检查网络后重试', 0, 0, 'transport');
   } finally {
     clearTimeout(timer);

@@ -14,7 +14,7 @@
  * 守护机制：scripts/check-ipd-frontend-drift.sh
  */
 import { ipdErrorText } from '../../views/ipd/_shared/ipd-error-text';
-import { IpdRequestError } from './auth';
+import { IpdRequestError, isAbortRejection } from './auth';
 
 /** 页38 三情形产品（PublicProductView；ID 后端按字符串序列化，前端不数值化）。 */
 export interface PortalProduct {
@@ -75,6 +75,8 @@ export const PORTAL_CODE_PATTERN = /^[A-Z0-9]{8}$/;
  *  本常量仅用于 fallback/未登记码兜底与请求构造阶段的非业务码场景。 */
 const DEFAULT_ERROR_TEXT = '服务暂时不可用，请稍后重试';
 const TRANSPORT_ERROR_TEXT = '无法连接服务，请检查网络后重试';
+/** 2026-09-08：与 requestIpd 同步——超时中止不再误报断网（游客页文案走 ipdErrorText timeout 分支）。 */
+const TIMEOUT_ERROR_TEXT = '请求超时，请稍后重试';
 const MALFORMED_ERROR_TEXT = '服务响应格式异常，请稍后重试';
 
 /** 探针实测：未匹配路由被 advice 兜底成 {code:404,message:null,...}——按业务码读而非 message。 */
@@ -127,6 +129,9 @@ async function requestPortal<T>(
     return body.data as T;
   } catch (error) {
     if (error instanceof IpdRequestError) throw error;
+    if (isAbortRejection(error)) {
+      throw new IpdRequestError(TIMEOUT_ERROR_TEXT, 0, 0, 'timeout');
+    }
     throw new IpdRequestError(TRANSPORT_ERROR_TEXT, 0, 0, 'transport');
   } finally {
     clearTimeout(timer);

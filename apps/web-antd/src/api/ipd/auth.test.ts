@@ -418,8 +418,8 @@ describe('IpdRequestError shape', () => {
     expect(e.kind).toBe('protocol');
   });
 
-  it('accepts all four kind variants', () => {
-    for (const kind of ['http', 'protocol', 'transport', 'cancelled'] as const) {
+  it('accepts all five kind variants', () => {
+    for (const kind of ['http', 'protocol', 'transport', 'timeout', 'cancelled'] as const) {
       const e = new IpdRequestError('x', 0, 0, kind);
       expect(e.kind).toBe(kind);
     }
@@ -518,5 +518,31 @@ describe('BUSINESS_CODE_MESSAGES coverage via requestIpd', () => {
       /用户名或密码错误/,
     );
     expect(loginFetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('fetch 以 AbortError 拒绝（15s 定时器中止）→ kind="timeout"，文案「请求超时」而非误报断网', async () => {
+    // 2026-09-08：超时中止与真断网分开归类；浏览器为 DOMException(AbortError)，
+    // 此处用 name 改写的 Error 模拟同一拒绝形态。
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(
+      Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }),
+    ));
+    const cause = await requestIpd('/probe').then(
+      () => { throw new Error('should have rejected'); },
+      (e: unknown) => e,
+    );
+    expect(cause).toBeInstanceOf(IpdRequestError);
+    expect((cause as IpdRequestError).kind).toBe('timeout');
+    expect((cause as IpdRequestError).message).toBe('请求超时，请稍后重试');
+  });
+
+  it('fetch 以 TypeError 拒绝（真断网）→ kind="transport"，文案不变', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network unavailable')));
+    const cause = await requestIpd('/probe').then(
+      () => { throw new Error('should have rejected'); },
+      (e: unknown) => e,
+    );
+    expect(cause).toBeInstanceOf(IpdRequestError);
+    expect((cause as IpdRequestError).kind).toBe('transport');
+    expect((cause as IpdRequestError).message).toBe('无法连接服务，请检查网络后重试');
   });
 });

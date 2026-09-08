@@ -118,7 +118,9 @@ async function submit() {
           <label>
             用户名（姓名；重名时为姓名-工号）
             <input
+              id="username"
               v-model="form.username"
+              name="username"
               autocomplete="username"
               :maxlength="64"
               :disabled="auth.busy"
@@ -129,8 +131,10 @@ async function submit() {
           <label>
             密码
             <input
+              id="password"
               v-model="form.password"
               type="password"
+              name="password"
               autocomplete="current-password"
               :maxlength="72"
               :disabled="auth.busy"
