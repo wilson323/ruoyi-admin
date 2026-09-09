@@ -74,8 +74,8 @@ RUN chmod +x /docker-entrypoint.sh
 # 暴露端口
 EXPOSE 5666
 
-# 设置默认后端地址（可被 docker-compose environment 覆盖）
-ENV UPSTREAM_HOST=127.0.0.1:6039
+# 设置默认后端地址（IPD 后端 16039；compose 中会被 environment 覆盖为 backend:16039）
+ENV UPSTREAM_HOST=127.0.0.1:16039
 
 # 启动脚本（处理环境变量并启动 nginx）
 CMD ["/docker-entrypoint.sh"]
