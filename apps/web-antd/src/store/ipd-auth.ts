@@ -70,11 +70,14 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
   // 通用表吞成「输入信息不符合要求」（语义混同），且用户可继续盲试不断放大限流命中。
   const loginCooldownRemaining = ref(0);
   let loginCooldownTimer: ReturnType<typeof setInterval> | undefined;
+  // 2026-09-09 蜂群复审 P2：按绝对截止时刻计算剩余，后台标签页 setInterval 被节流时不会延长锁定
+  let loginCooldownDeadline = 0;
   function startLoginCooldown(seconds = 60) {
     clearInterval(loginCooldownTimer);
+    loginCooldownDeadline = Date.now() + seconds * 1000;
     loginCooldownRemaining.value = seconds;
     loginCooldownTimer = setInterval(() => {
-      loginCooldownRemaining.value = Math.max(0, loginCooldownRemaining.value - 1);
+      loginCooldownRemaining.value = Math.max(0, Math.ceil((loginCooldownDeadline - Date.now()) / 1000));
       if (loginCooldownRemaining.value === 0) clearInterval(loginCooldownTimer);
     }, 1000);
   }
@@ -230,6 +233,11 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
 
   async function login(username: string, password: string) {
     if (busy.value) return;
+    // 2026-09-09 蜂群复审 P2：冷却拦截不依赖视图层单点，未来新增调用方（如自动重登）也被挡住
+    if (loginCooldownRemaining.value > 0) {
+      error.value = `登录尝试过于频繁，请 ${loginCooldownRemaining.value} 秒后再试`;
+      throw new IpdRequestError(error.value, 0, 0, 'protocol');
+    }
     busy.value = true;
     error.value = '';
     clearSession();

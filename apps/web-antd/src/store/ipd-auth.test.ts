@@ -50,6 +50,20 @@ describe('ipd-auth store 登录限流特判', () => {
     expect(store.loginCooldownRemaining).toBe(0);
   });
 
+  it('冷却期内直接调 login()：store 层拦截（纵深守卫，不依赖视图层）', async () => {
+    const store = useIpdAuthStore();
+    loginIpdMock.mockRejectedValueOnce(new IpdRequestError(
+      '登录尝试过于频繁，请稍后再试', 400, 10001, 'http', '登录尝试过于频繁，请稍后再试',
+    ));
+    await expect(store.login('ipd-admin', 'x')).rejects.toThrow();
+    expect(store.loginCooldownRemaining).toBe(60);
+
+    // 蜂群复审 P2：冷却期内再次登录，不发请求、直接被 store 拒绝
+    loginIpdMock.mockClear();
+    await expect(store.login('ipd-admin', 'x')).rejects.toThrow(/\d+ 秒后再试/);
+    expect(loginIpdMock).not.toHaveBeenCalled();
+  });
+
   it('凭据错误（envelope.message 固定枚举）：仍走凭据文案，不触发冷却', async () => {
     const store = useIpdAuthStore();
     loginIpdMock.mockRejectedValueOnce(new IpdRequestError(

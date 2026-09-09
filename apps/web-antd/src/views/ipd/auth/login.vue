@@ -145,6 +145,10 @@ async function submit() {
           </label>
           <div v-if="passwordChanged" class="form-success" role="status">密码已修改，请使用新密码重新登录。</div>
           <div v-if="auth.error" class="form-error" role="alert">{{ auth.error }}</div>
+          <!-- 2026-09-09 蜂群复审 a11y：冷却开始时读屏播报一次（内容插入即播报）；倒计时逐秒变化不重复播报 -->
+          <div v-if="auth.loginCooldownRemaining > 0" class="cooldown-announce" role="status">
+            登录已锁定 60 秒，请稍后再试
+          </div>
           <button class="login-button" type="submit" :disabled="auth.busy || auth.loginCooldownRemaining > 0">
             {{ auth.busy
               ? '正在登录…'
@@ -457,6 +461,16 @@ async function submit() {
   background: #fdf0f0;
   border: 1px solid #f3c6c6;
   border-radius: 7px;
+}
+
+/* 读屏专用播报：视觉隐藏但可被辅助技术读取 */
+.cooldown-announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .form-success {
