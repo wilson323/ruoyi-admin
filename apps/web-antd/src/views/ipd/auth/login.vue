@@ -70,7 +70,8 @@ if (demoPasswordsMissing) {
 }
 
 async function submit() {
-  if (auth.busy) return;
+  // 2026-09-09 系统性梳理 P1：限流冷却期内拦截提交，避免盲试继续触发后端 @RateLimiter。
+  if (auth.busy || auth.loginCooldownRemaining > 0) return;
   // 空凭据守卫：给明确文案，避免空密码打到后端换来误导性的「用户名或密码不对」。
   if (!form.username.trim() || !form.password) {
     auth.error = '请输入用户名和密码';
@@ -144,8 +145,12 @@ async function submit() {
           </label>
           <div v-if="passwordChanged" class="form-success" role="status">密码已修改，请使用新密码重新登录。</div>
           <div v-if="auth.error" class="form-error" role="alert">{{ auth.error }}</div>
-          <button class="login-button" type="submit" :disabled="auth.busy">
-            {{ auth.busy ? '正在登录…' : '登录工作台' }}
+          <button class="login-button" type="submit" :disabled="auth.busy || auth.loginCooldownRemaining > 0">
+            {{ auth.busy
+              ? '正在登录…'
+              : auth.loginCooldownRemaining > 0
+                ? `登录尝试过于频繁，请 ${auth.loginCooldownRemaining} 秒后再试`
+                : '登录工作台' }}
           </button>
           <div v-if="isDev" class="demo-accounts">
             <strong>演示账号快捷选择</strong>

@@ -65,6 +65,19 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
   let refreshFlight: Promise<void> | undefined;
   let passwordChangedAt: number | undefined;
   const requiresReauthentication = computed(() => credentials.value?.refreshState === 'uncertain');
+  // 2026-09-09 系统性梳理 P1：登录限流前端特判 + 冷却。后端 @RateLimiter（60 秒 5 次/IP+账号）
+  // 命中后返回 400+10001+「登录尝试过于频繁，请稍后再试」；此前该文案会被 ipdErrorText
+  // 通用表吞成「输入信息不符合要求」（语义混同），且用户可继续盲试不断放大限流命中。
+  const loginCooldownRemaining = ref(0);
+  let loginCooldownTimer: ReturnType<typeof setInterval> | undefined;
+  function startLoginCooldown(seconds = 60) {
+    clearInterval(loginCooldownTimer);
+    loginCooldownRemaining.value = seconds;
+    loginCooldownTimer = setInterval(() => {
+      loginCooldownRemaining.value = Math.max(0, loginCooldownRemaining.value - 1);
+      if (loginCooldownRemaining.value === 0) clearInterval(loginCooldownTimer);
+    }, 1000);
+  }
   const mustChangePassword = computed(() => identity.value?.mustChangePwd || identity.value?.scope === 'PASSWORD_CHANGE_REQUIRED');
   const accessStore = useAccessStore();
 
@@ -238,8 +251,18 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
       const credentialReject = cause instanceof IpdRequestError
         && cause.code === 10001
         && cause.envelopeMessage === IPD_LOGIN_CREDENTIAL_ERROR;
+      // 限流（防爆破）提示必须原文透出：与凭据错误同为 400+10001，只有 envelope.message
+      // 含固定文案「登录尝试过于频繁」才是限流；命中后启动与后端窗口对齐的 60s 冷却。
+      const rateLimited = cause instanceof IpdRequestError
+        && cause.code === 10001
+        && (cause.envelopeMessage ?? '').includes('登录尝试过于频繁');
+      if (rateLimited) startLoginCooldown();
       error.value = cause instanceof IpdRequestError
-        ? (credentialReject ? IPD_LOGIN_CREDENTIAL_TEXT : ipdErrorText(cause, { fallback: '登录失败，请重试' }))
+        ? (credentialReject
+          ? IPD_LOGIN_CREDENTIAL_TEXT
+          : rateLimited
+            ? (cause.envelopeMessage || '登录尝试过于频繁，请稍后再试')
+            : ipdErrorText(cause, { fallback: '登录失败，请重试' }))
         : '登录失败，请重试';
       throw cause;
     } finally { busy.value = false; }
@@ -294,6 +317,6 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
     } finally { busy.value = false; }
   }
 
-  return { token, identity, busy, error, mustChangePassword, requiresReauthentication, clearSession, refreshIdentity, authenticatedRequest,
+  return { token, identity, busy, error, mustChangePassword, requiresReauthentication, loginCooldownRemaining, clearSession, refreshIdentity, authenticatedRequest,
     renewPlatformSession, login, changePassword, consumePasswordChangedNotice, logout };
 });

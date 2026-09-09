@@ -26,11 +26,13 @@ describe('rotating IPD session', () => {
     expect(auth.error).toBe('用户名或密码错误，请重新输入');
   });
   it('does not mask non-credential 10001 rejections (rate limit / disabled) as wrong password', async () => {
-    // 评审 Important-1：离职/禁用/限流同落 400+10001，按 code 无差别覆写会遮蔽防爆破提示、误导撞库
+    // 评审 Important-1：离职/禁用/限流同落 400+10001，按 code 无差别覆写会遮蔽防爆破提示、误导撞库；
+    // 2026-09-09 系统性梳理 P1：限流文案从通用表升级为 envelope.message 原文透出 + 60s 冷却（消除语义混同）
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(null, 400, 10001, '登录尝试过于频繁，请稍后再试')));
     const auth = useIpdAuthStore();
     await expect(auth.login('fixture', 'any')).rejects.toThrow();
-    expect(auth.error).toBe('输入信息不符合要求，请检查后重试');
+    expect(auth.error).toBe('登录尝试过于频繁，请稍后再试');
+    expect(auth.loginCooldownRemaining).toBe(60);
   });
   it('keeps the defensive 401 login specialization for credential codes (gateway rewrite path)', async () => {
     // 评审 Suggestion-2：后端登录匿名放行且 10001 实走 HTTP 400，401+10001 仅网关异常改写时出现——纯防御分支须有用例固定
