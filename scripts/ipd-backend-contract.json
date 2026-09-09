@@ -1,0 +1,910 @@
+{
+  "generated_from": "ruoyi-ai@4f0866e2",
+  "note": "由 gen-ipd-backend-contract.py 从后端 Controller 注解生成；后端接口变更后须重新生成并提交",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/api/v1/ai-documents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai-documents/generate"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai-documents/{id}/diff"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai-documents/{id}/history"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai-documents/{id}/revise"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai-documents/{id}/versions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai-documents/{id}/versions/{versionId}/archive"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai-documents/{id}/versions/{versionId}/reject"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai-documents/{id}/versions/{versionId}/review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai-models"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai-models"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai-models/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai-models/{id}/enable"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai-models/{id}/test"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai-models/{id}/update"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/allowance/auto-scan"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/allowance/ledger"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/allowance/pending-stop"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audit-logs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audit-logs/export"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audit-logs/export/scope"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/audit-logs/rebuild-chain"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audit-logs/scope"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/audit-logs/verify"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/change-password"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bid-invitations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bid-invitations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bid-invitations/p231-create"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bid-invitations/{id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/bid-invitations/{id}/admin-assign"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/bid-invitations/{id}/close"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/bid-invitations/{id}/modify"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bid-invitations/{id}/pre-select-token"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/bid-invitations/{id}/publish"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bid-invitations/{id}/responses"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/bid-invitations/{id}/select"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/bid-invitations/{id}/withdraw"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bid-responses"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/bid-responses/{id}/withdraw"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bonus-pool/auto-compute"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bonus-pool/coefficient/preview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bonus-pool/compute"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bonus-pool/list"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bonus-pool/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bonus-pool/{id}/distribute"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bonus-pool/{id}/freeze"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/cert-templates"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cert-templates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/cert-templates/country-counts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/cert-templates/resolve"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cert-templates/{id}/remove"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/coefficient-change-requests"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/coefficient-change-requests/{id}/leader-decision"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/compliance/audit-trail/{resourceType}/{resourceId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/compliance/data-deletion-request"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/compliance/data-retention-rules"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/compliance/permission-separation/{userId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/contributions/{projectId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/contributions/{projectId}/confirm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/contributions/{projectId}/market-share"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/contributions/{projectId}/preview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/contributions/{projectId}/save"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/contributions/{projectId}/versions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/deletion-requests"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/deletion-requests/archive"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/deletion-requests/escalate-overdue"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/deletion-requests/overdue-admin-review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/deletion-requests/{id}/admin-decision"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/deletion-requests/{id}/leader-decision"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/deletion-requests/{id}/purge"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/deletion-requests/{id}/withdraw"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/demands"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/demands/{id}/link-project"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/demands/{id}/triage"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/gate-elements"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gate-elements"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gate-elements/{id}/archive"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gate-elements/{id}/copy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gate-elements/{id}/disable"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gate-elements/{id}/publish"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gate-elements/{id}/revert"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gate-elements/{id}/update"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/legacy/scan-overdue"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/sign/scan-remind"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/sign/scan-timeout"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/{gateId}/arbitrate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/{gateId}/element-results"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/{gateId}/element-results/{resultId}/close"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/gates/{gateId}/elements"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/{gateId}/extend-deadline"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/{gateId}/final-ruling"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/gates/{gateId}/legacy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/gates/{gateId}/materials"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/gates/{gateId}/observers"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/{gateId}/observers/invite"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/{gateId}/observers/{observerId}/opinion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/{gateId}/reopen"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/gates/{gateId}/review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/{gateId}/sign"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/{gateId}/submit"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/handovers"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/handovers/batch"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/handovers/inbox"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/handovers/super-admin"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/handovers/{id}/accept"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/handovers/{id}/cancel"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/hr-sync/escalate-stale-resignations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/hr-sync/mark-resigned"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/hr-sync/pending-handovers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/kpi/functional"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/kpi/performance"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/kpi/shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/kpi/shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/kpi/shared/deadline-config"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/kpi/shared/deadline-scan"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/kpi/trend"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/launch-date-change-requests"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/launch-date-change-requests/{id}/second-decision"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/negative-feedbacks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/negative-feedbacks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/negative-feedbacks/by-project/{projectId}/effective"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/negative-feedbacks/{id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/negative-feedbacks/{id}/decide"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/negative-feedbacks/{id}/lift"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/negative-feedbacks/{id}/submit"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/async-dispatch"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/dispatch-pending"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/read-all"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications/unread-count"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notifications/{id}/read"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/person-sync/jobs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/person-sync/jobs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/person-sync/jobs/abnormal"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/person-sync/jobs/retry-all"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/person-sync/jobs/{id}/retry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/persons/{id}/rehire"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/persons/{id}/resign"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/persons/{id}/wecom/unbind"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/pm-directory"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/product-groups"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/product-groups"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/product-groups/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/product-groups/{id}/leader"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/product-groups/{id}/remove"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/products"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/products"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/products/batch-import"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/products/{id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/products/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/products/{id}/bind-project"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/products/{id}/status"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/products/{id}/unbind-project"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/products/{id}/workspace"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/project-circle/posts/{id}/comments"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/project-circle/{projectId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/project-circle/{projectId}/candidates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/project-circle/{projectId}/members"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/project-circle/{projectId}/members"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/project-circle/{projectId}/posts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/project-score-tasks/my"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/project-score-tasks/scan"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/project-scores"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/project-scores/{projectId}/{personId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/project-scores/{projectId}/{personId}/settle"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/legacy-import"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/legacy-import/batch"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/advance-stage"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/baselines"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects/{id}/cert-items"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/cert-items"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/cert-items/sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/cert-items/{itemId}/status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects/{id}/gate-checklist"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/gates"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/launch-date"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/members"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{projectId}/members"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/public/demands"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/public/demands/{code}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/public/products"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/receipt-ledgers"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/receipt-ledgers/by-project/{projectId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/receipt-ledgers/{projectId}/refunds"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/report/export/allowance"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/report/export/bonus"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/report/export/project"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/report/project-summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/requirement-changes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/requirement-changes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/requirement-changes/open"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/requirement-changes/{id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/requirement-changes/{id}/sign"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/requirement-changes/{id}/submit"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sop-templates"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sop-templates/current"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sop-templates/{id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sop-templates/{id}/copy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sop-templates/{id}/publish"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sop-templates/{id}/revert"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sop-templates/{id}/update"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/stage-actions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/stage-actions/ensure-bio-compliance"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/stage-actions/instantiate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/stage-actions/{id}/deliverables"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/stage-actions/{id}/fields"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/stage-actions/{id}/transit"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/switching-acceptance"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/switching-acceptance/{month}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/switching-acceptance/{month}/lock"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/switching-acceptance/{month}/run"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/switching-acceptance/{month}/unlock"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/system-configs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/system-configs/{key:.+}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/system-configs/{key:.+}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/system-configs/{key:.+}/as-of"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/system-configs/{key:.+}/versions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workbench/summary"
+    }
+  ]
+}

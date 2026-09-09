@@ -1,0 +1,45 @@
+# IPD 前后端契约对照门禁（F4，2026-09-09）
+# 病根背景：前端按想象写端点（platform-token 调用后端不存在，上线即 404），
+# 此前无任何机制会喊"对不上"。本 workflow 把对照固化为 CI：
+#   - 前端 api/ipd 的每个调用必须命中 scripts/ipd-backend-contract.json（后端契约快照）
+#   - 已知断裂登记在 scripts/ipd-known-gaps.json（warning 不拦，owner 一眼可见）
+#   - 清单/扫描器自身失效直接 fail（门禁坏了必须拦，不能静默全过）
+# 契约快照更新：后端接口变更后跑
+#   python3 scripts/gen-ipd-backend-contract.py /path/to/ruoyi-ai > scripts/ipd-backend-contract.json
+
+name: ipd-contract-check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web-antd/src/api/ipd/**'
+      - 'scripts/ipd-backend-contract.json'
+      - 'scripts/ipd-known-gaps.json'
+      - 'scripts/check-ipd-contract.mjs'
+      - '.github/workflows/ipd-contract-check.yml'
+  pull_request:
+    paths:
+      - 'apps/web-antd/src/api/ipd/**'
+      - 'scripts/ipd-backend-contract.json'
+      - 'scripts/ipd-known-gaps.json'
+      - 'scripts/check-ipd-contract.mjs'
+      - '.github/workflows/ipd-contract-check.yml'
+
+jobs:
+  contract-check:
+    name: frontend↔backend contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Contract check
+        run: node scripts/check-ipd-contract.mjs

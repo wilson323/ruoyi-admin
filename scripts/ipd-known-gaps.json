@@ -1,0 +1,8 @@
+[
+  {
+    "method": "POST",
+    "path": "/auth/platform-token",
+    "registered": "2026-09-09",
+    "reason": "AI 平台桥端点：前端 auth.ts L222 已调用，后端无实现（蜂群B契约对照发现）——待 owner 拍板补后端或下线前端调用，补齐后从本清单移除"
+  }
+]
