@@ -1,14 +1,6 @@
 {
   "root": "根目录",
   "system": {
-    "user": "用户管理",
-    "log": {}
-  },
-  "tenant": {},
-  "monitor": {},
-  "tool": {},
-  "workflow": {
-    "monitor": {}
-  },
-  "task": {}
+    "user": "用户管理"
+  }
 }
