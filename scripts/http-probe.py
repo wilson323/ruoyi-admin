@@ -10,9 +10,17 @@
 7. 真 FE-only = http=200 AND biz=404（wrapper 404：路由存在但资源不存在，且 caller 永远不可能用真 id 替换）
 8. 真后端 bug = http=500（看后端 sys-error.log 找根因）
 
+登录方式：
+- python3 scripts/http-probe.py              # 默认 RD_PM（wecom mock login）
+- python3 scripts/http-probe.py --user=ipd-market  # 用 username+password 登录 MARKET_PM
+- python3 scripts/http-probe.py --user=ipd-rd --password=xxx
+- python3 scripts/http-probe.py --wecom       # wecom mock login 模式
+
 复测：
     python3 scripts/http-probe.py
+    python3 scripts/http-probe.py --user=ipd-market
 """
+import argparse
 import re
 import json
 import urllib.request
@@ -21,18 +29,34 @@ from pathlib import Path
 
 API_DIR = Path('/Users/mac/Documents/ruoyi-ipd-integrated/apps/web-antd/src/api/ipd')
 BASE_URL = 'http://127.0.0.1:16039'
-WECOM_USER_ID = 'wecom_R29_4_test_001'  # 默认 RD_PM / 900104
+DEFAULT_PASSWORD = 'Ipd@123456'
+WECOM_USER_ID = 'wecom_R29_4_test_001'
 RELOGIN_EVERY = 25
 
 
-def login() -> str:
-    """wecom mock 登录拿 token（TTL 短，要频繁重拿）。"""
-    body = json.dumps({"wecomUserId": WECOM_USER_ID}).encode()
+def login(username='ipd-rd', password=DEFAULT_PASSWORD, wecom=False) -> str:
+    """登录拿 token。
+
+    - wecom=True：wecom mock login（仅 ipd-rd 可用）
+    - username/password：IPD /auth/login username+password
+
+    当前 db 状态（2026-09-10）：
+    - ipd-rd (900104): wecom_user_id='wecom_R29_4_test_001'，password_hash 默认
+    - ipd-market (900103): password_hash 默认 Ipd@123456
+    - ipd-admin (900101) / ipd-leader (900102): password_hash 已被兄弟会话改过
+    """
+    if wecom:
+        body = json.dumps({"wecomUserId": WECOM_USER_ID}).encode()
+        url = f"{BASE_URL}/api/v1/auth/wecom/qr-login"
+    else:
+        body = json.dumps({"username": username, "password": password}).encode()
+        url = f"{BASE_URL}/api/v1/auth/login"
     req = urllib.request.Request(
-        f"{BASE_URL}/api/v1/auth/wecom/qr-login",
-        data=body, headers={"Content-Type": "application/json"}, method="POST")
+        url, data=body, headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=5) as r:
         d = json.loads(r.read())
+        if d.get("code") != 0:
+            raise RuntimeError(f'login failed: {d.get("message")}')
         return d["data"]["token"]
 
 
@@ -129,15 +153,29 @@ def classify(results):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--user', default='ipd-rd', help='username (default ipd-rd)')
+    parser.add_argument('--password', default=DEFAULT_PASSWORD, help='password')
+    parser.add_argument('--wecom', action='store_true', help='use wecom mock login')
+    parser.add_argument('--out', default='/tmp/http-probe-result.txt', help='result file')
+    args = parser.parse_args()
+
     fe_calls = scan_fe_calls()
     print(f'distinct FE calls: {len(fe_calls)}')
+
+    # 登录模式
+    if args.wecom:
+        login_mode = f'wecom mock ({WECOM_USER_ID})'
+    else:
+        login_mode = f'username={args.user}'
+
+    print(f'login mode: {login_mode}')
 
     sorted_calls = sorted(fe_calls)
     results = []
 
-    # 每 RELOGIN_EVERY 个请求重新登录，避免 token TTL 失效
     for batch_start in range(0, len(sorted_calls), RELOGIN_EVERY):
-        tok = login()
+        tok = login(username=args.user, password=args.password, wecom=args.wecom)
         batch = sorted_calls[batch_start:batch_start + RELOGIN_EVERY]
         for v, p, f in batch:
             code, body = call(v, p, tok)
@@ -167,7 +205,7 @@ def main():
     for r in buckets['http_500']:
         print(f'  ✗ {r[0]:6s} {r[1]:55s} ({r[2]}) → {r[4]} {r[5]}')
 
-    print('\n=== HTTP 401 (RD_PM 凭证 / 角色问题) ===')
+    print('\n=== HTTP 401 (凭证失效) ===')
     for r in buckets['http_401'][:10]:
         print(f'  · {r[0]:6s} {r[1]:55s} ({r[2]})')
 
@@ -176,8 +214,8 @@ def main():
         print(f'  · {r[0]:6s} {r[1]:55s} ({r[2]})')
 
     # 写结构化结果
-    with open('/tmp/http-probe-result.txt', 'w') as out:
-        out.write(f'total={len(results)}')
+    with open(args.out, 'w') as out:
+        out.write(f'# login={login_mode} total={len(results)}')
         for k, v in buckets.items():
             out.write(f' {k}={len(v)}')
         out.write('\n\n')
@@ -187,7 +225,7 @@ def main():
                 for r in items:
                     out.write(f'{r[0]}\t{r[1]}\t{r[2]}\thttp={r[3]}\tbiz={r[4]}\t{r[5]}\n')
                 out.write('\n')
-    print('\n结果写入 /tmp/http-probe-result.txt')
+    print(f'\n结果写入 {args.out}')
 
 
 if __name__ == '__main__':
