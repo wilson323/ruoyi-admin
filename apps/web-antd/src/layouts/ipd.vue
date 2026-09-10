@@ -64,11 +64,17 @@ const router = useRouter();
  */
 const switching = ref(false);
 /**
- * AI 管理平台桥入口开关：后端 /auth/platform-token 端点尚未实现（见 scripts/ipd-known-gaps.json，
- * 2026-09-09 登记），点击会换票失败弹警告。owner 拍板先下线入口，后端补齐后置 true 即可恢复，
- * goPlatform/switching/enterPlatform 保持被引用不产生未使用告警。
+ * AI 管理平台桥入口开关（2026-09-10 重新开启）。
+ * 旧注释「后端 /auth/platform-token 端点尚未实现」为误报：9/9-9/10 的静态扫描只覆盖
+ * ruoyi-modules/ruoyi-ipd（IpdAuthController），漏了端点实际所在的 ruoyi-admin 模块
+ * IpdPlatformAuthController（@PostMapping("/platform-token")）。
+ * 2026-09-10 浏览器实测（ipd-admin 登录态）：POST /api/v1/auth/platform-token →
+ * HTTP 200/code 0 签发平台票 platformUser=ipd-admin；GET /api/v1/system/menu/getRouters →
+ * HTTP 200/code 0 返回 9 个顶级路由（对话管理/智能体管理/MCP管理/系统监控/系统管理/
+ * 系统工具/工作流/我的任务/IPD 工作台）。原注释引用的 scripts/ipd-known-gaps.json 从未存在
+ * （失效引用），一并移除。goPlatform/switching/enterPlatform 保持被引用不产生未使用告警。
  */
-const platformBridgeEnabled = false;
+const platformBridgeEnabled = true;
 async function goPlatform() {
   if (switching.value) return;
   switching.value = true;
