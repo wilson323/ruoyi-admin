@@ -283,12 +283,10 @@ async function generatePlatformAccess(router: Router) {
 
   return generateAccessible(preferences.app.accessMode, {
     fetchMenuListAsync: async () => {
-      const platformMenus = cloneDeep(await getAllMenusApi());
-      // 单企业非 SaaS（owner 2026-09-06 决策）：顶级「租户管理」菜单不展示；仅前端过滤，不动后端 RBAC 数据
-      const visibleMenus = platformMenus.filter(
-        (menu) => menu.path !== 'tenant' && menu.path !== '/tenant',
-      );
-      return backMenuToVbenMenu(visibleMenus);
+      // 单企业非 SaaS（owner 2026-09-06 决策）：租户管理菜单不展示。
+      // 2026-09-10 实现点迁到后端 IpdMenuController.getRouters（单一事实源，禁止双轨），
+      // 此处不再前端过滤；若后端回归重新返回 tenant，该菜单会在此重新出现（可感知的哨兵）。
+      return backMenuToVbenMenu(cloneDeep(await getAllMenusApi()));
     },
     forbiddenComponent,
     layoutMap,
