@@ -13,7 +13,7 @@
  * ⚠️ 2026-09-10 HTTP 真活验证发现 copy/update/publish/revert 4 个写接口后端路由缺失，
  * 本文件暂时把这 4 个函数 stub 为 reject，等后端补 controller 后再恢复真实调用。
  */
-import { ipdGet } from './http';
+import { ipdGet, ipdPost } from './http';
 
 /** 版本状态（未知值由页面按「待补充」兜底展示）。 */
 export type IpdSopStatus = 'ARCHIVED' | 'DRAFT' | 'PUBLISHED';
@@ -75,63 +75,35 @@ export async function currentSopTemplate(actionCode: string): Promise<IpdSopTemp
   return { ...normalizeItem(row), content: String(row.content ?? '') };
 }
 
-// ----- 后端未实现的编辑端点（HTTP 真活验证 2026-09-10 实证 FE-only）-----
+// ----- 4 个写端点（后端 P1-3.3 / SopTemplateController 已补齐 09-10；发布仅影响新项目，在研保持原版本）-----
 
 /**
  * 复制当前/历史版本为 draft（仅超管；已有 draft 时后端 409）。
- *
- * ⚠️ 后端路由缺失：`POST /api/v1/sop-templates/{id}/copy`（后端 sys-error.log 实证 404）。
- * 等后端补 controller 后再恢复为真实调用。
  */
 export function copySopTemplate(id: string): Promise<IpdSopTemplateItem> {
-  return Promise.reject(
-    new Error(
-      `[SOP] copy 接口后端未实现（id=${id}）：POST /api/v1/sop-templates/{id}/copy 路由不存在。请联系后端补 SopTemplateController.copy()。`,
-    ),
-  );
+  return ipdPost<unknown>(`/sop-templates/${id}/copy`).then(normalizeItem);
 }
 
 /**
  * 编辑 draft（仅 DRAFT 可改；title/content 白名单）。
- *
- * ⚠️ 后端路由缺失：`POST /api/v1/sop-templates/{id}/update`（后端 sys-error.log 实证 404）。
- * 等后端补 controller 后再恢复为真实调用。
  */
 export function updateSopTemplate(
   id: string,
   req: IpdSopTemplateSaveReq,
 ): Promise<IpdSopTemplateItem> {
-  return Promise.reject(
-    new Error(
-      `[SOP] update 接口后端未实现（id=${id}）：POST /api/v1/sop-templates/{id}/update 路由不存在。请联系后端补 SopTemplateController.update()。`,
-    ),
-  );
+  return ipdPost<unknown>(`/sop-templates/${id}/update`, req).then(normalizeItem);
 }
 
 /**
  * 发布 draft（旧 PUBLISHED 自动 ARCHIVED；仅影响此后实例化的项目）。
- *
- * ⚠️ 后端路由缺失：`POST /api/v1/sop-templates/{id}/publish`（后端实际只有不带 id 的 POST /publish，语义不同）。
- * 等后端统一约定后再恢复为真实调用。
  */
 export function publishSopTemplate(id: string): Promise<IpdSopTemplateItem> {
-  return Promise.reject(
-    new Error(
-      `[SOP] publish 接口后端未实现（id=${id}）：POST /api/v1/sop-templates/{id}/publish 路由不存在。请联系后端对齐 publish 接口签名。`,
-    ),
-  );
+  return ipdPost<unknown>(`/sop-templates/${id}/publish`).then(normalizeItem);
 }
 
 /**
  * 历史恢复：指定版本复制为新 draft（走正常 publish 流程后才生效）。
- *
- * ⚠️ 后端路由缺失：`POST /api/v1/sop-templates/{id}/revert`（后端 sys-error.log 实证 404）。
- * 等后端补 controller 后再恢复为真实调用。
  */
 export function revertSopTemplate(id: string): Promise<IpdSopTemplateItem> {
-  return Promise.reject(
-    new Error(
-      `[SOP] revert 接口后端未实现（id=${id}）：POST /api/v1/sop-templates/{id}/revert 路由不存在。请联系后端补 SopTemplateController.revert()。`,
-    ),
-  );
+  return ipdPost<unknown>(`/sop-templates/${id}/revert`).then(normalizeItem);
 }
