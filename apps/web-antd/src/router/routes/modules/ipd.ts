@@ -350,7 +350,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     //    原型「全局面板」设计保留（右下角 AI 副驾），菜单项入口便于直接深链与权限收敛。
     {
       component: () => import('#/views/ipd/ai-docs/index.vue'),
-      meta: { access: [...(PAGE_PERMISSIONS['/ipd/ai-assistant'] ?? [])], icon: 'lucide:bot', title: 'AI 文档助手' },
+      meta: { access: [...(PAGE_PERMISSIONS['/ipd/ai-assistant'] ?? [])], icon: 'lucide:bot', order: 1.5, title: 'AI 文档助手' },
       name: 'IpdAiAssistant',
       path: 'ai-assistant',
     },
