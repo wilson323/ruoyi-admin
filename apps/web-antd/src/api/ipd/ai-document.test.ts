@@ -152,9 +152,11 @@ describe('AI 文档版本链接口', () => {
     expect(ipdApiErrorText(new IpdRequestError('无法连接服务，请检查网络后重试', 0, 0, 'transport'))).toContain('无法连接服务');
   });
 
-  it('未匹配路由（HTTP 200 + code=404 + message=null）映射为「接口不存在」文案，不暴露原 message', () => {
-    expect(ipdApiErrorText(new IpdRequestError(null as unknown as string, 200, 404, 'http'))).toContain('接口不存在');
-    expect(ipdApiErrorText(new IpdRequestError('success', 200, 404, 'http'))).toContain('接口不存在');
+  it('未匹配路由（后端真契约：HTTP 404 + code=50001 资源不存在）映射为数据不存在文案，不暴露原 message；code=404 包络后端不存在（2026-09-09 锚定修正，404 死键已从共享表删除）', () => {
+    expect(ipdApiErrorText(new IpdRequestError(null as unknown as string, 404, 50001, 'http'))).toContain('数据不存在');
+    expect(ipdApiErrorText(new IpdRequestError('资源不存在', 404, 50001, 'http'))).not.toContain('资源不存在');
+    // 未知码 404（若上游误传）落 fallback，不复活已删死键
+    expect(ipdApiErrorText(new IpdRequestError('success', 200, 404, 'http'))).toBe('操作失败，请稍后重试');
   });
 
   // ---------- P4-2.3 四端点：A5 封装层 ----------

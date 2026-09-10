@@ -175,6 +175,40 @@ function toWire(body: ProjectCreateBody | LegacyImportBody): Record<string, unkn
   };
 }
 
+// ---------- P1-9.2 项目列表项（派生 3 字段，场景复核倒计时） ----------
+
+/**
+ * 项目列表项视图（后端 ProjectListItemView 真值：project 包裹 + 派生 3 字段；前端平铺后与 Project 字段直接同层）。
+ * - lastActivityAt = max(stage_action / kpi / gate_review 的 update_time)；
+ * - scenarioDaysRemaining = 14 - (today - lastActivityAt) 天（≤3 天临界）；
+ * - critical = scenarioDaysRemaining ≤ 3（后端已推送通知，前端横幅告警）。
+ */
+export interface ProjectListItem extends Project {
+  critical: null | boolean;
+  lastActivityAt: null | number | string;
+  scenarioDaysRemaining: null | number;
+}
+
+function normalizeProjectListItem(raw: unknown): ProjectListItem {
+  const outer = toRecord(raw);
+  return {
+    ...normalizeProject(outer),
+    critical: typeof outer.critical === 'boolean' ? outer.critical : null,
+    lastActivityAt:
+      outer.lastActivityAt === undefined || outer.lastActivityAt === null
+        ? null
+        : (outer.lastActivityAt as number | string),
+    scenarioDaysRemaining: asNullableNumber(outer.scenarioDaysRemaining),
+  };
+}
+
+/** 项目列表（含 P1-9.2 派生 3 字段；项目空间列表页专用）。 */
+export function listProjectItems(keyword?: string): Promise<ProjectListItem[]> {
+  return ipdGet<unknown>('/projects', keyword ? { keyword } : undefined).then((data) =>
+    Array.isArray(data) ? data.map(normalizeProjectListItem) : [],
+  );
+}
+
 /** 项目列表（keyword 可选，服务端模糊匹配）。 */
 export function listProjects(keyword?: string): Promise<Project[]> {
   return ipdGet<unknown>('/projects', keyword ? { keyword } : undefined)

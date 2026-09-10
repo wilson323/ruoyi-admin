@@ -6,14 +6,17 @@
  * （projectId 必填；原 /list 会被后端 {id} 路由捕获转 Long 失败 → 500）。
  */
 import { computed, ref } from 'vue';
-import { Alert, Card, Empty, Input, Select, Table, Tag } from 'ant-design-vue';
+import { Alert, Button, Card, Empty, Input, Modal, Select, Table, Tag } from 'ant-design-vue';
 
 import {
   type NegativeExecution,
   type NegativeFeedback,
   type NegativeStatus,
   type NegativeTriggerType,
+  decideNegativeFeedback,
+  liftNegativeFeedback,
   listNegativeFeedback,
+  submitNegativeFeedback,
 } from '../../../../api/ipd/negative-feedback';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
 
@@ -76,6 +79,7 @@ const columns = [
   { title: '恢复月', dataIndex: 'recoveryMonth', key: 'recoveryMonth', width: 100 },
   { title: '奖金资格', key: 'bonus', width: 90 },
   { title: '状态', key: 'status', width: 100 },
+  { title: '操作', key: 'actions', width: 170 },
 ];
 
 function executionTag(execution: null | string): string {
@@ -100,6 +104,75 @@ async function load(): Promise<void> {
 }
 
 const isEmpty = computed(() => loaded.value && !errorMsg.value && items.value.length === 0);
+
+// ---------- P0-5 补齐：状态机操作（submit / decide / lift） ----------
+
+const actingId = ref('');
+
+function fail(text: string, cause: unknown): void {
+  errorMsg.value = ipdErrorText(cause, { fallback: text });
+}
+
+/** Table bodyCell 的 record 不做类型收窄：在此收敛断言（与 project/list openDetail 同模式）。 */
+function asFeedback(record: Record<string, any>): NegativeFeedback {
+  return record as unknown as NegativeFeedback;
+}
+
+async function submitAction(rawRecord: Record<string, any>): Promise<void> {
+  const record = asFeedback(rawRecord);
+  if (actingId.value) return;
+  actingId.value = String(record.id ?? '');
+  try {
+    await submitNegativeFeedback(String(record.id ?? ''));
+    await load();
+  } catch (cause) {
+    fail('提交认定失败', cause);
+  } finally {
+    actingId.value = '';
+  }
+}
+
+/** 组长认定：Modal 双按钮（确定=认定执行扣减，取消=驳回）。 */
+function decideAction(rawRecord: Record<string, any>): void {
+  const record = asFeedback(rawRecord);
+  Modal.confirm({
+    title: '组长认定',
+    content: `对负反馈 ${record.triggerMonth ?? ''}（${triggerText[record.triggerType as NegativeTriggerType] ?? record.triggerType}）做认定：确定=执行扣减，取消=驳回？`,
+    okText: '认定执行扣减',
+    cancelText: '驳回',
+    onOk: async () => {
+      try {
+        await decideNegativeFeedback(String(record.id ?? ''), 'APPROVE');
+        await load();
+      } catch (cause) {
+        fail('认定失败', cause);
+      }
+    },
+    onCancel: async () => {
+      try {
+        await decideNegativeFeedback(String(record.id ?? ''), 'REJECT');
+        await load();
+      } catch (cause) {
+        fail('驳回失败', cause);
+      }
+    },
+  });
+}
+
+/** 解除：恢复津贴 + 奖金资格（EXECUTED → LIFTED）。 */
+async function liftAction(rawRecord: Record<string, any>): Promise<void> {
+  const record = asFeedback(rawRecord);
+  if (actingId.value) return;
+  actingId.value = String(record.id ?? '');
+  try {
+    await liftNegativeFeedback(String(record.id ?? ''));
+    await load();
+  } catch (cause) {
+    fail('解除失败', cause);
+  } finally {
+    actingId.value = '';
+  }
+}
 </script>
 
 <template>
@@ -164,6 +237,22 @@ const isEmpty = computed(() => loaded.value && !errorMsg.value && items.value.le
             <Tag :color="statusColor[record.status as NegativeStatus]">
               {{ statusText[record.status as NegativeStatus] ?? record.status }}
             </Tag>
+          </template>
+          <template v-else-if="column.key === 'actions'">
+            <template v-if="record.status === 'DRAFT'">
+              <Button size="small" type="link" :loading="actingId === String(record.id ?? '')" @click="submitAction(record)">
+                提交认定
+              </Button>
+            </template>
+            <template v-else-if="record.status === 'PENDING_DECISION'">
+              <Button size="small" type="link" @click="decideAction(record)">认定 / 驳回</Button>
+            </template>
+            <template v-else-if="record.status === 'EXECUTED'">
+              <Button size="small" type="link" :loading="actingId === String(record.id ?? '')" @click="liftAction(record)">
+                解除
+              </Button>
+            </template>
+            <span v-else>—</span>
           </template>
         </template>
         <template #emptyText>

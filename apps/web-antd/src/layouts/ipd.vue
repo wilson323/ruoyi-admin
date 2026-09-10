@@ -699,7 +699,7 @@ async function handleLogout() {
   gap: 9px;
   cursor: pointer;
 }
-.ipd-app .main-area { min-height: 100vh; margin-left: 164px; padding-top: 56px; }
+.ipd-app .main-area { min-height: 100vh; margin-left: 164px; padding-top: 56px; padding-bottom: 96px; }
 .ipd-app.sidebar-collapsed .sidebar { width: 70px; }
 .ipd-app.sidebar-collapsed .sidebar a span,
 .ipd-app.sidebar-collapsed .collapse { display: none; }

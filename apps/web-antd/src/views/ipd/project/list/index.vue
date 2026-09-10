@@ -24,8 +24,8 @@ import {
   Tooltip,
 } from 'ant-design-vue';
 
-import type { Project } from '../../../../api/ipd/project';
-import { listProjects } from '../../../../api/ipd/project';
+import type { ProjectListItem } from '../../../../api/ipd/project';
+import { listProjectItems } from '../../../../api/ipd/project';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import {
   catchupText,
@@ -54,7 +54,7 @@ const isIndexRoute = computed(() => route.name === undefined || route.name === '
 
 const loading = ref(false);
 const loadError = ref<unknown>(null);
-const rows = ref<Project[]>([]);
+const rows = ref<ProjectListItem[]>([]);
 /** V7 系统漂移修复：关键词筛选走 URL ?keyword= 双向绑定，可分享 / 刷新不丢。 */
 const filters = createFilterState({ keyword: '' });
 useFilterSync(filters, { ignored: [] });
@@ -91,6 +91,7 @@ const columns = [
   { title: '来源', key: 'source', width: 100 },
   { title: '状态', key: 'status', width: 100 },
   { title: '上市日期', key: 'launchDate', width: 140 },
+  { title: '场景复核', key: 'scenario', width: 110 },
   { title: '操作', key: 'actions', width: 160 },
 ];
 
@@ -134,7 +135,7 @@ async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
   try {
-    rows.value = await listProjects(filters.keyword.trim() || undefined);
+    rows.value = await listProjectItems(filters.keyword.trim() || undefined);
   } catch (cause) {
     loadError.value = cause;
   } finally {
@@ -211,7 +212,7 @@ onMounted(load);
         :data-source="filteredRows"
         :loading="loading"
         :pagination="pagination"
-        :scroll="{ x: 1200 }"
+        :scroll="{ x: 1400 }"
         row-key="id"
         size="middle"
       >
@@ -238,6 +239,16 @@ onMounted(load);
             <Tag :color="projectStatusColor(record.status)">{{ projectStatusText(record.status) }}</Tag>
           </template>
           <template v-else-if="column.key === 'launchDate'">{{ projectDateText(record.launchDate) }}</template>
+          <template v-else-if="column.key === 'scenario'">
+            <!-- P1-9.2：14 天场景复核倒计时；≤3 天 critical 红色告警 -->
+            <template v-if="record.scenarioDaysRemaining === null">—</template>
+            <template v-else>
+              <span :class="record.critical ? 'font-semibold text-red-500' : ''">
+                {{ record.scenarioDaysRemaining }} 天
+              </span>
+              <Tag v-if="record.critical" color="red" class="!ml-1">临界</Tag>
+            </template>
+          </template>
           <template v-else-if="column.key === 'actions'">
             <Space size="small" wrap>
               <Button size="small" type="link" @click="openDetail(record)">进入详情</Button>

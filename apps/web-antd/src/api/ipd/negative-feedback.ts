@@ -16,7 +16,7 @@
  *   - MISSED_MARKET_WINDOW 错过市场窗口：双 PM 共同停发（无主次）
  * 重复事件不重复扣减；生效月（triggerMonth）与恢复月（recoveryMonth）明确。
  */
-import { ipdGet, ipdPost } from './http';
+import { ipdGet, ipdPost, ipdPut } from './http';
 
 /** 触发情形（NegativeFeedbackCreateReq @Pattern 四枚举）。 */
 export type NegativeTriggerType =
@@ -96,4 +96,50 @@ export function createNegativeFeedback(req: {
   recoveryMonth?: string;
 }): Promise<NegativeFeedback> {
   return ipdPost<NegativeFeedback>('/negative-feedbacks', req);
+}
+
+// ---------- P0-5 补齐：状态机五端点（后端 NegativeFeedbackController L48-94） ----------
+
+/** 认定/解除请求体（NegativeFeedbackDecisionReq：decision + 可选说明）。 */
+export interface NegativeDecisionBody {
+  comment?: null | string;
+  /** APPROVE=认定执行扣减；REJECT=驳回；LIFT=解除恢复（仅 lift 端点）。 */
+  decision: 'APPROVE' | 'LIFT' | 'REJECT';
+}
+
+/** 提交认定 DRAFT → PENDING_DECISION（权限 ipd:incentive:negative-feedback:create）。 */
+export function submitNegativeFeedback(id: string): Promise<NegativeFeedback> {
+  return ipdPut<NegativeFeedback>(`/negative-feedbacks/${encodeURIComponent(id)}/submit`);
+}
+
+/** 组长认定 PENDING_DECISION → EXECUTED / REJECTED（requireLeaderOrAdmin）。 */
+export function decideNegativeFeedback(
+  id: string,
+  decision: 'APPROVE' | 'REJECT',
+  comment?: null | string,
+): Promise<NegativeFeedback> {
+  return ipdPut<NegativeFeedback>(`/negative-feedbacks/${encodeURIComponent(id)}/decide`, {
+    comment: comment ?? null,
+    decision,
+  } satisfies NegativeDecisionBody);
+}
+
+/** 解除 EXECUTED → LIFTED（恢复津贴+奖金资格；body 可省略，后端默认 LIFT）。 */
+export function liftNegativeFeedback(id: string, comment?: null | string): Promise<NegativeFeedback> {
+  return ipdPut<NegativeFeedback>(`/negative-feedbacks/${encodeURIComponent(id)}/lift`, {
+    comment: comment ?? null,
+    decision: 'LIFT',
+  } satisfies NegativeDecisionBody);
+}
+
+/** 详情（GET /{id}；含项目可读性校验）。 */
+export function getNegativeFeedback(id: string): Promise<NegativeFeedback> {
+  return ipdGet<NegativeFeedback>(`/negative-feedbacks/${encodeURIComponent(id)}`);
+}
+
+/** 当前生效（GET /by-project/{projectId}/effective：EXECUTED + 已到执行期的恢复预告）。 */
+export function listEffectiveNegativeFeedbacks(projectId: string): Promise<NegativeFeedback[]> {
+  return ipdGet<NegativeFeedback[]>(
+    `/negative-feedbacks/by-project/${encodeURIComponent(projectId)}/effective`,
+  );
 }
