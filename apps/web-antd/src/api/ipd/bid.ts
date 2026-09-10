@@ -121,11 +121,27 @@ export function publishBidInvitation(id: string): Promise<BidInvitation> {
 }
 
 /**
- * 遴选应标（3 选 1 原子提交：中标行置 ACCEPTED，同单其余 PENDING 行批量置 REJECTED，招标单置 SELECTED）。
- * 对应 BidController#selectResponse — PUT /api/v1/bid-invitations/{id}/select?responseId=
+ * P1-5.2：预演生成 confirmToken（6 字符随机 + 24h 过期）。
+ * 对应 BidController#preSelectToken — POST /api/v1/bid-invitations/{id}/pre-select-token
+ * 前端先调此端点拿 token 与预演信息，再展示「将向 N 名应标者发送落选通知」，
+ * 用户在 UI 勾选「已确认」后，把 token 提交到 /select。
  */
-export function selectBidInvitation(invitationId: string, responseId: string): Promise<BidInvitation> {
-  return ipdPut(`/bid-invitations/${encodeURIComponent(invitationId)}/select?responseId=${encodeURIComponent(responseId)}`);
+export interface PreSelectTokenView {
+  expiresAt: string;
+  /** 6 字符随机 token，24h 过期 */
+  token: string;
+}
+export async function preSelectBidInvitationToken(invitationId: string): Promise<PreSelectTokenView> {
+  return ipdPost(`/bid-invitations/${encodeURIComponent(invitationId)}/pre-select-token`, {});
+}
+
+/**
+ * 遴选应标（3 选 1 原子提交：中标行置 ACCEPTED，同单其余 PENDING 行批量置 REJECTED，招标单置 SELECTED）。
+ * 对应 BidController#selectResponse — PUT /api/v1/bid-invitations/{id}/select?responseId=&confirmToken=
+ * confirmToken 由 preSelectBidInvitationToken 预演生成（24h 过期），防误触提交。
+ */
+export function selectBidInvitation(invitationId: string, responseId: string, confirmToken: string): Promise<BidInvitation> {
+  return ipdPut(`/bid-invitations/${encodeURIComponent(invitationId)}/select?responseId=${encodeURIComponent(responseId)}&confirmToken=${encodeURIComponent(confirmToken)}`);
 }
 
 /**

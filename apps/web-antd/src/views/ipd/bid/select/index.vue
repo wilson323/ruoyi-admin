@@ -161,7 +161,7 @@ import {
   Table,
   Tag,
 } from 'ant-design-vue';
-import { getBidInvitation, listBidResponses, selectBidInvitation } from '../../../../api/ipd/bid';
+import { getBidInvitation, listBidResponses, preSelectBidInvitationToken, selectBidInvitation } from '../../../../api/ipd/bid';
 import type { BidInvitation, BidResponse } from '../../../../api/ipd/bid';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
@@ -251,7 +251,9 @@ async function doSelect(): Promise<void> {
   confirmBusy.value = true;
   selectError.value = '';
   try {
-    await selectBidInvitation(bidId.value, selected.value.id);
+    // P1-5.2 两阶段流：先预演拿 confirmToken（24h 过期），UI 已确认后再提交 select
+    const tokenView = await preSelectBidInvitationToken(bidId.value);
+    await selectBidInvitation(bidId.value, selected.value.id, tokenView.token);
     message.success('遴选完成，招标单已进入「已遴选」状态');
     await load();
   } catch (cause) {

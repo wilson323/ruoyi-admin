@@ -12,6 +12,7 @@ import SelectPage from './index.vue';
 const api = vi.hoisted(() => ({
   getBidInvitation: vi.fn(),
   listBidResponses: vi.fn(),
+  preSelectBidInvitationToken: vi.fn(),
   selectBidInvitation: vi.fn(),
 }));
 vi.mock('../../../../api/ipd/bid', () => api);
@@ -52,7 +53,9 @@ beforeEach(() => {
   setActivePinia(createPinia());
   api.getBidInvitation.mockReset();
   api.listBidResponses.mockReset();
+  api.preSelectBidInvitationToken.mockReset();
   api.selectBidInvitation.mockReset();
+  api.preSelectBidInvitationToken.mockResolvedValue({ token: 'TOK123', expiresAt: '2026-09-10 23:59:59' });
   routerMock.push.mockReset();
 });
 
@@ -148,7 +151,8 @@ describe('页22 遴选 - 3 选 1、原子性、只读分支', () => {
     const popconfirms = wrapper.findAllComponents(Popconfirm);
     await popconfirms[0]!.vm.$emit('confirm');
     await flushPromises();
-    expect(api.selectBidInvitation).toHaveBeenCalledWith('INV-3003', expect.any(String));
+    expect(api.preSelectBidInvitationToken).toHaveBeenCalledWith('INV-3003');
+    expect(api.selectBidInvitation).toHaveBeenCalledWith('INV-3003', expect.any(String), 'TOK123');
     // SELECTED 后切换为只读结果态：确认遴选按钮消失
     expect(wrapper.findAll('button').some((b) => b.text().includes('确认遴选'))).toBe(false);
   });
