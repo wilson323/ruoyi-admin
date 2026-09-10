@@ -3,6 +3,8 @@ import { useAccessStore } from '@vben/stores';
 
 import { useEventSource, useWebSocket } from '@vueuse/core';
 
+import { useIpdAuthStore } from '#/store/ipd-auth';
+
 const { apiURL, clientId, sseEnable, websocketEnable } = useAppConfig(
   import.meta.env,
   import.meta.env.PROD,
@@ -16,10 +18,11 @@ export function useSseMessage() {
     console.warn('当前未开启sse.');
     return;
   }
-  const accessStore = useAccessStore();
-  const token = accessStore.accessToken;
-
-  const sseAddr = `${apiURL}/resource/sse?clientid=${clientId}&Authorization=Bearer ${token}`;
+  const ipdAuthStore = useIpdAuthStore();
+  const token = ipdAuthStore.accessToken;
+  // 走 /api/v1 前缀让 vite 代理保留前缀转发到 16039 的 /api/v1/resource/sse（不被吞 /api）；
+  // token 走 URL query 是 EventSource 浏览器 API 的硬约束（不支持自定义 header）。
+  const sseAddr = `${apiURL}/v1/resource/sse?clientid=${clientId}&Authorization=Bearer ${token}`;
 
   const sseReturnData = useEventSource(sseAddr, [], {
     autoReconnect: {
