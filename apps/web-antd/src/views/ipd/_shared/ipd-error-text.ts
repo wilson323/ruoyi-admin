@@ -40,22 +40,50 @@ export const IPD_COMMON_CODE_TEXTS: Record<number, string> = {
   20002: '账号已冻结，仅保留移交相关权限',
   30001: '您没有执行此操作的权限',
   40001: '阶段门禁未通过，请完成阻断性动作后重试',
-  40002: '关联条件已变更，请确认新条件后重试',
+  40002: '双签未完成，请等待签署完成后再操作',
   40003: '超项未备案，请先完成超项备案',
   40004: '市场PM 与研发PM 不能由同一人担任，请重新选择',
   40005: '项目禁止直接删除，请发起删除申请并完成两级审核',
+  40006: '请先完成账号移交，才可禁用账号',
   40011: '请求过于频繁，请稍后再试',
   50001: '数据不存在或已被删除，请刷新后重试',
   50002: '状态已变更（可能其他人已编辑），请刷新后查看',
+  /** 2026-09-09 契约轮补齐：50003~50017 文案与 auth.ts BUSINESS_CODE_MESSAGES 同源（kpi/contribution/negative-feedback/allowance/handover 页面均走本表展示）。 */
+  50003: 'KPI 周期格式应为 YYYY-MM',
+  50004: 'KPI 趋势期数必须在 1~36 区间',
+  50005: '贡献度比例超区间（市场 PM 必须在 40%-65%，研发 PM 必须在 35%-60%）',
+  50006: '贡献度五维度权重之和必须等于 100%',
+  50007: '贡献度评定入口仅在 G5 上市后 90 天复盘阶段开放',
+  50008: '贡献度评定权限不足（仅双 PM 自评 + 各自产品组长）',
+  50009: '负反馈触发情形不合法',
+  50010: '月份格式错（应为 YYYY-MM）',
+  50011: '项目无 MARKET_PM / RD_PM 成员，无法执行负反馈',
+  50012: '同项目同触发情形已存在负反馈记录，不重复扣减',
+  50013: '负反馈状态机不允许此操作',
+  50014: '该月份已锁定，不允许写入账务记录',
+  50015: '对账差异率 ≥ 1%，不允许锁定',
+  50016: '该月份尚未运行对账，无法锁定',
+  50017: '移交记录状态不允许撤销（仅完成后 24h 内可撤销）',
   /** 真库探针发现：无效 ID 与 NPE 一并落到 90001（HTTP 500），统一兜底文案 */
   90001: '数据不存在或服务暂时不可用，请稍后重试',
 };
+
+/** 2026-09-09 契约轮 R23：HTTP 状态级兜底——code 表查不到时按 HTTP 状态给语义正确文案。
+ *  修复：409（业务冲突）/429（限流）曾落到「操作失败」类通用兜底；403 与 30001 同源。
+ *  仅在后端 code 未登记时触达（已知业务码被页面/域/通用三级 code 表全覆盖遮蔽）。
+ *  与 auth.ts requestIpd 的状态特化链文案同源，两处需同步维护。 */
+export const IPD_HTTP_STATUS_TEXTS: Readonly<Record<number, string>> = Object.freeze({
+  401: '登录已失效，请重新登录',
+  403: '您没有执行此操作的权限',
+  409: '数据状态已变更（可能已被其他人处理），请刷新后重试',
+  429: '请求过于频繁，请稍后再试',
+});
 
 /** 域专属默认覆写（未在页面级 withCodeTextOverrides 覆盖时使用）。 */
 const IPD_DOMAIN_DEFAULTS: Record<string, Record<number, string>> = {
   bid: {
     30001: '您没有执行此操作的权限',
-    40002: '招募条件已变更，请确认新条件后重试',
+    /** bid 域 40002 删除：后端 DUAL_SIGN_INCOMPLETE 在 bid 路径无 throw 点，此条为死码（R20 治理轮裁决清检 40002 文案与后端语义对齐）。 */
     /** bid 域 50002 语义专属：招募/遴选/关闭/过期是 bid 生命周期术语 */
     50002: '状态已变更（可能已遴选、已关闭或已过期），请刷新后查看',
   },
@@ -67,7 +95,6 @@ const IPD_DOMAIN_DEFAULTS: Record<string, Record<number, string>> = {
   portal: {
     30001: '操作超出当前游客允许范围',
     20001: '登录状态已失效，请刷新页面后重试',
-    40010: '查询码格式不正确，请核对后重新输入',
     40011: '请求过于频繁，请稍后再试',
     40012: '附件数量或大小超出限制',
     40013: 'AI 预算超出限制',
@@ -85,8 +112,6 @@ const IPD_DOMAIN_DEFAULTS: Record<string, Record<number, string>> = {
     40013: 'AI 预算超出限制，请联系管理员调整配额',
     /** 通用表 50002 文案是"状态已变更"，AI 文档域更侧重"版本冲突"语义 */
     50002: '状态冲突：该记录已被其他成员处理，请刷新后重试',
-    /** HTTP 404：未匹配路由或资源已删除（与业务 40401 区分） */
-    404: '请求的接口不存在或资源已删除，请确认后重试',
   },
 };
 
@@ -115,6 +140,9 @@ export function ipdErrorText(error: unknown, options: IpdErrorOptions = {}): str
       if (domainText) return domainText;
       const commonText = IPD_COMMON_CODE_TEXTS[error.code];
       if (commonText) return commonText;
+      // 2026-09-09 契约轮 R23：code 表三级查不到时按 HTTP 状态兜底（401/403/409/429）
+      const statusText = IPD_HTTP_STATUS_TEXTS[error.status];
+      if (statusText) return statusText;
     }
   }
   return options.fallback ?? '操作失败，请稍后重试';
@@ -142,4 +170,15 @@ export function withCodeTextOverrides(
  *  注意：超时中止（kind='timeout'）不算断网——它有自己的文案与语义，页面重试提示应区分。 */
 export function isTransportError(error: unknown): boolean {
   return error instanceof IpdRequestError && error.kind === 'transport';
+}
+
+/** 报障场景文案：ipdErrorText 文案 + 尾部附 traceId 编号（P2-2，2026-09-09）。
+ *
+ * 后端每个错误响应都带 traceId（ApiV1Response MDC 注入），用户报障时凭此编号
+ * 可在后端日志精确定位单次请求。无 traceId（网络层/超时/旧后端）时退化为纯文案，
+ * 页面可无差别接入。展示接入逐页渐进，不改 ipdErrorText 本体避免全站弹窗回归。 */
+export function ipdErrorWithTrace(error: unknown, options: IpdErrorOptions = {}): string {
+  const text = ipdErrorText(error, options);
+  const traceId = error instanceof IpdRequestError ? error.traceId : undefined;
+  return traceId ? `${text}（编号 ${traceId}）` : text;
 }

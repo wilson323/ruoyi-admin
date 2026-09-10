@@ -124,7 +124,10 @@ async function requestPortal<T>(
         domain: 'portal',
         fallback: body.code === 404 ? ROUTE_NOT_FOUND_TEXT : DEFAULT_ERROR_TEXT,
       });
-      throw new IpdRequestError(mapped, response.status, body.code, 'http');
+      // 2026-09-09 P2-2：游客通道同样携带 envelope.traceId（报障编号），envelopeMessage 保持后端原文。
+      throw new IpdRequestError(mapped, response.status, body.code, 'http',
+        typeof body.message === 'string' ? body.message : undefined,
+        typeof body.traceId === 'string' ? body.traceId : undefined);
     }
     return body.data as T;
   } catch (error) {

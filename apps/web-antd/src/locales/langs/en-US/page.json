@@ -11,5 +11,26 @@
     "title": "Dashboard",
     "analytics": "Analytics",
     "workspace": "Workspace"
+  },
+  "workbench": {
+    "taskType": {
+      "stage_sign": "Stage Sign",
+      "key_gate": "Key Gate Review",
+      "key_gate_arbitration": "Gate Arbitration",
+      "deletion_review": "Deletion Review",
+      "waiver_review": "Waiver Review",
+      "handover": "Project Handover",
+      "rd_replacement": "R&D Replacement",
+      "contribution_confirm": "Contribution Confirm",
+      "receipt_review": "Receipt Review",
+      "retirement_review": "Retirement Review",
+      "strategic_change": "Strategic Change",
+      "capacity_approval": "Capacity Approval",
+      "kpi_fill": "KPI Fill",
+      "change_implementation": "Change Implementation",
+      "change_verify": "Change Verification",
+      "bonus_lock": "Bonus Lock",
+      "closeout": "Project Closeout"
+    }
   }
 }

@@ -441,7 +441,7 @@ describe('IpdRequestError shape', () => {
 //    真实后端响应解析路径（login → envelope.code=0 等业务流）由 auth-live.test.ts 覆盖。
 // ──────────────────────────────────────────────────────────────────────────────
 describe('BUSINESS_CODE_MESSAGES coverage via requestIpd', () => {
-  // 后端 ApiV1ErrorCode.java 实际下发的全部 21 个枚举（40001~40006 + 40010~40013 + 跳号 40007~40009 与后端一致缺失）。
+  // 后端 ApiV1ErrorCode.java 实际下发的全部枚举（40001~40006 + 40011~40013 + 50003~50017；40007~40009 与后端一致缺失，40010 幽灵码已随 2026-09-09 契约轮清除）。
   const CODES = [
     10001,
     20001,
@@ -454,13 +454,16 @@ describe('BUSINESS_CODE_MESSAGES coverage via requestIpd', () => {
     40004,
     40005,
     40006,
-    40010,
     40011,
     40012,
     40013,
     40401,
     50001,
     50002,
+    50003,
+    50007,
+    50012,
+    50017,
     90001,
   ];
 
@@ -497,9 +500,45 @@ describe('BUSINESS_CODE_MESSAGES coverage via requestIpd', () => {
     await expect(requestIpd('/probe', { method: 'GET' })).rejects.toThrow(/登录已失效/);
   });
 
-  it('unknown code 99999 with status 403 falls through to "权限不足"', async () => {
+  it('unknown code 99999 with status 403 falls through to 403 兜底文案（R23 与 30001 同源）', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, 'mock', 403)));
-    await expect(requestIpd('/probe', { method: 'GET' })).rejects.toThrow(/权限不足/);
+    await expect(requestIpd('/probe', { method: 'GET' })).rejects.toThrow(/您没有执行此操作的权限/);
+  });
+
+  // 2026-09-09 契约轮 R23：409/429 状态特化——业务冲突/限流不再误报「服务暂时不可用」
+  it('unknown code 99999 with status 409 falls through to 409 兜底文案', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, 'mock', 409)));
+    await expect(requestIpd('/probe', { method: 'GET' })).rejects.toThrow(/数据状态已变更/);
+  });
+
+  it('unknown code 99999 with status 429 falls through to 429 兜底文案', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, 'mock', 429)));
+    await expect(requestIpd('/probe', { method: 'GET' })).rejects.toThrow(/请求过于频繁/);
+  });
+
+  it('错误分支携带 envelope.traceId（P2-2 报障编号：后端每个错误响应 MDC 注入）', async () => {
+    // fixture 的 traceId: 'fixture' 一直在响应体里；本用例钉住前端不再丢弃它。
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, 'mock', 500)));
+    const cause = await requestIpd('/probe').then(
+      () => { throw new Error('should have rejected'); },
+      (e: unknown) => e,
+    );
+    expect(cause).toBeInstanceOf(IpdRequestError);
+    expect((cause as IpdRequestError).traceId).toBe('fixture');
+  });
+
+  it('envelope 无 traceId 字段时 error.traceId === undefined（不串到网络层错误）', async () => {
+    const noTrace = new Response(
+      JSON.stringify({ code: 99999, data: null, message: 'mock', timestamp: '2026-09-07T00:00:00Z' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    );
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(noTrace));
+    const cause = await requestIpd('/probe').then(
+      () => { throw new Error('should have rejected'); },
+      (e: unknown) => e,
+    );
+    expect(cause).toBeInstanceOf(IpdRequestError);
+    expect((cause as IpdRequestError).traceId).toBeUndefined();
   });
 
   it('login path 401 + code 10001 overrides code map with IPD_LOGIN_CREDENTIAL_TEXT', async () => {

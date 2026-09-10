@@ -23,7 +23,7 @@ export interface IpdLoginResult extends IpdIdentity {
 }
 
 export class IpdRequestError extends Error {
-  constructor(message: string, readonly status = 0, readonly code = 0, readonly kind: 'http' | 'protocol' | 'timeout' | 'transport' | 'cancelled' = 'protocol', readonly envelopeMessage?: string) {
+  constructor(message: string, readonly status = 0, readonly code = 0, readonly kind: 'http' | 'protocol' | 'timeout' | 'transport' | 'cancelled' = 'protocol', readonly envelopeMessage?: string, readonly traceId?: string) {
     super(message);
     this.name = 'IpdRequestError';
   }
@@ -58,13 +58,27 @@ const BUSINESS_CODE_MESSAGES: Readonly<Record<number, string>> = Object.freeze({
   40004: '角色已固定，市场PM 与 研发PM 不可跨岗',
   40005: '禁止直接删除，请按数据分级完成删除审核',
   40006: '请先完成账号移交，才可禁用账号',
-  40010: '查询码无效，请检查后重新输入',
   40011: '请求过于频繁，请稍后再试',
   40012: '附件数量或大小超出限制',
   40013: 'AI 预算超出限制，请稍后再试',
   40401: '产品已下架，无法使用该产品',
   50001: '资源不存在或已被删除',
   50002: '当前状态不支持此操作',
+  50003: 'KPI 周期格式应为 YYYY-MM',
+  50004: 'KPI 趋势期数必须在 1~36 区间',
+  50005: '贡献度比例超区间（市场 PM 必须在 40%-65%，研发 PM 必须在 35%-60%）',
+  50006: '贡献度五维度权重之和必须等于 100%',
+  50007: '贡献度评定入口仅在 G5 上市后 90 天复盘阶段开放',
+  50008: '贡献度评定权限不足（仅双 PM 自评 + 各自产品组长）',
+  50009: '负反馈触发情形不合法',
+  50010: '月份格式错（应为 YYYY-MM）',
+  50011: '项目无 MARKET_PM / RD_PM 成员，无法执行负反馈',
+  50012: '同项目同触发情形已存在负反馈记录，不重复扣减',
+  50013: '负反馈状态机不允许此操作',
+  50014: '该月份已锁定，不允许写入账务记录',
+  50015: '对账差异率 ≥ 1%，不允许锁定',
+  50016: '该月份尚未运行对账，无法锁定',
+  50017: '移交记录状态不允许撤销（仅完成后 24h 内可撤销）',
   90001: '系统内部错误，请稍后重试',
 });
 
@@ -146,13 +160,20 @@ export async function requestIpd(
         ? IPD_LOGIN_CREDENTIAL_TEXT
         : null;
       const fromCode = messageFromCode(envelope.code);
+      // 2026-09-09 契约轮 R23：HTTP 状态特化补 409/429，403 文案与 30001 同源。
+      // 修复：409（业务冲突）/429（限流）曾落到「服务暂时不可用」通用兜底，把冲突/限流误报成服务故障；
+      // 403 特化仅在 code 表未命中时触达（已知码先走 fromCode），文案原「权限不足，请联系管理员」
+      // 对 20002/20003/50011 等被 code 表遮蔽的场景语义不贴切，统一为 30001 同源文案。
       const message =
         loginCredential
           ?? fromCode
           ?? (response.status === 401 ? '登录已失效，请重新登录'
-            : response.status === 403 ? '权限不足，请联系管理员'
-              : '服务暂时不可用，请稍后重试');
-      throw new IpdRequestError(message, response.status, envelope.code, 'http', envelope.message);
+            : response.status === 403 ? '您没有执行此操作的权限'
+              : response.status === 409 ? '数据状态已变更（可能已被其他人处理），请刷新后重试'
+                : response.status === 429 ? '请求过于频繁，请稍后再试'
+                  : '服务暂时不可用，请稍后重试');
+      throw new IpdRequestError(message, response.status, envelope.code, 'http', envelope.message,
+        typeof envelope.traceId === 'string' ? envelope.traceId : undefined);
     }
     return envelope.data;
   } catch (error) {

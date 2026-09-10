@@ -6,6 +6,7 @@ import { IpdRequestError } from '../../../api/ipd/auth';
 import {
   IPD_COMMON_CODE_TEXTS,
   ipdErrorText,
+  ipdErrorWithTrace,
   isTransportError,
   withCodeTextOverrides,
 } from './ipd-error-text';
@@ -23,7 +24,7 @@ describe('IPD_COMMON_CODE_TEXTS 通用码文案（前端单一权威源）', () 
 
   it('40001-40005 门禁/双签/超项/角色/删除审核文案精确匹配', () => {
     expect(IPD_COMMON_CODE_TEXTS[40001]).toBe('阶段门禁未通过，请完成阻断性动作后重试');
-    expect(IPD_COMMON_CODE_TEXTS[40002]).toBe('关联条件已变更，请确认新条件后重试');
+    expect(IPD_COMMON_CODE_TEXTS[40002]).toBe('双签未完成，请等待签署完成后再操作');
     expect(IPD_COMMON_CODE_TEXTS[40003]).toBe('超项未备案，请先完成超项备案');
     expect(IPD_COMMON_CODE_TEXTS[40004]).toBe('市场PM 与研发PM 不能由同一人担任，请重新选择');
     expect(IPD_COMMON_CODE_TEXTS[40005]).toBe('项目禁止直接删除，请发起删除申请并完成两级审核');
@@ -53,6 +54,21 @@ describe('ipdErrorText http 错误码查询', () => {
   it('http + code=0 不在通用表，回退 fallback 或通用兜底', () => {
     expect(ipdErrorText(httpErr(0))).toBe('操作失败，请稍后重试');
     expect(ipdErrorText(httpErr(0), { fallback: '兜底' })).toBe('兜底');
+  });
+
+  // 2026-09-09 契约轮 R23：HTTP 状态级兜底——code 表三级查不到时按 HTTP 状态给语义正确文案
+  it('http + 未知码但状态 403/409/429 → 按状态兜底（不再误报「操作失败」）', () => {
+    const errAt = (status: number, code: number) => new IpdRequestError('x', status, code, 'http');
+    expect(ipdErrorText(errAt(403, 99999))).toBe('您没有执行此操作的权限');
+    expect(ipdErrorText(errAt(409, 99999))).toBe('数据状态已变更（可能已被其他人处理），请刷新后重试');
+    expect(ipdErrorText(errAt(429, 99999))).toBe('请求过于频繁，请稍后再试');
+  });
+
+  it('http + 已知业务码仍优先 code 表（状态兜底不被误触）', () => {
+    // HTTP 403 + code 50011：50011 已在通用表，必须命中文案而非 403 状态兜底
+    expect(ipdErrorText(new IpdRequestError('x', 403, 50011, 'http'))).toBe(
+      '项目无 MARKET_PM / RD_PM 成员，无法执行负反馈',
+    );
   });
 });
 
@@ -95,9 +111,10 @@ describe('ipdErrorText 错误类型分派', () => {
 });
 
 describe('IPD_DOMAIN_DEFAULTS 域默认覆写', () => {
-  it('bid 域 30001 / 40002 / 50002 用 bid 默认文案', () => {
+  it('bid 域 30001 / 50002 用 bid 默认文案（R20 清 40002 死码后）', () => {
     expect(ipdErrorText(httpErr(30001), { domain: 'bid' })).toBe('您没有执行此操作的权限');
-    expect(ipdErrorText(httpErr(40002), { domain: 'bid' })).toBe('招募条件已变更，请确认新条件后重试');
+    /** bid 域 40002 已删（后端无 throw 点），fallback 到默认域 */
+    expect(ipdErrorText(httpErr(40002), { domain: 'bid' })).toBe('双签未完成，请等待签署完成后再操作');
     expect(ipdErrorText(httpErr(50002), { domain: 'bid' })).toBe(
       '状态已变更（可能已遴选、已关闭或已过期），请刷新后查看',
     );
@@ -109,18 +126,20 @@ describe('IPD_DOMAIN_DEFAULTS 域默认覆写', () => {
     expect(ipdErrorText(httpErr(40002), { domain: 'project' })).toBe('双签未完成，请等待对方签署后再提交');
   });
 
-  it('portal 域 40401 / 40010 / 40012 / 40013 用 portal 默认文案', () => {
+  it('portal 域 40401 / 40012 / 40013 用 portal 默认文案；40010 幽灵码已删走通用兜底', () => {
     expect(ipdErrorText(httpErr(40401), { domain: 'portal' })).toBe('该产品已下架，请改选其他产品或「其他/未找到」');
-    expect(ipdErrorText(httpErr(40010), { domain: 'portal' })).toBe('查询码格式不正确，请核对后重新输入');
+    // 2026-09-09 契约轮：后端无 40010 枚举，portal 域幽灵键已删，现走页面 fallback 兜底文案
+    expect(ipdErrorText(httpErr(40010), { domain: 'portal' })).toBe('操作失败，请稍后重试');
     expect(ipdErrorText(httpErr(40012), { domain: 'portal' })).toBe('附件数量或大小超出限制');
     expect(ipdErrorText(httpErr(40013), { domain: 'portal' })).toBe('AI 预算超出限制');
   });
 
-  it('ai_document 域 20003 / 40004 / 50002 / 404 用专属文案', () => {
+  it('ai_document 域 20003 / 40004 / 50002 用专属文案；404 死键已删走兜底', () => {
     expect(ipdErrorText(httpErr(20003), { domain: 'ai_document' })).toBe('首次登录需先修改密码后再执行此操作');
     expect(ipdErrorText(httpErr(40004), { domain: 'ai_document' })).toBe('角色固定不可跨，当前账号不能执行此操作');
     expect(ipdErrorText(httpErr(50002), { domain: 'ai_document' })).toBe('状态冲突：该记录已被其他成员处理，请刷新后重试');
-    expect(ipdErrorText(httpErr(404), { domain: 'ai_document' })).toBe('请求的接口不存在或资源已删除，请确认后重试');
+    // 2026-09-09 契约轮：404 非 business code（ipdErrorText 按 error.code 查表永不命中），死键已删
+    expect(ipdErrorText(httpErr(404), { domain: 'ai_document' })).toBe('操作失败，请稍后重试');
   });
 
   it('域默认仅覆盖该域声明的码，其他码走通用表', () => {
@@ -235,15 +254,45 @@ describe('与 auth.ts 的一致性 / 矛盾点（仅观察不修）', () => {
     expect(IPD_COMMON_CODE_TEXTS[20002]).not.toBe('账号待移交冻结中，仅保留移交相关权限');
   });
 
-  it('矛盾-3：通用表缺少 auth.ts 中已声明的若干码（由域默认或页面级 codeTexts 覆盖）', () => {
-    // auth.ts BUSINESS_CODE_MESSAGES 声明：10001,20001,20002,20003,30001,40001-40006,40010-40013,40401,50001,50002,90001
-    // ipd-error-text.ts 通用表仅声明：10001,20001,20002,30001,40001-40005,40011,50001,50002,90001
-    // 未在通用表：20003 / 40006 / 40010 / 40012 / 40013 / 40401
+  it('矛盾-3：通用表覆盖史（2026-09-09 契约轮已补 40006 + 50003~50017）', () => {
+    // auth.ts BUSINESS_CODE_MESSAGES 声明：10001,20001-20003,30001,40001-40006,40011-40013,40401,50001,50002,50003-50017,90001
+    // ipd-error-text.ts 通用表现声明：以上除 20003/40012/40013/40401（由域默认或页面级 codeTexts 覆盖）外全量
     expect(IPD_COMMON_CODE_TEXTS[20003]).toBeUndefined();
-    expect(IPD_COMMON_CODE_TEXTS[40006]).toBeUndefined();
-    expect(IPD_COMMON_CODE_TEXTS[40010]).toBeUndefined();
     expect(IPD_COMMON_CODE_TEXTS[40012]).toBeUndefined();
     expect(IPD_COMMON_CODE_TEXTS[40013]).toBeUndefined();
     expect(IPD_COMMON_CODE_TEXTS[40401]).toBeUndefined();
+    // 幽灵码：后端无 40010 枚举，三表均已清除
+    expect(IPD_COMMON_CODE_TEXTS[40010]).toBeUndefined();
+  });
+
+  it('契约轮补齐：40006 + 50003~50017 命中通用表，文案与 auth.ts 同源', () => {
+    expect(IPD_COMMON_CODE_TEXTS[40006]).toBe('请先完成账号移交，才可禁用账号');
+    expect(ipdErrorText(httpErr(40006))).toBe('请先完成账号移交，才可禁用账号');
+    expect(ipdErrorText(httpErr(50007))).toBe('贡献度评定入口仅在 G5 上市后 90 天复盘阶段开放');
+    expect(ipdErrorText(httpErr(50012))).toBe('同项目同触发情形已存在负反馈记录，不重复扣减');
+    expect(ipdErrorText(httpErr(50014))).toBe('该月份已锁定，不允许写入账务记录');
+    expect(ipdErrorText(httpErr(50017))).toBe('移交记录状态不允许撤销（仅完成后 24h 内可撤销）');
+    expect(ipdErrorText(httpErr(50003))).toBe('KPI 周期格式应为 YYYY-MM');
+  });
+});
+
+describe('ipdErrorWithTrace 报障文案（P2-2，2026-09-09）', () => {
+  it('有 traceId 的 http 错误：文案尾部附「（编号 xxx）」', () => {
+    const err = new IpdRequestError('msg', 400, 10001, 'http', 'env', 'trace-abc-123');
+    expect(ipdErrorWithTrace(err)).toBe('输入信息不符合要求，请检查后重试（编号 trace-abc-123）');
+  });
+
+  it('无 traceId 时退化为纯文案（与 ipdErrorText 完全一致）', () => {
+    const err = httpErr(10001);
+    expect(ipdErrorWithTrace(err)).toBe(ipdErrorText(err));
+  });
+
+  it('网络层/超时错误无 traceId，同样退化不报错', () => {
+    const transport = new IpdRequestError('无法连接服务，请检查网络后重试', 0, 0, 'transport');
+    expect(ipdErrorWithTrace(transport)).toBe('无法连接服务，请检查网络后重试');
+  });
+
+  it('非 IpdRequestError 输入走 fallback 兜底', () => {
+    expect(ipdErrorWithTrace(new Error('boom'), { fallback: '操作失败' })).toBe('操作失败');
   });
 });
