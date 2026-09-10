@@ -1,46 +1,30 @@
 import { requestClient } from '#/api/request';
 
-export interface Role {
-  dataScope: string;
-  flag: boolean;
-  roleId: number;
-  roleKey: string;
-  roleName: string;
-  roleSort: number;
-  status: string;
-  superAdmin: boolean;
-}
-
-export interface User {
-  avatar: string;
-  createTime: string;
-  deptId: number;
-  deptName: string;
-  email: string;
-  loginDate: string;
-  loginIp: string;
-  nickName: string;
-  phonenumber: string;
-  remark: string;
-  roles: Role[];
-  sex: string;
-  status: string;
-  tenantId: string;
-  userId: number;
-  userName: string;
-  userType: string;
-}
-
-export interface UserInfoResp {
-  permissions: string[];
-  roles: string[];
-  user: User;
-}
-
 /**
- * 获取用户信息
- * 存在返回null的情况(401) 不会抛出异常 需要手动抛异常
+ * IPD 集成 2026-09-10：替换上游 /system/user/getInfo
+ * 后端真实端点：GET /auth/me
+ * 返回：{ code:0, data:{ person: { id, name, username, personType, groupId, accountStatus }, scope, mustChangePwd } }
+ *
+ * 上游 fetchUserInfo 期望 { permissions, roles, user: { nickName, userName, userId, avatar, email } }，
+ * 这里在 store/auth.ts.fetchUserInfo 里手工转换。
  */
+export interface IpdPerson {
+  accountStatus: string | null;
+  groupId: string | null;
+  id: string;
+  name: string;
+  personType: string;
+  username: string;
+}
+
+export interface IpdMeResp {
+  mustChangePwd: boolean;
+  person: IpdPerson;
+  scope: string;
+}
+
 export async function getUserInfoApi() {
-  return requestClient.get<null | UserInfoResp>('/system/user/getInfo');
+  // vben requestClient 已自动拆 envelope（successCode=0 时取 dataField='data'），
+  // 所以这里返回的就是 MeView = { person, scope, mustChangePwd }
+  return requestClient.get<null | IpdMeResp>('/auth/me');
 }

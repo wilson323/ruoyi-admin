@@ -18,6 +18,7 @@ import {
 } from '#/api/helper';
 import { $t } from '#/locales';
 
+import { useIpdAuthStore } from './ipd-auth';
 import { useDictStore } from './dict';
 
 export const useAuthStore = defineStore('auth', () => {
@@ -40,7 +41,8 @@ export const useAuthStore = defineStore('auth', () => {
     let userInfo: null | UserInfo = null;
     try {
       loginLoading.value = true;
-      const { access_token } = await loginApi(params);
+      const loginResp = await loginApi(params);
+      const access_token = loginResp.access_token;
 
       // 将 accessToken 存储到 accessStore 中
       accessStore.setAccessToken(access_token);
@@ -56,6 +58,38 @@ export const useAuthStore = defineStore('auth', () => {
        * 在这里设置权限
        */
       accessStore.setAccessCodes(userInfo.permissions);
+
+      // IPD 集成 2026-09-10：同步把 IPD 身份塞进 ipd-auth store，
+      // 让 ipd-guard 不再走 anonymous 分支弹回登录页。
+      try {
+        const ipdAuth = useIpdAuthStore();
+        const rawLogin = await import('#/api/ipd/auth').then((m) =>
+          m.loginIpd(
+            (params as { username?: string }).username ?? '',
+            (params as { password?: string }).password ?? '',
+          ),
+        ).catch(() => null);
+        if (rawLogin) {
+          ipdAuth.$patch({
+            credentials: {
+              accessToken: rawLogin.token,
+              accessExpiresAt: Date.now() + rawLogin.expiresIn * 1000,
+              refreshState: 'ready',
+            },
+            token: rawLogin.token,
+            identity: {
+              mustChangePwd: rawLogin.mustChangePwd,
+              person: rawLogin.person,
+              scope: rawLogin.scope,
+            },
+          });
+          sessionStorage.setItem('ruoyi-ipd.session', JSON.stringify({
+            accessToken: rawLogin.token,
+            accessExpiresAt: Date.now() + rawLogin.expiresIn * 1000,
+            refreshState: 'ready',
+          }));
+        }
+      } catch (e) { console.warn('[ipd-auth sync]', e); }
 
       if (accessStore.loginExpired) {
         accessStore.setLoginExpired(false);
@@ -112,31 +146,34 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function fetchUserInfo() {
-    const backUserInfo = await getUserInfoApi();
-    /**
-     * 登录超时的情况
-     */
-    if (!backUserInfo) {
+    // IPD 集成 2026-09-10：调 /auth/me（不是上游 /system/user/getInfo）
+    // 后端 envelope { code, data:{ person, scope, mustChangePwd } }，vben 已自动拆 data
+    const resp = (await getUserInfoApi()) as unknown as null | {
+      mustChangePwd: boolean;
+      person: {
+        accountStatus: string | null;
+        groupId: string | null;
+        id: string;
+        name: string;
+        personType: string;
+        username: string;
+      };
+      scope: string;
+    };
+    if (!resp) {
       throw new Error('获取用户信息失败.');
     }
-    const { permissions = [], roles = [], user } = backUserInfo;
-    /**
-     * 从后台user -> vben user转换
-     */
+    const { person, scope } = resp;
     const userInfo: UserInfo = {
-      avatar: user.avatar ?? '',
-      permissions,
-      realName: user.nickName,
-      roles,
-      userId: user.userId,
-      username: user.userName,
-      email: user.email ?? '',
+      avatar: '',
+      email: '',
+      permissions: [scope, `personType:${person.personType}`].filter(Boolean),
+      realName: person.name,
+      roles: [person.personType],
+      userId: person.id as unknown as number,
+      username: person.username,
     };
     userStore.setUserInfo(userInfo);
-    /**
-     * 需要重新加载字典
-     * 比如退出登录切换到其他租户
-     */
     const dictStore = useDictStore();
     dictStore.resetCache();
     return userInfo;

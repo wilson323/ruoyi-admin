@@ -35,8 +35,14 @@ export interface CaptchaResponse {
 
 /**
  * 图片验证码
+ * IPD 集成 2026-09-10：IPD 后端无 /auth/code 端点，stub 为禁用
  * @returns resp
  */
 export function captchaImage() {
-  return requestClient.get<CaptchaResponse>('/auth/code');
+  // IPD 集成：永远返回 captchaEnabled=false 跳过验证码
+  return Promise.resolve({
+    captchaEnabled: false,
+    img: '',
+    uuid: '',
+  }) as Promise<CaptchaResponse>;
 }

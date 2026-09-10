@@ -76,15 +76,34 @@ export namespace AuthApi {
 
 /**
  * 登录
+ * IPD 集成 2026-09-10：不用上游 RSA 加密 + access_token 响应，直接调 IPD 后端 /auth/login。
+ * IPD 后端返回 { code:0, message:'ok', data:{ token, expiresIn, scope, mustChangePwd, person } }，
+ * 上游期望 { access_token, client_id, expire_in }，这里手动转换。
  */
 export async function loginApi(data: AuthApi.LoginParams) {
-  return requestClient.post<AuthApi.LoginResult>(
+  const resp = await requestClient.post<{
+    code: number;
+    data: {
+      expiresIn: number;
+      mustChangePwd: boolean;
+      person: { id: string; name: string; personType: string; username: string };
+      scope: string;
+      token: string;
+      tokenType: string;
+    };
+    message: string;
+  }>(
     '/auth/login',
-    { ...data, clientId },
-    {
-      encrypt: true,
-    },
+    { username: (data as { username?: string }).username ?? '', password: (data as { password?: string }).password ?? '' },
+    { encrypt: false },
   );
+  // vben requestClient 已自动拆 envelope：返回的 resp 就是后端 data（LoginView）
+  // LoginView = { token, tokenType, expiresIn, scope, mustChangePwd, person }
+  return {
+    access_token: resp.token,
+    client_id: data.clientId ?? 'vben-ipd',
+    expire_in: resp.expiresIn,
+  } as AuthApi.LoginResult;
 }
 
 /**
@@ -131,9 +150,13 @@ export interface TenantResp {
 
 /**
  * 获取租户列表 下拉框使用
+ * IPD 集成 2026-09-10：IPD 后端无 /auth/tenant/list 端点，stub 为禁用
  */
 export function tenantList() {
-  return requestClient.get<TenantResp>('/auth/tenant/list');
+  return Promise.resolve({
+    tenantEnabled: false,
+    voList: [],
+  }) as Promise<TenantResp>;
 }
 
 /**
