@@ -63,6 +63,12 @@ const router = useRouter();
  * IPD 工作台内 AI 能力控制由 AI 副驾悬浮入口（下方 global-ai-entry）承担，保持不变。
  */
 const switching = ref(false);
+/**
+ * AI 管理平台桥入口开关：后端 /auth/platform-token 端点尚未实现（见 scripts/ipd-known-gaps.json，
+ * 2026-09-09 登记），点击会换票失败弹警告。owner 拍板先下线入口，后端补齐后置 true 即可恢复，
+ * goPlatform/switching/enterPlatform 保持被引用不产生未使用告警。
+ */
+const platformBridgeEnabled = false;
 async function goPlatform() {
   if (switching.value) return;
   switching.value = true;
@@ -347,6 +353,7 @@ async function handleLogout() {
     </main>
 
     <button
+      v-if="platformBridgeEnabled"
       aria-label="切换到 AI 管理平台"
       class="global-ai-entry platform-switch"
       data-testid="ipd-platform-switch"

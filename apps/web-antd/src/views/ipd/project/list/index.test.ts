@@ -28,7 +28,7 @@ function identity(personType: 'GROUP_LEADER' | 'MARKET_PM' | 'RD_PM' | 'SUPER_AD
   };
 }
 
-function project(overrides: Partial<Project> = {}): ProjectListItem {
+function project(overrides: Partial<ProjectListItem> = {}): ProjectListItem {
   return {
     id: 'PRJ-1', code: 'PRJ-2026-001', name: '智慧园区视频分析算法研发',
     productId: 'PROD-1', templateType: 'HARDWARE', targetMarkets: '["SA","EU"]',
@@ -172,19 +172,6 @@ describe('页07 我的项目-列表', () => {
     ]);
     const wrapper = await mountList();
     expect(wrapper.html()).toContain('补齐中');
-  });
-
-  it('场景复核列：剩余天数 + critical 红色临界告警（P1-9.2）', async () => {
-    useIpdAuthStore().identity = identity('MARKET_PM');
-    api.listProjectItems.mockResolvedValueOnce([
-      project({ id: 'PRJ-9', code: 'PRJ-2026-009', scenarioDaysRemaining: 2, critical: true, lastActivityAt: '2026-08-20 10:00:00' }),
-      project({ id: 'PRJ-8', code: 'PRJ-2026-008', scenarioDaysRemaining: 12, critical: false }),
-    ]);
-    const wrapper = await mountList();
-    const html = wrapper.html();
-    expect(html).toContain('2 天');
-    expect(html).toContain('临界');
-    expect(html).toContain('12 天');
   });
 
   it('场景复核列：剩余天数 + critical 红色临界告警（P1-9.2）', async () => {
