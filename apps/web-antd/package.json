@@ -62,6 +62,7 @@
     "vue3-colorpicker": "^2.3.0"
   },
   "devDependencies": {
+    "@phosphor-icons/vue": "^2.2.1",
     "@types/lodash-es": "^4.17.12",
     "@types/uuid": "9.0.8"
   }

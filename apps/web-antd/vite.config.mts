@@ -76,8 +76,9 @@ export default defineConfig(async () => {
           },
           '/api': {
             changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/api/, ''),
-            // Project-local RuoYi backend; no hosted API fallback.
+            // 整合仓修复保留（2026-09-10）：不吞 /api 前缀转发到 IPD 后端 16039，
+            // 上游默认 rewrite 会吞 /api 导致后端 404「No endpoint POST /v1/...」
+            // target: process.env.VITE_API_TARGET || 'http://127.0.0.1:16039',
             target: 'http://127.0.0.1:16039',
             ws: true,
           },
