@@ -3,7 +3,10 @@
   Anthropic AI Native SDLC Playbook · Deploy 阶段标准产物
   AI 可以一路准备到上线之前，但不能自己决定发布到生产。
   hook 拦截发布命令（kubectl/npm publish/docker push/mvn deploy/…），
-  直到本文件由具名负责人签字。这是 Anthropic 保留给人的最后一道闸门。
+  直到出现以下任一授权凭证：
+    ① 本文件完成 §4 具名签字（推荐，默认路径）；
+    ② 命令附 RELEASE_APPROVAL=<凭证> 标记 / 会话已 export RELEASE_APPROVAL。
+  这是 Anthropic 保留给人的最后一道闸门（production-gate 语义）。
 -->
 
 ## 元信息
@@ -36,7 +39,8 @@ status: preparing | authorized | deployed | rolled-back
 ## 3. 发布步骤（AI 准备，人执行或人在场执行）
 
 ```bash
-# <命令 1>   ← 这些命令会被 Layer 3 hook 拦截，直到本文件完成签字
+# <命令 1>   ← 这些命令会被 Layer 3 hook 拦截，直到本文件完成签字，
+#              或命令附 RELEASE_APPROVAL=<凭证>（见 §4 授权方式）
 # <命令 2>
 ```
 
@@ -52,7 +56,14 @@ status: preparing | authorized | deployed | rolled-back
 |---|---|
 | 授权人 | <真实姓名 / github handle> |
 | 授权时间 | <YYYY-MM-DD HH:MM> |
-| 授权方式 | <本文件签字 / 变更单号> |
+| 授权方式 | <本文件签字 / 变更单号 / RELEASE_APPROVAL 凭证标记> |
+
+**RELEASE_APPROVAL 凭证（Anthropic production-gate 语义，可选快路径）**：
+
+- hook 放行条件（二者其一）：命令中含 `RELEASE_APPROVAL=<凭证>` 标记，或当前会话已 `export RELEASE_APPROVAL=<凭证>`。
+- 凭证必须**能在本文件 §4 追溯到具名授权人**：凭证建议 = 授权人 handle + 日期序号（如 `RELEASE_APPROVAL=zhang-20260911-001`），事后以审计日志（`.harness/audit-log`）核对。
+- 凭证不是权限提升：它只能放行**本文件 §3 列出的命令**；未列入的命令附凭证同样视为越权。
+- 无凭证 + 未签字 → hook `exit 2` 阻断，这是设计行为，不要绕过。
 
 ## 5. 发布后观察（30 分钟内）
 

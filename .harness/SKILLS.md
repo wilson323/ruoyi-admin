@@ -1,6 +1,6 @@
 # SKILLS.md — 全部 Skill 速查（Layer 2 参考）
 
-> 共 24 个。本文件由 `skills.manifest` 自动生成，勿手工编辑。
+> 共 33 个。本文件由 `skills.manifest` 自动生成，勿手工编辑。
 > 生成命令：`python3 ~/.claude/ai-native-sdlc/.gen-skills-md.py`
 
 变更清单后重跑生成命令即可，无需改动其他文件。
@@ -24,6 +24,9 @@
 
 - **`worktree-isolation-manager`** — 每任务独立 worktree + 确定性端口分配 + 子模块初始化
 - **`egress-allowlist`** — 出站流量白名单，防提示词注入外泄；读权限≠发权限
+- **`pre-trust-config-deferral`** — 信任提示之前不解析不执行项目内配置(hooks/MCP/skill脚本/localhost 监听)
+- **`tool-definition-budget`** — >10个工具或>10K definitions 即推迟加载，常驻3-5个+搜索；token -85%，准确率反升
+- **`two-correction-reboot`** — 同一问题纠正到第3次不再纠正：保留证据→清空上下文→带新上下文重写提示词
 
 ## Plan & Build
 
@@ -36,9 +39,11 @@
 ## Build & Test
 
 - **`multi-reviewer-partition`** — 多审查者按关注点分区(权限/数据流/依赖/历史事故)，不共享盲区
+- **`criteria-file-loop`** — 验收标准落成 criteria.md，每次改动后重读，全通过才算完
 
 ## Test
 
+- **`invariant-test-gate`** — 系统级不变量测试(如"用户A永远读不到用户B的数据")，每次变更都跑，违反=最高严重度并强制人工复核
 - **`verification-loop-with-escalation`** — 每单元 build→vet→verify，同错3次升级人审
 - **`risk-derived-test-scope`** — 把影响分析的风险等级转成回归范围与测试点清单
 - **`continuous-eval-regression`** — 换模型/改规则前用固定任务集重跑同套标准，防静默回归
@@ -51,6 +56,7 @@
 
 - **`tool-permission-gate`** — 每次工具调用 allow/deny/ask，危险路径 bypass 不可关闭
 - **`ai-approval-audit-trail`** — AI 自主审批须记录信号与理由 + 风险加权抽样 + SIEM 归因
+- **`deny-and-continue-backstop`** — 拒绝即改道不是终点；连续3次或累计20次拒绝停机升级(83%拦截/0.4%误报/17%漏过)
 
 ## Deploy
 
@@ -58,6 +64,8 @@
 
 ## Maintain
 
+- **`oncall-lessons-loop`** — 四支柱(记忆/连接/排班/指令) + 版本化 lessons.md，每次调查先读、每次解决后追加
+- **`metrics-bands-loop`** — 确定性检测(滚动均值/标准差 + 分级响应 1σ记录/2σ诊断/3σ提案)，诊断结果写回 intent.md 闭环
 - **`harness-health-scan`** — 五层34项巡检，自含 HTML 报告 + 按严重度排序的修复提示词
 - **`session-finalization-gate`** — 五轴收口对账(代码/验证/文档/遗留/风险)，未过不得声明完成
 - **`evidence-bound-handover`** — 暂停/换会话前写4字段交接证据，缺证据拒绝开新任务
@@ -66,3 +74,4 @@
 - **`markdown-to-multistyle-pdf`** — Markdown→sun/journal/atlas 三风格 PDF
 - **`agent-identity-least-privilege`** — 智能体独立身份+最小权限；**智能体间联系渠道本身也是权限边界**
 - **`observation-mode-promotion`** — 新 AI 审查者先观察模式只评论，信任建立后逐级放开
+- **`harness-assumption-audit`** — 模型升级后逐组件审「它假设模型不会做什么」，过时的删掉；安全不变量永不删
