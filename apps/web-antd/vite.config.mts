@@ -68,17 +68,15 @@ export default defineConfig(async () => {
         port: 15666,
         strictPort: true,
         proxy: {
-          // IPD contracts keep their /api/v1 prefix on the Java backend.
-          '/api/v1': {
-            changeOrigin: true,
-            target: 'http://127.0.0.1:16039',
-            ws: true,
-          },
+          // 2026-09-10 前缀分流修复（R29）：单 key + rewrite 分流，两类端点各归其位。
+          // - /api/v1/**（IPD 契约）后端自带 /api/v1 前缀 → 原样转发；
+          // - 其余 /api/**（平台端点 /workflow、/system 等）后端无 /api 前缀 → 剥离 /api。
+          // 教训：此前「一律不吞 /api」只修了 IPD 半边，平台页面（我的文档/系统管理）全 404；
+          // 上游默认「一律吞 /api」则 IPD 端点反向 404。必须按前缀分流，不可一刀切。
           '/api': {
             changeOrigin: true,
-            // 整合仓修复保留（2026-09-10）：不吞 /api 前缀转发到 IPD 后端 16039，
-            // 上游默认 rewrite 会吞 /api 导致后端 404「No endpoint POST /v1/...」
-            // target: process.env.VITE_API_TARGET || 'http://127.0.0.1:16039',
+            rewrite: (path) =>
+              path.startsWith('/api/v1') ? path : path.replace(/^\/api/, ''),
             target: 'http://127.0.0.1:16039',
             ws: true,
           },

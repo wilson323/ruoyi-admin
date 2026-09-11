@@ -3,7 +3,7 @@
 import type { VbenFormProps } from '@vben/common-ui';
 
 import type { VxeGridProps } from '#/adapter/vxe-table';
-import type { User } from '#/api';
+import type { User } from '#/api/system/user/model';
 
 import { ref } from 'vue';
 

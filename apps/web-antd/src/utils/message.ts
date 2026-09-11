@@ -19,10 +19,17 @@ export function useSseMessage() {
     return;
   }
   const ipdAuthStore = useIpdAuthStore();
-  const token = ipdAuthStore.accessToken;
-  // 走 /api/v1 前缀让 vite 代理保留前缀转发到 16039 的 /api/v1/resource/sse（不被吞 /api）；
+  // store 暴露的字段名是 token（不是 accessToken）；取错会拼出「Bearer undefined」。
+  const token = ipdAuthStore.token;
+  if (!token) {
+    console.warn('IPD 会话未就绪，暂不建立 SSE 连接。');
+    return;
+  }
+  // apiURL 已含 /api/v1（VITE_GLOB_API_URL=/api/v1），此处只拼 /resource/sse；
+  // 由 vite 代理原样转发到 16039 的 /api/v1/resource/sse（IpdSseController）。
+  // 2026-09-11 修复：原为 `${apiURL}/v1/resource/sse` 拼出双 v1 导致 404。
   // token 走 URL query 是 EventSource 浏览器 API 的硬约束（不支持自定义 header）。
-  const sseAddr = `${apiURL}/v1/resource/sse?clientid=${clientId}&Authorization=Bearer ${token}`;
+  const sseAddr = `${apiURL}/resource/sse?clientid=${clientId}&Authorization=Bearer ${token}`;
 
   const sseReturnData = useEventSource(sseAddr, [], {
     autoReconnect: {
@@ -60,6 +67,12 @@ export function useWebSocketMessage() {
   const accessStore = useAccessStore();
   const token = accessStore.accessToken;
   // 这里是http链接形式
+  // ⚠️ 开启前必读（2026-09-11 休眠项登记，当前 websocketEnable=false 不生效）：
+  // ① 路径：后端 WebSocketConfig 注册在根路径 /resource/websocket（websocket.path 配置），
+  //    而 apiUrlStr 含 apiURL(/api/v1) → 拼出 /api/v1/resource/websocket 会 404；
+  //    开启时须改为「平台前缀 + /resource/websocket」并保证 vite/nginx 吞 /api 后命中。
+  // ② 票源：当前用平台票（accessStore.accessToken）；若后端开启 IPD 校验须换 ipdAuthStore.token。
+  // ③ 通道分工：IPD 通知已走 SSE（useSseMessage），WS 若开启需先定双通道幂等/去重策略。
   let websocketAddr = `${apiUrlStr}/resource/websocket?clientid=${clientId}&Authorization=Bearer ${token}`;
   // http/https处理
   websocketAddr = window.location.protocol.includes('https')

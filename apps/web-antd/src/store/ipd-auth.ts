@@ -113,19 +113,23 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
     accessStore.setAccessToken(result.token);
     try {
       const info = await getUserInfoApi();
-      if (info?.user) {
+      if (info?.person) {
+        // 2026-09-11 根修：getUserInfoApi 已改走 IPD /auth/me（e115f06），返回 IpdMeResp
+        // { person, scope, mustChangePwd }；此前消费端仍按上游 { user, permissions, roles }
+        // 形状读取，恒 undefined → 平台用户信息与按钮权限码永不设置（v-access:code 全判否回归）。
+        const permissions = [info.scope, `personType:${info.person.personType}`].filter(Boolean);
         useUserStore().setUserInfo({
-          avatar: info.user.avatar,
-          email: info.user.email,
-          permissions: info.permissions ?? [],
-          realName: info.user.nickName,
-          roles: info.roles ?? [],
-          userId: String(info.user.userId),
-          username: info.user.userName,
+          avatar: '',
+          email: '',
+          permissions,
+          realName: info.person.name,
+          roles: [info.person.personType],
+          userId: info.person.id as unknown as number,
+          username: info.person.username,
         });
         // 对齐 authLogin 标准登录路径（store/auth.ts）：按钮权限码必须进 accessStore，
         // 否则 v-access:code 全部判否，平台模块无法增删改（2026-09-06 用户实测反馈修复）
-        accessStore.setAccessCodes(info.permissions ?? []);
+        accessStore.setAccessCodes(permissions);
       }
     } catch { /* 用户信息加载失败不影响票有效性 */ }
     return result.token;
@@ -152,6 +156,12 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(credentials.value));
     token.value = result.token;
     identity.value = { person: result.person, scope: result.scope, mustChangePwd: result.mustChangePwd };
+  }
+
+  /** 供 vben 登录链（store/auth.ts authLogin）装载外部完成的 IPD 登录结果；
+   *  统一会话写入点（2026-09-11 收口：取代此前 $patch 私有 ref + 手写 sessionStorage 双写源）。 */
+  function adoptSession(result: IpdLoginResult) {
+    installSession(result);
   }
 
   async function rotateSession(failedToken: string, version: number) {
@@ -325,6 +335,6 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
     } finally { busy.value = false; }
   }
 
-  return { token, identity, busy, error, mustChangePassword, requiresReauthentication, loginCooldownRemaining, clearSession, refreshIdentity, authenticatedRequest,
+  return { token, identity, busy, error, mustChangePassword, requiresReauthentication, loginCooldownRemaining, adoptSession, clearSession, refreshIdentity, authenticatedRequest,
     renewPlatformSession, login, changePassword, consumePasswordChangedNotice, logout };
 });

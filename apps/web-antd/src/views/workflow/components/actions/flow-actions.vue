@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ApprovalType } from '../type';
 
-import type { User } from '#/api/core/user';
+import type { User } from '#/api/system/user/model';
 import type { TaskInfo } from '#/api/workflow/task/model';
 
 import { computed, h } from 'vue';

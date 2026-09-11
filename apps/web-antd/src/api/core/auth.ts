@@ -1,11 +1,13 @@
 import type { GrantType } from '@vben/common-ui';
-import type { HttpResponse } from '@vben/request';
 
 import { useAppConfig } from '@vben/hooks';
 
+import { requestIpd } from '#/api/ipd/auth';
 import { requestClient } from '#/api/request';
 
-const { clientId, sseEnable } = useAppConfig(
+// clientId 为上游 OAuth 客户端参数，IPD 契约已由 requestIpd 承接（平台票走 /auth/platform-token），
+// 该解构自 e115f06 起无消费方（TS6133），2026-09-10 移除。
+const { sseEnable } = useAppConfig(
   import.meta.env,
   import.meta.env.PROD,
 );
@@ -81,23 +83,25 @@ export namespace AuthApi {
  * 上游期望 { access_token, client_id, expire_in }，这里手动转换。
  */
 export async function loginApi(data: AuthApi.LoginParams) {
-  const resp = await requestClient.post<{
-    code: number;
-    data: {
-      expiresIn: number;
-      mustChangePwd: boolean;
-      person: { id: string; name: string; personType: string; username: string };
-      scope: string;
-      token: string;
-      tokenType: string;
-    };
-    message: string;
-  }>(
-    '/auth/login',
-    { username: (data as { username?: string }).username ?? '', password: (data as { password?: string }).password ?? '' },
-    { encrypt: false },
-  );
-  // vben requestClient 已自动拆 envelope：返回的 resp 就是后端 data（LoginView）
+  // IPD 端点归位（2026-09-11）：登录是 IPD 契约（/api/v1/auth/login，Person 凭据），
+  // 必须走 requestIpd——它硬拼 /api/v1 且带 IPD code0 包络语义（坏凭据/限流/停用按 envelope.message 精确分派）。
+  // 此前误用平台 requestClient：一旦平台通道归位为 /api（本日同批修复），
+  // 请求会打到平台 /auth/login（sys_user 会话域），登录语义整体错位。
+  const resp = (await requestIpd('/auth/login', {
+    method: 'POST',
+    body: {
+      password: (data as { password?: string }).password ?? '',
+      username: (data as { username?: string }).username ?? '',
+    },
+  })) as {
+    expiresIn: number;
+    mustChangePwd: boolean;
+    person: { id: string; name: string; personType: string; username: string };
+    scope: string;
+    token: string;
+    tokenType: string;
+  };
+  // requestIpd 返回 code0 envelope 的 data（LoginView）：
   // LoginView = { token, tokenType, expiresIn, scope, mustChangePwd, person }
   return {
     access_token: resp.token,
@@ -107,11 +111,13 @@ export async function loginApi(data: AuthApi.LoginParams) {
 }
 
 /**
- * 用户登出
- * @returns void
+ * 用户登出（IPD 端点归位 2026-09-11：/api/v1/auth/logout 是 IPD 契约，只认 IPD 票）。
+ * 后端 logout 幂等：不带 token 也返回 ok 但不会撤销会话——必须显式传当前 IPD token 才真实登出。
  */
-export function doLogout() {
-  return requestClient.post<HttpResponse<void>>('/auth/logout');
+export async function doLogout() {
+  const { useIpdAuthStore } = await import('#/store/ipd-auth');
+  const token = useIpdAuthStore().token;
+  return requestIpd('/auth/logout', { method: 'POST', token: token || undefined });
 }
 
 /**
@@ -125,7 +131,9 @@ export function seeConnectionClose() {
   if (!sseEnable) {
     return;
   }
-  return requestClient.get<void>('/resource/sse/close');
+  // 2026-09-11 根修：IPD SSE 无服务端 close 端点（IpdSseController 仅 /api/v1/resource/sse），
+  // 原 /resource/sse/close 恒 404；浏览器 EventSource 断开即由后端 emitter 自清理，无需回调。
+  return Promise.resolve();
 }
 
 /**
@@ -164,7 +172,10 @@ export function tenantList() {
  * @returns string[]
  */
 export async function getAccessCodesApi() {
-  return requestClient.get<string[]>('/auth/codes');
+  // IPD 后端无 /auth/codes（IpdAuthController 仅 login/me/logout/refresh/change-password）；
+  // 权限码以 /auth/me 的 scope 表达（见 store/auth.ts fetchUserInfo 手工转换）。
+  // 保留 stub 防上游引用炸；当前全仓无调用方。
+  return [];
 }
 
 /**
