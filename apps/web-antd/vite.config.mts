@@ -72,13 +72,22 @@ export default defineConfig(async () => {
           // - /api/v1/**（IPD 契约）后端自带 /api/v1 前缀 → 原样转发；
           // - 其余 /api/**（平台端点 /workflow、/system 等）后端无 /api 前缀 → 剥离 /api。
           // 教训：此前「一律不吞 /api」只修了 IPD 半边，平台页面（我的文档/系统管理）全 404；
-          // 上游默认「一律吞 /api」则 IPD 端点反向 404。必须按前缀分流，不可一刀切。
+          // 上游默认「一律吞 /api」则 IPD 端点反向 404。必须按前缀分流，不可一 刀切。
           '/api': {
             changeOrigin: true,
             rewrite: (path) =>
               path.startsWith('/api/v1') ? path : path.replace(/^\/api/, ''),
             target: 'http://127.0.0.1:16039',
             ws: true,
+          },
+          // 2026-09-11 修复：ipd-auth.logout 中平台会话 best-effort 退出调裸 /auth/logout
+          // （vben 上游 SSO 端点约定，无 /api 前缀），vite 不代理该路径 → 浏览器 console
+          // 显示「Failed to load resource: 404」。生产 Nginx 走默认 server_name 转发，
+          // dev 环境必须显式声明。target 同后端端口；目标端点不存在时后端返回 4xx
+          // （业务错误，非资源加载失败，浏览器 console 标记不同）。
+          '/auth': {
+            changeOrigin: true,
+            target: 'http://127.0.0.1:16039',
           },
         },
       },
