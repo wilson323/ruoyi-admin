@@ -15,6 +15,20 @@ const dynamicRouteFiles = import.meta.glob('./modules/**/*.ts', {
 /** 动态路由 */
 const dynamicRoutes: RouteRecordRaw[] = mergeRouteModules(dynamicRouteFiles);
 
+/**
+ * 2026-09-11 owner 指令（菜单/UI 统一）：IPD 自绘壳废弃，/ipd 路由树并入 Root.children，
+ * 与 AI 管理平台动态路由共用同一个 vben BasicLayout 实例（单壳、单菜单）。
+ * 若不并入，/ipd 命中的是顶层静态路由，会另起一份 BasicLayout 实例——
+ * 壳随路由族切换而重建、keep-alive 缓存分裂。
+ */
+const rootRoute = coreRoutes.find((route) => route.name === 'Root');
+const ipdRouteIndex = dynamicRoutes.findIndex((route) => route.path === '/ipd');
+const ipdRoute = dynamicRoutes[ipdRouteIndex];
+if (rootRoute?.children && ipdRoute) {
+  rootRoute.children.push(ipdRoute);
+  dynamicRoutes.splice(ipdRouteIndex, 1);
+}
+
 /** 外部路由列表，访问这些页面可以不需要Layout，可能用于内嵌在别的系统(不会显示在菜单中) */
 // const externalRoutes: RouteRecordRaw[] = mergeRouteModules(externalRouteFiles);
 // const staticRoutes: RouteRecordRaw[] = mergeRouteModules(staticRouteFiles);

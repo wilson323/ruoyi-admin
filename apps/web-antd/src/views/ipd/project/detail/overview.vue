@@ -14,6 +14,7 @@ import {
   Card,
   Descriptions,
   DescriptionsItem,
+  Grid,
   Space,
   Spin,
   Tag,
@@ -106,6 +107,13 @@ function gotoDeletion(): void {
   router.push({ path: '/ipd/deletion/my-requests', query: { entityType: 'projects', entityId: projectId.value } });
 }
 
+/**
+ * 「目标市场」列跨度（响应式）：与 :column="{ xs: 1, sm: 2, lg: 3 }" 对齐。
+ * antd 对「显式 span > 本行剩余列」会收缩该列并弹 Sum of column span 警告——
+ * 目标市场前共 9 项，仅 lg（3 列）档恰好整行填满可独占整行；sm/md/xs 档收为 1 格。
+ */
+const screens = Grid.useBreakpoint();
+const marketSpan = computed(() => (screens.value.lg ? 3 : 1));
 const markets = computed(() => parseMarkets(project.value?.targetMarkets ?? null));
 /** 存量导入补齐提示（BR-PROD-03）。 */
 const catchupBanner = computed(() => {
@@ -151,7 +159,7 @@ const catchupBanner = computed(() => {
           <DescriptionsItem label="来源">{{ sourceText(project.source) }}</DescriptionsItem>
           <DescriptionsItem label="补齐状态">{{ catchupText(project.catchupStatus) }}</DescriptionsItem>
           <DescriptionsItem label="主组 ID">{{ project.mainGroupId || PENDING_TEXT }}</DescriptionsItem>
-          <DescriptionsItem label="目标市场" :span="3">
+          <DescriptionsItem label="目标市场" :span="marketSpan">
             <Space v-if="markets.length" wrap>
               <Tag v-for="market in markets" :key="market" color="blue">{{ market }}</Tag>
             </Space>
@@ -163,6 +171,8 @@ const catchupBanner = computed(() => {
           <DescriptionsItem label="差异化系数（BR-INC-05）">
             {{ coefficientText(project.levelCoefficient) }}
           </DescriptionsItem>
+          <!-- 末项不写 span：antd getFilledItem 对「span=undefined」自动补满本行剩余列且不弹警告；
+               显式 span 超限才会被收缩并弹 Sum of column span 警告。 -->
           <DescriptionsItem label="系数定值理由（S/B 必填）">
             {{ project.levelCoefficientReason || PENDING_TEXT }}
           </DescriptionsItem>

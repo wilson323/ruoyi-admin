@@ -1,7 +1,7 @@
 import type { RouteLocationNormalized } from 'vue-router';
 import type { IpdIdentity } from '../api/ipd/auth';
 
-import { useAccessStore } from '@vben/stores';
+import { useAccessStore, useUserStore } from '@vben/stores';
 
 import type { MenuRecordRaw } from '@vben/types';
 
@@ -57,18 +57,17 @@ function hasAuthority(to: RouteLocationNormalized, identity: IpdIdentity): boole
   return authority.includes(identity.person.personType);
 }
 
-/** 按角色生成侧边栏菜单：非超管剔除带 authority 的受限子树（导航地图权限矩阵）。 */
+/** 已构建菜单对应的角色（personType）：与当前身份不一致时重建（菜单接口按角色返回，导航地图权限矩阵）。 */
 let menusBuiltForRole = '';
-let menusBuiltWithPlatform = false;
 let platformRoutesReady = false;
 /** 平台票每次页面加载只尝试静默续签一次（无映射账号/接口不可用时不重复打） */
 let platformHydrationAttempted = false;
 
-/** 平台（AI 管理平台）动态路由：仅在持平台票后挂载一次；失败静默降级为纯 IPD。 */
+/** 统一菜单（AI 平台 + IPD 工作台分组）动态路由：构建成功后缓存；失败静默降级为空白侧栏。 */
 let platformMenusCache: MenuRecordRaw[] = [];
 async function ensurePlatformAccess(router: import('vue-router').Router): Promise<MenuRecordRaw[]> {
-  // 已挂载时返回缓存菜单而非空数组：enterPlatform 依赖菜单计算落地路径，
-  // 空——会被误判为「菜单为空」而中断切换（2026-09-06 浏览器实测修复）
+  // 已挂载时返回缓存菜单而非空数组：caller 依赖菜单计算侧栏渲染与重导航
+  // （2026-09-06 浏览器实测修复）
   if (platformRoutesReady) return platformMenusCache;
   const { accessibleMenus } = await generatePlatformAccess(router);
   platformRoutesReady = true;
@@ -77,9 +76,10 @@ async function ensurePlatformAccess(router: import('vue-router').Router): Promis
 }
 
 /**
- * accessMenus 仅承载 AI 管理平台菜单（basic.vue 侧边栏数据源）。
- * IPD 工作台侧边栏为原型 15 项硬编码，不消费 accessMenus
- * （2026-09-06 owner 指令：左下角整体切换「IPD 工作台 ⇄ AI 管理平台」，不混排菜单）。
+ * accessMenus 承载统一侧栏菜单（vben BasicLayout 侧边栏数据源，2026-09-11 owner 指令：
+ * 菜单/UI 统一——AI 平台与 IPD 工作台合并为同一份菜单）。
+ * 菜单接口走 IPD 票（getAllMenusApi→ipdGet），与平台票是否就绪无关；
+ * 失败时不落位 menusBuiltForRole，下次导航自动重试。
  */
 async function buildAccessMenus(
   to: RouteLocationNormalized,
@@ -88,42 +88,25 @@ async function buildAccessMenus(
 ): Promise<true | { path: string; replace: boolean }> {
   const accessStore = useAccessStore();
   let menus: MenuRecordRaw[] = [];
-  const platformReady = Boolean(accessStore.accessToken);
-  if (platformReady) {
-    try {
-      menus = await ensurePlatformAccess(router);
-    } catch {
-      // 平台菜单不可用（接口失败/无权限）：保持空菜单，仅失去 AI 平台侧边栏，不影响 IPD 会话
-    }
+  try {
+    menus = await ensurePlatformAccess(router);
+    menusBuiltForRole = personType;
+  } catch {
+    // 菜单接口失败（网络/未授权）：留空侧栏，下次导航重试；不影响 IPD 会话与页面渲染
+  }
+  // IPD 工作台分组置顶（统一菜单中 IPD 主线业务优先；其余分组保持后端顺序）
+  const ipdIndex = menus.findIndex((menu) => menu.path === '/ipd' || menu.name === 'IPD 工作台');
+  if (ipdIndex > 0) {
+    const [ipdMenu] = menus.splice(ipdIndex, 1);
+    if (ipdMenu) menus.unshift(ipdMenu);
   }
   accessStore.setAccessMenus(menus);
   accessStore.setIsAccessChecked(true);
-  menusBuiltForRole = personType;
-  menusBuiltWithPlatform = platformReady;
   // 动态挂载发生在本次导航解析之后：若 to 仅匹配到 catch-all not-found，用已挂载路由重导航一次
-  if (platformReady && menus.length > 0 && to.matched.some((record) => record.path.includes(':path'))) {
+  if (menus.length > 0 && to.matched.some((record) => record.path.includes(':path'))) {
     return { path: to.fullPath, replace: true };
   }
   return true;
-}
-
-/**
- * 进入 AI 管理平台（IPD 工作台左下角切换入口，2026-09-06 owner 指令）：
- * 续签平台票 → 挂载平台路由与菜单 → 返回平台落地路径（首个可见叶子，如 /chat/provider）。
- * 抛出异常表示换票失败（无映射账号/接口不可用），由调用方提示，不改变当前 IPD 界面。
- */
-export async function enterPlatform(router: import('vue-router').Router): Promise<string> {
-  const auth = useIpdAuthStore();
-  await auth.renewPlatformSession(true);
-  const menus = await ensurePlatformAccess(router);
-  const accessStore = useAccessStore();
-  accessStore.setAccessMenus(menus);
-  accessStore.setIsAccessChecked(true);
-  menusBuiltWithPlatform = true;
-  const first = menus[0];
-  const leaf = first?.children?.[0]?.path ?? first?.path ?? '';
-  if (!leaf) throw new Error('平台菜单为空，无法进入 AI 管理平台');
-  return leaf.startsWith('/') ? leaf : `/${first?.path ?? ''}/${leaf}`.replaceAll('//', '/');
 }
 
 /**
@@ -139,6 +122,7 @@ let identityInFlight: Promise<unknown> | null = null;
 export async function ipdNavigationGuard(to: RouteLocationNormalized, router: import('vue-router').Router) {
   const auth = useIpdAuthStore();
   const accessStore = useAccessStore();
+  const userStore = useUserStore();
   if (auth.token) {
     const stale = Date.now() - identityFetchedAt > IDENTITY_TTL_MS;
     if (stale && !identityInFlight) {
@@ -182,7 +166,22 @@ export async function ipdNavigationGuard(to: RouteLocationNormalized, router: im
   // 角色门槛：无权访问 → 统一提示页（导航地图权限矩阵）
   if (!hasAuthority(to, identity)) return { path: IPD_NO_ACCESS, replace: true };
 
-  // AI 平台桥：平台票缺失（如刷新页面后）先静默续签一次；失败仅失去平台入口，不影响 IPD 会话
+  // 统一壳配套（2026-09-11）：vben userStore 无持久化，刷新后顶栏用户区为空；
+  // 以 IPD 会话身份幂等补注（renewPlatformSession 缓存命中路径不会重设 userInfo）。
+  const person = identity.person;
+  if (userStore.userInfo?.username !== person.username) {
+    userStore.setUserInfo({
+      avatar: '',
+      email: '',
+      permissions: userStore.userInfo?.permissions ?? [],
+      realName: person.name,
+      roles: [person.personType],
+      userId: person.id as unknown as number,
+      username: person.username,
+    });
+  }
+
+  // 平台票桥接：缺失（如刷新页面后）先静默续签一次；失败则非 /ipd 页面维持弹回工作台，不影响 IPD 会话
   if (identity.scope === 'FULL' && !accessStore.accessToken && !platformHydrationAttempted) {
     platformHydrationAttempted = true;
     try { await auth.renewPlatformSession(); } catch { /* 降级 */ }
@@ -195,7 +194,7 @@ export async function ipdNavigationGuard(to: RouteLocationNormalized, router: im
       : destination;
   }
 
-  if (menusBuiltForRole !== identity.person.personType || menusBuiltWithPlatform !== Boolean(accessStore.accessToken)) {
+  if (menusBuiltForRole !== identity.person.personType) {
     const rebuilt = await buildAccessMenus(to, router, identity.person.personType);
     if (rebuilt !== true) return rebuilt;
   }

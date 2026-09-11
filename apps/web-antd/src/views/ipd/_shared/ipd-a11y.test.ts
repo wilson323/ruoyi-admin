@@ -6,8 +6,9 @@ import type { Router } from 'vue-router';
  * <p>三层断言：
  * <ol>
  *   <li>F4 静态扫描（沿用 ipd-theme.test.ts 惯例）：关键交互 ARIA 语义齐全 ——
- *       skip-link 目标、侧栏 aria-current、折叠钮 aria-expanded、弹窗 role="dialog"/aria-modal、
- *       关闭钮与纯图标钮可读名称、三态 Alert role="alert"、无权页 aria-live、占位卡 role="status"；
+ *       IPD 阶段轨道 data-testid、全局项目选择器可读 label、旧自绘壳特征已清除
+ *       （2026-09-11 菜单/UI 统一后顶栏/侧栏/菜单由 vben BasicLayout 承担）、
+ *       三态 Alert role="alert"、无权页 aria-live、占位卡 role="status"；
  *   <li>F5 样式存在性：ipd-a11y.css 含 skip-link 聚焦呈现 + prefers-reduced-motion 降级，
  *       且被 layouts/ipd.vue 引入（未引入 = 样式不生效）；
  *   <li>F6 挂载断言：三态/无权/占位组件真实渲染后 role / aria-live 属性穿透到 DOM。
@@ -52,79 +53,30 @@ function templateSection(src: string): string {
 }
 
 describe('f4 — ipd.vue 关键 ARIA（静态扫描）', () => {
-  it('skip-link 存在且 href 指向主内容锚点 #main，文案为「跳到主内容」', () => {
-    expect(layoutSrc).toMatch(
-      /<a class="ipd-skip-link" href="#main">跳到主内容<\/a>/,
-    );
-  });
-
-  it('主内容区带 #main 锚点与 tabindex="-1"（skip-link 命中后可编程式聚焦）', () => {
-    expect(layoutSrc).toMatch(
-      /<main id="main" class="main-area" tabindex="-1">/,
-    );
-  });
-
-  it('侧栏当前路由项带 aria-current="page"', () => {
+  it('阶段轨道带 data-testid="ipd-stage-rail"，六阶段节点按 stages 渲染', () => {
+    expect(layoutSrc).toMatch(/data-testid="ipd-stage-rail"/);
     expect(templateSection(layoutSrc)).toMatch(
-      /:aria-current="isActive\(item\.path\) \? 'page' : undefined"/,
+      /v-for="\(stage, index\) in stages"/,
     );
   });
 
-  it('侧栏折叠钮带 aria-expanded / aria-controls / 可读 aria-label', () => {
-    // 两种等价写法皆可：Vue 3 对 aria-* 布尔绑定恒渲染 "true"/"false" 字符串
-    expect(templateSection(layoutSrc)).toMatch(
-      /:aria-expanded="(String\(!collapsed\)|!collapsed)"/,
-    );
-    expect(templateSection(layoutSrc)).toMatch(
-      /aria-controls="ipd-sidebar-nav"/,
-    );
-    expect(templateSection(layoutSrc)).toMatch(
-      /:aria-label="collapsed \? '展开侧栏' : '收起侧栏'"/,
-    );
+  it('全局项目选择器由 label 包裹（可读名称），带 data-testid', () => {
+    expect(layoutSrc).toMatch(/data-testid="ipd-project-select"/);
+    expect(templateSection(layoutSrc)).toMatch(/<label class="rail-project">/);
   });
 
-  it('三个弹窗容器带 role="dialog" + aria-modal + aria-label', () => {
-    const tpl = templateSection(layoutSrc);
-    expect(tpl.match(/role="dialog"/g)?.length).toBe(3);
-    expect(tpl.match(/aria-modal="true"/g)?.length).toBe(3);
-    for (const label of ['当前页面帮助', '全局搜索', '站内通知']) {
-      expect(tpl).toMatch(
-        new RegExp(`aria-label="${label}"[^>]*role="dialog"`),
-      );
-    }
+  it('页面内容经 router-view 渲染（壳由 vben BasicLayout 承担）', () => {
+    expect(templateSection(layoutSrc)).toMatch(/<router-view \/>/);
   });
 
-  it('所有纯图标 button 必须有可读名称（aria-label）', () => {
-    const tpl = templateSection(layoutSrc);
-    // 逐段切割替代双惰性组匹配，规避多项式回溯（regexp/no-super-linear-backtracking）
-    const buttons = tpl
-      .split(/<button\b/)
-      .slice(1)
-      .map((chunk) => {
-        const close = chunk.indexOf('</button>');
-        const body = close === -1 ? chunk : chunk.slice(0, close);
-        const gt = body.indexOf('>');
-        return { attrs: body.slice(0, gt), inner: body.slice(gt + 1) };
-      });
-    // 顶栏 4 图标钮 + 3 弹窗关闭钮 + 折叠钮 + 2 悬浮入口，至少 10 个
-    expect(buttons.length).toBeGreaterThanOrEqual(10);
-    const unnamed: string[] = [];
-    for (const { attrs, inner } of buttons) {
-      const text = inner.replaceAll(/<[^>]+>/g, '').trim();
-      if (text === '' && !/aria-label=/.test(attrs)) unnamed.push(attrs.trim());
-    }
-    expect(unnamed).toEqual([]);
-  });
-
-  it('弹窗关闭钮 aria-label="关闭" ×3', () => {
-    expect(templateSection(layoutSrc).match(/aria-label="关闭"/g)?.length).toBe(
-      3,
-    );
-  });
-
-  it('两个悬浮入口（AI 管理平台 / AI 副驾）带可读 aria-label', () => {
-    expect(layoutSrc).toMatch(/aria-label="切换到 AI 管理平台"/);
-    expect(layoutSrc).toMatch(/aria-label="打开 AI 副驾"/);
+  it('旧自绘壳特征已清除（侧栏导航 / 双悬浮入口 / 三弹窗 / skip-link）', () => {
+    expect(layoutSrc).not.toMatch(/id="ipd-sidebar-nav"/);
+    expect(layoutSrc).not.toMatch(/ipd-platform-switch/);
+    expect(layoutSrc).not.toMatch(/ipd-ai-entry/);
+    expect(layoutSrc).not.toMatch(/aria-label="切换到 AI 管理平台"/);
+    expect(layoutSrc).not.toMatch(/aria-label="打开 AI 副驾"/);
+    expect(layoutSrc).not.toMatch(/role="dialog"/);
+    expect(layoutSrc).not.toMatch(/ipd-skip-link/);
   });
 });
 

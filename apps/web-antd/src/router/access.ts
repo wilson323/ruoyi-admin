@@ -268,9 +268,11 @@ async function generateAccess(options: GenerateMenuAndRoutesOptions) {
 export { generateAccess, generatePlatformAccess };
 
 /**
- * AI 平台动态路由（2026-09-06）：仅后端菜单（不并入 localMenuList），
- * 由 IPD 守卫在平台票就绪后挂载；菜单由守卫与 IPD 菜单树合并。
- * 与 generateAccess 的差异：前者产出「IPD+平台」合并形态的完整可用菜单；本函数只产出平台子集。
+ * 统一动态路由（2026-09-11 菜单/UI 统一后，站内唯一生效的菜单/路由构建入口）：
+ * 仅后端菜单（不并入 localMenuList），由 IPD 守卫在任一受保护导航时挂载——
+ * 菜单接口 getAllMenusApi 走 IPD 票（与平台票无关），IPD 工作台分组由守卫置顶。
+ * 产物 accessibleMenus 即统一侧栏菜单；平台票仅决定非 /ipd 页面可达性（identityDestination）。
+ * generateAccess 为 vben 原生示例入口，当前业务链路不再消费（保留备用）。
  */
 async function generatePlatformAccess(router: Router) {
   const pageMap: ComponentRecordType = import.meta.glob('../views/**/*.vue');

@@ -21,8 +21,9 @@ import {
  */
 
 const ipdLayoutRoute: RouteRecordRaw = {
-  // 2026-09-06 起改用 ipd.vue 自绘 Shell（严格 1:1 复刻 ZK-IPD 原型 topbar/sidebar/stage-rail），
-  // 不再经由 Vben basic.vue；菜单/权限在 ipd.vue 内按 personType 过滤，路由结构不变。
+  // 2026-09-11 菜单/UI 统一：本路由树经 routes/index.ts 并入 Root.children，与平台路由共用
+  // 同一 vben BasicLayout 外壳；ipd.vue 降级为轻量容器（stage-rail 六阶段 + 全局项目选择）。
+  // 顶栏/侧栏/用户区/通知由 BasicLayout 承担；菜单由守卫统一构建（后端单一菜单树，IPD 分组置顶）。
   component: () => import('#/layouts/ipd.vue'),
   meta: { hideInBreadcrumb: true, title: 'IPD 工作台' },
   name: 'Ipd',
@@ -346,8 +347,8 @@ const ipdLayoutRoute: RouteRecordRaw = {
         },
       ],
     },
-    // AI 文档助手（页42）—— 2026-09-10 owner 拍板：升级为侧栏菜单可见（与悬浮 AI 副驾并存）；
-    //    原型「全局面板」设计保留（右下角 AI 副驾），菜单项入口便于直接深链与权限收敛。
+    // AI 文档助手（页42）—— 2026-09-10 owner 拍板：升级为侧栏菜单可见；2026-09-11 菜单/UI 统一后
+    // 自绘壳悬浮「AI 副驾」与「AI 管理平台」切换钮均已移除，本菜单项为 AI 能力唯一入口（便于深链与权限收敛）。
     {
       component: () => import('#/views/ipd/ai-docs/index.vue'),
       meta: { access: [...(PAGE_PERMISSIONS['/ipd/ai-assistant'] ?? [])], icon: 'lucide:bot', order: 1.5, title: 'AI 文档助手' },

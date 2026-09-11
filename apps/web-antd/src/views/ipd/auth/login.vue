@@ -101,7 +101,7 @@ async function submit() {
       <div class="login-message">
         <span class="eyebrow">产品经理的标准化工作系统</span>
         <h1>让每一个产品决策<br />都有方法、有证据、有沉淀。</h1>
-        <p>六阶段流程、任务 SOP、AI 副驾、阶段门禁和项目移交，在同一个工作台内完成。</p>
+        <p>六阶段流程、任务 SOP、AI 助手、阶段门禁和项目移交，在同一个工作台内完成。</p>
       </div>
       <div class="login-stage-dots">
         <span>概念</span><i /><span>计划</span><i /><span>开发</span><i /><span>验证</span><i /><span>发布</span><i /><span>生命周期</span>

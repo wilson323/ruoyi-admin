@@ -17,14 +17,14 @@ import { useAccessStore, useUserStore } from '@vben/stores';
 
 import { message } from 'ant-design-vue';
 
-import { $t } from '#/locales';
 import { resetRoutes } from '#/router';
-import { useAuthStore, useNotifyStore } from '#/store';
+import { useNotifyStore } from '#/store';
+import { useIpdAuthStore } from '#/store/ipd-auth';
 import { useTenantStore } from '#/store/tenant';
 import LoginForm from '#/views/_core/authentication/login.vue';
 
 const userStore = useUserStore();
-const authStore = useAuthStore();
+const ipdAuthStore = useIpdAuthStore();
 const accessStore = useAccessStore();
 const router = useRouter();
 const { destroyWatermark, updateWatermark } = useWatermark();
@@ -34,10 +34,10 @@ const menus = computed(() => {
   const defaultMenus = [
     {
       handler: () => {
-        router.push('/profile');
+        router.push('/ipd/account');
       },
       icon: UserOutlined,
-      text: $t('ui.widgets.profile'),
+      text: '我的账户',
     },
   ];
   /**
@@ -55,10 +55,14 @@ const avatar = computed(() => {
 
 async function handleLogout() {
   /**
-   * 主动登出不需要带跳转地址
+   * 2026-09-11（菜单/UI 统一）：登出走 IPD 会话全链路清理
+   * （清 IPD 票 + 平台票 + 身份）。原实现只清 vben authStore——统一壳后
+   * 会话主体是 IPD，若只清 vben 状态，IPD 票残留会导致「退出登录」无效。
    */
-  await authStore.logout(false);
+  await ipdAuthStore.logout();
+  userStore.setUserInfo(null);
   resetRoutes();
+  await router.push('/auth/login');
 }
 
 const notifyStore = useNotifyStore();
@@ -114,17 +118,9 @@ watch(
     </template>
     <template #extra>
       <!-- BasicLayout 无 default slot（packages/effects/layouts/src/basic/layout.vue 只透传
-           logo-text/user-dropdown/notification/extra/lock-screen 等具名插槽），裸按钮放在
-           默认插槽会被整体丢弃——回切按钮必须挂在 #extra 内（2026-09-06 浏览器实测修复） -->
-      <button
-        class="ipd-workbench-switch"
-        data-testid="platform-ipd-switch"
-        type="button"
-        @click="router.replace('/ipd/workbench')"
-      >
-        <strong>IPD 工作台</strong>
-        <small>返回产品流程管理</small>
-      </button>
+           logo-text/user-dropdown/notification/extra/lock-screen 等具名插槽），登录过期弹窗
+           必须挂在 #extra 内。「IPD 工作台」回切按钮已随 2026-09-11 菜单/UI 统一移除——
+           站内只剩一套壳一份菜单，不再有壳间切换。 -->
       <AuthenticationLoginExpiredModal
         v-model:open="accessStore.loginExpired"
         :avatar
@@ -137,26 +133,3 @@ watch(
     </template>
   </BasicLayout>
 </template>
-
-<style scoped>
-.ipd-workbench-switch {
-  position: fixed;
-  bottom: 22px;
-  left: 22px;
-  z-index: 500;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  align-items: center;
-  padding: 10px 16px;
-  border: 0;
-  border-radius: 12px;
-  color: #fff;
-  background: linear-gradient(135deg, #071426, #18253a);
-  box-shadow: 0 8px 22px rgb(7 20 38 / 30%);
-  cursor: pointer;
-}
-.ipd-workbench-switch strong { font-size: 13px; }
-.ipd-workbench-switch small { font-size: 10px; opacity: 0.75; }
-.ipd-workbench-switch:hover { opacity: 0.92; }
-</style>
