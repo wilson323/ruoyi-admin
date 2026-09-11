@@ -14,9 +14,10 @@
  * - targetMarkets 至少 1 项（BR-PROD-02）；
  * - level=S 或 B 时 levelCoefficient + levelCoefficientReason 必填（BR-INC-05 双签定值）；
  * - 四立项基准值均 >0；NPS 0-100；
- * - mainGroupId 必填（BR-ORG-01）。
+ * - mainGroupId 可选（2026-09-11 owner 拍板）：下拉选产品组，不选传 null；
+ *   未选组的项目，按组归属校验（SEC-02）场景需后补组归属。
  */
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { RuleObject } from 'ant-design-vue/es/form';
@@ -35,6 +36,8 @@ import {
 
 import type { Project, ProjectCreateBody, ProjectLevel, TemplateType } from '../../../../api/ipd/project';
 import { createProject } from '../../../../api/ipd/project';
+import type { ProductGroup } from '../../../../api/ipd/product';
+import { listProductGroups } from '../../../../api/ipd/product';
 import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import { RULES_BY_PAGE, renderRulesDescription } from '../../_shared/zk-ipd-rules';
 import '../../_shared/ipd-theme.css';
@@ -89,6 +92,18 @@ const levelOptions = [
   { label: 'B 级（差异化下调）', value: 'B' as ProjectLevel },
 ];
 
+/** 主组产品组下拉（可选；加载失败降级空列表不阻断创建，G-06 不造假数据）。 */
+const groups = ref<ProductGroup[]>([]);
+const groupOptions = computed(() => [
+  { label: '待选择', value: '' },
+  ...groups.value.map((group) => ({ label: group.groupName, value: group.id })),
+]);
+onMounted(() => {
+  listProductGroups()
+    .then((list) => { groups.value = list; })
+    .catch(() => { groups.value = []; });
+});
+
 /** 解析 targetMarkets：换行/逗号分隔 → 数组；空段忽略；去重保序。 */
 const parsedMarkets = computed<string[]>(() => {
   const text = formState.marketsText;
@@ -126,7 +141,6 @@ const rules = computed<Record<string, RuleObject[]>>(() => ({
   productId: [{ required: true, message: '产品 ID 必填' }],
   templateType: [{ required: true, message: '模板类型必填' }],
   level: [{ required: true, message: '立项级别必填' }],
-  mainGroupId: [{ required: true, message: '主组（市场PM 所在产品组）必填' }],
   marketsText: [{
     required: true,
     message: '目标市场至少 1 项；多值用换行或逗号分隔',
@@ -153,7 +167,8 @@ function toBody(): ProjectCreateBody {
     targetChannelCount: formState.targetChannelCount,
     targetNps: formState.targetNps,
     targetSceneCount: formState.targetSceneCount,
-    mainGroupId: formState.mainGroupId.trim(),
+    // 可选：未选产品组传 null（后端 Long 可空；10001「输入信息不符合要求」根因即历史必填手输非数字）。
+    mainGroupId: formState.mainGroupId.trim() === '' ? null : formState.mainGroupId.trim(),
     launchDate: formState.launchDate ?? null,
   };
 }
@@ -236,8 +251,8 @@ function cancel(): void {
           <Input v-model:value="formState.productId" placeholder="产品唯一标识" />
         </Form.Item>
 
-        <Form.Item label="主组（市场PM 所在产品组 ID）" name="mainGroupId" extra="BR-ORG-01：项目归属于市场PM 所在产品组。">
-          <Input v-model:value="formState.mainGroupId" placeholder="主组唯一标识" />
+        <Form.Item label="主组（市场PM 所在产品组）" name="mainGroupId" extra="BR-ORG-01：项目归属于市场PM 所在产品组；可选，未选可创建后补充。">
+          <Select v-model:value="formState.mainGroupId" :options="groupOptions" placeholder="选择产品组（可选）" allow-clear />
         </Form.Item>
 
         <Form.Item label="模板类型" name="templateType">

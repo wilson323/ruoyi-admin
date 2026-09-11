@@ -55,7 +55,8 @@ export interface ProjectCreateBody {
   /** S/B 必填（BR-INC-05 双签定值）；A 级传 null。 */
   levelCoefficient: null | number;
   levelCoefficientReason: null | string;
-  mainGroupId: string;
+  /** 可选（2026-09-11 owner 拍板）：BR-ORG-01 归属语义不变，未选传 null；存量导入仍必填。 */
+  mainGroupId: null | string;
   name: string;
   productId: string;
   targetChannelCount: number;

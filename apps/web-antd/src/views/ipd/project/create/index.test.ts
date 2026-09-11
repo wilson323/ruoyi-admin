@@ -10,6 +10,9 @@ import Create from './index.vue';
 const api = vi.hoisted(() => ({ createProject: vi.fn() }));
 vi.mock('../../../../api/ipd/project', () => api);
 
+const productApi = vi.hoisted(() => ({ listProductGroups: vi.fn() }));
+vi.mock('../../../../api/ipd/product', () => productApi);
+
 const routerMock = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 vi.mock('vue-router', () => ({
   useRouter: () => routerMock,
@@ -37,12 +40,30 @@ beforeEach(() => {
   stubAntd();
   setActivePinia(createPinia());
   api.createProject.mockReset();
+  productApi.listProductGroups.mockReset();
+  productApi.listProductGroups.mockResolvedValue([]);
   routerMock.replace.mockReset();
 });
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('页08 新建项目', () => {
+  it('主组产品组可选（2026-09-11 owner 拍板）：下拉选择替代 ID 手输，不填不再拦提交', async () => {
+    productApi.listProductGroups.mockResolvedValueOnce([
+      { id: '9120001', groupName: '门禁产品组', description: null },
+    ]);
+    const wrapper = mount(Create);
+    await flushPromises();
+    const html = wrapper.html();
+    // 反模式清除：不再要求手输「主组唯一标识」，表单不再带必填规则
+    expect(html).not.toContain('主组唯一标识');
+    expect(html).not.toContain('主组（市场PM 所在产品组 ID）');
+    expect(html).not.toContain('所在产品组）必填');
+    // 新交互：extra 文案明示可选（Select placeholder 不进 jsdom 快照，E2E 复核）
+    expect(html).toContain('主组（市场PM 所在产品组）');
+    expect(html).toContain('可选，未选可创建后补充');
+  });
+
   it('取消按钮触发返回列表', async () => {
     api.createProject.mockResolvedValueOnce(created());
     const wrapper = mount(Create);
