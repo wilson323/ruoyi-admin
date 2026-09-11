@@ -1,6 +1,8 @@
 import type { FormSchemaGetter } from '#/adapter/form';
 import type { VxeGridProps } from '#/adapter/vxe-table';
 
+import { providerStatusOptions } from './options';
+
 export const querySchema: FormSchemaGetter = () => [
   {
     component: 'Input',
@@ -11,6 +13,12 @@ export const querySchema: FormSchemaGetter = () => [
     component: 'Input',
     fieldName: 'providerCode',
     label: '厂商编码',
+  },
+  {
+    component: 'Select',
+    componentProps: { options: providerStatusOptions },
+    fieldName: 'status',
+    label: '状态',
   },
 ];
 
@@ -42,6 +50,18 @@ export const columns: VxeGridProps['columns'] = [
   {
     title: 'API地址',
     field: 'apiHost',
+  },
+  {
+    title: '排序',
+    field: 'sortOrder',
+    width: 80,
+  },
+  {
+    title: '状态',
+    field: 'status',
+    width: 80,
+    formatter: ({ cellValue }) =>
+      providerStatusOptions.find((option) => option.value === cellValue)?.label ?? '未设置',
   },
   {
     title: '备注',

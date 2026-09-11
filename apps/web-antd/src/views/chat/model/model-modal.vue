@@ -7,8 +7,9 @@
 import type { RuleObject } from 'ant-design-vue/es/form';
 
 import type { ModelForm } from '#/api/chat/model/model';
+import type { ProviderVO } from '#/api/chat/provider/model';
 
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 
 import { useVbenModal } from '@vben/common-ui';
 import { DictEnum } from '@vben/constants';
@@ -30,16 +31,23 @@ import { pick } from 'lodash-es';
 import { modelAdd, modelInfo, modelUpdate } from '#/api/chat/model';
 import { providerList } from '#/api/chat/provider';
 import { getDictOptions } from '#/utils/dict';
+import { getCustomProviderConfig } from '../provider/options';
 
 const emit = defineEmits<{ reload: [] }>();
 
 const isUpdate = ref(false);
 // 编辑加载数据时的标志，用于跳过watch避免apiHost被误清空
 const isLoading = ref(false);
-const providerOptions = ref<Array<{ label: string; value: number | string }>>(
-  [],
+const providers = ref<ProviderVO[]>([]);
+const providerOptions = computed(() =>
+  providers.value.map((item) => ({
+    label: String(item.providerName),
+    value: item.providerCode,
+  })),
 );
-const providersMap = ref<Map<number | string, any>>(new Map());
+const providersMap = computed(() =>
+  new Map(providers.value.map((item) => [item.providerCode, item])),
+);
 const categoryOptions = computed(() => {
   const options = [...getDictOptions(DictEnum.CHAT_MODEL_CATEGORY)] as any[];
   ensureCategoryOption(options, 'image', '图片', 'orange');
@@ -76,25 +84,10 @@ const title = computed(() => {
   return isUpdate.value ? $t('pages.common.edit') : $t('pages.common.add');
 });
 
-onMounted(async () => {
-  loadProviders();
-});
-
 async function loadProviders() {
-  try {
-    const res = await providerList({ pageNum: 1, pageSize: 999 });
-    providerOptions.value = res.rows.map((item) => ({
-      label: String(item.providerName),
-      value: item.providerCode,
-    }));
-    // 存储供应商完整信息，以便后续查询apiHost
-    providersMap.value.clear();
-    res.rows.forEach((item) => {
-      providersMap.value.set(item.providerCode, item);
-    });
-  } catch (error) {
-    console.error('Failed to load providers:', error);
-  }
+  providers.value = [];
+  const res = await providerList({ pageNum: 1, pageSize: 999, status: '0' });
+  providers.value = res.rows.filter((item) => item.status === '0');
 }
 
 /**
@@ -116,12 +109,16 @@ const defaultValues: Partial<ModelForm> = {
 /**
  * 表单数据ref
  */
-const formData = ref(defaultValues);
+const formData = ref(cloneDeep(defaultValues));
+const customProviderConfig = computed(() => getCustomProviderConfig(formData.value.providerCode));
+const providerUnavailable = computed(
+  () => !!formData.value.providerCode && !providersMap.value.has(formData.value.providerCode),
+);
 
 const showApiHost = computed(() => {
   const category = formData.value.category;
   return (
-    formData.value.providerCode === 'custom_api' ||
+    customProviderConfig.value !== null ||
     category === 'audio' ||
     category === 'image' ||
     category === 'video'
@@ -137,16 +134,12 @@ watch(
     // 编辑加载数据时跳过，避免apiHost被误清空
     if (isLoading.value) return;
 
-    if (newProviderCode === 'custom_api') {
+    if (getCustomProviderConfig(newProviderCode)) {
       formData.value.apiHost = undefined;
-      formRules.value.apiHost = [
-        { required: true, message: $t('ui.formRules.required') },
-      ];
     } else {
-      delete formRules.value.apiHost;
       if (newProviderCode && providersMap.value.has(newProviderCode)) {
         const provider = providersMap.value.get(newProviderCode);
-        formData.value.apiHost = provider.apiHost;
+        formData.value.apiHost = provider?.apiHost;
       }
     }
 
@@ -170,8 +163,26 @@ type AntdFormRules<T> = Partial<Record<keyof T, RuleObject[]>> & {
  * 表单校验规则
  */
 const formRules = ref<AntdFormRules<ModelForm>>({
+  apiHost: [
+    {
+      validator: async (_rule, value) => {
+        if (customProviderConfig.value && !String(value ?? '').trim()) {
+          throw new Error('请填写自定义厂商的请求地址');
+        }
+      },
+      trigger: 'blur',
+    },
+  ],
   providerCode: [
     { required: true, message: $t('ui.formRules.required'), trigger: 'change' },
+    {
+      validator: async (_rule, value) => {
+        if (value && !providersMap.value.has(value)) {
+          throw new Error('请选择已启用的厂商');
+        }
+      },
+      trigger: 'change',
+    },
   ],
   category: [
     { required: true, message: $t('ui.formRules.required'), trigger: 'change' },
@@ -200,21 +211,23 @@ const [BasicModal, modalApi] = useVbenModal({
       return null;
     }
     modalApi.modalLoading(true);
-
-    const { id } = modalApi.getData() as { id?: number | string };
-    isUpdate.value = !!id;
-
-    if (isUpdate.value && id) {
-      isLoading.value = true;
-      const record = await modelInfo(id);
-      // 只赋值存在的字段
-      const filterRecord = pick(record, Object.keys(defaultValues));
-      formData.value = filterRecord;
+    isLoading.value = true;
+    try {
+      await loadProviders();
+      const { id } = modalApi.getData() as { id?: number | string };
+      isUpdate.value = !!id;
+      if (isUpdate.value && id) {
+        const record = await modelInfo(id);
+        // 只赋值存在的字段，保留已有模型的地址。
+        formData.value = pick(record, Object.keys(defaultValues));
+      }
       await nextTick();
+    } catch (error) {
+      console.error('Failed to load model form:', error);
+    } finally {
       isLoading.value = false;
+      modalApi.modalLoading(false);
     }
-
-    modalApi.modalLoading(false);
   },
 });
 
@@ -224,6 +237,9 @@ async function handleConfirm() {
     await validate();
     // 可能会做数据处理 使用cloneDeep深拷贝
     const data = cloneDeep(formData.value);
+    if (isUpdate.value && customProviderConfig.value && !data.apiKey?.trim()) {
+      data.apiKey = undefined;
+    }
     await (isUpdate.value ? modelUpdate(data) : modelAdd(data));
     emit('reload');
     await handleCancel();
@@ -310,7 +326,11 @@ function isValidCSSColor(color: string): boolean {
     <Form :label-col="{ span: 24 }" :wrapper-col="{ span: 24 }">
       <Row :gutter="16">
         <Col :span="12">
-          <FormItem label="供应商" v-bind="validateInfos.providerCode">
+          <FormItem
+            label="供应商"
+            v-bind="validateInfos.providerCode"
+            :extra="providerUnavailable ? '当前厂商已停用或不存在，请先启用该厂商，或选择其他已启用的厂商。' : customProviderConfig ? `接口协议：${customProviderConfig.protocol}` : undefined"
+          >
             <Select
               v-model:value="formData.providerCode"
               :placeholder="$t('ui.formRules.required')"
@@ -377,10 +397,14 @@ function isValidCSSColor(color: string): boolean {
           </FormItem>
         </Col>
         <Col v-if="showApiHost" :span="12">
-          <FormItem label="请求地址" v-bind="validateInfos.apiHost">
+          <FormItem
+            label="请求地址"
+            v-bind="validateInfos.apiHost"
+            :extra="customProviderConfig ? '填写服务商提供的 HTTPS API Base URL，例如 https://服务商地址/v1。' : undefined"
+          >
             <Input
               v-model:value="formData.apiHost"
-              :placeholder="$t('ui.formRules.required')"
+              :placeholder="customProviderConfig?.apiHostPlaceholder ?? $t('ui.formRules.required')"
             />
           </FormItem>
         </Col>
@@ -388,10 +412,14 @@ function isValidCSSColor(color: string): boolean {
 
       <Row :gutter="16">
         <Col :span="24">
-          <FormItem label="密钥" v-bind="validateInfos.apiKey">
+          <FormItem
+            label="密钥"
+            v-bind="validateInfos.apiKey"
+            :extra="customProviderConfig ? `填写环境变量引用，如 ${customProviderConfig.apiKeyReference}；后端同时配置对应的 ${customProviderConfig.baseUrlVariable}。编辑时留空可保留原密钥。` : undefined"
+          >
             <Input
               v-model:value="formData.apiKey"
-              :placeholder="$t('ui.formRules.required')"
+              :placeholder="customProviderConfig?.apiKeyReference ?? $t('ui.formRules.required')"
             />
           </FormItem>
         </Col>

@@ -112,7 +112,7 @@ export const drawerSchema: FormSchemaGetter = () => [
     },
     fieldName: 'authConfig',
     formItemClass: 'col-span-2',
-    help: '认证配置（JSON格式），例如：{"type": "bearer", "token": "xxx"}',
+    help: '认证配置只写不回显；编辑时留空会保留原配置。示例：{"type": "bearer", "token": "xxx"}',
     label: '认证配置',
   },
   {

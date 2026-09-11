@@ -1,6 +1,7 @@
 import type { AgentVO, SkillOption } from './model';
 
 import type { ID, IDS, PageQuery, PageResult } from '#/api/common';
+import type { McpToolListResult } from '#/api/mcp/tool/model';
 
 import { commonExport } from '#/api/helper';
 import { requestClient } from '#/api/request';
@@ -11,7 +12,7 @@ enum Api {
   agentOptions = '/agent/agent/agentOptions',
   skillOptions = '/agent/agent/skillOptions',
   modelOptions = '/system/model/list',
-  mcpToolOptions = '/mcp/tool/all',
+  mcpToolOptions = '/mcp/tool/options',
   knowledgeOptions = '/system/info/list',
 }
 
@@ -85,7 +86,7 @@ export function agentModelOptions() {
  * MCP 工具选项
  */
 export function agentMcpToolOptions() {
-  return requestClient.get<{ data: any[]; total: number }>(Api.mcpToolOptions);
+  return requestClient.get<McpToolListResult>(Api.mcpToolOptions);
 }
 
 /**

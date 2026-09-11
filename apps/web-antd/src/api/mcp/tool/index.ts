@@ -1,4 +1,4 @@
-import type { McpTool, McpToolTestResult } from './model';
+import type { McpTool, McpToolListResult, McpToolTestResult } from './model';
 
 import type { ID, IDS, PageQuery, PageResult } from '#/api/common';
 
@@ -6,10 +6,9 @@ import { commonExport } from '#/api/helper';
 import { requestClient } from '#/api/request';
 
 enum Api {
-  mcpToolTest = '/mcp/tool',
+  mcpToolAll = '/mcp/tool/all',
   mcpToolExport = '/mcp/tool/export',
   mcpToolList = '/mcp/tool/list',
-  mcpToolAll = '/mcp/tool/all',
   root = '/mcp/tool',
 }
 
@@ -27,7 +26,7 @@ export function mcpToolList(params?: PageQuery) {
  * @returns 列表
  */
 export function mcpToolAll() {
-  return requestClient.get<McpTool[]>(Api.mcpToolAll);
+  return requestClient.get<McpToolListResult>(Api.mcpToolAll);
 }
 
 /**

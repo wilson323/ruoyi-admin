@@ -38,7 +38,7 @@ export const columns: VxeGridProps['columns'] = [
     title: 'ID',
     field: 'id',
     // width: 80,
-    visible:false
+    visible: false,
   },
   {
     title: '工具名称',
@@ -119,7 +119,6 @@ export const drawerSchema: FormSchemaGetter = () => [
       options: [
         { label: '本地工具', value: 'LOCAL' },
         { label: '远程工具', value: 'REMOTE' },
-        { label: '内置工具', value: 'BUILTIN' },
       ],
     },
     fieldName: 'type',
@@ -147,7 +146,7 @@ export const drawerSchema: FormSchemaGetter = () => [
     },
     fieldName: 'configJson',
     formItemClass: 'col-span-2',
-    help: '配置信息（JSON格式），例如：{"command": "npx", "args": ["-y", "@modelcontextprotocol/server-everything"]}',
+    help: '配置信息只写不回显；编辑时留空会保留原配置。示例：{"command": "npx", "args": ["-y", "@modelcontextprotocol/server-everything"]}',
     label: '配置信息',
   },
 ];

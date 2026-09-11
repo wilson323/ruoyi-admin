@@ -176,12 +176,7 @@ async function run() {
               runtimeNodeUuid,
               chunk,
             );
-            const hit = runtimeNodes.find(
-              (n: any) => n.uuid === runtimeNodeUuid,
-            );
-            if (hit) {
-              (hit as any).chunks = ((hit as any).chunks || '') + chunk;
-            }
+            // runtimeNodes 与 store 持有同一节点对象，增量已由 store 写入。
           } else if (eventName.includes('[NODE_INPUT_')) {
             const nodeUuid = eventName
               .replace('[NODE_INPUT_', '')

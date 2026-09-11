@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, ref, computed } from 'vue'
+import { h, ref, computed, watch } from 'vue'
 import { Select, Button, Collapse, Input } from 'ant-design-vue'
 import type { VNodeChild } from 'vue'
 import { emptyWorkflowInfo } from '../utils/workflow-util'
@@ -49,6 +49,7 @@ const options = computed(() => {
     if ((props.whiteListComponents || []).length > 0 && !(props.whiteListComponents || []).includes(node.wfComponent.name)) continue
     const inputConfig = node.inputConfig || { user_inputs: [], ref_inputs: [] }
     if (node.wfComponent.name === 'Start') {
+      componentOutputOptions.push({ label: `${node.title} · 默认输出`, value: `${node.uuid}::output` })
       const arr = Array.isArray(inputConfig.user_inputs) ? inputConfig.user_inputs : []
       for (let j = 0; j < arr.length; j++) {
         const userInput: any = arr[j]
@@ -75,7 +76,7 @@ function rebuildSelectedVars() {
   syncKeysLength()
 }
 
-rebuildSelectedVars()
+watch(() => props.wfNode.uuid, rebuildSelectedVars, { immediate: true })
 
 function two(n: number) { return String(n).padStart(2, '0') }
 function nextAutoKey(list: string[]) {
@@ -133,17 +134,17 @@ function removeVariable(index: number) {
       <div class="flex flex-col gap-2">
         <div v-for="(sv, idx) in selectedVars" :key="idx" class="flex items-center gap-2">
           <div class="min-w-36 text-gray-600 flex items-center justify-between pr-2">
-            <Input v-model:value="keysRef[idx]" placeholder="var_xxx" size="small" />
+            <Input v-model:value="keysRef[idx]" placeholder="var_xxx" size="small" @update:value="() => handleSelectAt(idx, selectedVars[idx] || '')" />
           </div>
           <Select
             :value="sv"
             :show-arrow="true"
             :options="options"
-            @update:value="(val) => typeof val === 'string' && handleSelectAt(idx, val)"
+            @update:value="(val) => handleSelectAt(idx, String(val ?? ''))"
             class="flex-1"
           >
-            <template #option="option">
-              <component :is="() => renderDropdownLabel(option)" />
+            <template #option="{ label, value }">
+              <component :is="() => renderDropdownLabel({ label, value })" />
             </template>
           </Select>
           <Button size="small" title="删除" @click="removeVariable(idx)">

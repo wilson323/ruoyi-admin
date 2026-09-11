@@ -3,7 +3,8 @@ export interface McpMarket {
   name: string;
   url: string;
   description: string;
-  authConfig: string;
+  /** Write-only authentication configuration; responses intentionally omit it. */
+  authConfig?: string;
   status: string;
   createTime: string;
   updateTime: string;
@@ -15,7 +16,6 @@ export interface McpMarketTool {
   toolName: string;
   toolDescription: string;
   toolVersion: string;
-  toolMetadata: string;
   isLoaded: boolean;
   localToolId: number;
 }
@@ -25,4 +25,23 @@ export interface McpMarketRefreshResult {
   message: string;
   addedCount: number;
   updatedCount: number;
+}
+
+export interface McpMarketListResult {
+  success: boolean;
+  data: McpMarket[];
+  total: number;
+}
+
+export interface McpMarketToolListResult {
+  success: boolean;
+  data: McpMarketTool[];
+  total: number;
+  page: number;
+  size: number;
+  pages: number;
+}
+
+export interface McpMarketBatchLoadResult {
+  successCount: number;
 }

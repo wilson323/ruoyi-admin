@@ -153,7 +153,9 @@ const { hasAccessByCodes } = useAccess();
         <TableSwitch
           v-model:value="row.status"
           :api="() => mcpToolChangeStatus(row)"
-          :disabled="!hasAccessByCodes(['mcp:tool:edit'])"
+          :disabled="
+            row.type === 'BUILTIN' || !hasAccessByCodes(['mcp:tool:edit'])
+          "
           :checked-value="'ENABLED'"
           :unchecked-value="'DISABLED'"
           @reload="tableApi.query()"
@@ -162,7 +164,7 @@ const { hasAccessByCodes } = useAccess();
       <template #action="{ row }">
         <Space>
           <ghost-button
-            v-access:code="['mcp:tool:query']"
+            v-access:code="['mcp:tool:test']"
             @click.stop="handleTest(row)"
           >
             测试

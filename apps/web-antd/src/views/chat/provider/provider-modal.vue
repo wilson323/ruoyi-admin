@@ -7,7 +7,7 @@
 import type { RuleObject } from 'ant-design-vue/es/form';
 import { computed, ref } from 'vue';
 
-import { Input, Textarea, Select, Form, FormItem } from 'ant-design-vue';
+import { Input, InputNumber, Textarea, Select, Form, FormItem, RadioGroup } from 'ant-design-vue';
 import { ImageUpload } from '#/components/upload';
 import { pick } from 'lodash-es';
 
@@ -19,7 +19,7 @@ import { providerAdd, providerInfo, providerUpdate } from '#/api/chat/provider';
 import { ossInfo } from '#/api/system/oss';
 import type { ProviderForm } from '#/api/chat/provider/model';
 
-import { providerOptions } from './options';
+import { getCustomProviderConfig, providerOptions, providerStatusOptions } from './options';
 
 const emit = defineEmits<{ reload: [] }>();
 
@@ -38,8 +38,8 @@ const defaultValues: Partial<ProviderForm> = {
   providerIcon: undefined,
   providerDesc: undefined,
   apiHost: undefined,
-  status: undefined,
-  sortOrder: undefined,
+  status: '0',
+  sortOrder: 0,
   remark: undefined,
   updateIp: undefined,
 };
@@ -47,7 +47,7 @@ const defaultValues: Partial<ProviderForm> = {
 /**
  * 表单数据ref
  */
-const formData = ref(defaultValues);
+const formData = ref(cloneDeep(defaultValues));
 
 type AntdFormRules<T> = Partial<Record<keyof T, RuleObject[]>> & {
   [key: string]: RuleObject[];
@@ -58,6 +58,7 @@ type AntdFormRules<T> = Partial<Record<keyof T, RuleObject[]>> & {
 const formRules = ref<AntdFormRules<ProviderForm>>({
   providerName: [{ required: true, message: '厂商名称不能为空' }],
   providerCode: [{ required: true, message: '厂商编码不能为空' }],
+  status: [{ required: true, message: '请选择厂商状态' }],
 });
 
 /**
@@ -150,7 +151,11 @@ async function handleCancel() {
       <FormItem label="厂商名称" v-bind="validateInfos.providerName">
         <Input v-model:value="formData.providerName" :placeholder="$t('ui.formRules.required')" />
       </FormItem>
-      <FormItem label="厂商编码" v-bind="validateInfos.providerCode">
+      <FormItem
+        label="厂商编码"
+        v-bind="validateInfos.providerCode"
+        :extra="getCustomProviderConfig(formData.providerCode) ? '选择服务商支持的接口协议，模型的请求地址在模型管理中单独填写。' : undefined"
+      >
         <Select
           v-model:value="formData.providerCode"
           :options="[...providerOptions]"
@@ -178,7 +183,10 @@ async function handleCancel() {
         <Input v-model:value="formData.apiHost" :placeholder="$t('ui.formRules.required')" />
       </FormItem>
       <FormItem label="排序" v-bind="validateInfos.sortOrder">
-        <Input v-model:value="formData.sortOrder" :placeholder="$t('ui.formRules.required')" />
+        <InputNumber v-model:value="formData.sortOrder" :min="0" :precision="0" />
+      </FormItem>
+      <FormItem label="状态" v-bind="validateInfos.status" extra="停用后，该厂商下的模型将无法用于新的调用。">
+        <RadioGroup v-model:value="formData.status" :options="providerStatusOptions" />
       </FormItem>
       <FormItem label="备注" v-bind="validateInfos.remark">
         <Textarea

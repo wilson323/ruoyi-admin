@@ -4,7 +4,8 @@ export interface McpTool {
   description: string;
   type: string;
   status: string;
-  configJson: string;
+  /** Write-only connection configuration; responses intentionally omit it. */
+  configJson?: string;
   createTime: string;
   updateTime: string;
 }
@@ -13,4 +14,10 @@ export interface McpToolTestResult {
   success: boolean;
   message: string;
   data?: any;
+}
+
+export interface McpToolListResult {
+  success: boolean;
+  data: McpTool[];
+  total: number;
 }

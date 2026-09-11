@@ -65,11 +65,11 @@ function getRealFileUrl(fileUrl: string) {
         <div class="text-base border-b border-gray-200 py-1">输入</div>
         <div v-for="(content, name) in node.input" :key="`input_${name}`" class="flex">
           <div class="min-w-24 pr-2">{{ name }}</div>
-          <div>{{ content.value || '无内容' }}</div>
+          <div>{{ content.value ?? '无内容' }}</div>
         </div>
         <div class="text-base border-b border-gray-200 py-1">输出</div>
         <!-- 优先展示流式增量（chunks），用于未产出最终输出时的实时渲染 -->
-        <div v-if="node.chunks" class="flex">
+        <div v-if="node.chunks && !Object.keys(node.output || {}).length" class="flex">
           <!-- <div class="min-w-24 pr-2">回复</div> -->
           <div class="whitespace-pre-wrap break-words">{{ node.chunks }}</div>
         </div>
@@ -81,11 +81,10 @@ function getRealFileUrl(fileUrl: string) {
           </template>
           <template v-else>
             <div class="min-w-24 pr-2">{{ name }}</div>
-            <div class="whitespace-pre-wrap break-words">{{ content.value || '无内容' }}</div>
+            <div class="whitespace-pre-wrap break-words">{{ content.value ?? '无内容' }}</div>
           </template>
         </div>
       </div>
     </div>
   </div>
 </template>
-

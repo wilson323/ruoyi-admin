@@ -390,9 +390,9 @@ export const useWfStore = defineStore('wf-store', {
     },
     appendChunkToRuntimeNode(wfRuntimeUuid: string, runtimeNodeUuid: string, chunk: string) {
       const runtimeNode = this.getRuntimeNode(wfRuntimeUuid, runtimeNodeUuid)
-      // runtimeNode.output 格式： {output:'default output', 'output_name1': 'output_content1'}
+      // 流式提示与结构化输出分开，避免结束提示将 output 对象转成字符串。
       if (runtimeNode)
-        runtimeNode.output.output = runtimeNode.output.output + chunk
+        runtimeNode.chunks = (runtimeNode.chunks || '') + chunk
     },
     deleteWfRuntime(wfUuid: string, wfRuntimeUuid: string) {
       const wfRuntimes = this.wfUuidToWfRuntimes.get(wfUuid)

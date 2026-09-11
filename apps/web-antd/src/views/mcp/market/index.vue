@@ -8,7 +8,7 @@ import { useAccess } from '@vben/access';
 import { Page, useVbenDrawer } from '@vben/common-ui';
 import { getVxePopupContainer } from '@vben/utils';
 
-import { Modal, Popconfirm, Space, message } from 'ant-design-vue';
+import { message, Modal, Popconfirm, Space } from 'ant-design-vue';
 
 import { useVbenVxeGrid, vxeCheckboxChecked } from '#/adapter/vxe-table';
 import {
@@ -21,8 +21,8 @@ import {
 import { TableSwitch } from '#/components/table';
 import { commonDownloadExcel } from '#/utils/file/download';
 
-import marketDrawer from './market-drawer.vue';
 import { columns, querySchema } from './data';
+import marketDrawer from './market-drawer.vue';
 
 const formOptions: VbenFormProps = {
   commonConfig: {
@@ -103,15 +103,21 @@ function handleMultiDelete() {
 async function handleRefresh(row: McpMarket) {
   try {
     const result = await mcpMarketRefresh(row.id);
-    message.success(`刷新成功，新增 ${result.addedCount} 个工具，更新 ${result.updatedCount} 个工具`);
+    message.success(
+      `刷新成功，新增 ${result.addedCount} 个工具，更新 ${result.updatedCount} 个工具`,
+    );
     await tableApi.query();
-  } catch (error) {
+  } catch {
     message.error('刷新失败');
   }
 }
 
 function handleDownloadExcel() {
-  commonDownloadExcel(mcpMarketExport, 'MCP市场数据', tableApi.formApi.form.values);
+  commonDownloadExcel(
+    mcpMarketExport,
+    'MCP市场数据',
+    tableApi.formApi.form.values,
+  );
 }
 
 const { hasAccessByCodes } = useAccess();
@@ -151,15 +157,15 @@ const { hasAccessByCodes } = useAccess();
           v-model:value="row.status"
           :api="() => mcpMarketChangeStatus(row)"
           :disabled="!hasAccessByCodes(['mcp:market:edit'])"
-          :checked-value="'ENABLED'"
-          :unchecked-value="'DISABLED'"
+          checked-value="ENABLED"
+          unchecked-value="DISABLED"
           @reload="tableApi.query()"
         />
       </template>
       <template #action="{ row }">
         <Space>
           <ghost-button
-            v-access:code="['mcp:market:edit']"
+            v-access:code="['mcp:market:refresh']"
             @click.stop="handleRefresh(row)"
           >
             刷新

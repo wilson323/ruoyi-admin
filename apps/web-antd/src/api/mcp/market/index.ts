@@ -1,4 +1,10 @@
-import type { McpMarket, McpMarketRefreshResult, McpMarketTool } from './model';
+import type {
+  McpMarket,
+  McpMarketBatchLoadResult,
+  McpMarketListResult,
+  McpMarketRefreshResult,
+  McpMarketToolListResult,
+} from './model';
 
 import type { ID, IDS, PageQuery, PageResult } from '#/api/common';
 
@@ -6,9 +12,9 @@ import { commonExport } from '#/api/helper';
 import { requestClient } from '#/api/request';
 
 enum Api {
+  mcpMarketAll = '/mcp/market/all',
   mcpMarketExport = '/mcp/market/export',
   mcpMarketList = '/mcp/market/list',
-  mcpMarketAll = '/mcp/market/all',
   root = '/mcp/market',
 }
 
@@ -18,7 +24,9 @@ enum Api {
  * @returns 列表
  */
 export function mcpMarketList(params?: PageQuery) {
-  return requestClient.get<PageResult<McpMarket>>(Api.mcpMarketList, { params });
+  return requestClient.get<PageResult<McpMarket>>(Api.mcpMarketList, {
+    params,
+  });
 }
 
 /**
@@ -26,7 +34,7 @@ export function mcpMarketList(params?: PageQuery) {
  * @returns 列表
  */
 export function mcpMarketAll() {
-  return requestClient.get<McpMarket[]>(Api.mcpMarketAll);
+  return requestClient.get<McpMarketListResult>(Api.mcpMarketAll);
 }
 
 /**
@@ -85,7 +93,9 @@ export function mcpMarketRemove(ids: IDS) {
  * @param marketId 市场ID
  */
 export function mcpMarketRefresh(marketId: ID) {
-  return requestClient.postWithMsg<McpMarketRefreshResult>(`${Api.root}/${marketId}/refresh`);
+  return requestClient.postWithMsg<McpMarketRefreshResult>(
+    `${Api.root}/${marketId}/refresh`,
+  );
 }
 
 /**
@@ -101,13 +111,22 @@ export function mcpMarketLoadTool(toolId: ID) {
  * @param toolIds 工具ID列表
  */
 export function mcpMarketBatchLoadTools(toolIds: ID[]) {
-  return requestClient.postWithMsg<void>(`${Api.root}/tools/batch-load`, toolIds);
+  return requestClient.postWithMsg<McpMarketBatchLoadResult>(
+    `${Api.root}/tools/batch-load`,
+    toolIds,
+  );
 }
 
 /**
  * 获取市场工具列表
  * @param marketId 市场ID
  */
-export function mcpMarketToolList(marketId: ID) {
-  return requestClient.get<McpMarketTool[]>(`${Api.root}/${marketId}/tools`);
+export function mcpMarketToolList(
+  marketId: ID,
+  params?: { page?: number; size?: number },
+) {
+  return requestClient.get<McpMarketToolListResult>(
+    `${Api.root}/${marketId}/tools`,
+    { params },
+  );
 }
