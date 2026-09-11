@@ -36,9 +36,11 @@ const gridOptions: VxeGridProps = {
       query: async () => {
         const result = await workflowApi.workflowComponents();
         // 转换数据结构以匹配 VXE 表格期望的格式
+        // 接口返回纯数组，原实现读 result.total 恒为 0，分页条显示"共 0 条记录"与实际行数矛盾
+        const rows = Array.isArray(result) ? result : ((result as any)?.rows ?? []);
         return {
-          rows: result,
-          total: result.total ? result.total : 0,
+          rows,
+          total: rows.length,
         };
       },
     },
