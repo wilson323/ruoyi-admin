@@ -2,7 +2,7 @@
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { InputNumber } from 'ant-design-vue';
+import { InputNumber, Select } from 'ant-design-vue';
 
 import BonusPool from './index.vue';
 
@@ -30,6 +30,14 @@ async function setInputNumber(wrapper: ReturnType<typeof mount>, index: number, 
   await wrapper.vm.$nextTick();
 }
 
+/** R31 P0-2 值域修复：项目改为 Select 下拉（值=项目数字 ID），与 InputNumber 同理需 emit 更新 v-model。 */
+async function setProjectSelect(wrapper: ReturnType<typeof mount>, value: string) {
+  const select = wrapper.findAllComponents(Select)[0];
+  if (!select) throw new Error('Select not found');
+  select.vm.$emit('update:value', value);
+  await wrapper.vm.$nextTick();
+}
+
 describe('页34 奖金池核算', () => {
   it('顶部 Alert 必须展示 ZK 口径（实际回款×5%×S/A/B），禁止出现「目标销售额」', () => {
     vi.stubGlobal('fetch', vi.fn());
@@ -52,23 +60,22 @@ describe('页34 奖金池核算', () => {
     wrapper.unmount();
   });
 
-  it('初始空表单：触发核算按钮禁用，未触发 fetch', async () => {
-    const fetcher = vi.fn();
+  it('初始空表单：触发核算按钮禁用，未触发 compute/list 请求（onMounted 项目下拉除外）', async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL) => envelope([]));
     vi.stubGlobal('fetch', fetcher);
     const wrapper = mount(BonusPool);
     const computeBtn = wrapper.findAll('button').find((b) => b.text().includes('触发核算'));
     expect(computeBtn).toBeDefined();
     expect(computeBtn!.attributes('disabled')).toBeDefined();
-    expect(fetcher).not.toHaveBeenCalled();
+    const called = fetcher.mock.calls.map((c) => String(c[0]));
+    expect(called.some((p) => p.endsWith('/compute') || p.includes('/bonus-pool/list'))).toBe(false);
     wrapper.unmount();
   });
 
   it('填写项目 + 回款金额后，按钮启用；公式以 5%×S/A/B 实时演算', async () => {
     vi.stubGlobal('fetch', vi.fn());
     const wrapper = mount(BonusPool);
-    const inputs = wrapper.findAll('input');
-    // 第一个 input 是「项目编号」
-    await inputs[0]!.setValue('P-100');
+    await setProjectSelect(wrapper, '1001');
     // 第二个 InputNumber（顺序：period、achievementRate 后被 InputNumber 占用）
     // 通过 InputNumber 组件更新 actualReceipts（第 0 个 InputNumber = actualReceipts）
     await setInputNumber(wrapper, 0, 100000);
@@ -114,8 +121,7 @@ describe('页34 奖金池核算', () => {
     });
     vi.stubGlobal('fetch', fetcher);
     const wrapper = mount(BonusPool);
-    const inputs = wrapper.findAll('input');
-    await inputs[0]!.setValue('P-100');
+    await setProjectSelect(wrapper, '1001');
     await setInputNumber(wrapper, 0, 100000);
     await wrapper.vm.$nextTick();
     const computeBtn = wrapper.findAll('button').find((b) => b.text().includes('触发核算'));
@@ -162,8 +168,7 @@ describe('页34 奖金池核算', () => {
     });
     vi.stubGlobal('fetch', fetcher);
     const wrapper = mount(BonusPool);
-    const inputs = wrapper.findAll('input');
-    await inputs[0]!.setValue('P-100');
+    await setProjectSelect(wrapper, '1001');
     await setInputNumber(wrapper, 0, 100000);
     await wrapper.vm.$nextTick();
     const computeBtn = wrapper.findAll('button').find((b) => b.text().includes('触发核算'));
@@ -179,26 +184,28 @@ describe('页34 奖金池核算', () => {
     wrapper.unmount();
   });
 
-  it('空 projectId 时不发起 list 请求（避免误跨项目）', async () => {
-    const fetcher = vi.fn();
+  it('空 projectId 时不发起 list 请求（避免误跨项目；onMounted 项目下拉除外）', async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL) => envelope([]));
     vi.stubGlobal('fetch', fetcher);
     const wrapper = mount(BonusPool);
     await wrapper.vm.$nextTick();
-    expect(fetcher).not.toHaveBeenCalled();
+    const called = fetcher.mock.calls.map((c) => String(c[0]));
+    expect(called.some((p) => p.includes('/bonus-pool/list'))).toBe(false);
     wrapper.unmount();
   });
 
   it('transport 错误被 try/catch 捕获，不抛异常', async () => {
-    const fetcher = vi.fn(async () => { throw new TypeError('network down'); });
+    const fetcher = vi.fn(async (_input: RequestInfo | URL) => { throw new TypeError('network down'); });
     vi.stubGlobal('fetch', fetcher);
     const wrapper = mount(BonusPool);
-    const inputs = wrapper.findAll('input');
-    await inputs[0]!.setValue('P-100');
+    await setProjectSelect(wrapper, '1001');
     await wrapper.vm.$nextTick();
     const computeBtn = wrapper.findAll('button').find((b) => b.text().includes('触发核算'));
     expect(computeBtn).toBeDefined();
     await computeBtn!.trigger('click');
-    await vi.waitFor(() => expect(fetcher).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(fetcher.mock.calls.some((c) => String(c[0]).endsWith('/compute'))).toBe(true),
+    );
     wrapper.unmount();
   });
 });

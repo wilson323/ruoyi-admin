@@ -59,3 +59,4 @@ apps/web-antd/types/components.d.ts
 .evolver/
 .serena/
 .claude-flow/
+.harness/.backup/

@@ -19,8 +19,8 @@ import {
   Empty,
   Form,
   FormItem,
-  Input,
   InputNumber,
+  Select,
   Space,
   Statistic,
   Table,
@@ -37,6 +37,7 @@ import {
   listBonusPools,
 } from '../../../../api/ipd/bonus';
 import { IpdRequestError } from '../../../../api/ipd/auth';
+import { listProjectItems } from '../../../../api/ipd/project';
 import { formatDateTime, formatMoney, formatPercent, PENDING_TEXT } from '../../_shared/format';
 import { ZK_RULE_BONUS_POOL_FORMULA, renderRulesDescription } from '../../_shared/zk-ipd-rules';
 import { bonusStateLabel, bonusStateTone, STATUS_TONE } from '../../_shared/ipd-enums';
@@ -92,6 +93,9 @@ const personalCoefficientModel = computed<number | string | undefined>({
 });
 
 const canCompute = computed(() => form.projectId.trim() !== '' && Number(form.actualReceipts) >= 0);
+
+/** 项目下拉数据源（R31 P0-2 值域修复：后端 projectId 要数字 ID，不再让用户手填编码）。 */
+const projectOptions = ref<{ label: string; value: string }[]>([]);
 
 /** 两段实时预览：实际回款 → 预计基数；S/A/B 系数与达成率阶梯由后端裁决（前端不替代）。 */
 const previewReceipts = computed(() => Number(form.actualReceipts) || 0);
@@ -176,8 +180,14 @@ async function onDistribute(pool: BonusPool | Record<string, any>) {
   }
 }
 
-onMounted(() => {
-  // 首次进入不自动拉列表（必须先填 projectId），避免误跨项目。
+onMounted(async () => {
+  // 首次进入不自动拉奖金池列表（必须先选项目），避免误跨项目；仅拉项目下拉数据源。
+  try {
+    const items = await listProjectItems();
+    projectOptions.value = items.map((p) => ({ label: `${p.name} · ${p.code}`, value: String(p.id) }));
+  } catch {
+    projectOptions.value = []; // G-06：加载失败降级空列表，不阻断页面
+  }
 });
 
 const columns = [
@@ -228,8 +238,14 @@ const columns = [
 
     <Card class="mb-4" title="触发奖金池核算（POST /bonus-pool/compute）">
       <Form :label-col="{ span: 6 }" :wrapper-col="{ span: 14 }">
-        <FormItem label="项目编号" required>
-          <Input v-model:value="form.projectId" placeholder="请输入项目编号" />
+        <FormItem label="项目" required>
+          <Select
+            v-model:value="form.projectId"
+            :options="projectOptions"
+            show-search
+            option-filter-prop="label"
+            placeholder="请选择项目（列表来自项目空间；后端要求项目数字 ID）"
+          />
         </FormItem>
         <FormItem label="实际回款金额" required>
           <InputNumber
