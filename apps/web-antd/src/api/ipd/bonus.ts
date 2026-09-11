@@ -14,31 +14,35 @@ export type BonusStatus = 'DRAFT' | 'CONFIRMED' | 'DISTRIBUTED';
 export interface BonusPool {
   achievementRate: null | number | string;
   basePool: null | number | string;
+  /** S/A/B 差异化系数（后端从项目 levelCoefficient 带出，前端不传）。 */
   coefficient: null | number | string;
   contributionMarketMin?: null | number | string;
   contributionRdMax?: null | number | string;
+  calculatedAt?: null | string;
   createTime?: null | string;
   finalPool: null | number | string;
   id: string;
-  levelCoefficient: null | number | string;
-  period: null | string;
   poolRate: null | number | string;
   projectId: string;
-  projectLevel: 'A' | 'B' | 'S' | null | string;
-  receiptAmounts?: null | number | string;
   status: BonusStatus;
+  /** DRAFT 行的实际回款（后端 compute 将 actualReceipts 写入 targetSales 列）。 */
   targetSales?: null | number | string;
   tierCoefficient: null | number | string;
 }
 
+/**
+ * 计算入参（后端 ComputeBonusPoolReq 真值）：
+ * - actualReceipts 必填（≥0）；
+ * - achievementRate 销售/回款达成率百分数（如 100 = 100%），可空 → 后端中性 1.0 并按 6 档阶梯查 tierCoefficient；
+ * - personalCoefficient 个人绩效系数，可空 → 1.0；
+ * - poolRate 小数 (0, 1]，可空 → 后端 ZK 默认 0.05；S/A/B levelCoefficient 由后端从项目配置带出。
+ */
 export interface ComputeBonusPoolReq {
-  achievementRate: number | string;
-  levelCoefficient?: number | string;
-  period: string;
+  achievementRate?: number | string;
+  actualReceipts: number | string;
+  personalCoefficient?: number | string;
   poolRate?: number | string;
   projectId: string;
-  receiptAmounts: number | string;
-  tierCoefficient?: number | string;
 }
 
 /** 触发计算并落库 DRAFT。 */

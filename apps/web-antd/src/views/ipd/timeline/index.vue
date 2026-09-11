@@ -116,7 +116,7 @@ function bonusToEntry(pool: BonusPool): TimelineEntry {
   return {
     at: pool.createTime ?? null,
     category: 'BONUS',
-    detail: `项目 ${pool.projectId} · 周期 ${pool.period ?? PENDING_TEXT}`,
+    detail: `项目 ${pool.projectId} · 生成于 ${formatDateTime(pool.createTime)}`,
     key: `bonus-${pool.id}`,
     status: pool.status,
     summary: `奖金池 #${pool.id} 状态：${pool.status} · 基数 ${pool.basePool ?? PENDING_TEXT} · 系数 ${pool.coefficient ?? PENDING_TEXT}`,

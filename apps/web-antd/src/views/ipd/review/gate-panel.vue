@@ -20,12 +20,13 @@
      - 层4：提交前预检查 + 红字提示（否决项 FAIL 阻断、必填项缺失）。
 -->
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 
 import { message } from 'ant-design-vue';
 import { SafetyOutlined } from '@ant-design/icons-vue';
 
 import { useIpdAuthStore } from '../../../store/ipd-auth';
+import { formatDateTime } from '../_shared/format';
 import { ipdErrorText } from '../_shared/ipd-error-text';
 import {
   arbitrateGate,
@@ -54,7 +55,13 @@ const personType = computed(() => auth.identity?.person.personType ?? '');
 const isSuperAdmin = computed(() => personType.value === 'SUPER_ADMIN');
 const isLeader = computed(() => personType.value === 'GROUP_LEADER');
 
-const gateIdInput = ref('');
+/**
+ * 可选初始 Gate 编号（R30 项目维度列表接线）：外部列表页选中后直接打开评审，
+ * 免二次手输；不传时行为不变（review 页自输）。
+ */
+const props = defineProps<{ initialGateId?: null | string }>();
+
+const gateIdInput = ref(props.initialGateId?.trim() ?? '');
 const loading = ref(false);
 const loadError = ref('');
 const busy = ref(false);
@@ -118,11 +125,11 @@ const vetoFailureCount = computed(() => {
 const elementValidation = computed(() => {
   const missing: string[] = [];
   for (const el of elements.value) {
-    const draft = draftResults[el.id];
+    const draft = draftResults[el.elementId];
     if (!draft || !draft.result) continue;
     if (draft.result === 'PASS_WITH_CONDITION') {
-      if (!draft.responsiblePersonId.trim()) missing.push(`${el.title}：条件通过必填责任人`);
-      if (!draft.closeDeadline.trim()) missing.push(`${el.title}：条件通过必填关闭期限`);
+      if (!draft.responsiblePersonId.trim()) missing.push(`${el.elementName}：条件通过必填责任人`);
+      if (!draft.closeDeadline.trim()) missing.push(`${el.elementName}：条件通过必填关闭期限`);
     }
   }
   return missing;
@@ -157,11 +164,11 @@ function onResultChange(elementId: string, value: GateElementResult): void {
 
 async function submitElement(el: IpdGateElementView): Promise<void> {
   if (!view.value || submittingElementId.value) return;
-  ensureDraft(el.id);
-  const draft = draftResults[el.id];
+  ensureDraft(el.elementId);
+  const draft = draftResults[el.elementId];
   if (!draft) return;
   if (!draft.result) {
-    message.warning(`请先勾选「${el.title}」的判定结果`);
+    message.warning(`请先勾选「${el.elementName}」的判定结果`);
     return;
   }
   if (draft.result === 'PASS_WITH_CONDITION') {
@@ -170,17 +177,17 @@ async function submitElement(el: IpdGateElementView): Promise<void> {
       return;
     }
   }
-  submittingElementId.value = el.id;
+  submittingElementId.value = el.elementId;
   try {
     await submitGateElementResult(view.value.gateId, {
       closeDeadline: draft.result === 'PASS_WITH_CONDITION' ? draft.closeDeadline.trim() : null,
       conditionNote: draft.conditionNote.trim() || null,
-      elementId: el.id,
+      elementId: el.elementId,
       responsiblePersonId: draft.result === 'PASS_WITH_CONDITION' ? draft.responsiblePersonId.trim() : null,
       result: draft.result,
     });
-    committedResults[el.id] = draft.result;
-    message.success(`已提交「${el.title}」判定：${resultLabel(draft.result)}`);
+    committedResults[el.elementId] = draft.result;
+    message.success(`已提交「${el.elementName}」判定：${resultLabel(draft.result)}`);
   } catch (cause) {
     message.error(ipdErrorText(cause, { fallback: '要素判定提交失败' }));
   } finally {
@@ -211,12 +218,12 @@ async function loadElements(gateId: string): Promise<void> {
       elements.value = fetched;
     }
     // 为每个要素初始化草稿
-    for (const el of elements.value) ensureDraft(el.id);
+    for (const el of elements.value) ensureDraft(el.elementId);
   } catch (cause) {
     elements.value = getFallbackGateElements();
     elementsIsFallback.value = true;
     elementsError.value = ipdErrorText(cause, { fallback: '评审要素加载失败' });
-    for (const el of elements.value) ensureDraft(el.id);
+    for (const el of elements.value) ensureDraft(el.elementId);
   } finally {
     elementsLoading.value = false;
   }
@@ -238,6 +245,13 @@ async function loadGate(): Promise<void> {
     loading.value = false;
   }
 }
+
+/** R30 接线：外部传入 initialGateId 时挂载即加载（免二次手输）。 */
+onMounted(() => {
+  if (gateIdInput.value) {
+    void loadGate();
+  }
+});
 
 async function run(action: () => Promise<unknown>, successText: string): Promise<void> {
   if (busy.value || !view.value) return;
@@ -326,7 +340,7 @@ function finalRuling(decision: GateDecision): void {
         </header>
 
         <div class="gate-meta">
-          <span>签署期限：{{ view.signDueAt || '—' }}</span>
+          <span>签署期限：{{ formatDateTime(view.signDueAt, '—') }}</span>
           <span>已延期 {{ view.extensionCount ?? 0 }}/3 次</span>
           <span v-if="view.observers?.length">
             第 3 轮起组长列席：{{ view.observers.map((item) => item.name).join('、') }}
@@ -425,50 +439,50 @@ function finalRuling(decision: GateDecision): void {
         <ul v-if="elements.length > 0" class="elements-list">
           <li
             v-for="el in elements"
-            :key="el.id"
+            :key="el.elementId"
             class="element-row"
-            :class="{ 'is-veto-fail': draftResults[el.id]?.result === 'FAIL' && el.isVeto }"
+            :class="{ 'is-veto-fail': draftResults[el.elementId]?.result === 'FAIL' && el.isVeto }"
             :data-veto="el.isVeto ? 'true' : 'false'"
             :data-stale="elementsIsFallback || isFallbackElement(el) ? 'true' : 'false'"
-            :data-testid="`gate-element-${el.code}`"
+            :data-testid="`gate-element-${el.elementCode}`"
           >
             <div class="element-head">
               <span class="element-title">
-                <strong>{{ el.title }}</strong>
+                <strong>{{ el.elementName }}</strong>
                 <em v-if="el.isVeto" class="element-veto-tag">否决项</em>
                 <em v-else class="element-must-tag">必审</em>
               </span>
-              <span v-if="committedResults[el.id]" class="element-committed">已提交：{{ resultLabel(committedResults[el.id]!) }}</span>
+              <span v-if="committedResults[el.elementId]" class="element-committed">已提交：{{ resultLabel(committedResults[el.elementId]!) }}</span>
             </div>
             <p v-if="el.description" class="element-desc">{{ el.description }}</p>
             <p v-if="el.passStandard" class="element-std">通过标准：{{ el.passStandard }}</p>
 
             <div class="element-radios">
-              <label v-for="opt in elementResultOptions" :key="opt.value" class="element-radio" :class="{ active: draftResults[el.id]?.result === opt.value }">
+              <label v-for="opt in elementResultOptions" :key="opt.value" class="element-radio" :class="{ active: draftResults[el.elementId]?.result === opt.value }">
                 <input
                   type="radio"
-                  :name="`el-${el.id}`"
+                  :name="`el-${el.elementId}`"
                   :value="opt.value"
-                  :checked="draftResults[el.id]?.result === opt.value"
-                  @change="onResultChange(el.id, opt.value)"
+                  :checked="draftResults[el.elementId]?.result === opt.value"
+                  @change="onResultChange(el.elementId, opt.value)"
                 />
                 <span>{{ opt.label }}</span>
               </label>
             </div>
 
-            <div v-if="draftResults[el.id]?.result === 'PASS_WITH_CONDITION'" class="element-cond">
+            <div v-if="draftResults[el.elementId]?.result === 'PASS_WITH_CONDITION'" class="element-cond">
               <input
-                v-model="draftResults[el.id]!.responsiblePersonId"
+                v-model="draftResults[el.elementId]!.responsiblePersonId"
                 class="element-input"
                 placeholder="责任人编号（必填）"
               />
               <input
-                v-model="draftResults[el.id]!.closeDeadline"
+                v-model="draftResults[el.elementId]!.closeDeadline"
                 class="element-input"
                 placeholder="关闭期限 YYYY-MM-DD（必填）"
               />
               <input
-                v-model="draftResults[el.id]!.conditionNote"
+                v-model="draftResults[el.elementId]!.conditionNote"
                 class="element-input"
                 placeholder="条件说明（可选）"
               />
@@ -478,10 +492,10 @@ function finalRuling(decision: GateDecision): void {
               <button
                 class="panel-action"
                 type="button"
-                :disabled="!draftResults[el.id]?.result || submittingElementId === el.id || elementsIsFallback"
+                :disabled="!draftResults[el.elementId]?.result || submittingElementId === el.elementId || elementsIsFallback"
                 @click="submitElement(el)"
               >
-                {{ submittingElementId === el.id ? '提交中…' : '提交此项判定' }}
+                {{ submittingElementId === el.elementId ? '提交中…' : '提交此项判定' }}
               </button>
             </div>
           </li>

@@ -96,11 +96,21 @@ describe('变更单接口', () => {
     expect(fetcher.mock.calls[1]?.[0]).toBe('/api/v1/launch-date-change-requests/8002/second-decision?approve=false');
   });
 
-  it('上市日期提议 body 为 yyyy-MM-dd 字符串', async () => {
+  it('上市日期提议 body 为 yyyy-MM-dd 字符串 + 第二签确认人三字段', async () => {
     const fetcher = vi.fn().mockResolvedValue(response(launchFixture()));
     vi.stubGlobal('fetch', fetcher);
-    await proposeLaunchDateChange({ proposedLaunchDate: '2026-12-01', projectId: '100', reason: '节奏调整' });
+    await proposeLaunchDateChange({
+      confirmerGroupId: '900001',
+      confirmerId: '900201',
+      confirmerRole: 'RD_PM',
+      proposedLaunchDate: '2026-12-01',
+      projectId: '100',
+      reason: '节奏调整',
+    });
     expect(JSON.parse(fetcher.mock.calls[0]?.[1].body)).toEqual({
+      confirmerGroupId: '900001',
+      confirmerId: '900201',
+      confirmerRole: 'RD_PM',
       proposedLaunchDate: '2026-12-01',
       projectId: '100',
       reason: '节奏调整',

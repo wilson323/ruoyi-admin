@@ -28,11 +28,17 @@ describe('bonus pool API contract', () => {
     const fetcher = vi.fn().mockResolvedValue(envelope({ id: 'bp-1', status: 'DRAFT' }));
     vi.stubGlobal('fetch', fetcher);
     await computeBonusPool({
-      achievementRate: 80, levelCoefficient: 1.5, period: '2026-01',
-      projectId: 'p-1', receiptAmounts: 1000000, tierCoefficient: 0.8,
+      achievementRate: 80, actualReceipts: 1_000_000,
+      personalCoefficient: 1.1, poolRate: 0.05, projectId: 'p-1',
     });
     expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/bonus-pool/compute');
     expect((fetcher.mock.calls[0]![1] as RequestInit).method).toBe('POST');
+    const body = JSON.parse((fetcher.mock.calls[0]![1] as RequestInit).body as string);
+    expect(body.actualReceipts).toBe(1_000_000);
+    expect(body).not.toHaveProperty('receiptAmounts');
+    expect(body).not.toHaveProperty('period');
+    expect(body).not.toHaveProperty('levelCoefficient');
+    expect(body).not.toHaveProperty('tierCoefficient');
   });
 
   it('POST /{id}/freeze and /{id}/distribute on the bonus pool', async () => {

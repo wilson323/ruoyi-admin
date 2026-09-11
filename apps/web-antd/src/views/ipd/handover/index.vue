@@ -7,8 +7,10 @@
 
   必要适配（原型 /api/handoffs 与后端 /api/v1/handovers 不同构，逐条登记）：
   1. 原型 preview（未完成动作/项目资料/待决确认/AI 会话四卡）与 approvals 责任确认链、
-     cancel、product-continuation、handoff-candidates 后端均未交付：不渲染假数据，
-     接收即原子完成（POST /{id}/accept，DRAFT→COMPLETED）。
+     product-continuation、handoff-candidates 后端未交付：不渲染假数据，
+     接收即原子完成（POST /{id}/accept，DRAFT→COMPLETED）；已生效移交撤销已由
+     POST /{id}/cancel 交付（HIGH-3.1，R30 接线：COMPLETED 详情区撤销表单，
+     reason + 确认短语「确认撤销该移交」双门控，24h 窗口后端校验）。
   2. 接任人候选改用真实 GET /pm-directory（在职目录，按角色 personType 过滤）。
   3. 原型批量任务单（/api/handoff-batches）为实体流程；后端 /handovers/batch 一次
      提交返回逐项目结果（失败保持原归属），按结果列表渲染。
@@ -27,8 +29,10 @@ import { ipdErrorText } from '../_shared/ipd-error-text';
 import {
   acceptHandover,
   batchHandover,
+  cancelHandover,
   getHandoverInbox,
   getPmDirectory,
+  HANDOVER_CANCEL_CONFIRM_PHRASE,
   initiateHandover,
   transferSuperAdmin,
   type HandoverBatchResult,
@@ -75,7 +79,7 @@ const canAccept = computed(
   () => selected.value?.status === 'DRAFT' && selected.value.toPersonId === meId.value,
 );
 const roleText: Record<string, string> = { MARKET_PM: '市场PM', RD_PM: '研发PM' };
-const statusText: Record<string, string> = { COMPLETED: '已生效', DRAFT: '待接收' };
+const statusText: Record<string, string> = { COMPLETED: '已生效', DRAFT: '待接收', ROLLED_BACK: '已撤销' };
 
 async function load(): Promise<void> {
   loading.value = true;
@@ -172,6 +176,34 @@ async function accept(): Promise<void> {
     message.error(ipdErrorText(cause, { fallback: '接收失败，请稍后重试' }));
   } finally {
     accepting.value = false;
+  }
+}
+
+/**
+ * —— 撤销已生效移交（HIGH-3.1：COMPLETED → ROLLED_BACK） ——
+ * 24h 窗口/权限（发起人、接手人、项目组长、超管）均由后端校验并报错；
+ * 前端仅做短语+原因双门控防误触，不在客户端预判窗口时间。
+ */
+const cancelReason = ref('');
+const cancelConfirmation = ref('');
+const cancelling = ref(false);
+async function submitCancel(): Promise<void> {
+  if (!selected.value || cancelling.value) return;
+  cancelling.value = true;
+  try {
+    await cancelHandover(selected.value.id, {
+      confirmation: cancelConfirmation.value,
+      reason: cancelReason.value.trim(),
+    });
+    message.success('移交已撤销，项目责任已反转回原归属');
+    cancelReason.value = '';
+    cancelConfirmation.value = '';
+    selectedId.value = '';
+    await load();
+  } catch (cause) {
+    message.error(ipdErrorText(cause, { fallback: '撤销失败，请稍后重试' }));
+  } finally {
+    cancelling.value = false;
   }
 }
 
@@ -322,6 +354,23 @@ async function submitAdminTransfer(): Promise<void> {
           <p v-else-if="selected.status === 'DRAFT'" class="detail-waiting">
             移交已发起，等待 {{ nameOf(selected.toPersonId) }} 登录确认。
           </p>
+          <div v-if="selected.status === 'COMPLETED'" class="cancel-block">
+            <p class="cancel-hint">
+              已生效移交在完成后 24 小时内可撤销（发起人 / 接手人 / 项目组长 / 超管），撤销会把项目责任反转回原归属。
+            </p>
+            <div class="cancel-row">
+              <input v-model="cancelReason" placeholder="撤销原因（必填）" />
+              <input v-model="cancelConfirmation" :placeholder="`输入：${HANDOVER_CANCEL_CONFIRM_PHRASE}`" />
+              <button
+                :disabled="!cancelReason.trim() || cancelConfirmation !== HANDOVER_CANCEL_CONFIRM_PHRASE || cancelling"
+                class="primary-button danger-action"
+                type="button"
+                @click="submitCancel"
+              >
+                撤销移交
+              </button>
+            </div>
+          </div>
         </template>
         <div v-else class="empty-state">
           <div><SwapOutlined /></div>
@@ -468,7 +517,7 @@ async function submitAdminTransfer(): Promise<void> {
     </template>
 
     <div class="handover-pending">
-      原型移交范围预览（未完成动作/项目资料/待决确认/AI 会话四卡）、责任确认链、取消移交、产品长期责任续交与候选端点后端未交付，维持真缺口登记；当前接收即按后端契约原子完成。
+      原型移交范围预览（未完成动作/项目资料/待决确认/AI 会话四卡）、责任确认链、产品长期责任续交与候选端点后端未交付，维持真缺口登记；当前接收即按后端契约原子完成，已生效移交可在完成后 24 小时内撤销。
     </div>
   </div>
 </template>
@@ -655,6 +704,11 @@ async function submitAdminTransfer(): Promise<void> {
   background: #eaf7ed;
 }
 
+.status-pill.rolled_back {
+  color: #6b7a90;
+  background: #f1f3f7;
+}
+
 .detail-head {
   display: flex;
   gap: 14px;
@@ -719,6 +773,31 @@ async function submitAdminTransfer(): Promise<void> {
 }
 
 .accept-row input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0 10px;
+  color: var(--ipd-text);
+  border: 1px solid #cfd6e1;
+  border-radius: 6px;
+}
+
+.cancel-block {
+  padding: 0 20px 18px;
+}
+
+.cancel-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--ipd-muted);
+}
+
+.cancel-row {
+  display: flex;
+  gap: 10px;
+}
+
+.cancel-row input {
   flex: 1;
   min-width: 0;
   height: 38px;

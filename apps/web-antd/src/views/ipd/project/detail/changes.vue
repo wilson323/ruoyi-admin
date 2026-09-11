@@ -53,6 +53,7 @@ import { IpdRequestError } from '../../../../api/ipd/auth';
 import {
   type CoefficientChangeRequest,
   type LaunchDateChangeRequest,
+  type LaunchDateConfirmerRole,
   type RequirementChange,
   decideCoefficientChange,
   decideLaunchDateChange,
@@ -178,8 +179,21 @@ async function submitCoefDecision() {
   }
 }
 
-// ---------- 上市日期变更（真实端点） ----------
-const launchForm = reactive({ proposedLaunchDate: '', reason: '' });
+// ---------- 上市日期变更（真实端点；R11 双签：须指定第二签确认人） ----------
+/** 后端 CONFIRMER_ROLES = MARKET_PM/RD_PM/SUPER_ADMIN（LaunchDateChangeService）。 */
+const CONFIRMER_ROLE_OPTIONS: Array<{ label: string; value: LaunchDateConfirmerRole }> = [
+  { label: '市场 PM', value: 'MARKET_PM' },
+  { label: '研发 PM', value: 'RD_PM' },
+  { label: '超级管理员', value: 'SUPER_ADMIN' },
+];
+
+const launchForm = reactive({
+  confirmerGroupId: '',
+  confirmerId: '',
+  confirmerRole: 'MARKET_PM' as LaunchDateConfirmerRole,
+  proposedLaunchDate: '',
+  reason: '',
+});
 const launchSubmitting = ref(false);
 const launchError = ref<null | string>(null);
 const launchResult = ref<null | LaunchDateChangeRequest>(null);
@@ -194,6 +208,16 @@ async function submitLaunchDate() {
     launchError.value = '请选择建议上市日期。';
     return;
   }
+  const confirmerIdError = validateId(launchForm.confirmerId, '第二签确认人');
+  if (confirmerIdError) {
+    launchError.value = confirmerIdError;
+    return;
+  }
+  const confirmerGroupError = validateId(launchForm.confirmerGroupId, '确认人主组');
+  if (confirmerGroupError) {
+    launchError.value = confirmerGroupError;
+    return;
+  }
   if (!launchForm.reason.trim() || launchForm.reason.length > 500) {
     launchError.value = '请填写变更原因（不超过 500 字）。';
     return;
@@ -202,6 +226,9 @@ async function submitLaunchDate() {
   launchError.value = null;
   try {
     launchResult.value = await proposeLaunchDateChange({
+      confirmerGroupId: launchForm.confirmerGroupId.trim(),
+      confirmerId: launchForm.confirmerId.trim(),
+      confirmerRole: launchForm.confirmerRole,
       proposedLaunchDate: launchForm.proposedLaunchDate,
       projectId: projectId.value,
       reason: launchForm.reason.trim(),
@@ -503,7 +530,7 @@ onMounted(() => {
         <Card title="发起上市日期变更（双签）">
           <Alert
             class="mb-4"
-            message="上市日期变更须双签：一方提议后，由另一侧PM确认写入项目档案，禁止单方面修改。"
+            message="上市日期变更须双签：一方提议时须指定同组第二签确认人（另一侧PM或超级管理员），由确认人第二签后写入项目档案，禁止单方面修改。"
             show-icon
             type="info"
           />
@@ -513,6 +540,31 @@ onMounted(() => {
                 v-model:value="launchForm.proposedLaunchDate"
                 value-format="YYYY-MM-DD"
                 style="width: 200px"
+              />
+            </FormItem>
+            <FormItem label="确认人角色" required>
+              <Select
+                v-model:value="launchForm.confirmerRole"
+                style="width: 200px"
+              >
+                <SelectOption v-for="opt in CONFIRMER_ROLE_OPTIONS" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </SelectOption>
+              </Select>
+              <div class="text-muted-foreground mt-1 text-xs">仅市场PM/研发PM/超级管理员可任第二签确认人。</div>
+            </FormItem>
+            <FormItem label="确认人账号 ID" required>
+              <Input
+                v-model:value="launchForm.confirmerId"
+                placeholder="第二签确认人账号 ID（纯数字）"
+                style="width: 280px"
+              />
+            </FormItem>
+            <FormItem label="确认人主组 ID" required>
+              <Input
+                v-model:value="launchForm.confirmerGroupId"
+                placeholder="确认人所在产品组 ID（纯数字，须与发起人同组）"
+                style="width: 280px"
               />
             </FormItem>
             <FormItem label="变更原因" required>

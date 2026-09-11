@@ -1,11 +1,13 @@
-// 项目移交页组件级验证：mock 真实 /api/v1 契约（handovers/inbox|accept|initiate|batch|
-// super-admin、pm-directory、projects），断言双栏收件箱、接收原子转移请求、发起表单
-// 请求体、批量移交、超管确认短语门控、候选角色过滤、状态机可见性、未知人员 ID
-// 回退，以及原型不同构能力的登记文案。
+// 项目移交页组件级验证：mock 真实 /api/v1 契约（handovers/inbox|accept|cancel|initiate|
+// batch|super-admin、pm-directory、projects），断言双栏收件箱、接收原子转移请求、发起表单
+// 请求体、批量移交、超管确认短语门控、候选角色过滤、状态机可见性、撤销移交
+// （HIGH-3.1 COMPLETED→ROLLED_BACK：reason+确认短语双门控 + 撤销后列表刷新）、
+// 未知人员 ID 回退，以及原型不同构能力的登记文案。
 //
-// 4 业务流：列表/筛选、创建、状态机（accept + 详情等待）、批量/超管。
+// 4 业务流：列表/筛选、创建、状态机（accept + 撤销 + 详情等待）、批量/超管。
 // 4 bug-pinning 测试（B1~B4）锁死 W6 A30 发现的修复行为：批注独立、status 显式枚举、
-// 候选排除本人、发起前 personType 断言。本文件共 29 it。
+// 候选排除本人、发起前 personType 断言。本文件共 36 it（R30 前卖注 29 已过期，
+// 实际存量 35 + 本轮新增 cancel 提交 1）。
 
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
@@ -83,6 +85,7 @@ function stubApi(opts: {
   onAccept?: (body: unknown) => void;
   onAdmin?: (body: unknown) => void;
   onBatch?: (body: unknown) => void;
+  onCancel?: (body: unknown) => void;
   onInitiate?: (body: unknown) => void;
   projects?: typeof projects;
   projectsError?: boolean;
@@ -122,6 +125,18 @@ function stubApi(opts: {
     if (method === 'POST' && url === '/api/v1/handovers/batch') {
       opts.onBatch?.(body);
       return response(opts.batchResult ?? [{ projectId: '1', reason: null, status: 'COMPLETED' }]);
+    }
+    if (method === 'POST' && url === '/api/v1/handovers/22/cancel') {
+      opts.onCancel?.(body);
+      const row = records.find((r) => r.id === '22');
+      if (row) {
+        row.status = 'ROLLED_BACK';
+        row.rollbackAt = '2026-09-11T10:00:00Z';
+        row.rollbackReason = typeof (body as { reason?: string } | null)?.reason === 'string'
+          ? (body as { reason: string }).reason
+          : null;
+      }
+      return response(row ?? completed);
     }
     if (method === 'POST' && url === '/api/v1/handovers/super-admin') {
       opts.onAdmin?.(body);
@@ -245,8 +260,9 @@ describe('IPD handover page (prototype HandoffWorkbench adaptation)', () => {
       stubApi({ inbox: [completed], acceptSideEffect: false });
       loginAs(me.id, 'MARKET_PM');
       const wrapper = mount(Handover);
-      await vi.waitFor(() => expect(wrapper.text()).toContain('已生效'));
-      // COMPLETED 不在「待我接收」里
+      // 底部 pending 文案（含「已生效移交可在完成后 24 小时内撤销」）是静态的，
+      // 不能作数据已加载信号；直接等列表项渲染完成
+      await vi.waitFor(() => expect(wrapper.findAll('button.inbox-item').length).toBe(1));
       expect(wrapper.text()).toContain('暂无待接收移交');
       // 但在「我发起的」里，状态为已生效
       const initiated = wrapper.findAll('button.inbox-item');
@@ -515,12 +531,13 @@ describe('IPD handover page (prototype HandoffWorkbench adaptation)', () => {
       wrapper.unmount();
     });
 
-    it('COMPLETED detail is read-only — no accept button, no waiting text, but meta + note shown', async () => {
+    it('COMPLETED detail offers cancel form gated by reason + confirmation phrase (HIGH-3.1)', async () => {
       stubApi({ inbox: [completed] });
       loginAs(me.id, 'MARKET_PM');
       const wrapper = mount(Handover);
-      await vi.waitFor(() => expect(wrapper.text()).toContain('已生效'));
-      // 我发起的 COMPLETED → 选中后只读
+      // 同上：pending 文案含「已生效」是静态信号，改等列表项渲染
+      await vi.waitFor(() => expect(wrapper.findAll('button.inbox-item').length).toBe(1));
+      // 我发起的 COMPLETED → 选中后详情只读展示 + 撤销表单（无接收按钮）
       const initiatedItem = wrapper.findAll('button.inbox-item').find((b) => b.text().includes('接任 原负责人'))!;
       await initiatedItem.trigger('click');
       await vi.waitFor(() => expect(wrapper.text()).toContain('项目 2'));
@@ -528,13 +545,51 @@ describe('IPD handover page (prototype HandoffWorkbench adaptation)', () => {
       const pill = wrapper.find('.status-pill.completed');
       expect(pill.exists()).toBe(true);
       expect(pill.text()).toBe('已生效');
-      // 无任何动作按钮
+      // 无接收按钮，无等待文案；仍展示 note + 确认 + 完成时间
       expect(wrapper.text()).not.toContain('确认接收项目');
       expect(wrapper.text()).not.toContain('移交已发起，等待');
-      // 仍展示 note + 确认 + 完成时间
       expect(wrapper.text()).toContain('已完成的市场责任交接');
       expect(wrapper.text()).toMatch(/完成时间：\d{4}-\d{2}-\d{2} \d{2}:\d{2}/);
       expect(wrapper.text()).toMatch(/发起确认：\d{4}-\d{2}-\d{2} \d{2}:\d{2}/);
+      // 撤销表单：24h 窗口提示 + 按钮初始禁用（reason 与短语双门控）
+      expect(wrapper.text()).toContain('24 小时内可撤销');
+      const cancelBtn = wrapper.findAll('button').find((b) => b.text().includes('撤销移交'))!;
+      expect(cancelBtn).toBeDefined();
+      expect(cancelBtn.attributes('disabled')).toBeDefined();
+      const confirmInput = wrapper.findAll('input').find((i) => (i.attributes('placeholder') ?? '').includes('确认撤销该移交'))!;
+      expect(confirmInput).toBeDefined();
+      // 只填短语不填原因 → 仍禁用
+      await confirmInput.setValue('确认撤销该移交');
+      await wrapper.vm.$nextTick();
+      expect(cancelBtn.attributes('disabled')).toBeDefined();
+      // 再填原因 → 解禁
+      const reasonInput = wrapper.findAll('input').find((i) => (i.attributes('placeholder') ?? '').includes('撤销原因'))!;
+      await reasonInput.setValue('交接对象填错');
+      await wrapper.vm.$nextTick();
+      expect(cancelBtn.attributes('disabled')).toBeUndefined();
+      wrapper.unmount();
+    });
+
+    it('submits cancel to /handovers/22/cancel and the record leaves the list after refresh', async () => {
+      const { calls } = stubApi({ inbox: [completed] });
+      loginAs(me.id, 'MARKET_PM');
+      const wrapper = mount(Handover);
+      // completed 是我发起的且无待接收项 → 默认选中，详情区直接渲染撤销表单
+      await vi.waitFor(() => expect(wrapper.text()).toContain('撤销移交'));
+      const reasonInput = wrapper.findAll('input').find((i) => (i.attributes('placeholder') ?? '').includes('撤销原因'))!;
+      const confirmInput = wrapper.findAll('input').find((i) => (i.attributes('placeholder') ?? '').includes('确认撤销该移交'))!;
+      await reasonInput.setValue(' 交接对象填错，需反转 ');
+      await confirmInput.setValue('确认撤销该移交');
+      const cancelBtn = wrapper.findAll('button').find((b) => b.text().includes('撤销移交'))!;
+      await cancelBtn.trigger('click');
+      // POST 到 cancel 端点，body 含 trim 后 reason + 短语（RollbackRequest 双必填）
+      await vi.waitFor(() => {
+        expect(calls.find((c) => c.method === 'POST' && c.url === '/api/v1/handovers/22/cancel')).toBeDefined();
+      });
+      const cancel = calls.find((c) => c.method === 'POST' && c.url === '/api/v1/handovers/22/cancel')!;
+      expect(cancel.body).toMatchObject({ confirmation: '确认撤销该移交', reason: '交接对象填错，需反转' });
+      // 撤销成功 → 刷新后 ROLLED_BACK 不在 initiated allowlist → 列表回空态
+      await vi.waitFor(() => expect(wrapper.text()).toContain('尚未发起移交'));
       wrapper.unmount();
     });
   });

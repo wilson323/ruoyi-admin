@@ -156,11 +156,10 @@ const recordsColumns = [
 
 const bonusColumns = [
   { title: '奖金池编号', dataIndex: 'id', key: 'id', width: 120 },
-  { title: '周期', dataIndex: 'period', key: 'period', width: 90 },
-  { title: '项目等级', key: 'projectLevel', width: 100 },
-  { title: '实际回款', dataIndex: 'receiptAmounts', key: 'receiptAmounts', width: 130 },
+  { title: '实际回款', dataIndex: 'targetSales', key: 'targetSales', width: 130 },
   { title: '基数（5%）', dataIndex: 'basePool', key: 'basePool', width: 130 },
-  { title: '系数', dataIndex: 'coefficient', key: 'coefficient', width: 90 },
+  { title: 'S/A/B 系数', dataIndex: 'coefficient', key: 'coefficient', width: 100 },
+  { title: '阶梯系数', dataIndex: 'tierCoefficient', key: 'tierCoefficient', width: 90 },
   { title: '终算奖池', dataIndex: 'finalPool', key: 'finalPool', width: 140 },
   { title: '状态', key: 'status', width: 100 },
 ];
@@ -293,10 +292,7 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
           bordered
         >
           <template #bodyCell="{ column, record }: { column: Record<string, any>; record: Record<string, any> }">
-            <template v-if="column.key === 'projectLevel'">
-              <Tag color="default">{{ record.projectLevel ?? PENDING_TEXT }}</Tag>
-            </template>
-            <template v-else-if="column.key === 'status'">
+            <template v-if="column.key === 'status'">
               <Tag :color="record.status === 'DISTRIBUTED' ? 'success' : record.status === 'CONFIRMED' ? 'processing' : 'warning'">
                 {{ record.status === 'DISTRIBUTED' ? '已发放' : record.status === 'CONFIRMED' ? '已确认' : '草稿' }}
               </Tag>

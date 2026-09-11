@@ -36,9 +36,9 @@ function record(overrides: Partial<SharedKpiRecord> = {}): SharedKpiRecord {
 function pool(overrides: Partial<BonusPool> = {}): BonusPool {
   return {
     achievementRate: '0.95', basePool: '23750.00', coefficient: '1.05',
-    finalPool: '24937.50', id: 'BP-1', levelCoefficient: '1.00',
-    period: '2026-09', poolRate: '0.05', projectId: '1001',
-    projectLevel: 'A', status: 'CONFIRMED', tierCoefficient: '1.00',
+    finalPool: '24937.50', id: 'BP-1',
+    poolRate: '0.05', projectId: '1001', status: 'CONFIRMED',
+    targetSales: '475000.00', tierCoefficient: '1.00',
     ...overrides,
   } as BonusPool;
 }
@@ -176,14 +176,14 @@ describe('IPD 共担 KPI 归集页 (page 30 / P0-10.30)', () => {
     wrapper.unmount();
   });
 
-  it('bonus pool link: each linked pool row shows id, period, project level and status', async () => {
+  it('bonus pool link: each linked pool row shows id, actual receipts, coefficients and status', async () => {
     kpiApi.listSharedKpis.mockResolvedValueOnce([
       record({ id: 'r-mkt', revision: 1, segment: 'MARKET_PM', comprehensiveScore: '90.00', status: 'FINALIZED' }),
     ]);
     bonusApi.listBonusPools.mockResolvedValueOnce([
-      pool({ id: 'BP-1', projectLevel: 'A', status: 'DRAFT', finalPool: '12000.50', period: '2026-09' }),
-      pool({ id: 'BP-2', projectLevel: 'S', status: 'CONFIRMED', finalPool: '30000.00', period: '2026-09' }),
-      pool({ id: 'BP-3', projectLevel: 'B', status: 'DISTRIBUTED', finalPool: '18000.00', period: '2026-09' }),
+      pool({ id: 'BP-1', status: 'DRAFT', finalPool: '12000.50', targetSales: '240010.00', tierCoefficient: '0.50' }),
+      pool({ id: 'BP-2', status: 'CONFIRMED', finalPool: '30000.00', targetSales: '600020.00', tierCoefficient: '0.80' }),
+      pool({ id: 'BP-3', status: 'DISTRIBUTED', finalPool: '18000.00', targetSales: '360030.00', tierCoefficient: '1.00' }),
     ]);
     const wrapper = mount(SharedKpi);
 
@@ -194,16 +194,15 @@ describe('IPD 共担 KPI 归集页 (page 30 / P0-10.30)', () => {
     expect(wrapper.text()).toContain('BP-1');
     expect(wrapper.text()).toContain('BP-2');
     expect(wrapper.text()).toContain('BP-3');
-    // 周期三行
-    expect(wrapper.text()).toContain('2026-09');
+    // 实际回款三行（后端 DRAFT 行 targetSales = actualReceipts）
+    expect(wrapper.text()).toContain('240010');
+    expect(wrapper.text()).toContain('600020');
+    // 阶梯系数列
+    expect(wrapper.text()).toContain('0.5');
     // 状态映射：草稿 / 已确认 / 已发放
     expect(wrapper.text()).toContain('草稿');
     expect(wrapper.text()).toContain('已确认');
     expect(wrapper.text()).toContain('已发放');
-    // 项目等级（key 模板走 custom bodyCell）
-    expect(wrapper.text()).toContain('A');
-    expect(wrapper.text()).toContain('S');
-    expect(wrapper.text()).toContain('B');
     // 奖金池列表 URL 调用形态
     expect(bonusApi.listBonusPools).toHaveBeenCalledWith('1001');
     wrapper.unmount();

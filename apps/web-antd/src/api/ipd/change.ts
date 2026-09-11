@@ -59,8 +59,17 @@ export interface CoefficientChangeProposeInput {
   reason: string;
 }
 
-/** 发起上市日期变更入参（LaunchDateChangeController.ProposeReq）。 */
+/** 第二签确认人角色（后端 LaunchDateChangeService.CONFIRMER_ROLES 白名单）。 */
+export type LaunchDateConfirmerRole = 'MARKET_PM' | 'RD_PM' | 'SUPER_ADMIN';
+
+/** 发起上市日期变更入参（LaunchDateChangeController.ProposeReq；R11 双签契约）。 */
 export interface LaunchDateChangeProposeInput {
+  /** 第二签确认人主组 ID（须与发起人同组，后端 IpdIdorGuard 校验）。 */
+  confirmerGroupId: string;
+  /** 第二签确认人账号 ID（发起人不可自签，后端校验）。 */
+  confirmerId: string;
+  /** 第二签确认人角色（MARKET_PM/RD_PM/SUPER_ADMIN）。 */
+  confirmerRole: LaunchDateConfirmerRole;
   /** yyyy-MM-dd（DatePicker valueFormat 保证）。 */
   proposedLaunchDate: string;
   projectId: string;
@@ -154,9 +163,12 @@ export async function decideCoefficientChange(
   ));
 }
 
-/** 上市日期变更第一签提议 → 待对方（另一侧PM）确认。 */
+/** 上市日期变更第一签提议 → 待对方（另一侧PM）确认；须指定第二签确认人（同组）。 */
 export async function proposeLaunchDateChange(input: LaunchDateChangeProposeInput): Promise<LaunchDateChangeRequest> {
   return parseLaunchDateChangeRequest(await ipdPost('/launch-date-change-requests', {
+    confirmerGroupId: input.confirmerGroupId,
+    confirmerId: input.confirmerId,
+    confirmerRole: input.confirmerRole,
     proposedLaunchDate: input.proposedLaunchDate,
     projectId: input.projectId,
     reason: input.reason,

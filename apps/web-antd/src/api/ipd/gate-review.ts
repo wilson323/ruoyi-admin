@@ -7,15 +7,18 @@
  * POST /extend-deadline（仅超管，最多 3 次，AC-GATE-21）、POST /arbitrate（组长仲裁，
  * AC-GATE-10 中段）、POST /final-ruling（超管终裁，AC-GATE-10 尾段）。
  *
- * 与原型 /api/key-gates 不同构（逐条登记）：原型为项目维度 Gate 列表 + 材料归档
- * （FormData）+ 五节点顺序签署链；后端为 gateId 维度双签轮次制（无项目级 Gate 列表
- * 端点、无材料归档端点、无五节点链）。材料归档与五节点链维持真缺口登记；
- * gateId 由审计/通知或系统侧提供，页面经输入定位。
+ * R30 生产就绪补齐（2026-09-11）：GET /projects/{projectId}/gates（ProjectController）
+ * 项目维度 Gate 列表已交付，前端不再依赖手输 Gate 编号。
+ * 与原型 /api/key-gates 的剩余差异（逐条登记）：材料归档（FormData）与五节点顺序签署链
+ * 后端未交付，维持真缺口登记，不造假数据。
  */
 import { ipdGet, ipdPost } from './http';
 
 /** 签署/仲裁/终裁决策值（GateReviewController.SignRequest#decision）。 */
 export type GateDecision = 'APPROVE' | 'REJECT';
+
+/** 后端 Date 序列化形态：真库实测为毫秒时间戳（如 1789388463000），ISO 字符串为兼容形态。 */
+export type IpdDateValue = null | number | string;
 
 /** Gate 状态（GateReviewService 常量，ABSTAINED_TIMEOUT 为超时弃权终态）。 */
 export type GateStatus = 'ABSTAINED_TIMEOUT' | 'APPROVED' | 'PENDING' | 'REJECTED';
@@ -25,7 +28,7 @@ export interface GateReviewRow {
   decision?: string;
   opinion?: string;
   reviewerType: string;
-  signedAt: null | string;
+  signedAt: IpdDateValue;
 }
 
 /** GET /review 双签视图（在途互盲：对方仅 otherSubmitted 标志；终态/超管全揭示）。 */
@@ -45,7 +48,7 @@ export interface GateReviewView {
   observers?: { id: string; name: string }[];
   leadSide: string;
   round: number;
-  signDueAt: null | string;
+  signDueAt: IpdDateValue;
   status: GateStatus;
 }
 
@@ -64,7 +67,7 @@ export interface GateArbitrationView {
 export interface GateReopenResult {
   id: string;
   round: number;
-  signDueAt: string;
+  signDueAt: number | string;
   status: string;
 }
 
@@ -72,8 +75,26 @@ export interface GateReopenResult {
 export interface GateExtendResult {
   extensionCount: number;
   id: string;
-  signDueAt: string;
+  signDueAt: number | string;
   status: string;
+}
+
+/** Gate 实例行（ProjectController GET /projects/{id}/gates；gates 表，id 降序）。 */
+export interface ProjectGateItem {
+  concludedAt?: IpdDateValue;
+  currentRound?: null | number;
+  gateCode?: null | string;
+  id: string;
+  plannedAt?: IpdDateValue;
+  projectId: string;
+  signDueAt?: IpdDateValue;
+  startedAt?: IpdDateValue;
+  status: GateStatus | string;
+}
+
+/** 项目维度 Gate 列表（R30 补齐；空列表 = 尚无 Gate，真实空态）。 */
+export function listProjectGates(projectId: string): Promise<ProjectGateItem[]> {
+  return ipdGet<ProjectGateItem[]>(`/projects/${encodeURIComponent(projectId)}/gates`);
 }
 
 /** 双签视图（AC-GATE-03 互盲 / AC-GATE-04 终态揭示）。 */

@@ -21,8 +21,6 @@ import {
   FormItem,
   Input,
   InputNumber,
-  Select,
-  SelectOption,
   Space,
   Statistic,
   Table,
@@ -64,13 +62,7 @@ const BONUS_STATUS_COLOR: Record<BonusStatus, string> = {
   DRAFT: STATUS_TONE.DRAFT ?? bonusStateTone('DRAFT'),
 };
 
-const PROJECT_LEVELS: Array<{ value: 'A' | 'B' | 'S'; label: string; coefficient: number }> = [
-  { value: 'S', label: 'S 级（战略级，系数 1.5）', coefficient: 1.5 },
-  { value: 'A', label: 'A 级（核心级，系数 1.2）', coefficient: 1.2 },
-  { value: 'B', label: 'B 级（标准级，系数 1.0）', coefficient: 1.0 },
-];
-
-const DEFAULT_POOL_RATE = 5; // 5%（与裁决「实际回款×5%×S/A/B」一致；G-08 红线）
+const DEFAULT_POOL_RATE = 0.05; // 5% 小数语义（后端 validatePoolRate (0,1]；与裁决「实际回款×5%×S/A/B」一致；G-08 红线）
 
 function rejectText(cause: unknown): string {
   if (cause instanceof IpdRequestError) {
@@ -85,27 +77,25 @@ const bonusFormulaRule = renderRulesDescription([ZK_RULE_BONUS_POOL_FORMULA]);
 
 const form = reactive({
   achievementRate: 100,
-  levelCoefficient: 1,
-  period: defaultPeriod(),
+  actualReceipts: 0,
+  personalCoefficient: null as null | number,
   poolRate: DEFAULT_POOL_RATE,
   projectId: '',
-  projectLevel: 'A' as 'A' | 'B' | 'S',
-  receiptAmounts: 0,
-  tierCoefficient: 1,
 });
 
-function defaultPeriod(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-}
+/** InputNumber 不收 null：与 form.personalCoefficient（null|number）双向适配；留空 = 后端中性 1.0。 */
+const personalCoefficientModel = computed<number | string | undefined>({
+  get: () => (form.personalCoefficient == null ? undefined : form.personalCoefficient),
+  set: (value) => {
+    form.personalCoefficient = value == null || value === '' ? null : Number(value);
+  },
+});
 
-const canCompute = computed(() => form.projectId.trim() !== '' && form.period.trim() !== '' && Number(form.receiptAmounts) >= 0);
+const canCompute = computed(() => form.projectId.trim() !== '' && Number(form.actualReceipts) >= 0);
 
-/** 三段实时预览（前端不替代后端裁决，只给用户直观感受公式）。 */
-const previewReceipts = computed(() => Number(form.receiptAmounts) || 0);
-const previewBasePool = computed(() => previewReceipts.value * (Number(form.poolRate) || 0) / 100);
-const previewCoefficient = computed(() => (Number(form.levelCoefficient) || 0) * (Number(form.tierCoefficient) || 0));
-const previewFinalPool = computed(() => previewBasePool.value * previewCoefficient.value);
+/** 两段实时预览：实际回款 → 预计基数；S/A/B 系数与达成率阶梯由后端裁决（前端不替代）。 */
+const previewReceipts = computed(() => Number(form.actualReceipts) || 0);
+const previewBasePool = computed(() => previewReceipts.value * (Number(form.poolRate) || 0));
 
 /** 列表数据：按 projectId 过滤；projectId 为空时展示空态（避免误跨项目）。 */
 const pools = ref<BonusPool[]>([]);
@@ -138,12 +128,10 @@ async function onCompute() {
   try {
     currentResult.value = await computeBonusPool({
       achievementRate: form.achievementRate,
-      levelCoefficient: form.levelCoefficient,
-      period: form.period.trim(),
+      actualReceipts: form.actualReceipts,
+      ...(form.personalCoefficient != null ? { personalCoefficient: form.personalCoefficient } : {}),
       poolRate: form.poolRate,
       projectId: form.projectId.trim(),
-      receiptAmounts: form.receiptAmounts,
-      tierCoefficient: form.tierCoefficient,
     });
     message.success(`奖金池草稿已生成（DRAFT）：${formatMoney(currentResult.value.basePool)} × ${currentResult.value.coefficient ?? '—'} = ${formatMoney(currentResult.value.finalPool)}`);
     await loadList();
@@ -195,27 +183,16 @@ onMounted(() => {
 const columns = [
   { title: '奖金池编号', dataIndex: 'id', key: 'id', width: 110 },
   { title: '项目编号', dataIndex: 'projectId', key: 'projectId', width: 110 },
-  { title: '核算周期', dataIndex: 'period', key: 'period', width: 90 },
-  { title: '项目等级', key: 'projectLevel', width: 90 },
-  { title: '实际回款', key: 'receiptAmounts', width: 130 },
+  { title: '实际回款', key: 'targetSales', width: 130 },
   { title: '基数（5%）', key: 'basePool', width: 130 },
-  { title: '系数', key: 'coefficient', width: 90 },
+  { title: 'S/A/B 系数', key: 'coefficient', width: 100 },
+  { title: '阶梯系数', key: 'tierCoefficient', width: 90 },
   { title: '终算奖池', key: 'finalPool', width: 140 },
   { title: '达成率', key: 'achievementRate', width: 90 },
   { title: '状态', key: 'status', width: 100 },
   { title: '生成时间', key: 'createTime', width: 150 },
   { title: '操作', key: 'actions', width: 170 },
 ];
-
-function levelText(level: null | string | undefined): string {
-  if (level === 'S' || level === 'A' || level === 'B') return `${level} 级`;
-  return PENDING_TEXT;
-}
-
-function onProjectLevelChange(value: 'A' | 'B' | 'S') {
-  const target = PROJECT_LEVELS.find((item) => item.value === value);
-  if (target) form.levelCoefficient = target.coefficient;
-}
 </script>
 
 <template>
@@ -227,8 +204,8 @@ function onProjectLevelChange(value: 'A' | 'B' | 'S') {
       type="info"
     />
 
-    <Card class="mb-4" title="三段核算预览（前端实时演算）">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+    <Card class="mb-4" title="两段核算预览（前端实时演算）">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Statistic
           title="① 实际回款"
           :value="previewReceipts"
@@ -237,26 +214,15 @@ function onProjectLevelChange(value: 'A' | 'B' | 'S') {
           :value-style="{ fontVariantNumeric: 'tabular-nums' }"
         />
         <Statistic
-          title="② 5% 基数"
+          title="② 预计基数（回款 × 奖金池比例）"
           :value="previewBasePool"
           :precision="2"
           prefix="¥"
           :value-style="{ fontVariantNumeric: 'tabular-nums' }"
         />
-        <Statistic
-          title="③ 系数（级别 × 等级）"
-          :value="previewCoefficient"
-          :precision="2"
-          suffix="×"
-          :value-style="{ fontVariantNumeric: 'tabular-nums' }"
-        />
-        <Statistic
-          title="④ 终算奖池"
-          :value="previewFinalPool"
-          :precision="2"
-          prefix="¥"
-          :value-style="{ color: '#1677ff', fontVariantNumeric: 'tabular-nums' }"
-        />
+      </div>
+      <div class="text-muted-foreground mt-2 text-xs">
+        S/A/B 差异化系数由后端从项目配置带出，达成率阶梯系数与个人绩效系数由后端裁决；终算奖池以核算结果为准。
       </div>
     </Card>
 
@@ -265,19 +231,9 @@ function onProjectLevelChange(value: 'A' | 'B' | 'S') {
         <FormItem label="项目编号" required>
           <Input v-model:value="form.projectId" placeholder="请输入项目编号" />
         </FormItem>
-        <FormItem label="核算周期" required>
-          <Input v-model:value="form.period" placeholder="YYYY-MM（例：2026-09）" />
-        </FormItem>
-        <FormItem label="项目等级">
-          <Select v-model:value="form.projectLevel" @change="(value: unknown) => onProjectLevelChange(value as 'A' | 'B' | 'S')">
-            <SelectOption v-for="item in PROJECT_LEVELS" :key="item.value" :value="item.value">
-              {{ item.label }}
-            </SelectOption>
-          </Select>
-        </FormItem>
         <FormItem label="实际回款金额" required>
           <InputNumber
-            v-model:value="form.receiptAmounts"
+            v-model:value="form.actualReceipts"
             :min="0"
             :precision="2"
             :step="1000"
@@ -285,18 +241,16 @@ function onProjectLevelChange(value: 'A' | 'B' | 'S') {
             placeholder="上市后连续 6 个月实际回款金额"
           />
         </FormItem>
-        <FormItem label="基数比例（%）">
-          <InputNumber v-model:value="form.poolRate" :min="0" :max="100" :precision="2" :step="0.5" class="w-full" />
-          <div class="text-muted-foreground mt-1 text-xs">默认 5%（与裁决「实际回款×5%×S/A/B」一致）</div>
-        </FormItem>
-        <FormItem label="级别系数">
-          <InputNumber v-model:value="form.levelCoefficient" :min="0" :precision="2" :step="0.1" class="w-full" />
-        </FormItem>
-        <FormItem label="层级系数">
-          <InputNumber v-model:value="form.tierCoefficient" :min="0" :precision="2" :step="0.1" class="w-full" />
+        <FormItem label="奖金池比例（小数）">
+          <InputNumber v-model:value="form.poolRate" :min="0" :max="1" :precision="4" :step="0.01" class="w-full" />
+          <div class="text-muted-foreground mt-1 text-xs">后端要求 (0,1] 小数，默认 0.05 即 5%（与裁决「实际回款×5%×S/A/B」一致）</div>
         </FormItem>
         <FormItem label="达成率（%）">
           <InputNumber v-model:value="form.achievementRate" :min="0" :max="999" :precision="2" class="w-full" />
+          <div class="text-muted-foreground mt-1 text-xs">回款达成率百分数；后端按 6 档阶梯表自动折算阶梯系数</div>
+        </FormItem>
+        <FormItem label="个人绩效系数">
+          <InputNumber v-model:value="personalCoefficientModel" :min="0" :precision="2" :step="0.1" class="w-full" placeholder="留空默认 1.0" />
         </FormItem>
         <FormItem :wrapper-col="{ offset: 6, span: 14 }">
           <Space>
@@ -315,12 +269,12 @@ function onProjectLevelChange(value: 'A' | 'B' | 'S') {
       <Descriptions bordered :column="2" size="small">
         <DescriptionsItem label="奖金池编号">{{ currentResult.id }}</DescriptionsItem>
         <DescriptionsItem label="项目编号">{{ currentResult.projectId }}</DescriptionsItem>
-        <DescriptionsItem label="核算周期">{{ currentResult.period ?? PENDING_TEXT }}</DescriptionsItem>
-        <DescriptionsItem label="项目等级">{{ levelText(currentResult.projectLevel) }}</DescriptionsItem>
-        <DescriptionsItem label="实际回款">¥ {{ formatMoney(currentResult.receiptAmounts ?? null) }}</DescriptionsItem>
+        <DescriptionsItem label="实际回款">¥ {{ formatMoney(currentResult.targetSales ?? null) }}</DescriptionsItem>
         <DescriptionsItem label="基数比例">{{ formatPercent(currentResult.poolRate ?? null) }}</DescriptionsItem>
         <DescriptionsItem label="基数">¥ {{ formatMoney(currentResult.basePool ?? null) }}</DescriptionsItem>
-        <DescriptionsItem label="系数">{{ currentResult.coefficient ?? PENDING_TEXT }}</DescriptionsItem>
+        <DescriptionsItem label="S/A/B 系数">{{ currentResult.coefficient ?? PENDING_TEXT }}</DescriptionsItem>
+        <DescriptionsItem label="阶梯系数">{{ currentResult.tierCoefficient ?? PENDING_TEXT }}</DescriptionsItem>
+        <DescriptionsItem label="个人绩效系数">{{ form.personalCoefficient ?? '1.0（后端默认）' }}</DescriptionsItem>
         <DescriptionsItem label="终算奖池">
           <strong class="text-primary">¥ {{ formatMoney(currentResult.finalPool ?? null) }}</strong>
         </DescriptionsItem>
@@ -361,10 +315,10 @@ function onProjectLevelChange(value: 'A' | 'B' | 'S') {
         size="small"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'projectLevel'">{{ levelText(record.projectLevel) }}</template>
-          <template v-else-if="column.key === 'receiptAmounts'">¥ {{ formatMoney(record.receiptAmounts ?? null) }}</template>
+          <template v-if="column.key === 'targetSales'">¥ {{ formatMoney(record.targetSales ?? null) }}</template>
           <template v-else-if="column.key === 'basePool'">¥ {{ formatMoney(record.basePool) }}</template>
-          <template v-else-if="column.key === 'coefficient'">{{ formatPercent(record.coefficient, '') }}</template>
+          <template v-else-if="column.key === 'coefficient'">{{ record.coefficient ?? '—' }}</template>
+          <template v-else-if="column.key === 'tierCoefficient'">{{ record.tierCoefficient ?? '—' }}</template>
           <template v-else-if="column.key === 'finalPool'">
             <strong class="text-primary">¥ {{ formatMoney(record.finalPool) }}</strong>
           </template>

@@ -18,7 +18,7 @@
  * 规格 vs 代码差异：规格写「批量导入」UI 路径，但 LegacyImportController 仅暴露单条
  * 与批量端点，UI 按单条实现（单条 → 批量入口由超管另行发起，不在页09）。
  */
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { RuleObject } from 'ant-design-vue/es/form';
@@ -44,6 +44,8 @@ import type {
   TemplateType,
 } from '../../../../api/ipd/project';
 import { legacyImportProject } from '../../../../api/ipd/project';
+import type { ProductGroup } from '../../../../api/ipd/product';
+import { listProductGroups } from '../../../../api/ipd/product';
 import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import { stageText } from '../project-display';
 
@@ -88,6 +90,22 @@ const formState = reactive<FormState>({
 const submitting = ref(false);
 const submitError = ref<unknown>(null);
 const importResult = ref<LegacyImportResult | null>(null);
+
+/** 主组下拉（存量导入必填：不再手输撞 Long；复用 create 页模式）。加载失败不降级静默——必填字段无选项时须提示。 */
+const groups = ref<ProductGroup[]>([]);
+const groupLoadError = ref(false);
+const groupOptions = computed(() => groups.value.map((group) => ({ label: group.groupName, value: group.id })));
+onMounted(() => {
+  listProductGroups()
+    .then((list) => {
+      groups.value = list;
+      groupLoadError.value = false;
+    })
+    .catch(() => {
+      groups.value = [];
+      groupLoadError.value = true;
+    });
+});
 
 const templateOptions = [
   { label: '硬件', value: 'HARDWARE' as TemplateType },
@@ -274,9 +292,24 @@ function gotoDetail(): void {
           <Input v-model:value="formState.productId" placeholder="产品唯一标识" />
         </Form.Item>
 
-        <Form.Item label="主组（市场PM 所在产品组 ID）" name="mainGroupId" extra="BR-ORG-01：项目归属于市场PM 所在产品组。">
-          <Input v-model:value="formState.mainGroupId" placeholder="主组唯一标识" />
+        <Form.Item label="主组（市场PM 所在产品组）" name="mainGroupId" extra="BR-ORG-01：项目归属于市场PM 所在产品组；存量导入必选。">
+          <Select
+            v-model:value="formState.mainGroupId"
+            :options="groupOptions"
+            placeholder="选择产品组"
+            :disabled="groupLoadError"
+            show-search
+            option-filter-prop="label"
+          />
         </Form.Item>
+
+        <Alert
+          v-if="groupLoadError"
+          class="mb-4"
+          message="产品组列表加载失败，无法选择主组；请刷新页面重试后再提交导入。"
+          show-icon
+          type="error"
+        />
 
         <Form.Item label="模板类型" name="templateType">
           <Select v-model:value="formState.templateType" :options="templateOptions" />

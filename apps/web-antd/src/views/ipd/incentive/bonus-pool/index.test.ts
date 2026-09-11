@@ -1,4 +1,4 @@
-/** 奖金池核算 UI：ZK 口径展示（实际回款×5%×S/A/B）+ 三段实时演算 + 状态流约束。 */
+/** 奖金池核算 UI：ZK 口径展示（实际回款×5%×S/A/B）+ 两段实时演算（系数由后端裁决）+ 状态流约束。 */
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -42,14 +42,13 @@ describe('页34 奖金池核算', () => {
     wrapper.unmount();
   });
 
-  it('三段预览标题：实际回款 / 5% 基数 / S/A/B 系数 / 终算奖池', () => {
+  it('两段预览标题：实际回款 / 预计基数；并声明系数由后端裁决', () => {
     vi.stubGlobal('fetch', vi.fn());
     const wrapper = mount(BonusPool);
     const text = wrapper.text();
     expect(text).toContain('① 实际回款');
-    expect(text).toContain('② 5% 基数');
-    expect(text).toContain('③ 系数');
-    expect(text).toContain('④ 终算奖池');
+    expect(text).toContain('② 预计基数');
+    expect(text).toContain('后端从项目配置带出');
     wrapper.unmount();
   });
 
@@ -71,7 +70,7 @@ describe('页34 奖金池核算', () => {
     // 第一个 input 是「项目编号」
     await inputs[0]!.setValue('P-100');
     // 第二个 InputNumber（顺序：period、achievementRate 后被 InputNumber 占用）
-    // 通过 InputNumber 组件更新 receiptAmounts（第 0 个 InputNumber = receiptAmounts）
+    // 通过 InputNumber 组件更新 actualReceipts（第 0 个 InputNumber = actualReceipts）
     await setInputNumber(wrapper, 0, 100000);
     await wrapper.vm.$nextTick();
     const computeBtn = wrapper.findAll('button').find((b) => b.text().includes('触发核算'));
@@ -82,19 +81,15 @@ describe('页34 奖金池核算', () => {
     wrapper.unmount();
   });
 
-  it('切换项目等级 S 自动写入级别系数 1.5（onProjectLevelChange 直接调用）', async () => {
+  it('S/A/B 差异化系数与阶梯系数由后端裁决：表单不提供级别/层级系数与核算周期输入', async () => {
     vi.stubGlobal('fetch', vi.fn());
     const wrapper = mount(BonusPool);
-    const inputs = wrapper.findAll('input');
-    await inputs[0]!.setValue('P-100');
-    await setInputNumber(wrapper, 0, 100000);
-    await wrapper.vm.$nextTick();
-    // 直接调用 onProjectLevelChange（避免触发 antdv Select 内部链路的脆弱测试）
-    const vm = wrapper.vm as unknown as { onProjectLevelChange: (v: 'A' | 'B' | 'S') => void };
-    vm.onProjectLevelChange('S');
-    await wrapper.vm.$nextTick();
-    // 100000 × 5% × 1.5 × 1 = 7500
-    expect(wrapper.text()).toContain('7,500.00');
+    const text = wrapper.text();
+    // 旧版假输入（后端 compute 契约不存在这些字段）已移除，避免误导用户
+    expect(text).not.toContain('级别系数');
+    expect(text).not.toContain('层级系数');
+    expect(text).not.toContain('核算周期');
+    expect(text).not.toContain('项目等级');
     wrapper.unmount();
   });
 
@@ -103,16 +98,17 @@ describe('页34 奖金池核算', () => {
       const path = String(input);
       if (path.endsWith('/compute')) {
         return envelope({
-          id: 'BP-1', projectId: 'P-100', period: '2026-09', projectLevel: 'A',
-          poolRate: 5, receiptAmounts: 100000, basePool: 5000, coefficient: 1.2,
-          tierCoefficient: 1, levelCoefficient: 1.2, achievementRate: 100,
-          finalPool: 6000, status: 'DRAFT', createTime: '2026-09-05 10:00:00',
+          id: 'BP-1', projectId: 'P-100', targetSales: 100000, poolRate: 0.05,
+          basePool: 5000, coefficient: 1.2, achievementRate: 100,
+          tierCoefficient: 0.8, finalPool: 4800, status: 'DRAFT',
+          calculatedAt: '2026-09-05 10:00:00',
         });
       }
       if (path.endsWith('/list')) return envelope([{
-          id: 'BP-1', projectId: 'P-100', period: '2026-09', projectLevel: 'A',
-          poolRate: 5, receiptAmounts: 100000, basePool: 5000, coefficient: 1.2,
-          finalPool: 6000, status: 'DRAFT', createTime: '2026-09-05 10:00:00',
+          id: 'BP-1', projectId: 'P-100', targetSales: 100000, poolRate: 0.05,
+          basePool: 5000, coefficient: 1.2, achievementRate: 100,
+          tierCoefficient: 0.8, finalPool: 4800, status: 'DRAFT',
+          calculatedAt: '2026-09-05 10:00:00',
         }]);
       throw new Error(`unexpected fetch: ${path}`);
     });
@@ -128,6 +124,9 @@ describe('页34 奖金池核算', () => {
     // DRAFT 状态显示「冻结」按钮（来自 currentResult 卡片）
     expect(wrapper.text()).toContain('冻结');
     expect(wrapper.text()).toContain('DRAFT → CONFIRMED');
+    // R30 新契约列：阶梯系数为系数原值直出（0.8），不得被 formatPercent 归一化成 80%
+    expect(wrapper.text()).toContain('0.8');
+    expect(wrapper.text()).not.toContain('80%');
     expect(wrapper.text()).not.toContain('已分配');
     wrapper.unmount();
   });
@@ -137,23 +136,26 @@ describe('页34 奖金池核算', () => {
       const path = String(input);
       if (path.endsWith('/compute')) {
         return envelope({
-          id: 'BP-1', projectId: 'P-100', period: '2026-09', projectLevel: 'A',
-          poolRate: 5, receiptAmounts: 100000, basePool: 5000, coefficient: 1,
-          finalPool: 5000, status: 'DRAFT', createTime: '2026-09-05 10:00:00',
+          id: 'BP-1', projectId: 'P-100', targetSales: 100000, poolRate: 0.05,
+          basePool: 5000, coefficient: 1, achievementRate: 100,
+          tierCoefficient: 0.8, finalPool: 4000, status: 'DRAFT',
+          calculatedAt: '2026-09-05 10:00:00',
         });
       }
       if (path.endsWith('/list')) {
         return envelope([{
-          id: 'BP-1', projectId: 'P-100', period: '2026-09', projectLevel: 'A',
-          poolRate: 5, receiptAmounts: 100000, basePool: 5000, coefficient: 1,
-          finalPool: 5000, status: 'CONFIRMED', createTime: '2026-09-05 10:00:00',
+          id: 'BP-1', projectId: 'P-100', targetSales: 100000, poolRate: 0.05,
+          basePool: 5000, coefficient: 1, achievementRate: 100,
+          tierCoefficient: 0.8, finalPool: 4000, status: 'CONFIRMED',
+          calculatedAt: '2026-09-05 10:00:00',
         }]);
       }
       if (path.endsWith('/BP-1/freeze')) {
         return envelope({
-          id: 'BP-1', projectId: 'P-100', period: '2026-09', projectLevel: 'A',
-          poolRate: 5, receiptAmounts: 100000, basePool: 5000, coefficient: 1,
-          finalPool: 5000, status: 'CONFIRMED', createTime: '2026-09-05 10:00:00',
+          id: 'BP-1', projectId: 'P-100', targetSales: 100000, poolRate: 0.05,
+          basePool: 5000, coefficient: 1, achievementRate: 100,
+          tierCoefficient: 0.8, finalPool: 4000, status: 'CONFIRMED',
+          calculatedAt: '2026-09-05 10:00:00',
         });
       }
       throw new Error(`unexpected fetch: ${path}`);

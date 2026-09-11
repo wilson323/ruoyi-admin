@@ -20,7 +20,8 @@ afterEach(() => vi.unstubAllGlobals());
 describe('gate element result API contract', () => {
   it('GET /gates/{id}/elements returns seeded 33-element list', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope([
-      { id: 'e-1', code: 'G1-01', gateCode: 'G1', title: 't1', isVeto: true, status: 'PUBLISHED', sortOrder: 1 },
+      // R30 真值形态：后端 listView 返回 elementId/elementCode/elementName（非 id/code/title）
+      { elementId: 'e-1', elementCode: 'G1-01', elementName: 't1', isVeto: true, sortOrder: 1, result: null },
     ]));
     vi.stubGlobal('fetch', fetcher);
     const list = await listGateElementViews('gate-1');
@@ -48,10 +49,11 @@ describe('gate element result API contract', () => {
 
 describe('countVetoFailures hardblock', () => {
   it('counts only veto items with FAIL result', () => {
+    // R30 真值形态：要素主键字段为 elementId（与后端 listView 对齐）
     const els = [
-      { id: '1', isVeto: true } as any,
-      { id: '2', isVeto: false } as any,
-      { id: '3', isVeto: true } as any,
+      { elementId: '1', isVeto: true } as any,
+      { elementId: '2', isVeto: false } as any,
+      { elementId: '3', isVeto: true } as any,
     ];
     const results = new Map([
       ['1', 'FAIL' as const],
@@ -62,6 +64,6 @@ describe('countVetoFailures hardblock', () => {
   });
 
   it('returns 0 when no veto failures', () => {
-    expect(countVetoFailures([{ id: '1', isVeto: true } as any], new Map())).toBe(0);
+    expect(countVetoFailures([{ elementId: '1', isVeto: true } as any], new Map())).toBe(0);
   });
 });
