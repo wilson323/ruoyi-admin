@@ -1,0 +1,54 @@
+# bands.yaml — 控制带监控配置（Maintain 阶段产物）
+# <!--
+#   Anthropic AI Native SDLC Playbook · Maintain 阶段「闭环 / Closing the loop」
+#   核心纪律：检测确定性（无模型），解释模型驱动。
+#   band 越界 → 调用 agent 诊断 → 诊断写成 intent.md → 走正常管线（spec→plan→build→test→review）。
+#   用法：每个服务一份；放进版本控制；变更需 owner 批准。
+# -->
+
+service: <service-name>
+owner: "@<named-human>"              # 必须有具名人；band 变更由 ta 批准（不接受团队别名）
+metric: ci_test_failure_rate         # 一个有稳定滚动基线的指标（示例；另有 post-deploy 5xx / PR cycle time）
+baseline: rolling_30d                # 滚动基线窗口
+rules: western_electric              # 越界规则（捕获慢漂移 + 尖峰）；亦可用同类规则
+detector: scripts/bands/<metric>.py  # 检测脚本：版本控制 + 单元测试；纯确定性（no model）
+log: .bands/<metric>.log             # 越界日志：时间戳 + 档位 + 观测值
+
+tiers:
+  1sigma: { action: log }            # 只记录：不 page、不建单、不通知
+  2sigma: { action: diagnose,
+            tools: "Read,Grep,Bash(gh run view *)" }      # 只读诊断 → 产出 intent.md
+  3sigma: { action: propose,
+            routes: [pull_request, runbook:rollback-deploy] }  # 只能提议：PR（进 review gate）或预批 runbook
+
+# 触发层（无状态）：GitHub/GitLab scheduled workflow | 监控栈 webhook | 内网 cron
+# 无状态 = 一轮循环可以无人工启动地开始和结束
+trigger:
+  type: scheduled                    # scheduled | webhook | cron
+  schedule: "0 * * * *"              # 每小时检查（示例）
+
+# 分诊：服务负责人/on-call 处理队列；product-facing 的转产品负责人
+triage:
+  queue: .bands/triage.md
+  decisions: [fix_now, schedule, dismiss]
+  on_dismiss: recalibrate            # 驳回不是终点：必须回写 bands 调校（降噪）
+
+# 确定性过滤示例（是否打扰人，由规则决定，不由模型决定；引自 Claude-on-call 实践）：
+#   "error rate > 2% for 5 min AND not a deploy window → page; else → lessons.md"
+
+# 治理（Playbook 原文要求）
+governance:
+  tier_enforcement: versioned_config # 档位边界从本文件强制；permissions/managed settings 拒绝生产访问
+  logging: timestamped               # 每次调用/发现/分诊决策都带时间戳
+  approver: owner                    # 变更与 findings 由 owner 审批
+  changes_route: normal_review_gate  # 产生的变更走正常 PR review gate，不设快速通道
+  runbooks_pre_approved: true        # 3σ 可触发的 runbook 必须事先批准
+  production_access: denied          # 任何档位都不得直接写生产
+
+# 指标（衡量闭环是否有效）
+indicators:
+  leading: "从 band 越界到 intent.md 进入分诊队列的时间"
+  lagging: "findings 变成 merged fixes 的比例；同类重复事故数（应随 eval 累积而下降）"
+
+# 换模型/改规则前用固定任务集跑回归（continuous-eval-regression）：
+# 修复上线时，把本次事故加为一个 eval case，防止同类问题静默回归。
