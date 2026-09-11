@@ -20,6 +20,7 @@ import { $t } from '#/locales';
 
 import { useIpdAuthStore } from './ipd-auth';
 import { useDictStore } from './dict';
+import { vbenCodesOf, vbenRolesOf } from './vben-identity';
 
 export const useAuthStore = defineStore('auth', () => {
   const accessStore = useAccessStore();
@@ -154,9 +155,9 @@ export const useAuthStore = defineStore('auth', () => {
     const userInfo: UserInfo = {
       avatar: '',
       email: '',
-      permissions: [scope, `personType:${person.personType}`].filter(Boolean),
+      permissions: vbenCodesOf(person.personType, scope),
       realName: person.name,
-      roles: [person.personType],
+      roles: vbenRolesOf(person.personType),
       userId: person.id as unknown as number,
       username: person.username,
     };

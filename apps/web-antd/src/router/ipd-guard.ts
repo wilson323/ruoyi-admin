@@ -6,6 +6,7 @@ import { useAccessStore, useUserStore } from '@vben/stores';
 import type { MenuRecordRaw } from '@vben/types';
 
 import { useIpdAuthStore } from '../store/ipd-auth';
+import { vbenRolesOf } from '../store/vben-identity';
 import { generatePlatformAccess } from './access';
 
 export const IPD_LOGIN = '/auth/login';
@@ -175,7 +176,9 @@ export async function ipdNavigationGuard(to: RouteLocationNormalized, router: im
       email: '',
       permissions: userStore.userInfo?.permissions ?? [],
       realName: person.name,
-      roles: [person.personType],
+      // 2026-09-11 权限断链修复：经 vben-identity 映射（SUPER_ADMIN → 'superadmin'），
+      // 与 authLogin / renewPlatformSession 三处安装点同源，修复 /system 整页守卫 403。
+      roles: vbenRolesOf(person.personType),
       userId: person.id as unknown as number,
       username: person.username,
     });

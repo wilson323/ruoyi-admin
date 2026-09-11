@@ -17,6 +17,7 @@ import {
 } from '../api/ipd/auth';
 import { getUserInfoApi } from '../api/core/user';
 import { ipdErrorText } from '../views/ipd/_shared/ipd-error-text';
+import { vbenCodesOf, vbenRolesOf } from './vben-identity';
 
 const STORAGE_KEY = 'ruoyi-ipd.session';
 const LEGACY_STORAGE_KEY = 'ruoyi-ipd.session-token';
@@ -117,13 +118,16 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
         // 2026-09-11 根修：getUserInfoApi 已改走 IPD /auth/me（e115f06），返回 IpdMeResp
         // { person, scope, mustChangePwd }；此前消费端仍按上游 { user, permissions, roles }
         // 形状读取，恒 undefined → 平台用户信息与按钮权限码永不设置（v-access:code 全判否回归）。
-        const permissions = [info.scope, `personType:${info.person.personType}`].filter(Boolean);
+        // 2026-09-11 权限断链修复：personType/scope 经 vben-identity 映射
+        // （SUPER_ADMIN → roles ['superadmin'] + codes ['*:*:*']），
+        // 否则 v-access:code 全判否、/system 整页守卫 403（见 vben-identity.ts）。
+        const permissions = vbenCodesOf(info.person.personType, info.scope);
         useUserStore().setUserInfo({
           avatar: '',
           email: '',
           permissions,
           realName: info.person.name,
-          roles: [info.person.personType],
+          roles: vbenRolesOf(info.person.personType),
           userId: info.person.id as unknown as number,
           username: info.person.username,
         });
