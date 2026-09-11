@@ -27,8 +27,8 @@ import { Alert, Button, Card, Empty, Input, Table, Tag, message } from 'ant-desi
 import {
   getAllowancePendingStop,
   listAllowances,
+  triggerAllowanceAutoScan,
 } from '../../../../api/ipd/allowance';
-import { ipdPost } from '../../../../api/ipd/http';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
 import { formatDateTime, formatMoney } from '../../_shared/format';
@@ -152,7 +152,7 @@ async function onAutoScan(): Promise<void> {
   if (!canQuery.value || scanning.value || !isSuperAdmin.value) return;
   scanning.value = true;
   try {
-    await ipdPost('/allowance/auto-scan', undefined, { period: period.value.trim(), projectId: projectId.value.trim() || undefined });
+    await triggerAllowanceAutoScan(period.value.trim(), projectId.value.trim() || undefined);
     message.success(`已触发 ${period.value.trim()} 月度津贴自动扫描`);
     await loadAll();
   } catch (cause) {

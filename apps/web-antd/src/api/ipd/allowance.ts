@@ -23,7 +23,7 @@
  * （NO_OUTPUT_DAYS_THRESHOLD = 60；主项目无产出不触发）；不乘绩效系数。
  * 注：分档基数（1000/1500/2000/2500/3000）为规格口径，后端未硬编码，作 baseAmount 入参校验。
  */
-import { ipdGet } from './http';
+import { ipdGet, ipdPost } from './http';
 
 export interface AllowanceLedger {
   // ---- D-补强 R1：W4-D 后端 domain AllowanceLedger 真实字段 ----
@@ -88,4 +88,15 @@ export function listAllowances(period: string, personId?: string): Promise<Allow
  */
 export function getAllowancePendingStop(period: string): Promise<AllowanceLedger[]> {
   return ipdGet<AllowanceLedger[]>('/allowance/pending-stop', { period });
+}
+
+/**
+ * 月度自动扫描（仅超管）。
+ *
+ * ✅ W4-D 已交付：`POST /api/v1/allowance/auto-scan`（AllowanceLedgerService.autoScan）。
+ * 权限：SUPER_ADMIN（ipdPermission.requireAdmin() 兜底，不挂注解）。
+ */
+export function triggerAllowanceAutoScan(period: string, projectId?: string): Promise<void> {
+  const query = projectId ? { period, projectId } : { period };
+  return ipdPost<unknown>('/allowance/auto-scan', undefined, query).then(() => undefined);
 }
