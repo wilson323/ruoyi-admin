@@ -7,12 +7,12 @@
  */
 import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { Alert, Button, Spin } from 'ant-design-vue';
+import { Alert, Button, Card, Spin } from 'ant-design-vue';
 
 import { PENDING_TEXT, formatDate } from '../../_shared/format';
 import { ipdApiErrorText } from '../../../../api/ipd/ai-document';
 import { IpdRequestError } from '../../../../api/ipd/auth';
-import { ipdGet } from '../../../../api/ipd/http';
+import { getProject, type Project } from '../../../../api/ipd/project';
 
 interface ProjectSummary {
   code: null | string;
@@ -63,22 +63,20 @@ const activeKey = computed(() => {
   return segments[segments.length - 1] ?? 'overview';
 });
 
-function parseProject(data: unknown): ProjectSummary {
-  const record = data !== null && typeof data === 'object' && !Array.isArray(data)
-    ? (data as Record<string, unknown>)
-    : null;
-  if (!record || !/^\d+$/.test(String(record.id ?? ''))) {
+/** 经 api 层归一化（单查真机平铺 2026-09-11 实证；包裹漂移同样兼容）。 */
+function toSummary(project: Project): ProjectSummary {
+  if (!/^\d+$/.test(project.id)) {
     throw new IpdRequestError('项目数据格式异常，请稍后重试');
   }
   return {
-    code: typeof record.code === 'string' ? record.code : null,
-    currentStage: typeof record.currentStage === 'string' ? record.currentStage : null,
-    id: String(record.id),
-    launchDate: typeof record.launchDate === 'string' ? record.launchDate.replace(' ', 'T') : null,
-    level: typeof record.level === 'string' ? record.level : null,
-    lifecycleStatus: typeof record.lifecycleStatus === 'string' ? record.lifecycleStatus : null,
-    name: typeof record.name === 'string' ? record.name : null,
-    status: typeof record.status === 'string' ? record.status : null,
+    code: project.code,
+    currentStage: project.currentStage,
+    id: project.id,
+    launchDate: typeof project.launchDate === 'string' ? project.launchDate.replace(' ', 'T') : null,
+    level: project.level,
+    lifecycleStatus: project.lifecycleStatus,
+    name: project.name || null,
+    status: project.status,
   };
 }
 
@@ -86,7 +84,7 @@ async function loadProject() {
   loading.value = true;
   loadError.value = null;
   try {
-    project.value = parseProject(await ipdGet<unknown>(`/projects/${projectId.value}`));
+    project.value = toSummary(await getProject(projectId.value));
   } catch (cause) {
     project.value = null;
     loadError.value = ipdApiErrorText(cause, '项目信息加载失败，请稍后重试');

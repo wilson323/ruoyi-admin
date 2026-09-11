@@ -47,7 +47,7 @@ import {
   rejectAiDocumentVersion,
   reviewAiDocumentVersion,
 } from '../../../api/ipd/ai-document';
-import { ipdGet } from '../../../api/ipd/http';
+import { listProjects } from '../../../api/ipd/project';
 import { IPD_PERMISSION_CODES } from '../_shared/ipd-permission-codes';
 
 interface ProjectOption {
@@ -110,24 +110,16 @@ function tokenModel(key: 'tokenCompletion' | 'tokenPrompt') {
   });
 }
 
-function parseProjects(data: unknown): ProjectOption[] {
-  if (!Array.isArray(data)) throw new Error('项目列表数据格式异常');
-  return data.map((item) => {
-    const record = item !== null && typeof item === 'object' ? (item as Record<string, unknown>) : {};
-    if (!/^\d+$/.test(String(record.id ?? ''))) throw new Error('项目列表数据格式异常');
-    return {
-      code: typeof record.code === 'string' ? record.code : null,
-      id: String(record.id),
-      name: typeof record.name === 'string' ? record.name : null,
-    };
-  });
-}
-
 async function loadProjects() {
   projectsLoading.value = true;
   projectsError.value = null;
   try {
-    projects.value = parseProjects(await ipdGet<unknown>('/projects'));
+    // 经 api 层 normalizeProject 统一解包（真机行是 {project:{...}} 包裹，2026-09-07 实证）。
+    projects.value = (await listProjects()).map((project) => ({
+      code: project.code,
+      id: project.id,
+      name: project.name || null,
+    }));
   } catch (cause) {
     projects.value = [];
     projectsError.value = ipdApiErrorText(cause, '项目列表加载失败，请稍后重试');

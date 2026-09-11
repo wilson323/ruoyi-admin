@@ -20,7 +20,14 @@ const envelope = (data: unknown, status = 200, code = 0) =>
     { status, headers: { 'Content-Type': 'application/json' } },
   );
 
-const projectsFixture = [{ id: '100', code: 'IPD-DEMO', name: '演示项目' }];
+// 真机契约：GET /projects 行是 {project:{...}} 包裹（api/ipd/project.ts normalizeProject 解包）；
+// 勿改回扁平行——扁平 fixture 会掩盖页面绕过归一化直读 record.id 的缺陷。
+const projectsFixture = [
+  {
+    lastActivityAt: 1789147147000,
+    project: { id: '100', code: 'IPD-DEMO', name: '演示项目' },
+  },
+];
 
 const docFixture = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   content: '正文',
