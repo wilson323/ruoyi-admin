@@ -320,3 +320,43 @@ describe('P4-2.3 diff 视图：字段级 diff 按钮 + Drawer 渲染', () => {
     wrapper.unmount();
   });
 });
+
+/**
+ * 回归 2026-09-10：AI 文档助手项目列表加载失败（/projects 包络解析错位）。
+ * 旧实现自造 parseProjects 读顶层 record.id，遇到真机 ProjectListItemView
+ * 包络 {project:{...}, lastActivityAt} 解析必错 → 页面恒显「项目列表加载失败」。
+ * 修复后走 api/ipd/project.ts#listProjectItems（normalizeProject 已处理包络
+ * 解包，单一事实源）。本组测试锁定 fixture 形态与解析路径，防止再度漂移。
+ * 反思报告：docs/反思-ai-docs-bug-20260911.md
+ */
+describe('项目列表加载（回归 2026-09-10：/projects 返回 ProjectListItemView 包络）', () => {
+  it('包络形状 {project:{id,code,name}, lastActivityAt} 正常解析，不出现「项目列表加载失败」', async () => {
+    const fetcher = vi.fn();
+    fetcher.mockResolvedValueOnce(envelope(projectsFixture));
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mount(AiDocs, {
+      global: { plugins: [router] },
+      attachTo: document.body,
+    });
+    await flushPromises();
+    expect(wrapper.html(), '包络结构必须解析成功，不得出现加载失败提示').not.toContain('项目列表加载失败');
+    wrapper.unmount();
+  });
+
+  it('fixture 形态锁定为包络结构：防止后续开发者「清理」成裸平铺', () => {
+    // 真机 GET /projects 返回 ProjectListItemView 包络
+    // {project:{...}, lastActivityAt, scenarioDaysRemaining, critical}——
+    // fixture 必须复现此形态，单测才能拦住「页面绕过归一化直读 record.id」的回归。
+    expect(Array.isArray(projectsFixture), 'fixture 应是数组').toBe(true);
+    expect(projectsFixture.length, 'fixture 至少 1 项').toBeGreaterThan(0);
+    const first = projectsFixture[0] as Record<string, unknown>;
+    expect(first, 'fixture 行必须有 project 子对象（包络形态）').toHaveProperty('project');
+    expect(first, 'fixture 行必须有 lastActivityAt 字段').toHaveProperty('lastActivityAt');
+    const project = first.project as Record<string, unknown>;
+    expect(project, 'project 子对象必须有 id/code/name 三个字段').toMatchObject({
+      code: expect.any(String),
+      id: expect.any(String),
+      name: expect.any(String),
+    });
+  });
+});

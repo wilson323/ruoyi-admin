@@ -47,7 +47,7 @@ import {
   rejectAiDocumentVersion,
   reviewAiDocumentVersion,
 } from '../../../api/ipd/ai-document';
-import { listProjects } from '../../../api/ipd/project';
+import { listProjectItems } from '../../../api/ipd/project';
 import { IPD_PERMISSION_CODES } from '../_shared/ipd-permission-codes';
 
 interface ProjectOption {
@@ -114,11 +114,15 @@ async function loadProjects() {
   projectsLoading.value = true;
   projectsError.value = null;
   try {
-    // 经 api 层 normalizeProject 统一解包（真机行是 {project:{...}} 包裹，2026-09-07 实证）。
-    projects.value = (await listProjects()).map((project) => ({
-      code: project.code,
-      id: project.id,
-      name: project.name || null,
+    // 走 listProjectItems（项目空间列表页同款封装，normalizeProject 已解包，单一事实源）；
+    // 2026-09-10 ai-docs bug 反思后强制规约：禁页面级自造 /projects 解析器。
+    // 取 id/code/name 三个字段，派生字段 critical/lastActivityAt/scenarioDaysRemaining
+    // 当前页未消费但接口兼容（ProjectListItem extends Project）。
+    const items = await listProjectItems();
+    projects.value = items.map((item) => ({
+      code: item.code,
+      id: item.id,
+      name: item.name,
     }));
   } catch (cause) {
     projects.value = [];

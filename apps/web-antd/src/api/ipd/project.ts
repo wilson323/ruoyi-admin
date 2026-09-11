@@ -4,7 +4,11 @@
  * path 不含 `/api/v1` 前缀（requestIpd 内部补齐）。
  *
  * 后端真值（G-04 以代码为准）：
- * - GET /projects?keyword= 返回裸 List<Project>，无分页；
+ * - GET /projects?keyword= 返回 ProjectListItemView 数组，每行形如
+ *   { project: Project, lastActivityAt, scenarioDaysRemaining, critical }
+ *   —— project 字段是真正的项目主体，外层派生字段用于 P1-9.2 场景复核倒计时；
+ *   normalizeProject 已处理包络解包（2026-09-07 实证，统一事实源，禁页面级
+ *   自造解析——2026-09-10 ai-docs bug 反思后强制规约，见 docs/反思-ai-docs-bug-20260911.md）；
  * - POST /projects 走 CODE-01 白名单 DTO，code/status/currentStage/source 服务端权威；
  * - targetMarkets 在后端是 JSON 数组字符串（'["SA","AE"]'），本模块对页面暴露 string[]、
  *   发送前 JSON.stringify；数值字段 Jackson 自动收 BigDecimal/Integer，日期传毫秒时间戳；
