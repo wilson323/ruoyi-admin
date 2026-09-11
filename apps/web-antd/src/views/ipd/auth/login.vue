@@ -82,7 +82,7 @@ async function submit() {
     form.password = '';
     const redirect = router.currentRoute.value.query.redirect;
     const target = typeof redirect === 'string' && redirect.startsWith('/ipd')
-      ? decodeURIComponent(redirect)
+      ? redirect
       : IPD_HOME;
     await router.replace(auth.mustChangePassword ? IPD_PASSWORD : target);
   } catch {

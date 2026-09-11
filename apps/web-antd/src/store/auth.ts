@@ -70,24 +70,11 @@ export const useAuthStore = defineStore('auth', () => {
           ),
         ).catch(() => null);
         if (rawLogin) {
-          ipdAuth.$patch({
-            credentials: {
-              accessToken: rawLogin.token,
-              accessExpiresAt: Date.now() + rawLogin.expiresIn * 1000,
-              refreshState: 'ready',
-            },
-            token: rawLogin.token,
-            identity: {
-              mustChangePwd: rawLogin.mustChangePwd,
-              person: rawLogin.person,
-              scope: rawLogin.scope,
-            },
-          });
-          sessionStorage.setItem('ruoyi-ipd.session', JSON.stringify({
-            accessToken: rawLogin.token,
-            accessExpiresAt: Date.now() + rawLogin.expiresIn * 1000,
-            refreshState: 'ready',
-          }));
+          // 2026-09-10 收口：统一走 ipd-auth store 的 adoptSession（内部 installSession
+          // 单点写 sessionStorage）。此前 $patch 私有 ref + 手写 sessionStorage 是双写源：
+          // 既触发 TS2769（credentials 不在 setup-store 的 $patch 类型内），
+          // 又可能造成两份持久化数据不同步。
+          ipdAuth.adoptSession(rawLogin);
         }
       } catch (e) { console.warn('[ipd-auth sync]', e); }
 
@@ -138,7 +125,7 @@ export const useAuthStore = defineStore('auth', () => {
         path: LOGIN_PATH,
         query: redirect
           ? {
-              redirect: encodeURIComponent(router.currentRoute.value.fullPath),
+              redirect: router.currentRoute.value.fullPath,
             }
           : {},
       });

@@ -172,7 +172,7 @@ export async function ipdNavigationGuard(to: RouteLocationNormalized, router: im
   if (!identity) {
     const destination = identityDestination(to.path, null);
     return destination === true ? true
-      : { path: destination, query: to.fullPath === IPD_HOME ? {} : { redirect: encodeURIComponent(to.fullPath) }, replace: true };
+      : { path: destination, query: to.fullPath === IPD_HOME ? {} : { redirect: to.fullPath }, replace: true };
   }
   if (identity.mustChangePwd || identity.scope === 'PASSWORD_CHANGE_REQUIRED') {
     return to.path === IPD_PASSWORD ? true : { path: IPD_PASSWORD, replace: true };
