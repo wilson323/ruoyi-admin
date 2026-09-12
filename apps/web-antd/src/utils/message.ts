@@ -1,5 +1,4 @@
 import { useAppConfig } from '@vben/hooks';
-import { useAccessStore } from '@vben/stores';
 
 import { useEventSource, useWebSocket } from '@vueuse/core';
 
@@ -56,6 +55,22 @@ export function useWebSocketMessage() {
     console.warn('当前未开启websocket.');
     return;
   }
+  // 2026-09-11 启用（C2，三层休眠项解除）：
+  // ① 路径：后端 IpdWebSocketConfig 注册在 /api/v1/resource/websocket（IPD token 握手），
+  //    apiURL 已含 /api/v1（VITE_GLOB_API_URL=/api/v1），此处只拼 /resource/websocket；
+  //    vite 代理「/api/v1 开头不剥离」→ 原样转发到 16039 同路径。
+  // ② 票源：改用 IPD 会话 token（ipdAuthStore.token），后端 IpdHandshakeInterceptor
+  //    按 loginType=ipd 校验；不再用平台票（accessStore.accessToken）。
+  // ③ 握手 token 参数名是 token=（非 SSE 的 Authorization=Bearer 格式）——
+  //    IpdHandshakeInterceptor.QUERY_PARAM_TOKEN 只认 token 键。
+  // 通道分工（与 SSE 不重叠，无需幂等去重）：
+  //    SSE=聊天/AI/工作流消息（chat 模块推送）；WS=IPD 业务通知（NotificationDispatcher → WEBSOCKET 通道）。
+  const ipdAuthStore = useIpdAuthStore();
+  const token = ipdAuthStore.token;
+  if (!token) {
+    console.warn('IPD 会话未就绪，暂不建立 WebSocket 连接。');
+    return;
+  }
   let apiUrlStr = String(apiURL);
   /**
    * 这里可能有两种情况 兼容dev模式的proxy或者prod模式但是没有用全路径比如http://xxx/xxx
@@ -67,16 +82,8 @@ export function useWebSocketMessage() {
     // 协议+域名
     apiUrlStr = `${window.location.protocol}//${window.location.host}${apiURL}`;
   }
-  const accessStore = useAccessStore();
-  const token = accessStore.accessToken;
   // 这里是http链接形式
-  // ⚠️ 开启前必读（2026-09-11 休眠项登记，当前 websocketEnable=false 不生效）：
-  // ① 路径：后端 WebSocketConfig 注册在根路径 /resource/websocket（websocket.path 配置），
-  //    而 apiUrlStr 含 apiURL(/api/v1) → 拼出 /api/v1/resource/websocket 会 404；
-  //    开启时须改为「平台前缀 + /resource/websocket」并保证 vite/nginx 吞 /api 后命中。
-  // ② 票源：当前用平台票（accessStore.accessToken）；若后端开启 IPD 校验须换 ipdAuthStore.token。
-  // ③ 通道分工：IPD 通知已走 SSE（useSseMessage），WS 若开启需先定双通道幂等/去重策略。
-  let websocketAddr = `${apiUrlStr}/resource/websocket?clientid=${clientId}&Authorization=Bearer ${token}`;
+  let websocketAddr = `${apiUrlStr}/resource/websocket?token=${token}`;
   // http/https处理
   websocketAddr = window.location.protocol.includes('https')
     ? websocketAddr.replace('https://', 'wss://')
@@ -90,7 +97,8 @@ export function useWebSocketMessage() {
       // 重连间隔
       delay: 1000,
       onFailed() {
-        console.error('websocket重连失败.');
+        // 与 SSE 一致：会话过期属预期状态，由认证流程接管——不用 console.error 打红字。
+        console.info('[WS] 重连未成功（会话可能已过期，重新登录后自动恢复）。');
       },
     },
     heartbeat: {
@@ -101,10 +109,10 @@ export function useWebSocketMessage() {
       pongTimeout: 2000,
     },
     onConnected() {
-      console.info('websocket已经连接');
+      console.info('[WS] ipd_websocket 已连接');
     },
     onDisconnected() {
-      console.warn('websocket已经断开');
+      console.warn('[WS] ipd_websocket 已断开');
     },
   });
 
