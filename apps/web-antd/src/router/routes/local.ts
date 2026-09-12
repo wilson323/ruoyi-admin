@@ -22,41 +22,12 @@ const localRoutes: RouteRecordStringComponent[] = [
 
 /**
  * 这里放本地路由
+ *
+ * 2026-09-12 移除 Dashboard（/ + /analytics + /workspace）段：vben 模板 demo 遗留，
+ * 后端菜单模式下菜单里从未出现过；且 modules/dashboard.ts 静态注册的 /analytics
+ * 不在 Root 布局树下，直达即「全屏」裸页（无侧栏/顶栏），已连带删除。
  */
 export const localMenuList: RouteRecordStringComponent[] = [
-  {
-    component: 'BasicLayout',
-    meta: {
-      order: -1,
-      title: 'page.dashboard.title',
-      // 不使用基础布局（仅在顶级生效）
-      noBasicLayout: true,
-    },
-    name: 'Dashboard',
-    path: '/',
-    redirect: '/analytics',
-    children: [
-      {
-        name: 'Analytics',
-        path: '/analytics',
-        component: '/dashboard/analytics/index',
-        meta: {
-          icon: 'lucide:book-open-text',
-          affixTab: true,
-          title: 'page.dashboard.analytics',
-        },
-      },
-      {
-        name: 'Workspace',
-        path: '/workspace',
-        component: '/dashboard/workspace/index',
-        meta: {
-          icon: 'icon-park-outline:workbench',
-          title: 'page.dashboard.workspace',
-        },
-      },
-    ],
-  },
   // {
   //   component: '/_core/about/index',
   //   meta: {

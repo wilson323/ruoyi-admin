@@ -2,7 +2,7 @@ import { createApp, watchEffect } from 'vue';
 
 import { registerAccessDirective } from '@vben/access';
 import { registerLoadingDirective } from '@vben/common-ui/es/loading';
-import { preferences } from '@vben/preferences';
+import { preferences, updatePreferences } from '@vben/preferences';
 import { initStores } from '@vben/stores';
 import '@vben/styles';
 import '@vben/styles/antd';
@@ -18,6 +18,13 @@ import App from './app.vue';
 import { router } from './router';
 
 async function bootstrap(namespace: string) {
+  // 2026-09-12 修复：vben preferences 缓存优先级高于代码 overrides（initPreferences
+  // 内部 merge 是「缓存优先」语义），存量浏览器缓存里仍存着模板默认的
+  // defaultHomePath=/analytics（demo 页已删，直达即 404），代码里改 overrides
+  // 无法纠正——启动时强制覆盖一次；该键不在设置面板暴露，用户不可能自定义，
+  // 强制覆盖无副作用。updatePreferences 会把新值写回缓存，下次启动自不再需要。
+  updatePreferences({ app: { defaultHomePath: '/ipd/workbench' } });
+
   // 初始化组件适配器
   await initComponentAdapter();
 

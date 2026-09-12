@@ -13,6 +13,12 @@ export const overridesPreferences = defineOverridesPreferences({
      */
     accessMode: 'backend',
     /**
+     * 2026-09-12 修复：默认首页由模板残留的 /analytics（vben demo 页，路由不在
+     * Root 布局树下，logo/首页入口跳过去变成无侧栏顶栏的「全屏」裸页）改为
+     * IPD 工作台，与 core.ts Root.redirect 对齐。
+     */
+    defaultHomePath: '/ipd/workbench',
+    /**
      * 不需要refresh token 由后端处理
      */
     enableRefreshToken: false,
