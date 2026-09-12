@@ -35,7 +35,10 @@ export function useSseMessage() {
     autoReconnect: {
       delay: 1000,
       onFailed() {
-        console.error('sse重连失败.');
+        // 重连 3 次仍未成功：多为会话过期（/api/v1/resource/sse 返回 401）或网络异常。
+        // 会话过期属预期状态，由认证流程接管（重新登录后 SSE 自动恢复）——
+        // 不用 console.error 打红字（2026-09-11 消除误导性噪音，配合后端 401 语义修复）。
+        console.info('[SSE] 重连未成功（会话可能已过期，重新登录后自动恢复）。');
       },
       retries: 3,
     },
