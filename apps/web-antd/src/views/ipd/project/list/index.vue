@@ -31,6 +31,7 @@ import {
   catchupText,
   levelText,
   projectDateText,
+  projectDateTimeText,
   projectMoneyText,
   projectStatusColor,
   projectStatusText,
@@ -91,6 +92,7 @@ const columns = [
   { title: '来源', key: 'source', width: 100 },
   { title: '状态', key: 'status', width: 100 },
   { title: '上市日期', key: 'launchDate', width: 140 },
+  { title: '最后活跃', key: 'lastActivityAt', width: 160 },
   { title: '场景复核', key: 'scenario', width: 110 },
   { title: '操作', key: 'actions', width: 160 },
 ];
@@ -239,6 +241,12 @@ onMounted(load);
             <Tag :color="projectStatusColor(record.status)">{{ projectStatusText(record.status) }}</Tag>
           </template>
           <template v-else-if="column.key === 'launchDate'">{{ projectDateText(record.launchDate) }}</template>
+          <template v-else-if="column.key === 'lastActivityAt'">
+            <!-- P1-9.2 派生字段：最后活跃时间（max stage_action/kpi/gate_review update_time） -->
+            <span :class="record.critical ? 'text-red-500 font-semibold' : ''">
+              {{ projectDateTimeText(record.lastActivityAt) }}
+            </span>
+          </template>
           <template v-else-if="column.key === 'scenario'">
             <!-- P1-9.2：14 天场景复核倒计时；≤3 天 critical 红色告警 -->
             <template v-if="record.scenarioDaysRemaining === null">—</template>
