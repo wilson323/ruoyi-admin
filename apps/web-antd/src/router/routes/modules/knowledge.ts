@@ -12,7 +12,17 @@ const routes: RouteRecordRaw[] = [
     },
     name: 'KnowledgeBaseRoot',
     path: '/knowledge',
+    redirect: '/knowledge/info',
     children: [
+      {
+        name: 'KnowledgeInfo',
+        path: 'info',
+        component: () => import('#/views/knowledge/info/index.vue'),
+        meta: {
+          title: '知识库',
+          hideInMenu: true,
+        },
+      },
       {
         name: 'KnowledgeInfoDetail',
         path: 'info/detail/:id',

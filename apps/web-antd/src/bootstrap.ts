@@ -12,6 +12,18 @@ import { useTitle } from '@vueuse/core';
 import { setupGlobalComponent } from '#/components/global';
 import { $t, setupI18n } from '#/locales';
 
+// 2026-09-18: 把 iconify 默认 CDN（api.iconify.design / simplesvg / unisvg）切到
+// vite dev 中间件 `/iconify-api/{prefix}.json`，本仓 pnpm 已装 @iconify/json@2.2.417，
+// 中间件从 node_modules/@iconify/json/json 读取 SVG 数据；浏览器不再请求外网 CDN，
+// 控制台 net::ERR_CONNECTION_CLOSED 24 条 → 0。dev only，生产环境走 Nginx 静态资源或
+// 保留默认 CDN。addAPIProvider 由 @vben-core/icons 重新导出，避免直引 @iconify/vue
+// 触发 tsconfig path 缺失。
+import { addAPIProvider } from '@vben/icons';
+addAPIProvider('', {
+  resources: ['/iconify-api'],
+  path: '/',
+});
+
 import { initComponentAdapter } from './adapter/component';
 import { initSetupVbenForm } from './adapter/form';
 import App from './app.vue';
@@ -24,6 +36,13 @@ async function bootstrap(namespace: string) {
   // 无法纠正——启动时强制覆盖一次；该键不在设置面板暴露，用户不可能自定义，
   // 强制覆盖无副作用。updatePreferences 会把新值写回缓存，下次启动自不再需要。
   updatePreferences({ app: { defaultHomePath: '/ipd/workbench' } });
+
+  // 2026-09-18：同上，localStorage 里缓存了旧 defaultAvatar
+  // = https://unpkg.com/@vbenjs/static-source@0.1.7/source/avatar-v1.webp
+  // （unpkg 出口不可达，浏览器 ERR_CONNECTION_CLOSED）。代码层
+  // packages/@core/preferences/src/config.ts 已改 /avatar-v1.png，但缓存优先覆盖，
+  // 启动时再强制写一次；头像源仅仓库 owner 控制，用户设置面板不能改，安全。
+  updatePreferences({ app: { defaultAvatar: '/avatar-v1.png' } });
 
   // 初始化组件适配器
   await initComponentAdapter();

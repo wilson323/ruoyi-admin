@@ -16,7 +16,9 @@ const defaultPreferences: Preferences = {
     contentPaddingRight: 0,
     contentPaddingTop: 0,
     defaultAvatar:
-      'https://unpkg.com/@vbenjs/static-source@0.1.7/source/avatar-v1.webp',
+      // 2026-09-18：unpkg CDN 不可达，改用 apps/web-antd/public/avatar-v1.png
+      // （64x64 RGBA 占位图，灰底，详见 apps/web-antd/public/avatar-v1.png）。
+      '/avatar-v1.png',
     defaultHomePath: '/analytics',
     dynamicTitle: true,
     enableCheckUpdates: true,

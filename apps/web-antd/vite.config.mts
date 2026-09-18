@@ -1,5 +1,27 @@
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { defineConfig } from '@vben/vite-config';
-import { resolve } from 'path';
+import { resolve as resolvePath } from 'path';
+
+const __vite_dirname = resolve(fileURLToPath(import.meta.url), '..');
+
+/**
+ * iconify 本地静态映射
+ *
+ * 2026-09-18：CDN 出口完全不可达（curl https://api.iconify.design → 超时），
+ * apps/web-antd 不直接依赖 @iconify/json，pnpm prune 会删 node_modules/@iconify/json。
+ * 把 8 个本仓实际用到的 prefix JSON 用 symlink 挂到 apps/web-antd/public/iconify-api/，
+ * vite 默认 public 目录自动 serve。前端 bootstrap 调用：
+ *   addAPIProvider('', { resources: ['/iconify-api'], path: '/' })
+ * 之后 @iconify/vue 拼出 /iconify-api/{prefix}.json?icons=...，
+ * 浏览器不再请求 api.iconify.design / simplesvg / unisvg / unpkg。
+ *
+ * 已知 prefix 清单（实测 console 报错聚合）：lucide / material-symbols / mdi / carbon /
+ * solar / system-uicons / tabler / octicon。如发现新 prefix 需要增补。
+ */
+// 2026-09-18：apps/web-antd 不直接依赖 @iconify/json，pnpm prune 会删 node_modules/@iconify/json。
+// 不再走 iconifyDir 变量路径，改用 apps/web-antd/public/iconify-api/ symlink 方式（见下方注释）。
 
 // 自行取消注释来启用按需导入功能
 // import { AntDesignVueResolver } from 'unplugin-vue-components/resolvers';
@@ -63,6 +85,7 @@ export default defineConfig(async () => {
         //   ],
         // }),
       ],
+      publicDir: 'public',
       server: {
         host: '127.0.0.1',
         port: 15666,
@@ -85,7 +108,13 @@ export default defineConfig(async () => {
           // 显示「Failed to load resource: 404」。生产 Nginx 走默认 server_name 转发，
           // dev 环境必须显式声明。target 同后端端口；目标端点不存在时后端返回 4xx
           // （业务错误，非资源加载失败，浏览器 console 标记不同）。
-          '/auth': {
+          // 2026-09-18 精确化：仅 POST /auth/logout（Sa-Token 平台会话退出）走代理。
+          // SPA 整页导航路径 /auth/login（已被别名 /login 取代，几乎不会整页访问）、
+          // /auth/register /forget-password /code-login /qrcode-login /change-password
+          // 都是 Vue Router 注册的前端页面，GET 不应被代理吞，否则后端返回 405 JSON
+          // 被浏览器当 HTML 渲染（实测 visit /auth/register 显示 `{"code":405,...}`）。
+          // 用 bypass 排除这些路径，让 Vite SPA index.html 接管。
+          '/auth/logout': {
             changeOrigin: true,
             target: 'http://127.0.0.1:16039',
           },
