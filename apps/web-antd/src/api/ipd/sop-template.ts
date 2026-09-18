@@ -10,8 +10,8 @@
  * - 发布只影响此后实例化的项目，在研项目保持原版本（AC-IPD-27）。
  * - ID 一律按字符串处理（Long 序列化可能为数字，这里归一化为字符串）。
  *
- * ⚠️ 2026-09-10 HTTP 真活验证发现 copy/update/publish/revert 4 个写接口后端路由缺失，
- * 本文件暂时把这 4 个函数 stub 为 reject，等后端补 controller 后再恢复真实调用。
+ * ✅ 2026-09-17 契约对齐：SopTemplateController 已交付 8 端点（list / current / get / copy / update / publish / revert / instantiate / instances），
+ * 本文件 9 函数均已对齐真活路径；R27 P0-4 已闭环（commit 7175b90e 反思报告抽样实证）。
  */
 import { ipdGet, ipdPost } from './http';
 
