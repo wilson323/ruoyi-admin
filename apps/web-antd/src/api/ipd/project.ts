@@ -214,13 +214,62 @@ export function listProjectItems(keyword?: string): Promise<ProjectListItem[]> {
   );
 }
 
+/**
+ * 业务编号 → 数字主键 缓存与翻译器。
+ *
+ * 后端 @PathVariable Long id 期望雪花 ID（数字串），但页面/路由常承载业务编号
+ * （形如 "PRJ-2026-001"）。getProject / listStageActions 等端点内部若直接拼
+ * 业务编号会触发 Spring MethodArgumentTypeMismatchException → 500。
+ *
+ * 自适配策略（保守三层判别，避免误判测 试占位符/异常值）：
+ * - 纯数字串 → 雪花 id，直传；
+ * - 长度 < 5 或仅字母单字 → 非业务编号形态（如 'x' / 'ab'），直传（后端 404/500 由调用方 catch）；
+ * - 其他（含 'PRJ-2026-001' / 形如 'AAAA-2026-NNN'） → 业务编号，走 listProjects 模糊查询。
+ *
+ * 缓存按 code 维度，避免同一会话重复打后端。
+ */
+const codeToIdCache = new Map<string, string>();
+
+/** 纯数字串 → 视为已为数字主键，直接透传。 */
+function looksLikeProjectId(value: string): boolean {
+  return /^\d+$/.test(value);
+}
+
+/**
+ * 是否像业务编号：长度 ≥ 5 且不是纯数字。覆盖 'PRJ-2026-001' 这类典型形态，
+ * 同时避免 'x' / 'ab' / '99999' 这类短/纯数字误判为业务编号。
+ */
+function looksLikeProjectCode(value: string): boolean {
+  return value.length >= 5 && !looksLikeProjectId(value);
+}
+
+/** 业务编号 → 数字主键。命中缓存直返；否则调 listProjects(keyword=code) 找首条。 */
+export async function codeToId(code: string): Promise<string> {
+  const cached = codeToIdCache.get(code);
+  if (cached) return cached;
+  const list = await listProjects(code);
+  const row = list.find((p) => p.code === code) ?? list[0];
+  if (!row || !row.id) {
+    throw new Error(`未找到业务编号 ${code} 对应的项目`);
+  }
+  codeToIdCache.set(code, row.id);
+  return row.id;
+}
+
 /** 项目列表（keyword 可选，服务端模糊匹配）。 */
 export function listProjects(keyword?: string): Promise<Project[]> {
   return ipdGet<unknown>('/projects', keyword ? { keyword } : undefined)
     .then((data) => (Array.isArray(data) ? data.map(normalizeProject) : []));
 }
 
-export function getProject(id: string): Promise<Project> {
+/**
+ * 项目详情（idOrCode 自适配）：
+ * - 纯数字串视为雪花 id，直接走 GET /projects/{id}（后端 @PathVariable Long id）；
+ * - 其他值（含业务编号）走 codeToId 翻译成 id 后再请求；
+ *   - 调用方传 'PRJ-2026-001' 也能正确命中项目，浏览器流页因此可恢复。
+ */
+export async function getProject(idOrCode: string): Promise<Project> {
+  const id = looksLikeProjectCode(idOrCode) ? await codeToId(idOrCode) : idOrCode;
   return ipdGet<unknown>(`/projects/${encodeURIComponent(id)}`).then(normalizeProject);
 }
 

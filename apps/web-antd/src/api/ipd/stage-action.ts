@@ -15,8 +15,12 @@
  * - D11 FAR+FRR ≤ 1.000000（系统参数可配）；后端 40001 触发。
  * - V02 certNo 格式正则 ^[A-Za-z0-9\-/]+$；后端 10001 触发。
  * - P10/V02 阻断性动作：/transit?target=DONE 前 /fields 必须含 certNo+certPassedAt；不通过则 40001。
+ *
+ * 业务编号自适配：路由/页面常承载业务编号（"PRJ-2026-001"），但后端 @RequestParam Long
+ * projectId 期望雪花 id。listStageActions 内部走 project.codeToId 翻译；调用方零改动。
  */
 import { ipdGet, ipdPost } from './http';
+import { codeToId } from './project';
 
 /** 管理类型 BR-IPD-03/04；stageActionService.transit 按 depth 分支校验。 */
 export type StageActionDepth = 'DEEP' | 'LIGHT' | string;
@@ -138,8 +142,16 @@ function fieldsToBody(body: StageActionFieldsBody): Record<string, unknown> {
   };
 }
 
-/** 阶段动作列表（GET /api/v1/stage-actions?projectId=）。后端无单查端点，按 id 客户端筛。 */
-export function listStageActions(projectId: string): Promise<StageAction[]> {
+/** 阶段动作列表（GET /api/v1/stage-actions?projectId=）。后端无单查端点，按 id 客户端筛。
+ *
+ * projectIdOrCode 自适配：纯数字串视为雪花 id 直传；其他值（含业务编号）走
+ * project.codeToId 翻译成 id 后再请求。调用方传 route.params.projectId
+ * (业务编号 "PRJ-2026-001") 也能正确命中后端，避免 type mismatch 500。
+ */
+export async function listStageActions(projectIdOrCode: string): Promise<StageAction[]> {
+  const projectId = projectIdOrCode.length >= 5 && !/^\d+$/.test(projectIdOrCode)
+    ? await codeToId(projectIdOrCode)
+    : projectIdOrCode;
   return ipdGet<unknown>('/stage-actions', { projectId }).then(normalizeActionList);
 }
 
