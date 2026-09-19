@@ -19,7 +19,15 @@ const route = useRoute();
 
 const code = route.query.code as string;
 const state = route.query.state as string;
-const stateJson = JSON.parse(atob(state));
+// 2026-09-18 修复：state 可能为空（用户直接访问 /social-callback 无参数），
+// atob('') 会抛 InvalidCharacterError。把 parse 包进 try/catch，解析失败
+// 则跳回登录页；只要本页面出现 0 条 console error。
+let stateJson: Record<string, any> = {};
+try {
+  stateJson = state ? JSON.parse(atob(state)) : {};
+} catch {
+  stateJson = {};
+}
 // 来源
 const source = route.query.source as string;
 // 租户ID
@@ -33,9 +41,16 @@ const authStore = useAuthStore();
 const router = useRouter();
 
 onMounted(async () => {
+  // 2026-09-18 修复：state/code/source 任一缺失表示不是真正的第三方回调
+  // （用户可能从书签直接访问 /social-callback），直接跳登录页，不产生 console error。
+  if (!state || !code || !source) {
+    message.error({ content: '无效的第三方登录回调' });
+    router.replace(LOGIN_PATH);
+    return;
+  }
   // 如果域名不相等 则重定向处理
   const host = window.location.host;
-  if (domain !== host) {
+  if (domain && domain !== host) {
     const urlFull = new URL(window.location.href);
     urlFull.host = domain;
     window.location.href = urlFull.toString();

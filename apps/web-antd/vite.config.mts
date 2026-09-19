@@ -118,6 +118,15 @@ export default defineConfig(async () => {
             changeOrigin: true,
             target: 'http://127.0.0.1:16039',
           },
+          // 2026-09-18：/monitor/Admin 页面 iframe 嵌入 snailjob 控制台，
+          // 原写死 src="http://localhost:9090/admin/applications" 产生 cross-origin
+          // 加载失败 + console ERROR。代理 /snailjob-admin → 127.0.0.1:9090 后 iframe
+          // 走 same-origin，浏览器不会记录"Failed to load resource"为 console error。
+          '/snailjob-admin': {
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/snailjob-admin/, ''),
+            target: 'http://127.0.0.1:9090',
+          },
         },
       },
       preview: {
