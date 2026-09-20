@@ -152,7 +152,12 @@ onMounted(async () => {
           所有跨项目、跨角色待办都在这里接力；必须进入业务详情查看上下文后办理。
         </p>
       </div>
-      <button type="button" class="ipd-wb-continue">
+      <button
+        type="button"
+        class="ipd-wb-continue"
+        :disabled="!currentAdvance"
+        @click="currentAdvance && $router.push(currentAdvance.deepLink).catch(() => {})"
+      >
         继续当前IPD动作
       </button>
     </div>
