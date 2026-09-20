@@ -1,10 +1,11 @@
-import { resolve } from 'node:path';
+
+;
 import { fileURLToPath } from 'node:url';
 
 import { defineConfig } from '@vben/vite-config';
 import { resolve as resolvePath } from 'path';
 
-const __vite_dirname = resolve(fileURLToPath(import.meta.url), '..');
+const __vite_dirname = resolvePath(fileURLToPath(import.meta.url), '..');
 
 /**
  * iconify 本地静态映射
@@ -42,11 +43,11 @@ export default defineConfig(async () => {
 
           // 如果当前目录包含 /apps/web-antd，则向上两级到 ruoyi-admin
           if (normalizedPath.includes('/apps/web-antd')) {
-            return resolve(cwd, '../..');
+            return resolvePath(cwd, '../..');
           }
           // 如果当前目录包含 /apps，则向上一级到 ruoyi-admin
           else if (normalizedPath.includes('/apps')) {
-            return resolve(cwd, '..');
+            return resolvePath(cwd, '..');
           }
           // 否则返回当前目录
           else {
