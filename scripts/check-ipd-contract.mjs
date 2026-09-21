@@ -80,12 +80,15 @@ const broken = [];
 let gapHits = 0;
 const seen = new Set();
 for (const c of calls) {
-  const key = `${c.verb} ${norm(PREFIX + c.path)}`;
+  // R155-F 修：前端 ipdGet/ipdPost 调用 path 已含 /api/v1/（http.ts 不做 PREFIX 拼接），
+  // 无端再加 PREFIX 会产出 `/api/v1/api/v1/...` 双前缀假阳性。前端 path 走 norm(c.path)。
+  const key = `${c.verb} ${norm(c.path)}`;
   if (seen.has(key)) continue;
   seen.add(key);
   if (backendSet.has(key)) continue;
   if (gapSet.has(key)) {
     gapHits += 1;
+    // gap.path 不含 PREFIX（known-gaps 是后端控制器注解路径），仍走 norm(PREFIX + g.path) 对齐 gapSet
     const g = gaps.find((x) => `${x.method} ${norm(PREFIX + x.path)}` === key);
     console.log(`::warning::已知断裂(登记在案): ${key} — ${g?.reason ?? ''} (${c.file})`);
     continue;
