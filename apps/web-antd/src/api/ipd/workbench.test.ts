@@ -19,7 +19,8 @@ const envelope = (data: unknown, status = 200, code = 0): Response =>
   );
 
 const summaryFixture = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
-  stats: { pending: 5, overdue: 2, unread: 3, completed: 7 },
+  // P1-4: summaryFixture 默认 stats 含 myInitiated（默认 0；按需 overrides）
+  stats: { pending: 5, overdue: 2, unread: 3, completed: 7, myInitiated: 0 },
   tasks: [],
   deletionPending: 0,
   currentAdvance: null,
@@ -69,7 +70,8 @@ describe('workbench API — fetchWorkbenchSummary', () => {
       deepLink: '/ipd/projects/10/actions/1',
     };
     const fetcher = vi.fn().mockResolvedValue(envelope({
-      stats: { pending: 3, overdue: 1, unread: 4, completed: 2 },
+      // P1-4: 载荷透传验证追加 myInitiated 字段
+      stats: { pending: 3, overdue: 1, unread: 4, completed: 2, myInitiated: 6 },
       tasks: [
         {
           id: 't1', projectId: '10', projectName: 'Alpha', projectCode: 'P-001',
@@ -83,7 +85,8 @@ describe('workbench API — fetchWorkbenchSummary', () => {
     }));
     vi.stubGlobal('fetch', fetcher);
     const summary = await fetchWorkbenchSummary('10');
-    expect(summary.stats).toEqual({ pending: 3, overdue: 1, unread: 4, completed: 2 });
+    // P1-4: myInitiated 字段在 stats 中透传（不漂移）
+    expect(summary.stats).toMatchObject({ pending: 3, overdue: 1, unread: 4, completed: 2, myInitiated: 6 });
     expect(summary.tasks).toHaveLength(1);
     expect(summary.tasks[0]).toMatchObject({ id: 't1', title: '需求评审' });
     expect(summary.deletionPending).toBe(5);
@@ -108,6 +111,45 @@ describe('workbench API — fetchWorkbenchSummary', () => {
     // 防止误加 fetchWorkbenchTasks / postWorkbenchXxx 等动词面漂移；与 http.ts 契约一致。
     const moduleExports = Object.keys(await import('./workbench')).sort();
     expect(moduleExports).toEqual(['fetchWorkbenchSummary']);
+  });
+});
+
+describe('workbench API — P1-4 「我发起的」字段契约', () => {
+  it('stats 含 myInitiated 数字字段（默认 0，可选键）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({
+      stats: { pending: 1, overdue: 0, unread: 0, completed: 0, myInitiated: 9 },
+      tasks: [],
+      deletionPending: 0,
+      currentAdvance: null,
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    const summary = await fetchWorkbenchSummary();
+    expect(summary.stats.myInitiated).toBe(9);
+  });
+
+  it('旧后端不返 myInitiated 键 → 字段为 undefined（前端 ?? 0 兜底）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({
+      stats: { pending: 1, overdue: 0, unread: 0, completed: 0 },
+      tasks: [],
+      deletionPending: 0,
+      currentAdvance: null,
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    const summary = await fetchWorkbenchSummary();
+    expect(summary.stats.myInitiated).toBeUndefined();
+  });
+
+  it('零值边界：myInitiated=0 透传（非 null、非负数）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({
+      stats: { pending: 0, overdue: 0, unread: 0, completed: 0, myInitiated: 0 },
+      tasks: [],
+      deletionPending: 0,
+      currentAdvance: null,
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    const summary = await fetchWorkbenchSummary();
+    expect(summary.stats.myInitiated).toBe(0);
+    expect(summary.stats.myInitiated).not.toBeNull();
   });
 });
 

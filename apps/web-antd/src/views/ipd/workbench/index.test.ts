@@ -14,7 +14,8 @@ const envelope = (data: unknown, status = 200, code = 0): Response => new Respon
 );
 
 const fullSummary: WorkbenchSummary = {
-  stats: { pending: 5, overdue: 2, unread: 3, completed: 7 },
+  // P1-4: fullSummary.stats 加 myInitiated: 4（与既有四字段并列）
+  stats: { pending: 5, overdue: 2, unread: 3, completed: 7, myInitiated: 4 },
   tasks: [
     {
       id: '1', projectId: '10', projectName: 'Alpha 项目', projectCode: 'P-001',
@@ -38,7 +39,8 @@ const fullSummary: WorkbenchSummary = {
 };
 
 const emptySummary: WorkbenchSummary = {
-  stats: { pending: 0, overdue: 0, unread: 0, completed: 0 },
+  // P1-4: 空态也含 myInitiated: 0
+  stats: { pending: 0, overdue: 0, unread: 0, completed: 0, myInitiated: 0 },
   tasks: [],
   deletionPending: 0,
   currentAdvance: null,
@@ -199,11 +201,51 @@ describe('页03 我的工作台', () => {
     second.unmount();
   });
 
+  it('P1-4：「我发起的」tab 徽标接 stats.myInitiated，count=4 渲染「4」', async () => {
+    loginAs('MARKET_PM', '测试人员');
+    stubSummary(fullSummary);
+    const wrapper = mount(Workbench);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Alpha 项目'));
+    // 「我发起的」tab 应包含 count 徽标 4
+    const initiatedTab = wrapper.findAll('button[role="tab"]').find((b) => b.text().includes('我发起的'));
+    expect(initiatedTab).toBeDefined();
+    expect(initiatedTab!.text()).toContain('4');
+    // 「我的关注」tab 仍保持 null 不渲染徽标（无数据模型，用户拍板停在这里）
+    const followedTab = wrapper.findAll('button[role="tab"]').find((b) => b.text().includes('我的关注'));
+    expect(followedTab).toBeDefined();
+    // count 为 null 时不渲染 .ipd-wb-tab-count 徽标
+    const followedBadge = followedTab!.find('.ipd-wb-tab-count');
+    expect(followedBadge.exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('P1-4：旧后端无 myInitiated 字段 → 「我发起的」count 兜底 0，模板 v-if="t.count" 不渲染徽标', async () => {
+    loginAs('MARKET_PM', '测试人员');
+    // 模拟旧后端：stats 不含 myInitiated 字段
+    const legacy: WorkbenchSummary = {
+      stats: { pending: 1, overdue: 0, unread: 0, completed: 0 },
+      tasks: [],
+      deletionPending: 0,
+      currentAdvance: null,
+    };
+    stubSummary(legacy);
+    const wrapper = mount(Workbench);
+    await vi.waitFor(() => expect(metricValue(wrapper, '待我处理')).toBe('1'));
+    const initiatedTab = wrapper.findAll('button[role="tab"]').find((b) => b.text().includes('我发起的'));
+    expect(initiatedTab).toBeDefined();
+    // 与既有 pending/overdue/completed tab 一致：v-if="t.count" 只在 count>0 时渲染徽标
+    // 兜底 0 → 不渲染徽标（原文案「我发起的」后无数字），这是模板既有约定
+    const badge = initiatedTab!.find('.ipd-wb-tab-count');
+    expect(badge.exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it('WB-17-1 P0：deletion_review 任务卡按「删除审批」分组，desc 用 17 类字典文案，kind 显示待初审', async () => {
     loginAs('GROUP_LEADER', '组长甲');
     const summary: WorkbenchSummary = {
       ...fullSummary,
-      stats: { pending: 3, overdue: 0, unread: 0, completed: 0 },
+      // P1-4: 该测试主要验 taskType 分组,myInitiated 与本测试无关
+      stats: { pending: 3, overdue: 0, unread: 0, completed: 0, myInitiated: 0 },
       tasks: [
         fullSummary.tasks[0]!,
         {
