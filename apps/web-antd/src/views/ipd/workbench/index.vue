@@ -74,11 +74,12 @@ const queueTabs = computed<QueueTab[]>(() => {
   const s = summary.value?.stats;
   return [
     { key: 'pending', label: '待我处理', count: s ? s.pending : 0 },
-    // TODO(P4-3.1): 等聚合端点交付后恢复「我发起的」计数徽标
-    { key: 'initiated', label: '我发起的', count: null },
+    // P1-4: 「我发起的」接 stats.myInitiated（后端三表 create_by=当前人 计数）
+    // 旧后端（16039 未重启）缺 myInitiated 键时 ?? 0 兜底显示「0」徽标（不影响功能）
+    { key: 'initiated', label: '我发起的', count: s ? (s.myInitiated ?? 0) : 0 },
     { key: 'overdue', label: '临期/超期', count: s ? s.overdue : 0 },
     { key: 'completed', label: '已完成', count: s ? s.completed : 0 },
-    // TODO(P4-3.1): 等聚合端点交付后恢复「我的关注」计数徽标
+    // P1-4: 「我的关注」无关注数据模型（用户拍板：先不做），保持 null 隐藏徽标
     { key: 'followed', label: '我的关注', count: null },
   ];
 });

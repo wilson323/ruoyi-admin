@@ -15,6 +15,13 @@ export interface WorkbenchStats {
   overdue: number;
   unread: number;
   completed: number;
+  /**
+   * 「我发起的」计数（P1-4）：当前人在 deletion_requests / coefficient_change_requests /
+   * launch_date_change_requests 三表 create_by = 当前人的总数。
+   * 旧后端（16039 未重启）无此键时为 undefined；前端以 undefined 兜底 0。
+   * 计数一律 int 装箱：避免全局 Long→String 序列化把 Long 计数变字符串。
+   */
+  myInitiated?: number;
   /** 按类型计数（P1.4，设计 §5）：17 类 taskType key 预置 0；旧后端（16039 未重启）无此键，可选。 */
   pendingType?: Record<string, number>;
 }
