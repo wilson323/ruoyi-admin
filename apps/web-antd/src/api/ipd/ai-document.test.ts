@@ -8,6 +8,7 @@ import {
   getAiDocumentHistory,
   ipdApiErrorText,
   listAiDocumentVersions,
+  listAiDocumentsByProject,
   parseAiDocument,
   registerAiDocument,
   rejectAiDocumentVersion,
@@ -219,6 +220,34 @@ describe('AI 文档版本链接口', () => {
     await expect(getAiDocumentDiff('1', 'abc', '9007199254740994')).rejects.toThrow(IpdRequestError);
     await expect(getAiDocumentDiff('1', '9007199254740993', '')).rejects.toThrow(IpdRequestError);
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('listAiDocumentsByProject 走 GET /ai-documents?projectId=200，返回链头 v1 列表', async () => {
+    const fetcher = vi.fn().mockImplementation(() =>
+      Promise.resolve(response([
+        docFixture({ id: '9007199254740993', versionNo: 1, parentVersionId: null, projectId: '200' }),
+      ])),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const docs = await listAiDocumentsByProject(200);
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/ai-documents?projectId=200');
+    expect(docs).toHaveLength(1);
+    expect(docs[0]?.projectId).toBe('200');
+    expect(docs[0]?.versionNo).toBe(1);
+    expect(docs[0]?.parentVersionId).toBeNull();
+  });
+
+  it('listAiDocumentsByProject 字符串/数字项目 ID 都接受，非纯数字直接拒，不发请求', async () => {
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
+    await expect(listAiDocumentsByProject('abc')).rejects.toThrow(IpdRequestError);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('listAiDocumentsByProject 响应非数组抛错，不静默修补', async () => {
+    const fetcher = vi.fn().mockImplementation(() => Promise.resolve(response({ not: 'array' })));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(listAiDocumentsByProject(200)).rejects.toThrow(IpdRequestError);
   });
 
   it('diff 响应 fields 含非法 changeType 静默剔除，不抛错', async () => {
