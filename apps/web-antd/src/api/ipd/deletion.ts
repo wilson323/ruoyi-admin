@@ -1,9 +1,10 @@
 /**
- * 删除审核域 API（P0-6.x）：两级审核 + 撤回 + 归档区。
+ * 删除审核域 API（P0-6.x）：两级审核 + 撤回 + 归档区 + 我的申请 + 待我审核。
  *
  * 端点均挂在 /api/v1/deletion-requests（前缀由 requestIpd 统一补齐）：
  * - 决策端点（leader-decision / admin-decision）的 approve/opinion 是查询参数，无请求体；
- * - 「我的申请 / 待我审核」列表查询端点后端未交付，页面以发起表单、按编号决策与归档区呈现；
+ * - P1-1（R25 真白屏修复）：新增「我的申请 / 待我审核」列表查询端点
+ *   （my-requests / review-queue），页面不再手填申请编号；
  * - 24h 撤回窗口（BR-DEL-04 / AC-DEL-06）由前端按 createTime 计算。
  */
 import { ipdGet, ipdPost } from './http';
@@ -63,6 +64,33 @@ export function leaderDecideDeletion(id: string, approve: boolean, opinion?: str
 
 export function adminDecideDeletion(id: string, approve: boolean, opinion?: string): Promise<DeletionRequest> {
   return ipdPost(`/deletion-requests/${id}/admin-decision`, undefined, { approve, opinion });
+}
+
+/**
+ * P1-1（R25 真白屏修复）：「我的申请」列表。
+ * <p>GET /api/v1/deletion-requests/my-requests —— 当前会话人作为申请人发起的全部删除申请
+ * （含 LEADER_REVIEW / ADMIN_REVIEW / REJECTED / WITHDRAWN / DELETED 全状态，按创建时间倒序）。
+ * 服务端基于 actor.id() 权威过滤，前端不再手填申请 ID。
+ *
+ * @returns 我的申请列表（可能为空）
+ */
+export function listMyDeletionRequests(): Promise<DeletionRequest[]> {
+  return ipdGet('/deletion-requests/my-requests');
+}
+
+/**
+ * P1-1（R25 真白屏修复）：「待我审核」列表。
+ * <p>GET /api/v1/deletion-requests/review-queue —— 服务端按当前会话人角色分流：
+ * <ul>
+ *   <li>组长 (GROUP_LEADER) → 待初审申请（LEADER_REVIEW）</li>
+ *   <li>超管 (SUPER_ADMIN) → 待终审申请（ADMIN_REVIEW）</li>
+ *   <li>其他内部角色 → 空集</li>
+ * </ul>
+ *
+ * @returns 待我审核列表（可能为空）
+ */
+export function listDeletionReviewQueue(): Promise<DeletionRequest[]> {
+  return ipdGet('/deletion-requests/review-queue');
 }
 
 export function listDeletionArchive(): Promise<DeletionRequest[]> {

@@ -1,5 +1,6 @@
 /**
- * 删除审核域 API 契约测试：端点路径、决策查询参数、请求体白名单、24h 撤回窗口。
+ * 删除审核域 API 契约测试：端点路径、决策查询参数、请求体白名单、24h 撤回窗口、
+ * P1-1 列表端点（my-requests / review-queue）。
  */
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +11,8 @@ import {
   escalateOverdueLeaderReview,
   leaderDecideDeletion,
   listDeletionArchive,
+  listDeletionReviewQueue,
+  listMyDeletionRequests,
   submitDeletionRequest,
   withinWithdrawWindow,
   withdrawDeletionRequest,
@@ -72,6 +75,44 @@ describe('deletion request API contract', () => {
       '/api/v1/deletion-requests/archive',
       '/api/v1/deletion-requests/escalate-overdue',
     ]);
+  });
+
+  // P1-1（R25 真白屏修复）：新增 my-requests / review-queue 两个 GET 端点 URL 同步契约。
+  it('exposes listMyDeletionRequests as GET /deletion-requests/my-requests', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      envelope([
+        { id: '9001', entityType: 'products', entityId: '42', status: 'LEADER_REVIEW' },
+        { id: '9002', entityType: 'projects', entityId: '7', status: 'DELETED' },
+      ]),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const rows = await listMyDeletionRequests();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(url).toBe('/api/v1/deletion-requests/my-requests');
+    expect(init.method).toBe('GET');
+    expect((init as RequestInit).body).toBeUndefined();
+    // data 解包正确：列表透传
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.id).toBe('9001');
+    expect(rows[1]!.status).toBe('DELETED');
+  });
+
+  it('exposes listDeletionReviewQueue as GET /deletion-requests/review-queue', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      envelope([
+        { id: '11', entityType: 'products', entityId: '33', status: 'LEADER_REVIEW' },
+      ]),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const rows = await listDeletionReviewQueue();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(url).toBe('/api/v1/deletion-requests/review-queue');
+    expect(init.method).toBe('GET');
+    expect((init as RequestInit).body).toBeUndefined();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe('LEADER_REVIEW');
   });
 });
 
