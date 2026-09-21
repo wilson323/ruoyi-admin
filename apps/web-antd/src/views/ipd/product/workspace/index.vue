@@ -91,6 +91,13 @@ function openProject(projectId: string) {
   router.push(`/ipd/projects/${projectId}/overview`).catch(() => {});
 }
 
+/** 顶部“产品管理”按钮的导航带 catch 兜底（避免 router.push 未捕获 reject 打坏 SPA）。 */
+function navTo(path: string): void {
+  router.push(path).catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
+}
+
 const heroMetrics = computed(() => [
   { label: '原始反馈', value: data.value?.metrics.feedback ?? 0 },
   { label: '需求主题', value: data.value?.metrics.themes ?? 0 },
@@ -117,7 +124,7 @@ onMounted(() => {
             {{ p.modelCode ?? p.productCode }} · {{ p.productName }}
           </option>
         </select>
-        <button class="ipd-pw-manage-link" type="button" @click="router.push('/ipd/products/manage')">
+        <button class="ipd-pw-manage-link" type="button" @click="navTo('/ipd/products/manage')">
           产品管理
         </button>
       </div>

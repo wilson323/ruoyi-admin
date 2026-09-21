@@ -104,7 +104,9 @@ async function transit(target: ProjectStatus, label: string): Promise<void> {
 
 /** G-02：全站唯一删除入口收敛到删除申请页，带预填 query。 */
 function gotoDeletion(): void {
-  router.push({ path: '/ipd/deletion/my-requests', query: { entityType: 'projects', entityId: projectId.value } });
+  router.push({ path: '/ipd/deletion/my-requests', query: { entityType: 'projects', entityId: projectId.value } }).catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
 }
 
 /**

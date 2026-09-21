@@ -156,7 +156,11 @@ const actionColumns = [
 
 function openAction(row: Record<string, any>): void {
   const actionId = String(row.id ?? '');
-  if (actionId) router.push(`/ipd/projects/${projectId.value}/actions/${actionId}`);
+  if (actionId) {
+    router.push(`/ipd/projects/${projectId.value}/actions/${actionId}`).catch((err: unknown) => {
+      message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
 }
 
 const actionPagination = computed(() => ({

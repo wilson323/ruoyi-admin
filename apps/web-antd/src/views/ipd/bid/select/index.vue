@@ -223,7 +223,9 @@ function rowClassName(record: BidResponse): string {
 }
 
 function goBack(): void {
-  router.push('/ipd/bids');
+  router.push('/ipd/bids').catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
 }
 
 async function load(): Promise<void> {

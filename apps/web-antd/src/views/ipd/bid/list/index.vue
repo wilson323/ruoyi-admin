@@ -256,15 +256,21 @@ function markBusy(record: BidInvitation, action: 'close' | 'withdraw'): void {
 }
 
 function goCreate(): void {
-  router.push('/ipd/bids/create');
+  router.push('/ipd/bids/create').catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
 }
 
 function goRespond(record: Pick<BidInvitation, 'id'>): void {
-  router.push(`/ipd/bids/${record.id}/respond`);
+  router.push(`/ipd/bids/${record.id}/respond`).catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
 }
 
 function goSelect(record: Pick<BidInvitation, 'id'>): void {
-  router.push(`/ipd/bids/${record.id}/select`);
+  router.push(`/ipd/bids/${record.id}/select`).catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
 }
 
 async function load(): Promise<void> {

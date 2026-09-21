@@ -319,11 +319,15 @@ const noteLength = computed(() => composeResponseNote(form).length);
 const noteOverflow = computed(() => noteLength.value > 500);
 
 function goBack(): void {
-  router.push('/ipd/bids');
+  router.push('/ipd/bids').catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
 }
 
 function goSelect(): void {
-  router.push(`/ipd/bids/${bidId.value}/select`);
+  router.push(`/ipd/bids/${bidId.value}/select`).catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
 }
 
 async function load(): Promise<void> {

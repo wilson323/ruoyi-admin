@@ -84,7 +84,9 @@ async function submit(): Promise<void> {
     });
     message.success('超级管理员已移交：原账号已停用，请使用新身份登录');
     auth.clearSession();
-    await router.push('/auth/login');
+    await router.push('/auth/login').catch((err: unknown) => {
+      message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+    });
   } catch (cause) {
     message.error(ipdErrorText(cause, { fallback: '移交失败，请稍后重试' }));
   } finally {

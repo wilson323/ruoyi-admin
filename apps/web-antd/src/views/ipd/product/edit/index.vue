@@ -161,7 +161,9 @@ async function onSave() {
 }
 
 function goBack() {
-  router.push('/ipd/products');
+  router.push('/ipd/products').catch((err: unknown) => {
+    antMessage.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
 }
 </script>
 

@@ -176,7 +176,9 @@ function validate(): boolean {
 }
 
 function goBack(): void {
-  router.push('/ipd/bids');
+  router.push('/ipd/bids').catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
 }
 
 async function submit(): Promise<void> {
@@ -193,7 +195,9 @@ async function submit(): Promise<void> {
       title: form.title.trim(),
     });
     message.success('招标单已创建，当前状态：招标中');
-    router.push('/ipd/bids');
+    router.push('/ipd/bids').catch((err: unknown) => {
+      message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+    });
   } catch (cause) {
     submitError.value = ipdErrorText(cause, { domain: 'bid',
       fallback: '创建失败，请稍后重试',

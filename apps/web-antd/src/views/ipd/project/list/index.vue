@@ -22,6 +22,7 @@ import {
   Table,
   Tag,
   Tooltip,
+  message,
 } from 'ant-design-vue';
 
 import type { ProjectListItem } from '../../../../api/ipd/project';
@@ -121,16 +122,22 @@ const emptyText = computed(() => {
 });
 
 function openCreate(): void {
-  router.push('/ipd/projects/create');
+  router.push('/ipd/projects/create').catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
 }
 
 function openLegacyImport(): void {
-  router.push('/ipd/projects/legacy-import');
+  router.push('/ipd/projects/legacy-import').catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
 }
 
 /** Table bodyCell 的 record 不做类型收窄：在此收敛断言（与 audit/logs 同模式）。 */
 function openDetail(record: Record<string, any>): void {
-  router.push(`/ipd/projects/${String(record.id ?? '')}/overview`);
+  router.push(`/ipd/projects/${String(record.id ?? '')}/overview`).catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
 }
 
 async function load(): Promise<void> {

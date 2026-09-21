@@ -5,7 +5,7 @@ import type { PortalProduct } from '../../../../api/ipd/portal';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { Alert, Button, Form, Input, Select, Upload } from 'ant-design-vue';
+import { Alert, Button, Form, Input, Select, Upload, message } from 'ant-design-vue';
 import { CheckCircleFilled } from '@ant-design/icons-vue';
 
 import { fetchPortalProducts, submitPortalDemand } from '../../../../api/ipd/portal';
@@ -195,6 +195,13 @@ async function copyCode() {
     copied.value = false;
   }
 }
+
+/** 成功页「前往查询进度」按钮带 catch 兜底（避免 router.push 未捕获 reject 打坏 SPA）。 */
+function navToTrack(code: string): void {
+  router.push(`/portal/track?code=${code}`).catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
+}
 </script>
 
 <template>
@@ -217,7 +224,7 @@ async function copyCode() {
       <Alert v-if="result.status === 'SUBMITTED'" class="mb-3 w-full" type="info" show-icon
         message="需求已进入待受理队列，工作人员会尽快处理。" />
       <div class="mt-2 flex gap-3">
-        <Button data-testid="portal-goto-track" @click="router.push(`/portal/track?code=${result.code}`)">前往查询进度</Button>
+        <Button data-testid="portal-goto-track" @click="navToTrack(result.code)">前往查询进度</Button>
         <Button type="primary" @click="resetForAnother">再提交一条</Button>
       </div>
     </div>
