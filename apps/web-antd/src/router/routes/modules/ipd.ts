@@ -302,6 +302,14 @@ const ipdLayoutRoute: RouteRecordRaw = {
           name: 'IpdKpiScore',
           path: 'project-score',
         },
+        {
+          // R149 录入/展示：KPI 原始数据录入/展示 —— 后端 /api/v1/kpi/raw-records 待交付，
+          //   前端先把录入/展示闭环；仅 GROUP_LEADER 可写，UI + 路由双闸门禁（meta.access 占位用既有 KPI_QUERY）。
+          component: () => import('#/views/ipd/kpi/raw-records.vue'),
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/kpi/raw-records'] ?? [IPD_PERMISSION_CODES.KPI_QUERY])], activePath: '/ipd/performance', hideInMenu: true, title: 'KPI 原始数据' },
+          name: 'IpdKpiRawRecords',
+          path: 'raw-records',
+        },
       ],
     },
     // ⑧ 激励管理（页33-36）：并入协同绩效，路由保留降为隐藏
@@ -420,6 +428,15 @@ const ipdLayoutRoute: RouteRecordRaw = {
           name: 'IpdAdminConfig',
           path: 'config',
         },
+        {
+          // R149-A5 业务配置管理（审批人配置）：覆盖 ipd_business_config 三档 scope
+          //   GLOBAL/GROUP/PROJECT；后端 /api/v1/business-config 待交付，UI + 路由双闸
+          //   限定 GROUP_LEADER + SUPER_ADMIN（与 system-config 单超管写不同）。
+          component: () => import('#/views/ipd/admin/business-config.vue'),
+          meta: { authority: ['SUPER_ADMIN', 'GROUP_LEADER'], hideInMenu: true, title: '审批人配置' },
+          name: 'IpdAdminBusinessConfig',
+          path: 'business-config',
+        },
         // 页46 SOP 模板 —— fe-admin 整体覆盖
         {
           component: () => import('#/views/ipd/admin/sop-template/index.vue'),
@@ -464,6 +481,15 @@ const ipdLayoutRoute: RouteRecordRaw = {
         },
       ],
     },
+    // R149 录入/展示：落地场景登记 + 批量导入 —— 后端 /api/v1/scenarios/landed 待交付，
+    //   前端先把登记/展示闭环；MARKET_PM / RD_PM / GROUP_LEADER / SUPER_ADMIN 可写，GUEST 走门户。
+    {
+      component: () => import('#/views/ipd/scenarios/landed-scenarios.vue'),
+      meta: { hideInMenu: true, icon: 'lucide:map-pin', title: '落地场景登记' },
+      name: 'IpdLandedScenarios',
+      path: 'scenarios/landed-scenarios',
+    },
+
     // 无权访问提示页（不在菜单）
     {
       component: () => import('#/views/ipd/_shared/no-access.vue'),
