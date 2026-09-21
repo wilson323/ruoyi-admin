@@ -1,12 +1,10 @@
 /**
- * 90 日回款预警（R149 后端实装；前端 /ipd/operation/recovery-warnings 路由承载）。
+ * 90 日回款预警（前端 /ipd/operation/recovery-warnings）。
  *
- * 端点契约：
- * - POST /api/v1/recovery/check-90d  触发扫描（超管专属）
- *   body: { scanDate?: "YYYY-MM-DD" }  // 可选，默认后端当天
- *   resp: { triggeredCount: number, scanDate: string }
- * - GET  /api/v1/recovery/warnings   查预警列表（按可见范围过滤，服务端权威）
- *   resp: RecoveryWarningItem[]
+ * ipdGet / ipdPost 会再拼 `/api/v1`，这里只写资源路径。
+ * 运行时端点：
+ * - POST /api/v1/recovery/check-90d?scanDate=YYYY-MM-DD  扫描日期走查询参数，返回新增条数
+ * - GET  /api/v1/recovery/warnings?projectId=           预警列表，字段与 RecoveryWarning 一致
  *
  * 权限码：
  * - ipd:recovery:check-90d      触发扫描动作
@@ -14,37 +12,41 @@
  */
 import { ipdGet, ipdPost } from './http';
 
-/** 单条预警条目（与后端 IpdRecoveryWarning DTO 一致）。 */
-export interface RecoveryWarningItem {
-  id: string;
-  projectId: number;
-  projectName: string;
-  warningDate: string;
-  recoveryDeadline: string;
-  daysOverdue: number;
-  amount: number;
-  status: 'ACTIVE' | 'RESOLVED';
-  createdAt: string;
-}
+/** 预警状态，与 RecoveryWarning.STATUS_* 一致。 */
+export type RecoveryWarningStatus = 'HANDLED' | 'IGNORED' | 'PENDING';
 
-/** 触发扫描响应。 */
-export interface Check90dResp {
-  triggeredCount: number;
-  scanDate: string;
+/** 单条预警（与后端 RecoveryWarning 字段一致，不含项目名称）。 */
+export interface RecoveryWarningItem {
+  id: number | string;
+  projectId: number | string;
+  warningDate: string;
+  daysSinceLaunch: number;
+  recoveryRate: number | string;
+  threshold: number | string;
+  status: RecoveryWarningStatus;
 }
 
 /**
  * 触发 90 日回款预警扫描。
- * @param scanDate 可选，格式 YYYY-MM-DD；省略时后端默认当天。
+ *
+ * 扫描日期必须放在查询参数上，后端按 @RequestParam 读取；请求体不会被读取。
+ *
+ * @param scanDate 可选，格式 YYYY-MM-DD；省略时后端取当天
+ * @returns 本次新写入的预警条数
  */
-export function checkRecovery90d(scanDate?: string): Promise<Check90dResp> {
-  return ipdPost<Check90dResp>(
-    '/api/v1/recovery/check-90d',
-    scanDate ? { scanDate } : {},
+export function checkRecovery90d(scanDate?: string): Promise<number> {
+  return ipdPost<number>(
+    '/recovery/check-90d',
+    undefined,
+    scanDate ? { scanDate } : undefined,
   );
 }
 
-/** 查询 90 日回款预警列表（服务端按可见范围过滤）。 */
+/**
+ * 查询 90 日回款预警列表。
+ *
+ * @returns 服务端按可见范围过滤后的预警列表
+ */
 export function listRecoveryWarnings(): Promise<RecoveryWarningItem[]> {
-  return ipdGet<RecoveryWarningItem[]>('/api/v1/recovery/warnings');
+  return ipdGet<RecoveryWarningItem[]>('/recovery/warnings');
 }

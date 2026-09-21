@@ -2,7 +2,8 @@
 /**
  * 90 日回款预警（R149 后端实装；前端 /ipd/operation/recovery-warnings 路由承载）。
  *
- * 设计：超管触发扫描（POST /api/v1/recovery/check-90d）+ 列表展示（GET /api/v1/recovery/warnings）。
+ * 设计：触发扫描（POST /api/v1/recovery/check-90d?scanDate=）+ 列表（GET /api/v1/recovery/warnings）。
+ * 列表字段跟 RecoveryWarning：项目、预警日期、距上市天数、回款比例、阈值、状态。
  * - 触发扫描弹窗：日期选择，默认当天（YYYY-MM-DD），沿用 format/value-format 双向；
  * - 列表：项目名称 / 预警日期 / 回款截止 / 已逾期天数 / 金额 / 状态 / 创建时间；
  * - 五态：加载 / 列表 / 空态 / 拒绝与断网；不展示任何模拟数据（G-06）。
@@ -72,8 +73,8 @@ async function submitScan(): Promise<void> {
   scanning.value = true;
   try {
     const dateStr = scanDate.value.format('YYYY-MM-DD');
-    const resp = await checkRecovery90d(dateStr);
-    antMessage.success(`扫描完成：触发 ${resp.triggeredCount} 条预警（${resp.scanDate}）`);
+    const saved = await checkRecovery90d(dateStr);
+    antMessage.success(`扫描完成：新增 ${saved} 条预警（${dateStr}）`);
     scanOpen.value = false;
     await load();
   } catch (cause) {
@@ -84,14 +85,27 @@ async function submitScan(): Promise<void> {
 }
 
 const columns = [
-  { dataIndex: 'projectName', key: 'projectName', title: '项目名称', width: 220 },
+  { dataIndex: 'projectId', key: 'projectId', title: '项目', width: 140 },
   { dataIndex: 'warningDate', key: 'warningDate', title: '预警日期', width: 130 },
-  { dataIndex: 'recoveryDeadline', key: 'recoveryDeadline', title: '回款截止', width: 130 },
-  { dataIndex: 'daysOverdue', key: 'daysOverdue', title: '已逾期天数', width: 110 },
-  { dataIndex: 'amount', key: 'amount', title: '金额（元）', width: 140 },
-  { dataIndex: 'status', key: 'status', title: '状态', width: 100 },
-  { dataIndex: 'createdAt', key: 'createdAt', title: '创建时间', width: 170 },
+  { dataIndex: 'daysSinceLaunch', key: 'daysSinceLaunch', title: '距上市', width: 110 },
+  { dataIndex: 'recoveryRate', key: 'recoveryRate', title: '回款比例', width: 120 },
+  { dataIndex: 'threshold', key: 'threshold', title: '阈值', width: 100 },
+  { dataIndex: 'status', key: 'status', title: '状态', width: 110 },
 ];
+
+/** 把 0~1 的比例格式化成百分数；空值或非数字显示破折号。 */
+function percentText(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return '—';
+  return `${(n * 100).toFixed(1)}%`;
+}
+
+const STATUS_TEXT: Record<string, string> = {
+  PENDING: '待处理',
+  HANDLED: '已处理',
+  IGNORED: '已忽略',
+};
 
 const rowsCount = computed(() => rows.value.length);
 function asRecord(record: Record<string, any>): RecoveryWarningItem {
@@ -135,35 +149,31 @@ function asRecord(record: Record<string, any>): RecoveryWarningItem {
       </Alert>
 
       <Card v-else-if="rowsCount === 0" class="text-center">
-        <Empty description="尚无预警记录。请确认 R149 后端已实装 check-90d/warnings 端点，或点击「触发扫描」主动触发。" />
+        <Empty description="尚无预警记录。可点击「触发扫描」按选定日期检查。" />
       </Card>
 
       <Card v-else>
         <Table :columns="columns" :data-source="rows" :pagination="{ pageSize: 20, showSizeChanger: false }" row-key="id" size="middle">
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'projectName'">
-              <span class="font-medium">{{ asRecord(record).projectName }}</span>
-              <span class="text-muted-foreground ml-2 text-xs">#{{ asRecord(record).projectId }}</span>
+            <template v-if="column.key === 'projectId'">
+              <span class="font-medium tabular-nums">#{{ asRecord(record).projectId }}</span>
             </template>
             <template v-else-if="column.key === 'warningDate'">
               <span class="tabular-nums">{{ asRecord(record).warningDate || '—' }}</span>
             </template>
-            <template v-else-if="column.key === 'recoveryDeadline'">
-              <span class="tabular-nums">{{ asRecord(record).recoveryDeadline || '—' }}</span>
+            <template v-else-if="column.key === 'daysSinceLaunch'">
+              <span class="tabular-nums">{{ asRecord(record).daysSinceLaunch ?? 0 }} 天</span>
             </template>
-            <template v-else-if="column.key === 'daysOverdue'">
-              <span class="tabular-nums">{{ asRecord(record).daysOverdue ?? 0 }} 天</span>
+            <template v-else-if="column.key === 'recoveryRate'">
+              <span class="tabular-nums">{{ percentText(asRecord(record).recoveryRate) }}</span>
             </template>
-            <template v-else-if="column.key === 'amount'">
-              <span class="tabular-nums">{{ (asRecord(record).amount ?? 0).toFixed(2) }}</span>
+            <template v-else-if="column.key === 'threshold'">
+              <span class="tabular-nums">{{ percentText(asRecord(record).threshold) }}</span>
             </template>
             <template v-else-if="column.key === 'status'">
-              <Tag :color="asRecord(record).status === 'ACTIVE' ? 'red' : 'default'">
-                {{ asRecord(record).status === 'ACTIVE' ? '生效中' : '已解决' }}
+              <Tag :color="asRecord(record).status === 'PENDING' ? 'red' : 'default'">
+                {{ STATUS_TEXT[asRecord(record).status] ?? asRecord(record).status }}
               </Tag>
-            </template>
-            <template v-else-if="column.key === 'createdAt'">
-              <span class="text-muted-foreground tabular-nums text-xs">{{ asRecord(record).createdAt || '—' }}</span>
             </template>
           </template>
         </Table>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * KPI 原始数据录入/展示页（R149 录入/展示界面；后端 /api/v1/kpi/raw-records 端点待交付）。
+ * KPI 原始数据录入/展示页。接口为 GET/POST /api/v1/kpi/raw-records。
  *
  * 设计：8 项固定 KPI 类型枚举（REVENUE/CHANNEL_COUNT/NPS/SCENE_COUNT/BUG_COUNT/
  * COMPLAINT_COUNT/CERT_COUNT/COMPLETION_RATE）；按 projectId + kpiType 筛选已录入记录；
@@ -255,7 +255,7 @@ function reload(): void {
   <div class="flex flex-col gap-4 p-4">
     <Alert
       message="KPI 原始数据录入：8 项固定类型枚举（销售/渠道/NPS/场景/缺陷/投诉/认证/完成率），按项目+期间登记"
-      description="仅产品组长（GROUP_LEADER）可写；记录只可调取不可改写（与既有 KpiRecord 不可变语义一致）。后端 /api/v1/kpi/raw-records 端点待交付，页面如实展示拒绝与断网状态，不假绿。"
+      description="仅产品组长（GROUP_LEADER）可写；记录只可调取不可改写（与既有 KpiRecord 不可变语义一致）。接口为 GET/POST /api/v1/kpi/raw-records，拒绝与断网按真实结果展示。"
       show-icon
       type="info"
     />
@@ -385,7 +385,7 @@ function reload(): void {
         </Alert>
 
         <Card v-else-if="rows.length === 0" class="text-center">
-          <Empty description="尚无 KPI 原始记录。点击上方「提交录入」创建第一条；后端端点未交付时此处会展示拒绝信息。" />
+          <Empty description="尚无 KPI 原始记录。点击上方「提交录入」创建第一条；接口已对接，按真实拒绝/断网状态展示。" />
         </Card>
 
         <Card v-else-if="visibleRows.length === 0" class="text-center">

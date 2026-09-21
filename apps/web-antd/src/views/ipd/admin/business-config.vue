@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 业务配置管理页（R149-A5 审批人配置管理；后端 /api/v1/business-config 端点待交付）。
+ * 业务配置管理页。接口为 GET/POST /api/v1/business-config。
  *
  * 设计：表（ipd_business_config 已存在 13 行种子）三档 scope = GLOBAL / GROUP / PROJECT：
  * - GLOBAL：全局配置（仅超管可写；组长只读）
@@ -254,7 +254,7 @@ function reload(): void {
   <div class="flex flex-col gap-4 p-4">
     <Alert
       message="审批人配置管理：覆盖 ipd_business_config 三档 scope（GLOBAL/GROUP/PROJECT）"
-      description="仅 super_admin / group_leader 可见；超管可写所有 scope，组长可写本组 scope。配置变更落 ipd_business_config_versions 版本链（与 system-config 同构）。后端 /api/v1/business-config 端点待交付，按真实拒绝/断网状态如实展示。"
+      description="仅 super_admin / group_leader 可见；超管可写所有 scope，组长可写本组 scope。配置变更落 ipd_business_config_versions 版本链（与 system-config 同构）。接口为 GET/POST /api/v1/business-config，拒绝与断网按真实结果展示。"
       show-icon
       type="info"
     />
