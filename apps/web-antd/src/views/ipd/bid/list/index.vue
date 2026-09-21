@@ -261,10 +261,12 @@ function goCreate(): void {
   });
 }
 
-function goRespond(record: Pick<BidInvitation, 'id'>): void {
-  router.push(`/ipd/bids/${record.id}/respond`).catch((err: unknown) => {
+async function goRespond(record: Pick<BidInvitation, 'id'>): Promise<void> {
+  try {
+    await router.push(`/ipd/bids/${record.id}/respond`);
+  } catch (err: unknown) {
     message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
-  });
+  }
 }
 
 function goSelect(record: Pick<BidInvitation, 'id'>): void {

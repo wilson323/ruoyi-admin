@@ -172,16 +172,20 @@ function onFilterChange() {
   currentPage.value = 1;
 }
 
-function goCreate() {
-  router.push('/ipd/products/create').catch((err: unknown) => {
+async function goCreate(): Promise<void> {
+  try {
+    await router.push('/ipd/products/create');
+  } catch (err: unknown) {
     antMessage.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
-  });
+  }
 }
 
-function goEdit(record: Product) {
-  router.push(`/ipd/products/${encodeURIComponent(record.id)}/edit`).catch((err: unknown) => {
+async function goEdit(record: Product): Promise<void> {
+  try {
+    await router.push(`/ipd/products/${encodeURIComponent(record.id)}/edit`);
+  } catch (err: unknown) {
     antMessage.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
-  });
+  }
 }
 
 async function toggleStatus(record: Product) {

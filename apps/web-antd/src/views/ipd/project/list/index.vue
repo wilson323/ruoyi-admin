@@ -121,23 +121,29 @@ const emptyText = computed(() => {
   return '暂无项目。请联系超级管理员或市场PM 创建。';
 });
 
-function openCreate(): void {
-  router.push('/ipd/projects/create').catch((err: unknown) => {
+async function openCreate(): Promise<void> {
+  try {
+    await router.push('/ipd/projects/create');
+  } catch (err: unknown) {
     message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
-  });
+  }
 }
 
-function openLegacyImport(): void {
-  router.push('/ipd/projects/legacy-import').catch((err: unknown) => {
+async function openLegacyImport(): Promise<void> {
+  try {
+    await router.push('/ipd/projects/legacy-import');
+  } catch (err: unknown) {
     message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
-  });
+  }
 }
 
 /** Table bodyCell 的 record 不做类型收窄：在此收敛断言（与 audit/logs 同模式）。 */
-function openDetail(record: Record<string, any>): void {
-  router.push(`/ipd/projects/${String(record.id ?? '')}/overview`).catch((err: unknown) => {
+async function openDetail(record: Record<string, any>): Promise<void> {
+  try {
+    await router.push(`/ipd/projects/${String(record.id ?? '')}/overview`);
+  } catch (err: unknown) {
     message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
-  });
+  }
 }
 
 async function load(): Promise<void> {
