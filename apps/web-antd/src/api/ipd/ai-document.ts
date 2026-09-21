@@ -7,7 +7,7 @@
  *   POST /{id}/versions/{versionId}/archive（P4-2.3，REQUIRED REVIEWED）、
  *   POST /{id}/versions/{versionId}/reject（P4-2.3，comment 必填）、
  *   GET /{id}/versions、GET /{id}/history、GET /{id}/diff?from=&to=。
- * 未交付：按项目列出文档的 GET 端点——列表区由页面挂占位（G-06），不在本层封装。
+ * P1-3 已交付：GET /ai-documents?projectId=X（按项目列文档链头）——列表区由 documents.vue 调此封装。
  * 历史版本只读：内容与摘要无任何 HTTP 更新通道，修正 = 产生新版本。
  *
  * 自 2026-09-06 根因分析：原 IPD_ERROR_TEXTS + ipdApiErrorText 内联副本已迁入
@@ -208,6 +208,21 @@ export async function rejectAiDocumentVersion(documentId: string, versionId: str
   return parseAiDocument(await ipdPost(`/ai-documents/${documentId}/versions/${versionId}/reject`, {
     comment: input.comment,
   }));
+}
+
+/**
+ * P1-3：按项目 ID 列 AI 文档（页14 项目详情-文档与交付物列表区）。
+ * 路径：GET /api/v1/ai-documents?projectId=X；后端沿用 ipd:ai-document:list 读码（内部四角色全员可读）。
+ * 返回每条文档链的 v1 链头（parent_version_id IS NULL）；如需看每条链的全部版本，调 listAiDocumentVersions(documentId)。
+ */
+export async function listAiDocumentsByProject(projectId: number | string): Promise<AiDocument[]> {
+  const id = String(projectId);
+  if (!/^\d+$/.test(id)) {
+    throw new IpdRequestError('项目 ID 必须为纯数字');
+  }
+  const data = await ipdGet<unknown>('/ai-documents', { projectId: id });
+  if (!Array.isArray(data)) throw new IpdRequestError('文档列表数据格式异常，请稍后重试');
+  return data.map((item) => parseAiDocument(item));
 }
 
 /** 完整版本链 v1..vN 升序（链断裂后端按 409 报出）。 */

@@ -7,9 +7,9 @@
  * - GET  /api/v1/ai-documents/{id}/versions  完整版本链
  * - POST /api/v1/ai-documents/{id}/revise    人工改版（baseVersionId HEAD 校验，非最新即 409）
  * - POST /api/v1/ai-documents/{id}/versions/{versionId}/review  人工审核通过
- * 未交付：按项目列出文档的 GET 端点 → 列表区挂占位（G-06 不展示任何模拟数据）。
+ * P1-3 已交付：GET /api/v1/ai-documents?projectId=X → onMounted 自动加载项目下文档链头列表（页14 列表区）。
  */
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   Alert,
@@ -23,6 +23,7 @@ import {
   Modal,
   Select,
   Space,
+  Table,
   Tag,
   Textarea,
   Timeline,
@@ -36,6 +37,7 @@ import {
   type AiDocument,
   ipdApiErrorText,
   listAiDocumentVersions,
+  listAiDocumentsByProject,
   registerAiDocument,
   reviewAiDocumentVersion,
   reviseAiDocument,
@@ -65,6 +67,46 @@ const STATUS_META: Record<string, { color: string; text: string }> = {
 
 const route = useRoute();
 const projectId = computed(() => String(route.params.projectId ?? ''));
+
+// ---------- 项目下文档列表（P1-3） ----------
+const documents = ref<AiDocument[]>([]);
+const documentsLoading = ref(false);
+const documentsError = ref<null | string>(null);
+const documentsLoaded = ref(false);
+
+async function loadProjectDocuments(pid: string) {
+  if (!/^\d+$/.test(pid)) {
+    documentsLoaded.value = false;
+    documentsError.value = '项目 ID 不合法，无法加载文档列表。';
+    return;
+  }
+  documentsLoading.value = true;
+  documentsError.value = null;
+  try {
+    documents.value = await listAiDocumentsByProject(pid);
+    documentsLoaded.value = true;
+  } catch (cause) {
+    documents.value = [];
+    documentsLoaded.value = true;
+    documentsError.value = ipdApiErrorText(cause, '文档列表加载失败，请稍后重试');
+  } finally {
+    documentsLoading.value = false;
+  }
+}
+
+onMounted(() => {
+  if (projectId.value) void loadProjectDocuments(projectId.value);
+});
+
+// 列表区列定义（P1-3）：ID / 标题 / 文档类型 / 当前版本 / 当前状态 / 摘要
+const columns = [
+  { dataIndex: 'id', key: 'id', title: '文档 ID', width: 110 },
+  { dataIndex: 'title', key: 'title', title: '标题' },
+  { dataIndex: 'docType', key: 'docType', title: '类型', width: 180 },
+  { dataIndex: 'versionNo', key: 'versionNo', title: '当前版本', width: 100 },
+  { dataIndex: 'status', key: 'status', title: '状态', width: 100 },
+  { dataIndex: 'contentSha256', key: 'contentSha256', title: '摘要', width: 140 },
+];
 
 // ---------- 登记 AI 输出 v1 ----------
 const registerForm = reactive({
@@ -234,18 +276,47 @@ async function submitRevise() {
 
 <template>
   <div class="flex flex-col gap-4">
-    <!-- 文档列表：读端点未交付，占位（G-06） -->
-    <Card>
+    <!-- 文档列表（P1-3）：GET /api/v1/ai-documents?projectId=X，已交付；onMounted 自动加载 -->
+    <Card title="项目文档列表（按 projectId 列 AI 文档链头）">
       <Alert
-        message="文档列表接口尚未交付"
+        v-if="documentsError"
+        class="mb-3"
         show-icon
-        type="info"
+        type="error"
+        role="alert"
+        :message="documentsError"
+      />
+      <div v-if="documentsLoading" class="py-8 text-center text-muted-foreground">正在加载项目文档列表……</div>
+      <Table
+        v-else-if="documents.length > 0"
+        :columns="columns"
+        :data-source="documents"
+        :row-key="(doc: AiDocument) => doc.id"
+        size="small"
       >
-        <template #description>
-          <p>看板卡：P0-10.14；后端依赖：按项目列出 AI 文档的 GET 端点（/api/v1/ai-documents?projectId=）未交付。</p>
-          <p>接口交付前本区不展示任何模拟数据；以下版本链操作基于已交付的 P1-10.1 端点。</p>
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.dataIndex === 'docType'">{{ docTypeText(record as AiDocument) }}</template>
+          <template v-else-if="column.dataIndex === 'status'">
+            <Tag :color="statusMeta((record as AiDocument).status).color">
+              {{ statusMeta((record as AiDocument).status).text }}
+            </Tag>
+          </template>
+          <template v-else-if="column.dataIndex === 'contentSha256'">
+            <Tooltip :title="(record as AiDocument).contentSha256 || PENDING_TEXT">
+              <span class="text-muted-foreground font-mono text-xs">{{ shortSha(record as AiDocument) }}</span>
+            </Tooltip>
+          </template>
         </template>
-      </Alert>
+      </Table>
+      <Empty
+        v-else-if="documentsLoaded"
+        description="该项目暂无已登记 AI 文档，请使用下方「登记 AI 输出」创建首版。"
+      />
+      <Empty
+        v-else
+        description="项目 ID 加载中……"
+      />
+      <p class="text-muted-foreground mt-2 text-xs">版本/历史/对比按钮保持原样，请使用下方「版本链」区按文档 ID 加载。</p>
     </Card>
 
     <!-- 登记 AI 输出 v1 -->
