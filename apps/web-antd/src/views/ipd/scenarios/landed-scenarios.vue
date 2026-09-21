@@ -1,7 +1,6 @@
 <script setup lang="ts">
 /**
- * 落地场景登记/批量导入页（R149 录入/展示界面；后端 /api/v1/scenarios/landed 与
- * /api/v1/scenarios/landed/import 端点待交付）。
+ * 落地场景登记/批量导入页。接口为 /api/v1/scenarios/landed 与 /api/v1/scenarios/landed/import。
  *
  * 设计：
  * - 表格列出已登记落地场景（项目 / 场景编码 / 场景名 / 落地日期 / 金额）；
@@ -338,7 +337,7 @@ function reload(): void {
   <div class="flex flex-col gap-4 p-4">
     <Alert
       message="落地场景登记：项目级已落地销售/部署的场景"
-      description="与产品空间阶段的「立项场景清单」区分；批量导入走 JSON 上传（每行 {projectId, scenarioCode, scenarioName, landedDate, landingAmount}），后端 /api/v1/scenarios/landed* 端点待交付，按真实拒绝/断网状态如实展示。"
+      description="与产品空间阶段的「立项场景清单」区分；批量导入走 JSON 上传（每行 {projectId, scenarioCode, scenarioName, landedDate, landingAmount}）。接口为 /api/v1/scenarios/landed 与 /import，拒绝与断网按真实结果展示。"
       show-icon
       type="info"
     />
@@ -397,7 +396,7 @@ function reload(): void {
         </Alert>
 
         <Card v-else-if="rows.length === 0" class="text-center">
-          <Empty description="尚无落地场景记录。点击「新增」或「批量导入」录入第一批；后端端点未交付时此处展示拒绝信息。" />
+          <Empty description="尚无落地场景记录。点击「新增」或「批量导入」录入第一批；接口已对接，按真实拒绝/断网状态展示。" />
         </Card>
 
         <Card v-else-if="visibleRows.length === 0" class="text-center">

@@ -2,8 +2,8 @@
  * R152-D2 90 日回款预警页：组件层单测（与 ipd 业务接口契约路径互不重叠）。
  *
  * 覆盖：
- * - 表格骨架渲染：mock 1 条 warning → 表格 + 项目名 + 状态 + 金额 + 逾期天数 + 创建时间均渲染
- * - 「触发扫描」按钮点击：mock 返 triggeredCount=3 + scanDate=2026-06-22 → 消息提示 + 列表自动刷新
+ * - 表格骨架渲染：mock 1 条 warning → 项目、预警日期、距上市、回款比例、阈值、状态
+ * - 「触发扫描」按钮点击：mock 返新增条数 → 列表自动刷新
  * - 日期选择：默认今天（YYYY-MM-DD 格式）；日期变更可正确回填扫描日期
  * - 「刷新」按钮：调用 listRecoveryWarnings 重新拉取
  * - 错误态：mock 拒绝 → Alert 错误信息展示 + 「重新加载」按钮可见
@@ -32,14 +32,12 @@ const mockedCheck = vi.mocked(checkRecovery90d);
 const mockedList = vi.mocked(listRecoveryWarnings);
 
 const fixtureWarning = {
-  amount: 128_000,
-  createdAt: '2026-09-20T10:00:00Z',
-  daysOverdue: 90,
-  id: 'RW-1',
+  daysSinceLaunch: 45,
+  id: '9001',
   projectId: 1001,
-  projectName: '智慧园区视频分析',
-  recoveryDeadline: '2026-09-20',
-  status: 'ACTIVE' as const,
+  recoveryRate: 0.18,
+  status: 'PENDING' as const,
+  threshold: 0.25,
   warningDate: '2026-06-22',
 };
 
@@ -76,13 +74,12 @@ describe('R152-D2 90 日回款预警页', () => {
 
     // 关键字段渲染
     const text = wrapper.text();
-    expect(text).toContain('智慧园区视频分析'); // 项目名称
-    expect(text).toContain('#1001'); // projectId
-    expect(text).toContain('2026-06-22'); // warningDate
-    expect(text).toContain('2026-09-20'); // recoveryDeadline / createdAt
-    expect(text).toContain('90 天'); // daysOverdue
-    expect(text).toContain('128000.00'); // amount (toFixed 2)
-    expect(text).toContain('生效中'); // status=ACTIVE
+    expect(text).toContain('#1001');
+    expect(text).toContain('2026-06-22');
+    expect(text).toContain('45 天');
+    expect(text).toContain('18.0%');
+    expect(text).toContain('25.0%');
+    expect(text).toContain('待处理');
 
     // 触发扫描 + 刷新两个按钮都存在；vue-test-utils .text() 把空白合并为空格，
     //   故 "刷新" 实际为 "刷 新"，需要去空白后再 includes
@@ -100,7 +97,7 @@ describe('R152-D2 90 日回款预警页', () => {
 
   it('「触发扫描」按钮点击：mock 返 triggeredCount=3 → 后续触发 list 自动重拉', async () => {
     mockedList.mockResolvedValue([fixtureWarning]);
-    mockedCheck.mockResolvedValue({ scanDate: '2026-06-22', triggeredCount: 3 });
+    mockedCheck.mockResolvedValue(3);
     const wrapper = await mountPage();
 
     // 等到表格渲染完成
@@ -148,7 +145,7 @@ describe('R152-D2 90 日回款预警页', () => {
 
   it('日期选择：默认今天；用户可改日期后回填到 check 调用', async () => {
     mockedList.mockResolvedValue([]);
-    mockedCheck.mockResolvedValue({ scanDate: '2026-05-01', triggeredCount: 0 });
+    mockedCheck.mockResolvedValue(0);
     const wrapper = await mountPage();
 
     // 打开 Modal；文本去空白匹配
