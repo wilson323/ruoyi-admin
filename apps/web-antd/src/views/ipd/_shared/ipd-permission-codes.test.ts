@@ -12,23 +12,24 @@ import {
 } from './ipd-permission-codes';
 
 describe('IPD 权限码常量与后端一一对应', () => {
-  it('导出 65 个 distinct 码（与后端 IpdPermissionCode 字面值一一镜像，1 组同码双名）', () => {
-    // 后端 66 个常量声明，其中 STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE
-    // 共享字面值 'ipd:stage-action:add'，故 distinct 码为 65
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(66);
-    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(65);
+  it('导出 67 个 distinct 码（与后端 IpdPermissionCode 字面值一一镜像，1 组同码双名；R149 新增 RECOVERY_* 2 码）', () => {
+    // 后端 68 个常量声明，其中 STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE
+    // 共享字面值 'ipd:stage-action:add'，故 distinct 码为 67
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(68);
+    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(67);
   });
 
-  it('所有 distinct 码唯一（65 个）', () => {
+  it('所有 distinct 码唯一（67 个）', () => {
     const set = new Set(ALL_IPD_PERMISSION_CODES);
-    expect(set.size).toBe(65);
-    // 数组长度 66（多 1 项是 STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 同码）
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(66);
+    expect(set.size).toBe(67);
+    // 数组长度 68（多 1 项是 STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 同码；
+    //   R149 新增 RECOVERY_CHECK_90D + RECOVERY_WARNINGS_QUERY 2 distinct 码）
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(68);
   });
 
   it('全部码遵循 ipd:资源:动作 命名规范', () => {
     for (const code of ALL_IPD_PERMISSION_CODES) {
-      expect(code).toMatch(/^ipd:[a-z-]+:[a-z-]+$/);
+      expect(code).toMatch(/^ipd:[a-z0-9-]+:[a-z0-9-]+(?::[a-z0-9-]+)?$/);  // R149 兼容：3 段或 4 段（嵌套资源如 recovery:warnings:query）
     }
   });
 
@@ -217,10 +218,11 @@ describe('A23 17 个零引用权限码已处置（reserved 注释 16 + 碰撞 do
     expect(reservedCodes.length).toBe(17);
   });
 
-  it('A23 不新增码：distinct count 仍为 65', () => {
-    // 仅注释改动，ALL_IPD_PERMISSION_CODES 字面值集合与 A13 一致
-    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(65);
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(66);
+  it('A23 不新增码：distinct count 仍为 67（R149 前镜像基线）', () => {
+    // 仅注释改动；R149 新增 RECOVERY_* 2 码由 A13 路径接入（v-access:code + meta.access），
+    //   不计入 A23 reservedCodes 列表。distinct count 在 R149 镜像后为 67。
+    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(67);
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(68);
   });
 
   for (const code of reservedCodes) {

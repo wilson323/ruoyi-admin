@@ -481,6 +481,30 @@ const ipdLayoutRoute: RouteRecordRaw = {
         },
       ],
     },
+    // R149 录入/展示：运营管理（顶层超管入口，含回款预警）。纯分组/重定向父路由：
+    //   省略 component，子页由 ipd.vue plain <router-view> depth-skip 渲染；点菜单直接进
+    //   recovery-warnings 子页（与 IpdKpi/Incentive/Performance 同构）。
+    {
+      meta: { icon: 'mdi:alert-circle', order: 15, title: '运营管理' },
+      name: 'IpdOperation',
+      path: 'operation',
+      redirect: '/ipd/operation/recovery-warnings',
+      children: [
+        {
+          // 90 日回款预警（R149 后端真接入：check-90d + warnings 两端点已交付）。
+          //   路由 meta.access 走 PAGE_PERMISSIONS['/ipd/operation/recovery-warnings']
+          //   （RECOVERY_CHECK_90D + RECOVERY_WARNINGS_QUERY），按钮 v-access:code 双闸门禁。
+          component: () => import('#/views/ipd/operation/recovery-warnings.vue'),
+          meta: {
+            access: [...(PAGE_PERMISSIONS['/ipd/operation/recovery-warnings'] ?? [])],
+            title: '回款预警',
+          },
+          name: 'IpdOperationRecoveryWarnings',
+          path: 'recovery-warnings',
+        },
+      ],
+    },
+
     // R149 录入/展示：落地场景登记 + 批量导入 —— 后端 /api/v1/scenarios/landed 待交付，
     //   前端先把登记/展示闭环；MARKET_PM / RD_PM / GROUP_LEADER / SUPER_ADMIN 可写，GUEST 走门户。
     {

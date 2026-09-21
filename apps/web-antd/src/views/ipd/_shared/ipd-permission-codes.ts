@@ -124,6 +124,11 @@ export const IPD_PERMISSION_CODES = {
 
   // 移交撤销（HIGH-3.1）
   HANDOVER_CANCEL: 'ipd:handover:cancel',
+
+  // 90 日回款预警（R149 后端实装；前端 /ipd/operation/recovery-warnings 路由承载，
+  //   CHECK_90D 触发扫描动作 / WARNINGS_QUERY 列表查询；超管专属，与 system-config 同位）
+  RECOVERY_CHECK_90D: 'ipd:recovery:check-90d',
+  RECOVERY_WARNINGS_QUERY: 'ipd:recovery:warnings:query',
 } as const;
 
 export type IpdPermissionCode = (typeof IPD_PERMISSION_CODES)[keyof typeof IPD_PERMISSION_CODES];
@@ -197,6 +202,11 @@ export const PAGE_PERMISSIONS: Record<string, readonly IpdPermissionCode[]> = {
   '/ipd/admin/config': [
     IPD_PERMISSION_CODES.SYSTEM_CONFIG_LIST,
     IPD_PERMISSION_CODES.SYSTEM_CONFIG_UPDATE,
+  ],
+  // 90 日回款预警（R149-A2 真接入：CHECK_90D 触发扫描 + WARNINGS_QUERY 列表）
+  '/ipd/operation/recovery-warnings': [
+    IPD_PERMISSION_CODES.RECOVERY_CHECK_90D,
+    IPD_PERMISSION_CODES.RECOVERY_WARNINGS_QUERY,
   ],
 };
 
