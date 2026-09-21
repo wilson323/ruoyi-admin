@@ -101,6 +101,17 @@ function percentText(value: number | string | null | undefined): string {
   return `${(n * 100).toFixed(1)}%`;
 }
 
+/** 后端 LocalDate 可能序列化为数组 [y, m, d] 或 ISO 字符串；统一展示为 YYYY-MM-DD。 */
+function dateText(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (Array.isArray(value) && value.length >= 3) {
+    const [y, m, d] = value as number[];
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  if (typeof value === 'string') return value.slice(0, 10);
+  return String(value);
+}
+
 const STATUS_TEXT: Record<string, string> = {
   PENDING: '待处理',
   HANDLED: '已处理',
@@ -159,7 +170,7 @@ function asRecord(record: Record<string, any>): RecoveryWarningItem {
               <span class="font-medium tabular-nums">#{{ asRecord(record).projectId }}</span>
             </template>
             <template v-else-if="column.key === 'warningDate'">
-              <span class="tabular-nums">{{ asRecord(record).warningDate || '—' }}</span>
+              <span class="tabular-nums">{{ dateText(asRecord(record).warningDate) }}</span>
             </template>
             <template v-else-if="column.key === 'daysSinceLaunch'">
               <span class="tabular-nums">{{ asRecord(record).daysSinceLaunch ?? 0 }} 天</span>
