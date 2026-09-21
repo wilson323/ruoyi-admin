@@ -186,6 +186,57 @@ export async function decideLaunchDateChange(
   ));
 }
 
+// ---------- P1-2：补 4 个只读 GET（按项目列表 + 按 ID 详情） ----------
+//
+// 后端 4 端点已交付（与既有 propose/decide 同一 controller 路径前缀）：
+// - GET  /api/v1/coefficient-change-requests?projectId=…
+// - GET  /api/v1/coefficient-change-requests/{id}
+// - GET  /api/v1/launch-date-change-requests?projectId=…
+// - GET  /api/v1/launch-date-change-requests/{id}
+//
+// 用途：changes.vue Tab1（系数变更）+ Tab2（上市日期变更）的本项目变更单列表
+// 替代原本 backend-pending 占位。Tab3（需求变更）保持原有 listRequirementChanges/getRequirementChange。
+
+/** P1-2：本项目系数变更单列表（按 {@code projectId} 过滤；缺省返回全量，按创建时间倒序）。 */
+export async function listCoefficientChanges(
+  projectId?: null | number | string,
+): Promise<CoefficientChangeRequest[]> {
+  const query = projectId === null || projectId === undefined || projectId === ''
+    ? undefined
+    : { projectId };
+  const raw = await ipdGet<unknown>('/coefficient-change-requests', query);
+  return Array.isArray(raw) ? raw.map(parseCoefficientChangeRequest) : [];
+}
+
+/** P1-2：按 ID 取系数变更单详情。 */
+export async function getCoefficientChange(
+  requestId: string | number,
+): Promise<CoefficientChangeRequest> {
+  return parseCoefficientChangeRequest(
+    await ipdGet<unknown>(`/coefficient-change-requests/${encodeURIComponent(String(requestId))}`),
+  );
+}
+
+/** P1-2：本项目上市日期变更单列表（按 {@code projectId} 过滤；缺省返回全量，按创建时间倒序）。 */
+export async function listLaunchDateChanges(
+  projectId?: null | number | string,
+): Promise<LaunchDateChangeRequest[]> {
+  const query = projectId === null || projectId === undefined || projectId === ''
+    ? undefined
+    : { projectId };
+  const raw = await ipdGet<unknown>('/launch-date-change-requests', query);
+  return Array.isArray(raw) ? raw.map(parseLaunchDateChangeRequest) : [];
+}
+
+/** P1-2：按 ID 取上市日期变更单详情。 */
+export async function getLaunchDateChange(
+  requestId: string | number,
+): Promise<LaunchDateChangeRequest> {
+  return parseLaunchDateChangeRequest(
+    await ipdGet<unknown>(`/launch-date-change-requests/${encodeURIComponent(String(requestId))}`),
+  );
+}
+
 // ---------- 需求变更单（P2-6.1 双签否决；原型 /changes 页挂本段） ----------
 
 /** 状态机 DRAFT → PENDING_SIGN → APPROVED/REJECTED（单方 REJECT 即整体否决）。 */

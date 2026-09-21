@@ -7,8 +7,8 @@
  *   - 签署决策（PUT /{id}/sign，APPROVE/REJECT）
  *   - 列表（GET /requirement-changes?projectId=&status=）
  *
- * Tab1 系数变更 + Tab2 上市日期：仅 POST 发起/决策已交付，GET 列表/详情读端点未交付，
- * 仍挂 backend-pending 占位。
+ * Tab1 系数变更 + Tab2 上市日期：P1-2（2026-09-21）交付 GET 列表/详情读端点，
+ * 「本项目变更单列表」卡片接上，按创建时间倒序展示（pending / confirmed / rejected 全状态可查）。
  *
  * Mock 形态：依 .vue 同模块的 ipdPost/ipdPut/ipdGet → ipd-auth.authenticatedRequest → fetch 链。
  */
@@ -90,6 +90,17 @@ function stubApi(opts: { initialList?: unknown; failNextPost?: boolean } = {}) {
     if (opts.failNextPost && method === 'POST' && url.endsWith('/requirement-changes')) {
       return response({ code: 50001, message: '项目不存在' }, 50001);
     }
+    // P1-2：Tab1/Tab2 列表卡接住 GET 列表端点
+    if (method === 'GET' && url.includes('/coefficient-change-requests') && !/\/\d+/.test(url)) {
+      return response([
+        { id: '5001', projectId: '9140004', proposedCoefficient: 1.2, status: 'PENDING_LEADER', reason: 'S 级上调', createTime: '2026-09-21T10:00:00' },
+      ]);
+    }
+    if (method === 'GET' && url.includes('/launch-date-change-requests') && !/\/\d+/.test(url)) {
+      return response([
+        { id: '5002', projectId: '9140004', proposedLaunchDate: '2026-12-01 00:00:00', previousLaunchDate: '2026-10-01 00:00:00', status: 'PENDING_SECOND', reason: '节奏调整', createTime: '2026-09-21T10:00:00' },
+      ]);
+    }
     if (method === 'GET' && url.includes('/requirement-changes') && !/\/\d+/.test(url)) {
       return response(opts.initialList ?? initialList);
     }
@@ -161,16 +172,42 @@ describe('IpdProjectChanges 项目需求与变更 (P0-10.25) — Tab3 需求变�
     wrapper.unmount();
   });
 
-  it('Tab1/Tab2 仍保留 backend-pending 占位（系数/上市日期 GET 列表/详情读端点未交付）', async () => {
-    stubApi();
+  it('P1-2 Tab1 系数变更：首屏自动 GET /coefficient-change-requests?projectId=9140004 接上列表', async () => {
+    const calls = stubApi();
     const router = buildRouter();
     await router.push('/ipd/projects/9140004/changes');
     await router.isReady();
     const wrapper = mount(ChangesProjectTab, { global: { plugins: [router] } });
-    // 默认 Tab 是 coefficient；列表占位 prompt 不依赖 Tab 切换，可见
     await vi.waitFor(() => expect(wrapper.text()).toContain('发起系数变更'));
-    expect(wrapper.text()).toContain('两类变更单的 GET 列表/详情读端点均未交付');
-    expect(wrapper.text()).toContain('读端点交付前本区不展示任何模拟数据');
+    const coefCall = calls.find((c) => c.method === 'GET' && c.url.includes('/coefficient-change-requests'));
+    expect(coefCall).toBeDefined();
+    expect(coefCall!.url).toContain('projectId=9140004');
+    // 列表行 5001 渲染出 Tab1 「本项目系数变更单列表」卡片
+    await vi.waitFor(() => expect(wrapper.text()).toContain('5001'));
+    expect(wrapper.text()).toContain('S 级上调');
+    expect(wrapper.text()).not.toContain('两类变更单的 GET 列表/详情读端点均未交付');
+    wrapper.unmount();
+  });
+
+  it('P1-2 Tab2 上市日期变更：首屏自动 GET /launch-date-change-requests?projectId=9140004 接上列表', async () => {
+    const calls = stubApi();
+    const router = buildRouter();
+    await router.push('/ipd/projects/9140004/changes');
+    await router.isReady();
+    const wrapper = mount(ChangesProjectTab, { global: { plugins: [router] } });
+    // 默认 Tab 是 coefficient，需要切到 launch-date 才能看到 Tab2 列表
+    await vi.waitFor(() => expect(wrapper.text()).toContain('发起系数变更'));
+    const launchHeader = wrapper.findAll('.ant-tabs-tab').find((t) => t.text().includes('上市日期变更'));
+    expect(launchHeader).toBeDefined();
+    await launchHeader!.trigger('click');
+    await wrapper.vm.$nextTick();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('5002'));
+    const launchCall = calls.find((c) => c.method === 'GET' && c.url.includes('/launch-date-change-requests'));
+    expect(launchCall).toBeDefined();
+    expect(launchCall!.url).toContain('projectId=9140004');
+    // 列表行 5002 渲染出 Tab2 「本项目上市日期变更单列表」卡片
+    expect(wrapper.text()).toContain('5002');
+    expect(wrapper.text()).toContain('节奏调整');
     wrapper.unmount();
   });
 
