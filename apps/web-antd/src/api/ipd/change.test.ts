@@ -4,6 +4,10 @@ import { createPinia, setActivePinia } from 'pinia';
 import {
   decideCoefficientChange,
   decideLaunchDateChange,
+  getCoefficientChange,
+  getLaunchDateChange,
+  listCoefficientChanges,
+  listLaunchDateChanges,
   parseCoefficientChangeRequest,
   parseLaunchDateChangeRequest,
   proposeCoefficientChange,
@@ -121,5 +125,73 @@ describe('变更单接口', () => {
     expect(() => parseCoefficientChangeRequest(null)).toThrow(IpdRequestError);
     expect(() => parseCoefficientChangeRequest({ id: '1' })).toThrow(IpdRequestError);
     expect(() => parseLaunchDateChangeRequest({ id: '1', projectId: '100' })).toThrow(IpdRequestError);
+  });
+});
+
+// ---------- P1-2：4 个新 GET（按项目列表 + 按 ID 详情）契约测试 ----------
+
+describe('P1-2 系数变更列表与详情 GET', () => {
+  it('listCoefficientChanges(projectId=100) → GET /api/v1/coefficient-change-requests?projectId=100', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response([coefficientFixture({ id: '8001' }), coefficientFixture({ id: '8002', status: 'CONFIRMED' })]));
+    vi.stubGlobal('fetch', fetcher);
+    const rows = await listCoefficientChanges(100);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.id).toBe('8001');
+    expect(rows[1]!.status).toBe('CONFIRMED');
+    const called = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
+    expect(called.pathname).toBe('/api/v1/coefficient-change-requests');
+    expect(called.searchParams.get('projectId')).toBe('100');
+  });
+
+  it('listCoefficientChanges() 不带 projectId → 查询串不含 projectId 参数', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response([]));
+    vi.stubGlobal('fetch', fetcher);
+    const rows = await listCoefficientChanges();
+    expect(rows).toEqual([]);
+    const called = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
+    expect(called.pathname).toBe('/api/v1/coefficient-change-requests');
+    expect(called.searchParams.has('projectId')).toBe(false);
+  });
+
+  it('getCoefficientChange(id=8001) → GET /api/v1/coefficient-change-requests/8001，解析并返回实体', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response(coefficientFixture({ id: '8001', status: 'CONFIRMED' })));
+    vi.stubGlobal('fetch', fetcher);
+    const row = await getCoefficientChange(8001);
+    expect(row.id).toBe('8001');
+    expect(row.status).toBe('CONFIRMED');
+    expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/coefficient-change-requests/8001');
+  });
+});
+
+describe('P1-2 上市日期变更列表与详情 GET', () => {
+  it('listLaunchDateChanges(projectId=200) → GET /api/v1/launch-date-change-requests?projectId=200', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response([launchFixture({ id: '8002' }), launchFixture({ id: '8003', status: 'CONFIRMED' })]));
+    vi.stubGlobal('fetch', fetcher);
+    const rows = await listLaunchDateChanges(200);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.id).toBe('8002');
+    expect(rows[1]!.status).toBe('CONFIRMED');
+    const called = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
+    expect(called.pathname).toBe('/api/v1/launch-date-change-requests');
+    expect(called.searchParams.get('projectId')).toBe('200');
+  });
+
+  it('listLaunchDateChanges() 不带 projectId → 查询串不含 projectId 参数', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response([]));
+    vi.stubGlobal('fetch', fetcher);
+    const rows = await listLaunchDateChanges();
+    expect(rows).toEqual([]);
+    const called = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
+    expect(called.pathname).toBe('/api/v1/launch-date-change-requests');
+    expect(called.searchParams.has('projectId')).toBe(false);
+  });
+
+  it('getLaunchDateChange(id=8002) → GET /api/v1/launch-date-change-requests/8002，解析并返回实体', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response(launchFixture({ id: '8002', status: 'REJECTED' })));
+    vi.stubGlobal('fetch', fetcher);
+    const row = await getLaunchDateChange('8002');
+    expect(row.id).toBe('8002');
+    expect(row.status).toBe('REJECTED');
+    expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/launch-date-change-requests/8002');
   });
 });

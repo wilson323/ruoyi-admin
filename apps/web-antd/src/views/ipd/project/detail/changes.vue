@@ -2,14 +2,17 @@
 /**
  * 页25 项目详情-需求与变更（看板卡 P0-10.25）。
  *
- * 真实交付（POST 写端点）：
+ * 真实交付（写端点）：
  * - POST /api/v1/coefficient-change-requests            系数变更双PM 联合提议
  * - POST /api/v1/coefficient-change-requests/{id}/leader-decision  产品组长确认/驳回
  * - POST /api/v1/launch-date-change-requests            上市日期变更第一签提议
  * - POST /api/v1/launch-date-change-requests/{id}/second-decision  另一侧PM 第二签
  *
- * 未交付（挂占位，G-06 不展示任何模拟数据）：
- * - 系数/上市日期两类变更单的 GET 列表/详情读端点（仅 POST 发起+决策）。
+ * P1-2 交付（读端点，2026-09-21）：
+ * - GET  /api/v1/coefficient-change-requests?projectId=…  系数变更单列表（按项目）
+ * - GET  /api/v1/coefficient-change-requests/{id}         系数变更单详情
+ * - GET  /api/v1/launch-date-change-requests?projectId=…  上市日期变更单列表（按项目）
+ * - GET  /api/v1/launch-date-change-requests/{id}         上市日期变更单详情
  *
  * 已交付（RequirementChange，P2-6.1/6.2 双签否决 6 端点）：
  * - POST /requirement-changes、PUT /{id}/submit、PUT /{id}/sign、
@@ -46,7 +49,6 @@ import {
   message,
 } from 'ant-design-vue';
 
-import BackendPending from '../../_shared/backend-pending.vue';
 import { PENDING_TEXT } from '../../_shared/format';
 import { ipdApiErrorText } from '../../../../api/ipd/ai-document';
 import { IpdRequestError } from '../../../../api/ipd/auth';
@@ -58,6 +60,8 @@ import {
   decideCoefficientChange,
   decideLaunchDateChange,
   createRequirementChange,
+  listCoefficientChanges,
+  listLaunchDateChanges,
   listRequirementChanges,
   proposeCoefficientChange,
   proposeLaunchDateChange,
@@ -321,6 +325,71 @@ async function loadReqList() {
   }
 }
 
+// ---------- P1-2：本项目系数变更单列表（按 projectId）----------
+const coefList = ref<CoefficientChangeRequest[]>([]);
+const coefListLoading = ref(false);
+const coefListError = ref('');
+
+async function loadCoefList() {
+  const id = projectId.value.trim();
+  if (!id) {
+    coefList.value = [];
+    return;
+  }
+  coefListLoading.value = true;
+  coefListError.value = '';
+  try {
+    coefList.value = await listCoefficientChanges(id);
+  } catch (cause) {
+    coefList.value = [];
+    coefListError.value = ipdApiErrorText(cause);
+  } finally {
+    coefListLoading.value = false;
+  }
+}
+
+const coefListColumns = [
+  { title: '变更单编号', dataIndex: 'id', key: 'id', width: 100 },
+  { title: '建议系数', dataIndex: 'proposedCoefficient', key: 'proposedCoefficient', width: 100 },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 110 },
+  { title: '提议人 PM', dataIndex: 'proposerId', key: 'proposerId', width: 110 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 160 },
+  { title: '变更原因', dataIndex: 'reason', key: 'reason' },
+];
+
+// ---------- P1-2：本项目上市日期变更单列表（按 projectId）----------
+const launchList = ref<LaunchDateChangeRequest[]>([]);
+const launchListLoading = ref(false);
+const launchListError = ref('');
+
+async function loadLaunchList() {
+  const id = projectId.value.trim();
+  if (!id) {
+    launchList.value = [];
+    return;
+  }
+  launchListLoading.value = true;
+  launchListError.value = '';
+  try {
+    launchList.value = await listLaunchDateChanges(id);
+  } catch (cause) {
+    launchList.value = [];
+    launchListError.value = ipdApiErrorText(cause);
+  } finally {
+    launchListLoading.value = false;
+  }
+}
+
+const launchListColumns = [
+  { title: '变更单编号', dataIndex: 'id', key: 'id', width: 100 },
+  { title: '建议上市日期', dataIndex: 'proposedLaunchDate', key: 'proposedLaunchDate', width: 140 },
+  { title: '原上市日期', dataIndex: 'previousLaunchDate', key: 'previousLaunchDate', width: 140 },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 110 },
+  { title: '提议人', dataIndex: 'proposerId', key: 'proposerId', width: 110 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 160 },
+  { title: '变更原因', dataIndex: 'reason', key: 'reason' },
+];
+
 async function submitRequirement() {
   const reqId = reqForm.requirementId.trim();
   const reason = reqForm.reason.trim();
@@ -407,31 +476,53 @@ const reqListColumns = [
 ];
 
 onMounted(() => {
-  // 首次进入预拉需求变更列表（Tab3）；Tab1/Tab2 是表单驱动，不预拉。
+  // 首次进入预拉需求变更列表（Tab3）+ P1-2 新增：Tab1 系数变更 + Tab2 上市日期列表
   void loadReqList();
+  void loadCoefList();
+  void loadLaunchList();
 });
 </script>
 
 <template>
   <div class="flex flex-col gap-4">
     <Alert
-      message="发起系数/上市日期变更后即可在同卡片内对变更单执行确认/驳回；变更单列表与详情读端点尚未交付，本页不展示任何模拟数据。"
+      message="发起系数/上市日期变更后即可在同卡片内对变更单执行确认/驳回；本项目历史变更单在对应 Tab 的「变更单列表」卡片中按创建时间倒序展示。"
       show-icon
       type="info"
     />
 
-    <!-- 变更单列表：读端点未交付，占位（G-06） -->
-    <Card title="变更单列表">
-      <BackendPending
-        backend="两类变更单的 GET 列表/详情读端点均未交付"
-        card="P0-10.25"
-        note="读端点交付前本区不展示任何模拟数据；发起动作与决策操作按已交付的真实端点实现。"
-      />
-    </Card>
-
     <Tabs default-active-key="coefficient">
       <TabPane key="coefficient" tab="系数变更（S/B 级）">
-        <Card title="发起系数变更（双PM 联合提议）">
+        <Card title="本项目系数变更单列表">
+          <template #extra>
+            <Button :loading="coefListLoading" size="small" @click="loadCoefList">刷新</Button>
+          </template>
+          <Table
+            :columns="coefListColumns"
+            :data-source="coefList"
+            :loading="coefListLoading"
+            :pagination="false"
+            row-key="id"
+            size="small"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'status'">
+                <Tag :color="statusToneFor(record.status)">{{ statusLabelFor(record.status) }}</Tag>
+              </template>
+              <template v-else-if="column.key === 'createTime'">
+                {{ record.createTime ? record.createTime.replace('T', ' ') : PENDING_TEXT }}
+              </template>
+              <template v-else-if="column.key === 'proposedCoefficient'">
+                {{ record.proposedCoefficient ?? PENDING_TEXT }}
+              </template>
+            </template>
+            <template #emptyText>
+              <Empty :description="coefListError || '该项目暂无系数变更单'" />
+            </template>
+          </Table>
+        </Card>
+
+        <Card class="mt-4" title="发起系数变更（双PM 联合提议）">
           <Alert
             class="mb-4"
             message="仅 S/B 级项目适用差异化系数定值；提交后由产品组长确认写入项目档案。双方提交前请先行线下对齐。"
@@ -527,7 +618,39 @@ onMounted(() => {
       </TabPane>
 
       <TabPane key="launch-date" tab="上市日期变更">
-        <Card title="发起上市日期变更（双签）">
+        <Card title="本项目上市日期变更单列表">
+          <template #extra>
+            <Button :loading="launchListLoading" size="small" @click="loadLaunchList">刷新</Button>
+          </template>
+          <Table
+            :columns="launchListColumns"
+            :data-source="launchList"
+            :loading="launchListLoading"
+            :pagination="false"
+            row-key="id"
+            size="small"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'status'">
+                <Tag :color="statusToneFor(record.status)">{{ statusLabelFor(record.status) }}</Tag>
+              </template>
+              <template v-else-if="column.key === 'createTime'">
+                {{ record.createTime ? record.createTime.replace('T', ' ') : PENDING_TEXT }}
+              </template>
+              <template v-else-if="column.key === 'proposedLaunchDate'">
+                {{ record.proposedLaunchDate ? record.proposedLaunchDate.slice(0, 10) : PENDING_TEXT }}
+              </template>
+              <template v-else-if="column.key === 'previousLaunchDate'">
+                {{ record.previousLaunchDate ? record.previousLaunchDate.slice(0, 10) : PENDING_TEXT }}
+              </template>
+            </template>
+            <template #emptyText>
+              <Empty :description="launchListError || '该项目暂无上市日期变更单'" />
+            </template>
+          </Table>
+        </Card>
+
+        <Card class="mt-4" title="发起上市日期变更（双签）">
           <Alert
             class="mb-4"
             message="上市日期变更须双签：一方提议时须指定同组第二签确认人（另一侧PM或超级管理员），由确认人第二签后写入项目档案，禁止单方面修改。"
