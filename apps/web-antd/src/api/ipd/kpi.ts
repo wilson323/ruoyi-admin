@@ -1,6 +1,7 @@
 /**
  * KPI 考核接口（页29 KPI 考核 / 原型 /performance 项目KPI / P3-1.1~1.3）+
- * 共担 KPI 归集列表（页30 / W4-E 补交付）。
+ * 共担 KPI 归集列表（页30 / W4-E 补交付）+
+ * KPI 原始数据录入（R149 增量交付；后端写端点待交付，前端先把录入/展示闭环）。
  *
  * 真值：KpiRecordController（/api/v1/kpi/...，2026-09-06 磁盘核实，权限 ipd:kpi:query）。
  * 已交付端点：GET /functional?period（功能 KPI 指标来源与加权贡献，P0-10.29）、
@@ -14,8 +15,13 @@
  * 与原型不同构（逐条登记）：原型 12 项项目 KPI 表格 + KpiDrawer 填报/证据上传
  * （PUT /performance/kpis/...）后端仍未交付，后端为
  * 汇总计算读端点 + 共担 KPI 列表读端点，维持真缺口登记。
+ *
+ * KPI 原始数据录入（raw-records）来源：前端录入/展示界面按 8 项固定类型枚举
+ * （REVENUE / CHANNEL_COUNT / NPS / SCENE_COUNT / BUG_COUNT / COMPLAINT_COUNT /
+ * CERT_COUNT / COMPLETION_RATE）。后端写端点 /api/v1/kpi/raw-records 待交付，
+ * 当前前端页面如实展示「后端端点不存在」错误，不假绿。
  */
-import { ipdGet } from './http';
+import { ipdGet, ipdPost } from './http';
 
 /** 功能 KPI 指标来源项（KpiRecordService.KpiSourceItem；value 为原始值，contribution=value×weight）。 */
 export interface KpiSourceItem {
@@ -67,6 +73,61 @@ export function getPerformanceKpi(period: string): Promise<KpiPerformanceSummary
 /** 历史 KPI 趋势（periods 回看月数 1~36，缺省 12）。 */
 export function getKpiTrend(periods?: number): Promise<KpiTrendPoint[]> {
   return ipdGet<KpiTrendPoint[]>('/kpi/trend', periods === undefined ? undefined : { periods });
+}
+
+/**
+ * KPI 原始数据录入：8 项固定类型枚举（R149 录入/展示界面配套）。
+ * 字段语义：销售/渠道/NPS/场景/缺陷/投诉/认证/完成率——原型 12 项 KPI 表格精简后落地；
+ * COMPLETION_RATE 范围 0-1，其余为整数或万元金额（按 label 单位）。
+ */
+export const KPI_RAW_TYPES = [
+  { value: 'REVENUE', label: '销售收入（万元）' },
+  { value: 'CHANNEL_COUNT', label: '渠道数' },
+  { value: 'NPS', label: '客户满意度 NPS' },
+  { value: 'SCENE_COUNT', label: '落地场景数' },
+  { value: 'BUG_COUNT', label: '缺陷数' },
+  { value: 'COMPLAINT_COUNT', label: '投诉数' },
+  { value: 'CERT_COUNT', label: '国别认证数' },
+  { value: 'COMPLETION_RATE', label: '里程碑完成率（0-1）' },
+] as const;
+export type KpiRawType = (typeof KPI_RAW_TYPES)[number]['value'];
+
+/** KPI 原始记录（后端 RawKpiRecord 字段对齐；period YYYY-MM-DD；rawValue 数字）。 */
+export interface RawKpiRecord {
+  id: null | string;
+  projectId: null | string;
+  kpiType: KpiRawType | string;
+  period: null | string;
+  rawValue: null | number | string;
+  remark: null | string;
+  recordedBy: null | string;
+  recordedAt: null | string;
+  segment: string;
+}
+
+/** 录入请求体（白名单 DTO：projectId/kpiType/period/rawValue/remark；其余服务端权威）。 */
+export interface RawKpiRecordCreateReq {
+  projectId: string;
+  kpiType: KpiRawType;
+  period: string;
+  rawValue: number;
+  remark?: null | string;
+}
+
+/** 列表查询参数（projectId/kpiType 可选；不传返回全部可见项目）。 */
+export interface RawKpiRecordQuery {
+  kpiType?: KpiRawType | string;
+  projectId?: string;
+}
+
+/** KPI 原始记录列表（R149；后端待交付 GET /api/v1/kpi/raw-records）。 */
+export function listRawKpiRecords(query?: RawKpiRecordQuery): Promise<RawKpiRecord[]> {
+  return ipdGet<RawKpiRecord[]>('/kpi/raw-records', query as Record<string, unknown>);
+}
+
+/** 录入一条 KPI 原始记录（R149；后端待交付 POST /api/v1/kpi/raw-records）。 */
+export function createRawKpiRecord(body: RawKpiRecordCreateReq): Promise<RawKpiRecord> {
+  return ipdPost<RawKpiRecord>('/kpi/raw-records', body);
 }
 
 /**
