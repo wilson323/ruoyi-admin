@@ -222,12 +222,17 @@ async function submitUpsert(): Promise<void> {
   }
   upsertSaving.value = true;
   try {
+    // R152-D1: 防御 NumberInput 把 GroupId(数字) 当 string 提交,
+    // 被 MyBatis 视为 BIGINT 写入 VARCHAR(64) 失败落 NULL。
+    if (upsertForm.scope !== 'GLOBAL') {
+      upsertForm.scopeId = String(upsertForm.scopeId ?? '');
+    }
     const body: BusinessConfigUpsertReq = {
       configKey: upsertForm.configKey.trim(),
       configValue: upsertForm.configValue.trim(),
       description: upsertForm.description.trim() || null,
       scope: upsertForm.scope,
-      scopeId: upsertForm.scope === 'GLOBAL' ? null : upsertForm.scopeId,
+      scopeId: upsertForm.scope === 'GLOBAL' ? null : String(upsertForm.scopeId ?? ''),
     };
     await upsertBusinessConfig(body);
     antMessage.success(editingId.value ? '业务配置已更新' : '业务配置已新增');
