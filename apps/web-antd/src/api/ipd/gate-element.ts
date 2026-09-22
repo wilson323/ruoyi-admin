@@ -41,6 +41,10 @@ export interface IpdGateElement {
   isVeto: IpdGateElementEnabled;
   passStandard: null | string;
   sortOrder: null | number;
+  /** 阈值 JSON 配置（键非空、值均为整数），如 {"minCustomerVerifications":3}；可空。 */
+  thresholdJson?: string;
+  /** 双否决位：'1' 需双签否决 / '0' 否；仅 isVeto='1' 时有意义（评审侧 P2-5.2 消费）。 */
+  vetoDualRequired?: string;
   /** 仅 manage 视图返回：业务列表（listGateElements）不携带此字段 */
   status?: IpdGateElementStatus;
   /** 仅 manage 视图返回：乐观锁 */
@@ -56,6 +60,10 @@ export interface IpdGateElementCreateReq {
   isVeto: IpdGateElementEnabled;
   passStandard?: null | string;
   sortOrder?: null | number;
+  /** 阈值 JSON 配置（键非空、值均为整数），如 {"minCustomerVerifications":3}；可空。 */
+  thresholdJson?: string;
+  /** 双否决位：'1' 需双签否决 / '0' 否；仅 isVeto='1' 时有意义。 */
+  vetoDualRequired?: string;
 }
 
 /** 更新白名单（后端 GateElementUpdateReq：编码不可改）。 */
@@ -65,6 +73,10 @@ export interface IpdGateElementUpdateReq {
   isVeto: IpdGateElementEnabled;
   passStandard?: null | string;
   sortOrder?: null | number;
+  /** 阈值 JSON 配置（键非空、值均为整数），如 {"minCustomerVerifications":3}；可空。 */
+  thresholdJson?: string;
+  /** 双否决位：'1' 需双签否决 / '0' 否；仅 isVeto='1' 时有意义。 */
+  vetoDualRequired?: string;
 }
 
 /** 启用按钮专用：仅修改 enabled='1'，其它字段由后端保持现状。 */
@@ -84,6 +96,8 @@ function normalize(raw: unknown): IpdGateElement {
     status = statusRaw;
   }
   const versionRaw = row.version;
+  const thresholdRaw = row.thresholdJson;
+  const vetoDualRaw = row.vetoDualRequired;
   return {
     enabled: row.enabled === '1' ? '1' : '0',
     elementCode: String(row.elementCode ?? ''),
@@ -93,6 +107,8 @@ function normalize(raw: unknown): IpdGateElement {
     isVeto: row.isVeto === '1' ? '1' : '0',
     passStandard: row.passStandard === undefined || row.passStandard === null ? null : String(row.passStandard),
     sortOrder: row.sortOrder === undefined || row.sortOrder === null ? null : Number(row.sortOrder),
+    ...(thresholdRaw === undefined || thresholdRaw === null ? {} : { thresholdJson: String(thresholdRaw) }),
+    ...(vetoDualRaw === undefined || vetoDualRaw === null ? {} : { vetoDualRequired: String(vetoDualRaw) }),
     ...(status ? { status } : {}),
     ...(versionRaw === undefined || versionRaw === null ? {} : { version: Number(versionRaw) }),
   };

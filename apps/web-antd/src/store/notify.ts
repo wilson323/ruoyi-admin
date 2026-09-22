@@ -66,12 +66,29 @@ export const useNotifyStore = defineStore(
      * </ul>
      * <p>两通道消息源不重叠，无需幂等去重；各自消费各自置空防 watch 不触发。</p>
      */
+    // SSE/WS 连接句柄（store 单例级，跨 basic.vue 重挂载/HMR/登出登入复用同一套连接）。
+    // 2026-09-22 修复 WS 抖动：原 startListeningMessage 每次调用都新建连接且无幂等 guard，
+    // basic.vue 重挂载（dev HMR / 登出登入）泄漏多条同 userId 连接，后端 WebSocketSessionHolder
+    // 单例按 userId 互踢（close BAD_DATA）→ 连接/断开风暴。句柄提到 store 级 + 幂等 guard 根治。
+    let sseHandle: ReturnType<typeof useSseMessage> | undefined;
+    let wsHandle: ReturnType<typeof useWebSocketMessage> | undefined;
+    let stopSseWatch: (() => void) | undefined;
+    let stopWsWatch: (() => void) | undefined;
+
+    function isChannelLive(status?: { value: string }) {
+      return status?.value === 'OPEN' || status?.value === 'CONNECTING';
+    }
+
     function startListeningMessage() {
+      // 幂等 guard：已有活动连接直接复用，杜绝重复新建导致的后端会话互踢（抖动根因）。
+      if (isChannelLive(wsHandle?.status) || isChannelLive(sseHandle?.status)) {
+        return;
+      }
       // ---------- SSE 通道 ----------
-      const sseReturnData = useSseMessage();
-      if (sseReturnData) {
-        const { data: sseData } = sseReturnData;
-        watch(sseData, (message) => {
+      sseHandle = useSseMessage();
+      if (sseHandle) {
+        const { data: sseData } = sseHandle;
+        stopSseWatch = watch(sseData, (message) => {
           if (!message) return;
           console.log(`[SSE] 接收到消息: ${message}`);
 
@@ -83,10 +100,10 @@ export const useNotifyStore = defineStore(
       }
 
       // ---------- WS 通道（IPD 业务通知，JSON 帧） ----------
-      const websocketReturnData = useWebSocketMessage();
-      if (websocketReturnData) {
-        const { data: wsData } = websocketReturnData;
-        watch(wsData, (raw) => {
+      wsHandle = useWebSocketMessage();
+      if (wsHandle) {
+        const { data: wsData } = wsHandle;
+        stopWsWatch = watch(wsData, (raw) => {
           if (!raw) return;
           console.log(`[WS] 接收到消息: ${raw}`);
 
@@ -118,6 +135,22 @@ export const useNotifyStore = defineStore(
           wsData.value = null;
         });
       }
+    }
+
+    /**
+     * 停止监听并关闭 SSE/WS 连接（登出时调用）。
+     * 清空句柄，使下次 startListeningMessage 能为（可能不同的）用户重建连接，
+     * 避免登出后连接泄漏 / 换用户误复用旧连接。
+     */
+    function stopListeningMessage() {
+      stopSseWatch?.();
+      stopWsWatch?.();
+      stopSseWatch = undefined;
+      stopWsWatch = undefined;
+      sseHandle?.close();
+      wsHandle?.close();
+      sseHandle = undefined;
+      wsHandle = undefined;
     }
 
     /**
@@ -178,6 +211,7 @@ export const useNotifyStore = defineStore(
       setRead,
       showDot,
       startListeningMessage,
+      stopListeningMessage,
     };
   },
   {

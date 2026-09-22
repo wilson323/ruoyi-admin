@@ -451,6 +451,20 @@ const ipdLayoutRoute: RouteRecordRaw = {
           name: 'IpdAdminGateElements',
           path: 'gate-elements',
         },
+        // R177-A6 Gate 评审详情页 —— 项目级 Gate 实例详情
+        //   入口：?projectId=X&gateId=Y；权限码 GATE_REVIEW_LIST（仅列表准入）；
+        //   activePath 挂到 gate-elements 让菜单继续高亮。
+        {
+          component: () => import('#/views/ipd/admin/gate-detail/index.vue'),
+          meta: {
+            access: [IPD_PERMISSION_CODES.GATE_REVIEW_LIST],
+            activePath: '/ipd/admin/gate-elements',
+            hideInMenu: true,
+            title: 'Gate 评审详情',
+          },
+          name: 'IpdAdminGateDetail',
+          path: 'gate-detail',
+        },
         {
           component: () => import('#/views/ipd/cert/templates/index.vue'),
           meta: { access: [IPD_PERMISSION_CODES.CERT_TEMPLATE_LIST], title: '国别认证清单模板库' },
