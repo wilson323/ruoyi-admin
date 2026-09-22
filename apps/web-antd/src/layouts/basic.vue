@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, onMounted, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { AuthenticationLoginExpiredModal } from '@vben/common-ui';
@@ -15,9 +15,11 @@ import {
 import { preferences } from '@vben/preferences';
 import { useAccessStore, useUserStore } from '@vben/stores';
 
+import { PhGear as Gear } from '@phosphor-icons/vue';
 import { message } from 'ant-design-vue';
 
 import { resetRoutes } from '#/router';
+import { enterPlatform } from '#/router/ipd-guard';
 import { useNotifyStore } from '#/store';
 import { useIpdAuthStore } from '#/store/ipd-auth';
 import { useTenantStore } from '#/store/tenant';
@@ -32,6 +34,14 @@ const { destroyWatermark, updateWatermark } = useWatermark();
 const tenantStore = useTenantStore();
 const menus = computed(() => {
   const defaultMenus = [
+    // 2026-09-21 P3 拍板：恢复「进入 AI 平台」入口（2026-09-11 单壳统一时随三切换钮一并删除）
+    {
+      handler: () => {
+        void handleEnterPlatform();
+      },
+      icon: Gear,
+      text: '进入 AI 平台',
+    },
     {
       handler: () => {
         router.push('/ipd/account');
@@ -48,6 +58,25 @@ const menus = computed(() => {
   }
   return defaultMenus;
 });
+
+/**
+ * 进入 AI 平台（2026-09-21 P3 拍板恢复入口；2026-09-11 单壳统一时随三切换钮一并删除）。
+ * 换票失败（无映射账号 / 账号非 FULL / 端点不可用）→ toast 错误原文，停留原页不跳转。
+ */
+const enteringPlatform = ref(false);
+async function handleEnterPlatform() {
+  if (enteringPlatform.value) return;
+  enteringPlatform.value = true;
+  try {
+    await router.replace(await enterPlatform(router));
+  } catch (error) {
+    message.warning(
+      error instanceof Error ? error.message : '无法进入 AI 平台，请稍后再试',
+    );
+  } finally {
+    enteringPlatform.value = false;
+  }
+}
 
 const avatar = computed(() => {
   return userStore.userInfo?.avatar || preferences.app.defaultAvatar;
