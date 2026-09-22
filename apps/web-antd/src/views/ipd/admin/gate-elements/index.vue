@@ -32,6 +32,7 @@ import {
   Tooltip,
   message as antMessage,
 } from 'ant-design-vue';
+import type { RuleObject } from 'ant-design-vue/es/form';
 
 import {
   IPD_GATE_CODES,
@@ -119,11 +120,40 @@ const modalForm = reactive({
   isVeto: false as boolean,
   passStandard: '',
   sortOrder: 0 as number,
+  /** 阈值 JSON 文本（键非空、值均为整数）；空串视为不提交。 */
+  thresholdJson: '',
+  /** 双否决位（仅 isVeto=true 时生效，保存时若 isVeto=false 强制写 '0'）。 */
+  vetoDualRequired: false as boolean,
 });
-const modalRules = {
+const modalRules: Record<string, RuleObject[]> = {
   elementCode: [{ required: true, whitespace: true, message: '请输入要素编码' }],
   elementName: [{ required: true, whitespace: true, message: '请输入要素名称' }],
   gateCode: [{ required: true, message: '请选择适用 Gate' }],
+  thresholdJson: [
+    {
+      validator: (_rule: RuleObject, value: undefined | string) => {
+        const text = (value ?? '').trim();
+        if (!text) return Promise.resolve();
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          return Promise.reject('阈值 JSON 格式不正确，请检查语法');
+        }
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          return Promise.reject('阈值 JSON 必须为对象（键值对），不能为数组或基础值');
+        }
+        for (const [key, val] of Object.entries(parsed as Record<string, unknown>)) {
+          if (!key) return Promise.reject('阈值 JSON 的键不能为空');
+          if (typeof val !== 'number' || !Number.isInteger(val)) {
+            return Promise.reject(`阈值 JSON 的 "${key}" 必须为整数`);
+          }
+        }
+        return Promise.resolve();
+      },
+      trigger: 'blur',
+    },
+  ],
 };
 const modalFormRef = ref();
 
@@ -183,6 +213,8 @@ function openCreate() {
   modalForm.isVeto = false;
   modalForm.sortOrder = 0;
   modalForm.enabled = true;
+  modalForm.thresholdJson = '';
+  modalForm.vetoDualRequired = false;
   modalOpen.value = true;
 }
 
@@ -195,6 +227,8 @@ function openEdit(record: IpdGateElement) {
   modalForm.isVeto = record.isVeto === '1';
   modalForm.sortOrder = record.sortOrder ?? 0;
   modalForm.enabled = record.enabled === '1';
+  modalForm.thresholdJson = record.thresholdJson ?? '';
+  modalForm.vetoDualRequired = record.vetoDualRequired === '1';
   modalOpen.value = true;
 }
 
@@ -206,12 +240,16 @@ async function saveModal() {
     return;
   }
   modalSaving.value = true;
+  const thresholdText = modalForm.thresholdJson.trim();
   const payload = {
     elementName: modalForm.elementName.trim(),
     enabled: (modalForm.enabled ? '1' : '0') as '0' | '1',
     isVeto: (modalForm.isVeto ? '1' : '0') as '0' | '1',
     passStandard: modalForm.passStandard.trim() ? modalForm.passStandard.trim() : null,
     sortOrder: modalForm.sortOrder ?? 0,
+    /** 双否决位仅在否决项上有意义；非否决项强制 '0'（与后端语义一致）。 */
+    vetoDualRequired: (modalForm.isVeto && modalForm.vetoDualRequired ? '1' : '0') as '0' | '1',
+    thresholdJson: thresholdText ? thresholdText : undefined,
   };
   try {
     if (editingId.value) {
@@ -547,6 +585,24 @@ function toElement(record: Record<string, unknown>): IpdGateElement {
             <Switch v-model:checked="modalForm.isVeto" />
             <span class="text-muted-foreground text-xs">开启后判定不通过将阻断 Gate 提交通过</span>
           </Space>
+        </FormItem>
+        <FormItem :value-prop-name="'checked'" label="双签否决" name="vetoDualRequired">
+          <Space>
+            <Switch
+              v-model:checked="modalForm.vetoDualRequired"
+              :disabled="!modalForm.isVeto"
+            />
+            <span class="text-muted-foreground text-xs">
+              {{ modalForm.isVeto ? '开启后该否决项需双 PM 双签才能否决（评审侧 P2-5.2 消费）' : '仅否决项可启用双签' }}
+            </span>
+          </Space>
+        </FormItem>
+        <FormItem label="阈值 JSON" name="thresholdJson">
+          <Input.TextArea
+            v-model:value="modalForm.thresholdJson"
+            :auto-size="{ minRows: 2, maxRows: 6 }"
+            placeholder='选填；键非空、值均为整数，如 {"minCustomerVerifications":3}'
+          />
         </FormItem>
         <FormItem label="排序号" name="sortOrder">
           <InputNumber v-model:value="modalForm.sortOrder" :precision="0" class="w-full" />
