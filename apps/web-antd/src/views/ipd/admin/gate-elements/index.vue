@@ -134,6 +134,10 @@ const modalRules: Record<string, RuleObject[]> = {
       validator: (_rule: RuleObject, value: undefined | string) => {
         const text = (value ?? '').trim();
         if (!text) return Promise.resolve();
+        // 镜像后端 THRESHOLD_MAX=512（GateElementService.validateThresholdJson:521）
+        if (text.length > 512) {
+          return Promise.reject('阈值 JSON 超长（≤512 字符）');
+        }
         let parsed: unknown;
         try {
           parsed = JSON.parse(text);
@@ -143,8 +147,13 @@ const modalRules: Record<string, RuleObject[]> = {
         if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
           return Promise.reject('阈值 JSON 必须为对象（键值对），不能为数组或基础值');
         }
-        for (const [key, val] of Object.entries(parsed as Record<string, unknown>)) {
-          if (!key) return Promise.reject('阈值 JSON 的键不能为空');
+        // 镜像后端「非空 JSON 对象」（validateThresholdJson:530 node.isEmpty() 拒绝 {}）
+        const entries = Object.entries(parsed as Record<string, unknown>);
+        if (entries.length === 0) {
+          return Promise.reject('阈值 JSON 不能为空对象 {}，至少需一个键值对');
+        }
+        for (const [key, val] of entries) {
+          if (!key.trim()) return Promise.reject('阈值 JSON 的键不能为空');
           if (typeof val !== 'number' || !Number.isInteger(val)) {
             return Promise.reject(`阈值 JSON 的 "${key}" 必须为整数`);
           }
@@ -249,7 +258,9 @@ async function saveModal() {
     sortOrder: modalForm.sortOrder ?? 0,
     /** 双否决位仅在否决项上有意义；非否决项强制 '0'（与后端语义一致）。 */
     vetoDualRequired: (modalForm.isVeto && modalForm.vetoDualRequired ? '1' : '0') as '0' | '1',
-    thresholdJson: thresholdText ? thresholdText : undefined,
+    // 照发空串（而非 undefined）：后端 update 空串→null 清空；配合 GateElement.thresholdJson
+    // @TableField(updateStrategy=ALWAYS) 才能真正落库清空（undefined 会被判为「不改」保留旧值）。
+    thresholdJson: thresholdText,
   };
   try {
     if (editingId.value) {

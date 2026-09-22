@@ -84,6 +84,11 @@ export const useNotifyStore = defineStore(
       if (isChannelLive(wsHandle?.status) || isChannelLive(sseHandle?.status)) {
         return;
       }
+      // 重建前先停旧 watch：旧句柄可能已关闭（非 live）但 watch 未释放，直接覆盖会泄漏惰性 watcher。
+      stopSseWatch?.();
+      stopWsWatch?.();
+      stopSseWatch = undefined;
+      stopWsWatch = undefined;
       // ---------- SSE 通道 ----------
       sseHandle = useSseMessage();
       if (sseHandle) {

@@ -88,9 +88,10 @@ async function handleLogout() {
    * （清 IPD 票 + 平台票 + 身份）。原实现只清 vben authStore——统一壳后
    * 会话主体是 IPD，若只清 vben 状态，IPD 票残留会导致「退出登录」无效。
    */
-  // 登出先关 SSE/WS：否则连接泄漏，且换用户重登会复用旧连接（配合 notify.ts 幂等 guard）。
-  notifyStore.stopListeningMessage();
   await ipdAuthStore.logout();
+  // 登出成功后再关 SSE/WS：logout 在会话未过期时可能抛错，若提前关连接会在用户仍登录时
+  // 误杀通知（回归）。成功后关闭避免连接泄漏 + 换用户重登复用旧连接（配合 notify.ts 幂等 guard）。
+  notifyStore.stopListeningMessage();
   userStore.setUserInfo(null);
   resetRoutes();
   await router.push('/auth/login');
