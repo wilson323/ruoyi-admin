@@ -12,6 +12,12 @@
  * - isVeto='1' 为否决项（命中无法提交通过），enabled='1' 为启用；
  * - 复制（copy）需指定 newElementCode；副本（duplicate）自动生成 "-DUP" 编码 + 「（副本）」名称；
  * - 回滚（revert）需指定 auditLogId；恢复（restore）将 archived 复活为 draft。
+ *
+ * SA-3 软实施（页47 v3 BR-GATE-01b）：
+ * - 批量复制某 Gate下端要素到目标 Gate（编码加前缀）；审计日志列表（revert 用）；
+ * - 判定分布统计（✅PASS / ⚠️PASS_WITH_CONDITION / ❌FAIL 计数）。
+ * 注：以下 3 端点按规格页预留但后端尚未实装，按 AGENTS.md 规约在前端 src/里以「待后端交付」
+ *     注释诚实声明；调用失败时不臆造数据，调用方须展示「待后端交付」降级文案。
  */
 import { ipdGet, ipdPost } from './http';
 
@@ -45,6 +51,10 @@ export interface IpdGateElement {
   status?: IpdGateElementStatus;
   /** 仅 manage 视图返回：乐观锁 */
   version?: null | number;
+  /** 双否决位：1=该否决项命中需双签确认（定义层标记，评审侧 P2-5.2 消费） */
+  vetoDualRequired?: IpdGateElementEnabled;
+  /** 阈值 JSON 配置（键非空、值均为整数），如 {"minCustomerVerifications":3} */
+  thresholdJson?: null | string;
 }
 
 /** 新建白名单（后端 GateElementCreateReq）。 */
@@ -56,6 +66,8 @@ export interface IpdGateElementCreateReq {
   isVeto: IpdGateElementEnabled;
   passStandard?: null | string;
   sortOrder?: null | number;
+  vetoDualRequired?: IpdGateElementEnabled;
+  thresholdJson?: null | string;
 }
 
 /** 更新白名单（后端 GateElementUpdateReq：编码不可改）。 */
@@ -65,6 +77,8 @@ export interface IpdGateElementUpdateReq {
   isVeto: IpdGateElementEnabled;
   passStandard?: null | string;
   sortOrder?: null | number;
+  vetoDualRequired?: IpdGateElementEnabled;
+  thresholdJson?: null | string;
 }
 
 /** 启用按钮专用：仅修改 enabled='1'，其它字段由后端保持现状。 */
@@ -95,6 +109,8 @@ function normalize(raw: unknown): IpdGateElement {
     sortOrder: row.sortOrder === undefined || row.sortOrder === null ? null : Number(row.sortOrder),
     ...(status ? { status } : {}),
     ...(versionRaw === undefined || versionRaw === null ? {} : { version: Number(versionRaw) }),
+    vetoDualRequired: row.vetoDualRequired === '1' ? '1' : '0',
+    thresholdJson: row.thresholdJson === undefined || row.thresholdJson === null ? null : String(row.thresholdJson),
   };
 }
 
@@ -158,4 +174,56 @@ export function revertGateElement(id: string, auditLogId: string | number): Prom
 /** 恢复归档要素（archived → draft，需人工复核后重新 publish）。 */
 export function restoreGateElement(id: string): Promise<IpdGateElement> {
   return ipdPost<unknown>(`/gate-elements/${id}/restore`).then(normalize);
+}
+
+/* ============================================================
+ * SA-3 软实施：批量复制 / 审计日志列表 / 判定分布
+ * 注：以下 3 端点后端尚未实装（页47 v3 BR-GATE-01b 预留）；
+ *     调用失败时按 AGENTS.md 规约在前端页面头展示「待后端交付」降级文案。
+ * ============================================================ */
+
+/** 批量复制请求：把源 Gate 下全部启用的要素复制到目标 Gate，新编码 = `${prefix}-${源编码}`（仅 -DUP / -COPY 这类内务后缀除外时保留原编码作为 elementCode）。 */
+export interface IpdGateElementBatchCopyReq {
+  sourceGate: string;
+  targetGate: string;
+  codePrefix: string;
+}
+
+/** 批量复制响应：成功复制的要素数 + 跳过的要素编码（重复 / 空前缀）。 */
+export interface IpdGateElementBatchCopyResp {
+  copied: number;
+  skipped: string[];
+}
+
+/** 批量复制某 Gate 下全部启用要素到目标 Gate（POST /gate-elements/batch-copy，body={sourceGate,targetGate,codePrefix}；待后端交付）。 */
+export function copyGateElementsBatch(req: IpdGateElementBatchCopyReq): Promise<IpdGateElementBatchCopyResp> {
+  return ipdPost<unknown>('/gate-elements/batch-copy', req) as Promise<IpdGateElementBatchCopyResp>;
+}
+
+/** 审计日志摘要（revert 弹窗下拉用，待后端交付）。 */
+export interface IpdGateElementAuditLog {
+  id: string;
+  action: string;
+  operator: string;
+  createTime: string;
+  summary?: null | string;
+}
+
+/** 列出某要素的全部审计日志（GET /gate-elements/{id}/audit-logs；待后端交付）。 */
+export function listGateElementAuditLogs(elementId: string): Promise<IpdGateElementAuditLog[]> {
+  return ipdGet<unknown[]>(`/gate-elements/${elementId}/audit-logs`) as unknown as Promise<IpdGateElementAuditLog[]>;
+}
+
+/** 判定分布统计（?gate 可选过滤；待后端交付）。 */
+export interface IpdGateElementResultStats {
+  gate: string;
+  pass: number;
+  passWithCondition: number;
+  fail: number;
+  total: number;
+}
+
+/** 调 gate_element_results 统计接口，返回某 Gate 下三种判定的计数 + 总数（待后端交付）。 */
+export function getGateElementResultStats(gate?: string): Promise<IpdGateElementResultStats> {
+  return ipdGet<unknown>('/gate-element-results/stats', gate ? { gate } : undefined) as unknown as Promise<IpdGateElementResultStats>;
 }

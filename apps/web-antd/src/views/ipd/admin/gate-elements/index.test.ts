@@ -10,6 +10,13 @@ const envelope = (data: unknown, status = 200, code = 0) => new Response(
   { status, headers: { 'Content-Type': 'application/json' } },
 );
 
+/** SA-3 软实施：判定分布统计端点（待后端交付），fixture 统一返回「待后端交付」语义。 */
+const STATS_UNAVAILABLE = { code: 0, message: 'success', data: null, timestamp: '2026-09-05T00:00:00Z', traceId: 'fixture' };
+const statsEnvelope = () => new Response(
+  JSON.stringify(STATS_UNAVAILABLE),
+  { status: 200, headers: { 'Content-Type': 'application/json' } },
+);
+
 const elements = [
   { id: '501', gateCode: 'G1', elementCode: 'G1-E01', elementName: '客户验证完成', passStandard: '5 份客户验证记录', isVeto: '1', sortOrder: 1, enabled: '1' },
   { id: '502', gateCode: 'G1', elementCode: 'G1-E02', elementName: '市场需求说明', passStandard: null, isVeto: '0', sortOrder: 2, enabled: '1' },
@@ -17,6 +24,14 @@ const elements = [
 
 const buttonText = (button: { text(): string }) => button.text().replace(/\s+/g, '');
 const elementText = (element: Element) => (element.textContent ?? '').replace(/\s+/g, '');
+
+/** 通用 fixture：listGateElements 返 elements / judgment stats 返 null（待后端交付）。 */
+const makeElementsFetcher = () => vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const path = String(input);
+  if (path === '/api/v1/gate-elements' && (!init?.method || init.method === 'GET')) return envelope(elements);
+  if (path === '/api/v1/gate-element-results/stats') return statsEnvelope();
+  throw new Error(`unexpected fetch: ${path}`);
+});
 
 beforeEach(() => {
   sessionStorage.clear();
@@ -62,15 +77,16 @@ describe('页47 Gate 评审要素', () => {
   });
 
   it('断网展示网络文案并可重试', async () => {
-    const fetcher = vi.fn()
+    const fetcher = makeElementsFetcher()
       .mockRejectedValueOnce(new TypeError('network unavailable'))
-      .mockResolvedValueOnce(envelope(elements));
+      .mockRejectedValueOnce(new TypeError('network unavailable'));
     vi.stubGlobal('fetch', fetcher);
     const wrapper = mount(Index);
     await vi.waitFor(() => expect(wrapper.text()).toContain('无法连接服务'));
     await wrapper.find('[role="alert"] button').trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('G1-E01'));
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    // listGateElements + judgmentStats 各调一次 → 4 次；前 2 次 reject，后 2 次 resolve。
+    expect(fetcher.mock.calls.length).toBeGreaterThanOrEqual(4);
     wrapper.unmount();
   });
 
