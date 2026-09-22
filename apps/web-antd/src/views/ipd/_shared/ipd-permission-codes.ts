@@ -43,10 +43,12 @@ export const IPD_PERMISSION_CODES = {
   GATE_ELEMENT_CREATE: 'ipd:gate-element:add',
   GATE_ELEMENT_UPDATE: 'ipd:gate-element:edit',
   GATE_ELEMENT_DISABLE: 'ipd:gate-element:remove',
-  GATE_ELEMENT_PUBLISH: 'ipd:gate-element:publish', /* reserved (A23): 评审要素发布按钮未实装 */
-  GATE_ELEMENT_ARCHIVE: 'ipd:gate-element:archive', /* reserved (A23): 评审要素归档按钮未实装 */
-  GATE_ELEMENT_COPY: 'ipd:gate-element:copy', /* reserved (A23): 评审要素复制按钮未实装 */
-  GATE_ELEMENT_REVERT: 'ipd:gate-element:revert', /* reserved (A23): 评审要素历史恢复按钮未实装 */
+  // 以下 5 个按钮在 R175-A 接入评审要素管理后台（页47 全生命周期视图）；与 A23 reserved 状态解耦。
+  GATE_ELEMENT_PUBLISH: 'ipd:gate-element:publish',
+  GATE_ELEMENT_ARCHIVE: 'ipd:gate-element:archive',
+  GATE_ELEMENT_COPY: 'ipd:gate-element:copy',
+  GATE_ELEMENT_REVERT: 'ipd:gate-element:revert',
+  GATE_ELEMENT_RESTORE: 'ipd:gate-element:restore',
 
   // 删除申请
   DELETION_REQUEST_ARCHIVE: 'ipd:deletion-request:archive',

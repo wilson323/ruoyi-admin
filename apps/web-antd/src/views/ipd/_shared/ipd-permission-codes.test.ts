@@ -12,19 +12,19 @@ import {
 } from './ipd-permission-codes';
 
 describe('IPD 权限码常量与后端一一对应', () => {
-  it('导出 67 个 distinct 码（与后端 IpdPermissionCode 字面值一一镜像，1 组同码双名；R149 新增 RECOVERY_* 2 码）', () => {
-    // 后端 68 个常量声明，其中 STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE
-    // 共享字面值 'ipd:stage-action:add'，故 distinct 码为 67
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(68);
-    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(67);
+  it('导出 68 个 distinct 码（与后端 IpdPermissionCode 字面值一一镜像，1 组同码双名；R175-A 新增 GATE_ELEMENT_RESTORE）', () => {
+    // 后端 69 个常量声明，其中 STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE
+    // 共享字面值 'ipd:stage-action:add'，故 distinct 码为 68
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(69);
+    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(68);
   });
 
-  it('所有 distinct 码唯一（67 个）', () => {
+  it('所有 distinct 码唯一（68 个）', () => {
     const set = new Set(ALL_IPD_PERMISSION_CODES);
-    expect(set.size).toBe(67);
-    // 数组长度 68（多 1 项是 STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 同码；
-    //   R149 新增 RECOVERY_CHECK_90D + RECOVERY_WARNINGS_QUERY 2 distinct 码）
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(68);
+    expect(set.size).toBe(68);
+    // 数组长度 69（多 1 项是 STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 同码；
+    //   R175-A 新增 GATE_ELEMENT_RESTORE 1 distinct 码；R149 RECOVERY_* 2 distinct 码仍计入）
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(69);
   });
 
   it('全部码遵循 ipd:资源:动作 命名规范', () => {
@@ -92,11 +92,17 @@ describe('getRequiredCodes 路径解析', () => {
  *   3. 不得用裸字符串字面量 'ipd:xxx'（集中常量是单一权威源）
  */
 describe('A13 19 个零引用权限码已接入（v-access:code 或 meta.access）', () => {
-  // 19 个目标接入码（A10 报告 + A13 复核）
+  // 24 个目标接入码（A10 报告 + A13 复核 + R175-A 增补 5 项 gate-element reserved 转 A13）
   const expected: { code: string; in: 'meta.access' | 'v-access' | 'both' }[] = [
     { code: IPD_PERMISSION_CODES.GATE_ELEMENT_CREATE, in: 'v-access' },
     { code: IPD_PERMISSION_CODES.GATE_ELEMENT_UPDATE, in: 'v-access' },
     { code: IPD_PERMISSION_CODES.GATE_ELEMENT_DISABLE, in: 'v-access' },
+    // R175-A：评审要素页47 全生命周期 9 按钮接入（状态机驱动决策详见 button-policy.ts）
+    { code: IPD_PERMISSION_CODES.GATE_ELEMENT_PUBLISH, in: 'v-access' },
+    { code: IPD_PERMISSION_CODES.GATE_ELEMENT_ARCHIVE, in: 'v-access' },
+    { code: IPD_PERMISSION_CODES.GATE_ELEMENT_COPY, in: 'v-access' },
+    { code: IPD_PERMISSION_CODES.GATE_ELEMENT_REVERT, in: 'v-access' },
+    { code: IPD_PERMISSION_CODES.GATE_ELEMENT_RESTORE, in: 'v-access' },
     { code: IPD_PERMISSION_CODES.CERT_TEMPLATE_CREATE, in: 'v-access' },
     { code: IPD_PERMISSION_CODES.CERT_TEMPLATE_DELETE, in: 'v-access' },
     { code: IPD_PERMISSION_CODES.DELETION_REQUEST_SUBMIT, in: 'v-access' },
@@ -115,8 +121,8 @@ describe('A13 19 个零引用权限码已接入（v-access:code 或 meta.access�
     { code: IPD_PERMISSION_CODES.STAGE_ACTION_DELIVERABLE, in: 'v-access' },
   ];
 
-  it('目标码数量 = 19（A13 承诺）', () => {
-    expect(expected.length).toBe(19);
+  it('目标码数量 = 24（A13 19 + R175-A 增补 5）', () => {
+    expect(expected.length).toBe(24);
   });
 
   for (const { code, in: location } of expected) {
@@ -188,17 +194,14 @@ describe('A13 19 个零引用权限码已接入（v-access:code 或 meta.access�
  *   4. STAGE_ACTION_INSTANTIATE 与 DELIVERABLE 同字面值（已在 9fde989 之前记录），
  *      本次仅在 INSTANTIATE 行加碰撞 doc 注释，不重复加 v-access 指令
  */
-describe('A23 17 个零引用权限码已处置（reserved 注释 16 + 碰撞 doc 1）', () => {
-  // 17 目标常量 key（A10 → A13 → A23 完整闭环）
+describe('A23 13 个零引用权限码已处置（reserved 注释 12 + 碰撞 doc 1）', () => {
+  // 13 目标常量 key（R175-A 将 4 项 gate-element reserved 转 A13 后剩余：17 - 4 = 13）
   const reservedCodes: readonly string[] = [
     // 优先级 1：与现有视图弱关联
     IPD_PERMISSION_CODES.PROJECT_QUERY,
     IPD_PERMISSION_CODES.PROJECT_STATUS_CHANGE,
     IPD_PERMISSION_CODES.PRODUCT_BIND_PROJECT,
-    IPD_PERMISSION_CODES.GATE_ELEMENT_PUBLISH,
-    IPD_PERMISSION_CODES.GATE_ELEMENT_ARCHIVE,
-    IPD_PERMISSION_CODES.GATE_ELEMENT_COPY,
-    IPD_PERMISSION_CODES.GATE_ELEMENT_REVERT,
+    // R175-A：GATE_ELEMENT_PUBLISH/ARCHIVE/COPY/REVERT 已转本页 A13（9 按钮接入）；RESTORE 同步走 A13
     // 优先级 2：后端未交付相关 UI
     IPD_PERMISSION_CODES.NOTIFICATION_READ,
     IPD_PERMISSION_CODES.NOTIFICATION_DISPATCH,
@@ -214,15 +217,15 @@ describe('A23 17 个零引用权限码已处置（reserved 注释 16 + 碰撞 do
     IPD_PERMISSION_CODES.STAGE_ACTION_INSTANTIATE,
   ];
 
-  it('A23 目标码数量 = 17（与 _shared 处置行数对齐）', () => {
-    expect(reservedCodes.length).toBe(17);
+  it('A23 目标码数量 = 13（R175-A 后：17 - 4 gate-element 转 A13 = 13）', () => {
+    expect(reservedCodes.length).toBe(13);
   });
 
-  it('A23 不新增码：distinct count 仍为 67（R149 前镜像基线）', () => {
-    // 仅注释改动；R149 新增 RECOVERY_* 2 码由 A13 路径接入（v-access:code + meta.access），
-    //   不计入 A23 reservedCodes 列表。distinct count 在 R149 镜像后为 67。
-    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(67);
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(68);
+  it('A23 不新增码：distinct count = 68（R175-A 镜像基线；A13 路径净增 GATE_ELEMENT_RESTORE）', () => {
+    // A13 增补 5 项（4 转 + 1 新），A23 移除 4 项，ALL_IPD_PERMISSION_CODES 净增 1；
+    //   distinct count 由 67（R149 后）提升到 68（R175-A）。
+    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(68);
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(69);
   });
 
   for (const code of reservedCodes) {
