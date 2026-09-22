@@ -111,6 +111,33 @@ async function buildAccessMenus(
 }
 
 /**
+ * 进入 AI 平台（顶栏用户菜单入口，2026-09-21 P3 拍板「入口恢复」）。
+ *
+ * 历史：2026-09-06 owner 指令为 IPD 自绘壳左下角「AI 管理平台」切换钮；2026-09-11 单壳统一
+ * （c6e9bb7 三切换钮全删）后入口丢失。本函数按当年实现原样恢复：续签平台票 → 复用/挂载
+ * 统一菜单 → 返回落地路径。差异只有一处：单壳统一后菜单首项是置顶的「IPD 工作台」分组，
+ * 落地路径必须跳过它取 AI 平台分组首叶，否则「进入 AI 平台」会原地弹回 IPD。
+ *
+ * 后端端点实测存在（POST /api/v1/auth/platform-token → 401/20001「未认证」，需 IPD 票）。
+ * 抛出异常 = 换票失败（无映射账号 / 账号非 FULL / 端点不可用）；调用方 toast 原文，
+ * 不改当前界面、不静默跳转（诚实降级；文案统一走 ipd-error-text 权威源，不另造口径）。
+ */
+export async function enterPlatform(router: import('vue-router').Router): Promise<string> {
+  const auth = useIpdAuthStore();
+  await auth.renewPlatformSession(true);
+  const menus = await ensurePlatformAccess(router);
+  const accessStore = useAccessStore();
+  accessStore.setAccessMenus(menus);
+  accessStore.setIsAccessChecked(true);
+  // 跳过置顶的 IPD 工作台分组（单壳统一后的差异点），取 AI 平台分组首叶
+  const platformMenus = menus.filter((m) => m.path !== '/ipd' && m.name !== 'IPD 工作台');
+  const first = platformMenus[0] ?? menus[0];
+  const leaf = first?.children?.[0]?.path ?? first?.path ?? '';
+  if (!leaf) throw new Error('平台菜单为空，无法进入 AI 平台');
+  return leaf.startsWith('/') ? leaf : `/${first?.path ?? ''}/${leaf}`.replaceAll('//', '/');
+}
+
+/**
  * /auth/me 的会话级缓存（断网容忍）。
  * - 已登录用户每 60s 最多调一次远端身份刷新，期间复用上次身份判断权限；
  * - 刷新失败且 token 未过期时降级放行 + 静默记录到 auth.error（不弹登录页）；
