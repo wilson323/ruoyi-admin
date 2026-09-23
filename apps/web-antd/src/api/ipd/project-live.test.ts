@@ -23,6 +23,9 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// R179-P0：live 模式下首个 it 的共享登录可能带限流退避（15s×n），给本文件测试放宽超时。
+vi.setConfig({ testTimeout: 300_000 });
+
 import {
   advanceProjectStage,
   changeProjectStatus,
@@ -32,14 +35,14 @@ import {
   legacyImportProject,
   listProjects,
 } from './project';
-import { loginIpd } from './auth';
+import { IpdRequestError } from './auth';
 
 import {
   clearLiveHttpEvents,
   getLiveHttpEvents,
   installLiveFetch,
   liveModeEnabled,
-  loadPersonaFixture,
+  loginPersonaShared,
 } from '../../views/ipd/_shared/test-helpers/live-http';
 
 const SESSION_STORAGE_KEY = 'ruoyi-ipd.session';
@@ -61,9 +64,11 @@ const ALLOWLIST = [
   '/api/v1/projects',
   // listProjects('智慧') — URLSearchParams 编码后查询串
   '/api/v1/projects?keyword=%E6%99%BA%E6%85%A7',
-  // getProject — 含编码 ID（encodeURIComponent）
+  // getProject — 含编码 ID（encodeURIComponent）；
+  // R179-P0（2026-09-22）：'a b'（3 字符）不会触发 getProject 的业务编号翻译分支
+  // （长度≥5 非纯数字才走 codeToId→listProjects），保证直拼路径编码可测。
   '/api/v1/projects/100',
-  '/api/v1/projects/a%20b%2Fc',
+  '/api/v1/projects/a%20b',
   // legacyImportProject — 独立端点
   '/api/v1/projects/legacy-import',
   // changeProjectStatus — POST /{id}/status?target=...
@@ -100,10 +105,12 @@ describe.skipIf(!liveModeEnabled())('project 业务契约 — 真 HTTP loopback'
    * "先登录 → 再写 sessionStorage → 再让 Pinia store 读取" 这个顺序安全。
    */
   async function loginAndPrime(): Promise<void> {
-    const persona = loadPersonaFixture('900103');
     const liveFetch = installLiveFetch(ALLOWLIST);
     vi.stubGlobal('fetch', liveFetch);
-    const login = await loginIpd(persona.username, persona.currentPassword);
+    // R179-P0（2026-09-22）：19 个 it 各自真登录会打爆后端同IP同账号 60s/5 次限流；
+    // loginPersonaShared 在同文件内 token TTL 复用，只真登录 1 次（内部带限流退避）。
+    // fixture 校验（mode 0o600 / phase / username）仍由 loadPersonaFixture 在 helper 内执行。
+    const login = await loginPersonaShared();
     sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
       accessToken: login.token,
       accessExpiresAt: Date.now() + login.expiresIn * 1000,
@@ -166,20 +173,20 @@ describe.skipIf(!liveModeEnabled())('project 业务契约 — 真 HTTP loopback'
     }
   });
 
-  it('getProject("a b/c") URL 编码为 a%20b%2Fc；后端命中即视为编码正确', async () => {
+  it('getProject("a b") URL 编码为 a%20b；后端命中即视为编码正确', async () => {
     await loginAndPrime();
     clearLiveHttpEvents();
     let caught: unknown = null;
     try {
-      const row = await getProject('a b/c');
-      // 即使后端返回 200，row.id 应被解码还原为 'a b/c'
-      expect(row.id).toBe('a b/c');
+      const row = await getProject('a b');
+      // 即使后端返回 200，row.id 应被解码还原为 'a b'
+      expect(row.id).toBe('a b');
     } catch (e) {
       caught = e;
     }
     const events = getLiveHttpEvents();
     expect(events).toHaveLength(1);
-    expect(events[0]?.path).toBe('/api/v1/projects/a%20b%2Fc');
+    expect(events[0]?.path).toBe('/api/v1/projects/a%20b');
     // 后端对未知 ID 通常 404 — caught 此时为 IpdRequestError；
     // 这里仅断言请求确实以编码后的 URL 发出（无论 2xx / 4xx）。
     if (caught !== null) {
@@ -210,50 +217,66 @@ describe.skipIf(!liveModeEnabled())('project 业务契约 — 真 HTTP loopback'
     }
   });
 
-  it('createProject POST /projects 真实 round-trip — body 白名单 DTO 实际生效', async () => {
+  it('createProject 真库外键过 Jackson 白名单 DTO — 已占用产品被业务 1:1 规则真实拒绝', async () => {
     await loginAndPrime();
     clearLiveHttpEvents();
-    const created = await createProject({
-      launchDate: null,
-      level: 'A',
-      levelCoefficient: null,
-      levelCoefficientReason: null,
-      mainGroupId: 'g-1',
-      name: `live-test-${Date.now()}`,
-      productId: 'p-001',
-      targetChannelCount: 1,
-      targetMarkets: [],
-      targetNps: 1,
-      targetSalesAmount: 1,
-      targetSceneCount: 1,
-      templateType: 'SOFTWARE',
-    });
-    expect(created.id).toBeTypeOf('string');
-    expect(created.id.length).toBeGreaterThan(0);
+    // R179-P0（2026-09-22）：真创建受数据模型硬约束——产品:项目 = 1:1 是终身物理约束
+    // （projects.product_id NOT NULL + uk_projects_product/uk_projects_code 物理唯一，
+    //  软删/解绑均不释放序号与产品，且无项目删除 API），空闲产品每用一次即永久失效，
+    //  「每轮真创建」不可持续。本用例验证 body 白名单 DTO 真实生效：真库外键（数字字符串）
+    //  通过 Jackson 反序列化与系数校验，到达业务 1:1 检查被真实拒绝（envelopeMessage
+    //  透传业务文案）——假外键死在 Jackson 层到不了这里（对照用例见下一 it）。
+    let caught: unknown = null;
+    try {
+      await createProject({
+        launchDate: null,
+        level: 'A',
+        levelCoefficient: null,
+        levelCoefficientReason: null,
+        mainGroupId: '900001',
+        name: `live-test-${Date.now()}`,
+        productId: '9130006',
+        targetChannelCount: 1,
+        targetMarkets: [],
+        targetNps: 1,
+        targetSalesAmount: 1,
+        targetSceneCount: 1,
+        templateType: 'SOFTWARE',
+      });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(IpdRequestError);
+    expect((caught as IpdRequestError).envelopeMessage).toContain('1:1');
     const events = getLiveHttpEvents();
-    expect(events).toHaveLength(1);
     expect(events[0]?.path).toBe('/api/v1/projects');
-    expect(events[0]?.http).toBe(200);
-    expect(events[0]?.code).toBe(0);
+    expect((events[0]?.http ?? 0)).toBe(400);
     expect(events[0]?.envelopeComplete).toBe(true);
   });
 
-  it('createProject 创建响应被 {project:{...}} 包裹时仍能解析（与列表一致）', async () => {
-    // 后端真机形态：create 返回 {project:{...}} 嵌套（normalize 必须解一层）
+  it('createProject 假外键在 Jackson 层被拒（字母串→Long 反序列化失败）', async () => {
+    // R179-P0（2026-09-22）：后端 DTO productId/mainGroupId 是 Long——字母串 'p-001'/'g-1'
+    // 无法强转，HttpMessageNotReadableException → 400「请求体缺失或格式错误」
+    // （envelopeMessage 透传，与上一 it 的业务层拒绝分层对照）。旧用例正是用这类假外键
+    // 误把 Jackson 层拒绝当成「服务不可用」型失败。
     await loginAndPrime();
     clearLiveHttpEvents();
-    const created = await createProject({
-      launchDate: null, level: 'B', levelCoefficient: 1.1, levelCoefficientReason: null,
-      mainGroupId: 'g-1', name: `live-nested-${Date.now()}`, productId: 'p', targetChannelCount: 1,
-      targetMarkets: [], targetNps: 1, targetSalesAmount: 1, targetSceneCount: 1,
-      templateType: 'SOLUTION',
-    });
-    expect(created.id).toBeTypeOf('string');
-    expect(created.id.length).toBeGreaterThan(0);
+    let caught: unknown = null;
+    try {
+      await createProject({
+        launchDate: null, level: 'B', levelCoefficient: 0.7, levelCoefficientReason: null,
+        mainGroupId: 'g-1', name: `live-nested-${Date.now()}`, productId: 'p-001', targetChannelCount: 1,
+        targetMarkets: [], targetNps: 1, targetSalesAmount: 1, targetSceneCount: 1,
+        templateType: 'SOLUTION',
+      });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(IpdRequestError);
+    expect((caught as IpdRequestError).envelopeMessage).toContain('请求体');
     const events = getLiveHttpEvents();
-    expect(events).toHaveLength(1);
     expect(events[0]?.path).toBe('/api/v1/projects');
-    expect(events[0]?.http).toBe(200);
+    expect((events[0]?.http ?? 0)).toBe(400);
   });
 
   it('legacyImportProject POST /projects/legacy-import 走真实后端（仅超管；market-900103 预期 403/30001）', async () => {

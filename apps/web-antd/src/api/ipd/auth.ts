@@ -153,10 +153,17 @@ export async function requestIpd(
       throw new IpdRequestError('服务响应格式异常，请稍后重试', response.status);
     }
     if (!response.ok || envelope.code !== 0) {
-      // 顺序：登录页 401 特化 → 业务 code → HTTP 状态 → 通用兜底
+      // 顺序：登录凭据特化 → 业务 code → HTTP 状态 → 通用兜底
       // （2026-09-06 第六批修：特化必须先于 code 表短路，且限定 code=10001——401+20002 冻结等非凭据语义不得误报「密码错误」，治理 Warning-3；
-      //   该分支为纯防御：后端登录匿名放行且 10001 实际走 HTTP 400，401+10001 仅在网关异常改写时出现，用例固定见 auth-refresh.test.ts）
-      const loginCredential = response.status === 401 && path === '/auth/login' && envelope.code === 10001
+      //   R179-P0（2026-09-22）修：后端坏凭据真实形态是 400+10001+envelope.message=固定枚举，
+      //   原 401 条件与真实形态不匹配致防御分支从未生效（live 探针实测：直调 loginIpd 拿到
+      //   「输入信息不符合要求」而非凭据文案）；现与 store 层 credentialReject 同语义：
+      //   400+精确枚举比对为主路径（离职/禁用/限流同落 400+10001 但 message 不同，不会误报），
+      //   401+10001 保留为网关异常改写防御，用例固定见 auth-refresh.test.ts）
+      const loginCredential = path === '/auth/login' && envelope.code === 10001 && (
+        (response.status === 400 && envelope.message === IPD_LOGIN_CREDENTIAL_ERROR)
+        || response.status === 401
+      )
         ? IPD_LOGIN_CREDENTIAL_TEXT
         : null;
       const fromCode = messageFromCode(envelope.code);

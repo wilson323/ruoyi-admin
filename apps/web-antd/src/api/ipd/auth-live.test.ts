@@ -30,6 +30,8 @@ import {
   installLiveFetch,
   liveModeEnabled,
   loadPersonaFixture,
+  loginPersonaShared,
+  loginPersonaWithBackoff,
 } from '../../views/ipd/_shared/test-helpers/live-http';
 
 const SESSION_STORAGE_KEY = 'ruoyi-ipd.session';
@@ -59,7 +61,9 @@ describe.skipIf(!liveModeEnabled())('auth 业务契约 — 真 HTTP loopback', (
     const liveFetch = installLiveFetch(ALLOWLIST);
     vi.stubGlobal('fetch', liveFetch);
 
-    const result = await loginIpd(persona.username, persona.currentPassword);
+    // 文件首个用例：shared 缓存必空 → 真登录 1 次（后续用例 TTL 复用不再消耗限流桶，
+    // R179-P0 复盘：全文件改 shared 前真登录 6 次打爆 60s/5 欶桶，裸登录用例被连带限流）。
+    const result = await loginPersonaShared();
 
     expect(result.token).toBeTypeOf('string');
     expect(result.token.length).toBeGreaterThan(0);
@@ -78,25 +82,25 @@ describe.skipIf(!liveModeEnabled())('auth 业务契约 — 真 HTTP loopback', (
     expect(events[0]?.code).toBe(0);
     expect(events[0]?.envelopeComplete).toBe(true);
     expect(events[0]?.error).toBeUndefined();
-  });
+  }, 300_000);
 
-  it('login 错误口令触发真实 401+code=10001，message 固定为 IPD_LOGIN_CREDENTIAL_TEXT', async () => {
-    const persona = loadPersonaFixture('900103');
+  it('login 坏凭据触发真实 400+code=10001，message 固定为 IPD_LOGIN_CREDENTIAL_TEXT', async () => {
     const liveFetch = installLiveFetch(ALLOWLIST);
     vi.stubGlobal('fetch', liveFetch);
 
-    // 故意把密码串末尾反转一位触发后端 401+10001；真发请求以验证 envelope.message 严格匹配。
-    const tampered = persona.currentPassword.slice(0, -1) + (persona.currentPassword.endsWith('!') ? '?' : '!');
-
+    // 用不存在的假用户名而非篡改真 persona 口令：①限流按 username 分桶（60s/5 次），
+    // 假用户名不消耗真 persona 配额——双文件连跑时窗口叠加曾致后续用例 30s 退避后仍失败；
+    // ②后端防枚举对不存在用户与密码错误返回同文案（2026-09-23 探针实测：
+    // HTTP 400 + code=10001 +「用户名或密码错误」，与 IPD_LOGIN_CREDENTIAL_ERROR 逐字一致）。
     let caught: unknown = null;
     try {
-      await loginIpd(persona.username, tampered);
+      await loginIpd('ipd-market-nonexistent-probe', 'WrongPassword!9');
     } catch (e) {
       caught = e;
     }
 
     expect(caught).not.toBeNull();
-    // 后端密码错通常落到 400（body.code=10001）；requestIpd 走 envelope.code 分支。
+    // requestIpd 的 loginCredential 特化：400+10001+精确枚举文案 → IPD_LOGIN_CREDENTIAL_TEXT。
     const message = (caught as { message: string }).message;
     expect(message).toContain(IPD_LOGIN_CREDENTIAL_TEXT);
 
@@ -105,16 +109,15 @@ describe.skipIf(!liveModeEnabled())('auth 业务契约 — 真 HTTP loopback', (
     expect(events[0]?.path).toBe('/api/v1/auth/login');
     expect(events[0]?.code).toBe(10001);
     expect(events[0]?.envelopeComplete).toBe(true);
-  });
+  }, 300_000);
 
   it('login 成功后 sessionStorage 写入 ruoyi-ipd.session 键（含 accessToken + accessExpiresAt + refreshState）', async () => {
-    const persona = loadPersonaFixture('900103');
     const liveFetch = installLiveFetch(ALLOWLIST);
     vi.stubGlobal('fetch', liveFetch);
 
     // 不直接调 useIpdAuthStore.login()，因为它会触发 router.beforeEach 等副作用；
     // 这里只断言底层 requestIpd 返回值已具备 store 入库所需字段。
-    const result = await loginIpd(persona.username, persona.currentPassword);
+    const result = await loginPersonaShared();
 
     expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
     const expiresAt = Date.now() + result.expiresIn * 1000;
@@ -127,14 +130,14 @@ describe.skipIf(!liveModeEnabled())('auth 业务契约 — 真 HTTP loopback', (
     expect(stored.accessToken).toBe(result.token);
     expect(stored.accessExpiresAt).toBeGreaterThan(Date.now());
     expect(stored.refreshState).toBe('ready');
-  });
+  }, 300_000);
 
   it('login 后调 /auth/me 拿回同一人，scope 与 mustChangePwd 不漂移', async () => {
     const persona = loadPersonaFixture('900103');
     const liveFetch = installLiveFetch(ALLOWLIST);
     vi.stubGlobal('fetch', liveFetch);
 
-    const login = await loginIpd(persona.username, persona.currentPassword);
+    const login = await loginPersonaShared();
     clearLiveHttpEvents();
 
     const meData = (await requestIpd('/auth/me', { token: login.token })) as {
@@ -154,14 +157,15 @@ describe.skipIf(!liveModeEnabled())('auth 业务契约 — 真 HTTP loopback', (
     expect(events[0]?.http).toBe(200);
     expect(events[0]?.code).toBe(0);
     expect(events[0]?.envelopeComplete).toBe(true);
-  });
+  }, 300_000);
 
   it('login → /auth/me → logout 真实三步序列、每次 envelope 都完整', async () => {
-    const persona = loadPersonaFixture('900103');
     const liveFetch = installLiveFetch(ALLOWLIST);
     vi.stubGlobal('fetch', liveFetch);
 
-    const login = await loginIpd(persona.username, persona.currentPassword);
+    // 唯一保持 withBackoff 的用例：断言 events 含真 login，语义要求三步全发真请求；
+    // 不能换 shared（缓存命中则 events 缺 login 一步，断言必破）。
+    const login = await loginPersonaWithBackoff();
     await requestIpd('/auth/me', { token: login.token });
     await requestIpd('/auth/logout', { method: 'POST', token: login.token });
 
@@ -177,14 +181,17 @@ describe.skipIf(!liveModeEnabled())('auth 业务契约 — 真 HTTP loopback', (
       expect(ev.envelopeComplete).toBe(true);
       expect(ev.error).toBeUndefined();
     }
-  });
+  }, 300_000);
 
   it('refresh 走真实 /auth/refresh 返回新 token，旧 token 写入 revoked 路径在 events 中可见', async () => {
     const persona = loadPersonaFixture('900103');
     const liveFetch = installLiveFetch(ALLOWLIST);
     vi.stubGlobal('fetch', liveFetch);
 
-    const login = await loginIpd(persona.username, persona.currentPassword);
+    // shared 命中（不耗限流桶）+ clear 后 events 仅含 refresh；副作用：refresh 会 revoke
+    // 缓存中的 token，后续依赖 shared 的用例（allowlist 边界）拿到的 token 已 revoked，
+    // 但其断言只要求 resolves，无真请求，不受影响。
+    const login = await loginPersonaShared();
     clearLiveHttpEvents();
 
     const refreshed = await refreshIpd(login.token);
@@ -202,7 +209,7 @@ describe.skipIf(!liveModeEnabled())('auth 业务契约 — 真 HTTP loopback', (
     expect(events[0]?.http).toBe(200);
     expect(events[0]?.code).toBe(0);
     expect(events[0]?.envelopeComplete).toBe(true);
-  });
+  }, 300_000);
 
   it('envelope 完整性：code=0 真实响应的 data 字段是对象而非字符串（避免上游解析 bug 静默）', async () => {
     const persona = loadPersonaFixture('900103');
@@ -220,14 +227,15 @@ describe.skipIf(!liveModeEnabled())('auth 业务契约 — 真 HTTP loopback', (
     expect(data['person']).toBeTypeOf('object');
     expect(data['token']).toBeTypeOf('string');
     expect(data['expiresIn']).toBeTypeOf('number');
-  });
+  }, 300_000);
 
   it('endpoint allowlist 安全边界：非白名单路径在打开 socket 之前抛错（不在 events 中留痕为失败）', async () => {
-    const persona = loadPersonaFixture('900103');
     const liveFetch = installLiveFetch(ALLOWLIST);
     vi.stubGlobal('fetch', liveFetch);
 
-    await expect(loginIpd(persona.username, persona.currentPassword)).resolves.toBeDefined();
+    // shared 命中即返回（refresh 用例可能已 revoke 缓存 token，但本用例断言的是
+    // allowlist 拒绝行为而非 token 有效性，缓存命中不产生网络事件反而让 events 更干净）。
+    await expect(loginPersonaShared()).resolves.toBeDefined();
 
     // 故意访问未在白名单中的端点 —— 必须在 native fetch 之前抛错。
     await expect(
@@ -237,5 +245,5 @@ describe.skipIf(!liveModeEnabled())('auth 业务契约 — 真 HTTP loopback', (
     // 之前 login 的 events 不应被 allowlist 拒绝的事件污染。
     const events = getLiveHttpEvents();
     expect(events.every(e => ALLOWLIST.includes(e.path as typeof ALLOWLIST[number]))).toBe(true);
-  });
+  }, 300_000);
 });

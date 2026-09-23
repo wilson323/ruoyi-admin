@@ -11,8 +11,9 @@
  *
  * 1. **Tree-shakeable**: importing this module with `IPD_LIVE_ACCEPTANCE` unset
  *    has zero side effects — no `vi.stubGlobal`, no globalThis mutation, no
- *    socket open. The only module-level value is a lazy empty `liveEvents`
- *    array (no I/O, no listeners).
+ *    socket open. Module-level values are limited to lazy in-memory state
+ *    (the `liveEvents` array and the login backoff/cache bookkeeping added by
+ *    R179-P0) — no I/O, no listeners.
  *
  * 2. **Security boundary**: `installLiveFetch` THROWS on any path outside the
  *    caller-supplied `endpointAllowlist` BEFORE opening a socket. A
@@ -251,7 +252,11 @@ export function installLiveFetch(endpointAllowlist: readonly string[]): typeof f
 
   const liveFetch: typeof fetch = async (input, init) => {
     const path = String(input);
-    if (!allow.has(path)) {
+    // R179-P0（2026-09-22）：白名单条目不含 '?' 时匹配同路径任意查询串（端点级白名单）。
+    // 原因：createProject 清理步骤 unbind-project?projectId=<动态雪花> 无法静态枚举；
+    // 查询串不改变端点安全语义（仍是同一控制器方法），路径部分仍精确匹配。
+    const basePath = path.split('?')[0] ?? path;
+    if (!allow.has(path) && !allow.has(basePath)) {
       throw new Error(`Live test refuses endpoint '${path}' — not in allowlist [${[...allow].join(', ')}]`);
     }
     const attempt: LiveHttpEvent = {
@@ -280,4 +285,75 @@ export function installLiveFetch(endpointAllowlist: readonly string[]): typeof f
     }
   };
   return liveFetch;
+}
+
+/* ================================================================== *
+ *  5. Rate-limit-aware login helpers (R179-P0, 2026-09-22)
+ *
+ * 后端 /auth/login 限流（IpdAuthController @RateLimiter）：同 IP 同账号
+ * 60 秒窗口最多 5 次登录尝试。live 测试套件共 30+ 处真登录，连发必然
+ * 触发限流（R179-P0 实测：auth-live + project-live 连跑 19 failed，全部
+ * 落在 code=10001「登录尝试过于频繁」）。
+ *
+ * 修复策略（不改生产代码，只改测试基础设施）：
+ *  - loginPersonaWithBackoff(): 遇限流 message 自动退避 15s 重试（最多 8 次），
+ *    免疫任何调用编排与 vitest 文件隔离模型（各文件状态不共享也能自息）。
+ *  - loginPersonaShared(): 同文件内 token TTL 复用，把「每个 it 都登录」的
+ *    文件（如 project-live 19 次）降到 1 次真登录。
+ *
+ * 注意：调用方必须先 installLiveFetch 再调这两个 helper（loginIpd 走全局 fetch）。
+ * ================================================================== */
+
+import { IpdRequestError, loginIpd } from '../../../../api/ipd/auth';
+import type { IpdLoginResult } from '../../../../api/ipd/auth';
+
+const LOGIN_BACKOFF_MS = 15_000;
+const LOGIN_BACKOFF_MAX_ATTEMPTS = 8;
+const LOGIN_SHARED_TTL_MS = 15 * 60 * 1000;
+
+function isLoginRateLimited(message: string | undefined): boolean {
+  // 必须用 envelopeMessage（后端原始 message）判定：限流与凭证错误同落 HTTP 400+code=10001，
+  // 但前端 requestIpd 把 400 统一映射成「输入信息不符合要求」——若按映射后的 error.message
+  // 判定会永远匹配不到「频繁」，退避失效（auth.ts 顶部注释同款警示）。
+  return typeof message === 'string' && message.includes('频繁');
+}
+
+/**
+ * Persona 900103 真登录，遇限流（message 含「频繁」）退避重试。
+ * 非限流错误（凭证错误、网络错误等）立即抛出，不重试。
+ */
+export async function loginPersonaWithBackoff(): Promise<IpdLoginResult> {
+  const persona = loadPersonaFixture('900103');
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= LOGIN_BACKOFF_MAX_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, LOGIN_BACKOFF_MS));
+    }
+    try {
+      return await loginIpd(persona.username, persona.currentPassword);
+    } catch (error) {
+      lastError = error;
+      if (error instanceof IpdRequestError && isLoginRateLimited(error.envelopeMessage)) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
+
+let sharedPersonaLogin: { at: number; result: IpdLoginResult } | null = null;
+
+/**
+ * 同文件共享登录：token TTL（15 分钟）内复用，避免每个 it 都打 /auth/login。
+ * 调用方仍需自己 installLiveFetch；缓存命中时不产生网络事件（这正是目的：
+ * 后续 it 的 liveHttpEvents 只含业务请求）。
+ */
+export async function loginPersonaShared(): Promise<IpdLoginResult> {
+  if (sharedPersonaLogin && Date.now() - sharedPersonaLogin.at < LOGIN_SHARED_TTL_MS) {
+    return sharedPersonaLogin.result;
+  }
+  const result = await loginPersonaWithBackoff();
+  sharedPersonaLogin = { at: Date.now(), result };
+  return result;
 }
