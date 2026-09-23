@@ -25,6 +25,7 @@ import {
 
 import { type PmDirectoryEntry, getPmDirectory } from '../../../../api/ipd/handover';
 import { IpdRequestError } from '../../../../api/ipd/auth';
+import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { formatDateTime, PENDING_TEXT } from '../../_shared/format';
 
@@ -144,7 +145,7 @@ onMounted(() => {
         <Button :disabled="true" type="primary">触发同步</Button>
         <Button :disabled="true">同步历史</Button>
         <Button :disabled="true">映射配置</Button>
-        <Button type="default" :loading="loading" @click="load">刷新人员目录</Button>
+        <Button type="default" v-access:code="IPD_PERMISSION_CODES.HANDOVER_CANCEL" :loading="loading" @click="load">刷新人员目录</Button>
       </div>
       <div class="mt-2 text-xs text-gray-500">
         三个同步按钮在 identity-source Controller 交付前禁用，避免假数据写入。
@@ -162,7 +163,7 @@ onMounted(() => {
             allow-clear
           />
         </div>
-        <Button type="primary" @click="recordSyncAt">记录本地时间戳</Button>
+        <Button type="primary" v-access:code="IPD_PERMISSION_CODES.HANDOVER_CANCEL" @click="recordSyncAt">记录本地时间戳</Button>
       </div>
 
       <Table

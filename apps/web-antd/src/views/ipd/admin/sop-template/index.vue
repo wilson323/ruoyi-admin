@@ -252,8 +252,8 @@ async function runRowAction(action: 'copy' | 'publish' | 'revert', record: IpdSo
           placeholder="输入动作编码，如 P03"
           @press-enter="load(actionCodeInput)"
         />
-        <Button type="primary" @click="load(actionCodeInput)">查询版本</Button>
-        <Button @click="loadCurrent(actionCodeInput)">查看当前生效 SOP</Button>
+        <Button type="primary" v-access:code="IPD_PERMISSION_CODES.SOP_TEMPLATE_LIST" @click="load(actionCodeInput)">查询版本</Button>
+        <Button v-access:code="IPD_PERMISSION_CODES.SOP_TEMPLATE_LIST" @click="loadCurrent(actionCodeInput)">查看当前生效 SOP</Button>
       </Space.Compact>
     </Card>
 
@@ -334,12 +334,12 @@ async function runRowAction(action: 'copy' | 'publish' | 'revert', record: IpdSo
               <Space :size="4" wrap>
                 <Button size="small" v-access:code="IPD_PERMISSION_CODES.SOP_TEMPLATE_LIST" @click="openDetail(asSop(record))">查看</Button>
                 <template v-if="record.status === 'DRAFT'">
-                  <Button size="small" type="primary" @click="openEdit(asSop(record))">编辑</Button>
+                  <Button size="small" type="primary" v-access:code="IPD_PERMISSION_CODES.SOP_TEMPLATE_EDIT" @click="openEdit(asSop(record))">编辑</Button>
                   <Popconfirm
                     title="发布后该草稿成为当前生效版本，旧版本自动归档；仅影响此后实例化的项目，在研项目保持原版本。确认发布？"
                     @confirm="runRowAction('publish', asSop(record))"
                   >
-                    <Button :loading="rowBusy === `publish:${record.id}`" danger size="small">发布</Button>
+                    <Button :loading="rowBusy === `publish:${record.id}`" danger size="small" v-access:code="IPD_PERMISSION_CODES.SOP_TEMPLATE_EDIT">发布</Button>
                   </Popconfirm>
                 </template>
                 <Popconfirm
@@ -347,14 +347,14 @@ async function runRowAction(action: 'copy' | 'publish' | 'revert', record: IpdSo
                   title="复制当前生效版本为草稿进行修改？同一动作同时只能有一个草稿。"
                   @confirm="runRowAction('copy', asSop(record))"
                 >
-                  <Button :loading="rowBusy === `copy:${record.id}`" size="small">复制为草稿</Button>
+                  <Button :loading="rowBusy === `copy:${record.id}`" size="small" v-access:code="IPD_PERMISSION_CODES.SOP_TEMPLATE_EDIT">复制为草稿</Button>
                 </Popconfirm>
                 <Popconfirm
                   v-else
                   title="将该归档版本复制为草稿（恢复历史），编辑发布后才重新生效。确认？"
                   @confirm="runRowAction('revert', asSop(record))"
                 >
-                  <Button :loading="rowBusy === `revert:${record.id}`" size="small">历史恢复</Button>
+                  <Button :loading="rowBusy === `revert:${record.id}`" size="small" v-access:code="IPD_PERMISSION_CODES.SOP_TEMPLATE_EDIT">历史恢复</Button>
                 </Popconfirm>
               </Space>
             </template>

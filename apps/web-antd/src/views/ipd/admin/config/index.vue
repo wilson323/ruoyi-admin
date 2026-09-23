@@ -40,6 +40,7 @@ import {
   updateSystemConfig,
 } from '../../../../api/ipd/system-config';
 import { IpdRequestError } from '../../../../api/ipd/auth';
+import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 import { formatDateTime, PENDING_TEXT } from '../../_shared/format';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { RULES_BY_PAGE, renderRulesDescription } from '../../_shared/zk-ipd-rules';
@@ -412,9 +413,9 @@ function reload() {
               </template>
               <template v-else-if="column.key === 'actions'">
                 <Space :size="4" wrap>
-                  <Button size="small" type="primary" @click="openEdit(asConfig(record))">编辑</Button>
-                  <Button size="small" @click="openVersions(asConfig(record))">版本链</Button>
-                  <Button size="small" @click="runAsOf(asConfig(record))">时点解析</Button>
+                  <Button size="small" type="primary" v-access:code="IPD_PERMISSION_CODES.SYSTEM_CONFIG_UPDATE" @click="openEdit(asConfig(record))">编辑</Button>
+                  <Button size="small" v-access:code="IPD_PERMISSION_CODES.SYSTEM_CONFIG_UPDATE" @click="openVersions(asConfig(record))">版本链</Button>
+                  <Button size="small" v-access:code="IPD_PERMISSION_CODES.SYSTEM_CONFIG_UPDATE" @click="runAsOf(asConfig(record))">时点解析</Button>
                 </Space>
               </template>
             </template>

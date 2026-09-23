@@ -37,6 +37,7 @@ import {
   updateAiModel,
 } from '../../../../api/ipd/ai-model-config';
 import { IpdRequestError } from '../../../../api/ipd/auth';
+import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 
 type Phase = 'error' | 'loading' | 'ready';
 
@@ -240,7 +241,7 @@ async function runTest(record: IpdAiModelView) {
         <template #title>
           <div class="flex items-center justify-between">
             <span>AI 模型配置</span>
-            <Button type="primary" @click="openCreate">新增配置</Button>
+            <Button type="primary" v-access:code="IPD_PERMISSION_CODES.AI_MODEL_EDIT" @click="openCreate">新增配置</Button>
           </div>
         </template>
         <Empty
@@ -275,17 +276,18 @@ async function runTest(record: IpdAiModelView) {
             </template>
             <template v-else-if="column.key === 'actions'">
               <Space :size="4" wrap>
-                <Button size="small" @click="openEdit(asAiModel(record))">编辑</Button>
+                <Button size="small" v-access:code="IPD_PERMISSION_CODES.AI_MODEL_EDIT" @click="openEdit(asAiModel(record))">编辑</Button>
                 <Popconfirm
                   v-if="record.enabled !== '1'"
                   title="启用后该配置成为全局唯一生效的 AI 模型配置，原生效配置自动停用。确认启用？"
                   @confirm="enable(asAiModel(record))"
                 >
-                  <Button size="small" type="primary">启用</Button>
+                  <Button size="small" type="primary" v-access:code="IPD_PERMISSION_CODES.AI_MODEL_EDIT">启用</Button>
                 </Popconfirm>
                 <Button
                   :loading="testingId === record.id"
                   size="small"
+                  v-access:code="IPD_PERMISSION_CODES.AI_MODEL_EDIT"
                   @click="runTest(asAiModel(record))"
                 >
                   测试连接

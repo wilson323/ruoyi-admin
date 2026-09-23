@@ -28,6 +28,7 @@ import { UserSwitchOutlined } from '@ant-design/icons-vue';
 
 import { getPmDirectory, transferSuperAdmin, type PmDirectoryEntry } from '../../../../api/ipd/handover';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
+import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 
 const CONFIRM_PHRASE = '确认移交管理员';
@@ -151,6 +152,7 @@ onMounted(() => {
             </li>
           </ul>
           <button
+            v-access:code="IPD_PERMISSION_CODES.HANDOVER_CANCEL"
             :disabled="!canSubmit"
             class="primary-button danger-action"
             type="button"
