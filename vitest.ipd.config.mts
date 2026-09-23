@@ -8,6 +8,7 @@ export default defineConfig({
     include: [
       'apps/web-antd/src/packages/workflow-designer/properties/GenericNodeProperty.test.ts',
       'apps/web-antd/src/api/ipd/**/*.test.ts',
+      'apps/web-antd/src/router/ipd-guard.test.ts',
       'apps/web-antd/src/store/**/*.test.ts',
       'apps/web-antd/src/views/ipd/**/*.test.ts',
     ],
@@ -18,6 +19,7 @@ export default defineConfig({
       reportsDirectory: './coverage/ipd',
       include: [
         'apps/web-antd/src/api/ipd/**/*.{ts,vue}',
+        'apps/web-antd/src/router/ipd-guard.ts',
         'apps/web-antd/src/views/ipd/**/*.{ts,vue}',
       ],
       exclude: [

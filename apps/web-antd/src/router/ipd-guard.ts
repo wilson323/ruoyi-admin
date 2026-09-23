@@ -58,6 +58,23 @@ function hasAuthority(to: RouteLocationNormalized, identity: IpdIdentity): boole
   return authority.includes(identity.person.personType);
 }
 
+/**
+ * 路由级权限码闸（R185-P1）：读 meta.access，与 accessStore.accessCodes 做匹配。
+ * - 空数组 → 放行（与 hasAuthority 一致语义）
+ * - SUPER_ADMIN 全通码 '*:*:*' → 放行（vben v-access:code 语义对齐）
+ * - meta.access 任一权限码在 accessCodes 里 → 放行（OR 语义）
+ * - 都不满足 → 路由层拦截 → /ipd/no-access
+ *
+ * 设计依据: docs/ipd-系统说明/权限三套体系边界-20260923.md §2.2（meta.access 装饰性实锤）
+ *            docs/ipd-系统说明/隐式依赖三反模式-20260923.md §四（M-Root-12 多套闸不同步）
+ */
+export function hasAccess(to: RouteLocationNormalized, accessCodes: string[]): boolean {
+  const access = to.meta.access as string[] | undefined;
+  if (!access || access.length === 0) return true;
+  if (accessCodes.includes('*:*:*')) return true;
+  return access.some((code) => accessCodes.includes(code));
+}
+
 /** 已构建菜单对应的角色（personType）：与当前身份不一致时重建（菜单接口按角色返回，导航地图权限矩阵）。 */
 let menusBuiltForRole = '';
 let platformRoutesReady = false;
@@ -193,6 +210,8 @@ export async function ipdNavigationGuard(to: RouteLocationNormalized, router: im
 
   // 角色门槛：无权访问 → 统一提示页（导航地图权限矩阵）
   if (!hasAuthority(to, identity)) return { path: IPD_NO_ACCESS, replace: true };
+  // 权限码门槛（R185-P1）：meta.access 与 accessCodes 双重闸，闸间短路 OR
+  if (!hasAccess(to, accessStore.accessCodes)) return { path: IPD_NO_ACCESS, replace: true };
 
   // 统一壳配套（2026-09-11）：vben userStore 无持久化，刷新后顶栏用户区为空；
   // 以 IPD 会话身份幂等补注（renewPlatformSession 缓存命中路径不会重设 userInfo）。
