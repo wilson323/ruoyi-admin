@@ -17,7 +17,10 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../../../../api/ipd/bid', () => api);
 
-const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
+const routerMock = vi.hoisted(() => ({
+  push: vi.fn().mockResolvedValue(undefined),
+  resolve: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('vue-router', () => ({ useRouter: () => routerMock, useRoute: () => ({ params: {} }) }));
 
 function stubAntd(): void {
@@ -51,7 +54,7 @@ beforeEach(() => {
   api.getBidInvitation.mockReset();
   api.listBidInvitations.mockReset();
   api.withdrawBidInvitation.mockReset();
-  routerMock.push.mockReset();
+  routerMock.push.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -118,6 +121,35 @@ describe('页19 招标单列表 - 五态与权限', () => {
 
   it('权限边界：RD_PM 看到「发起招标」被禁用 + Tooltip 提示', async () => {
     useIpdAuthStore().identity = identity('RD_PM');
+    api.listBidInvitations.mockResolvedValueOnce(pageOf([]));
+    const wrapper = await mountList();
+    const createBtn = wrapper.findAll('button').find((b) => b.text().includes('发起招标'));
+    expect(createBtn).toBeTruthy();
+    expect(createBtn!.attributes('disabled')).toBeDefined();
+  });
+
+  it('权限边界：MARKET_PM 看到「发起招标」可点击 + 点击跳转 /ipd/bids/create', async () => {
+    useIpdAuthStore().identity = identity('MARKET_PM', '9007199254740993');
+    api.listBidInvitations.mockResolvedValueOnce(pageOf([]));
+    const wrapper = await mountList();
+    const createBtn = wrapper.findAll('button').find((b) => b.text().includes('发起招标'));
+    expect(createBtn).toBeTruthy();
+    expect(createBtn!.attributes('disabled')).toBeUndefined();
+    await createBtn!.trigger('click');
+    expect(routerMock.push).toHaveBeenCalledWith('/ipd/bids/create');
+  });
+
+  it('权限边界：SUPER_ADMIN 看到「发起招标」可点击', async () => {
+    useIpdAuthStore().identity = identity('SUPER_ADMIN', '9007199254740993');
+    api.listBidInvitations.mockResolvedValueOnce(pageOf([]));
+    const wrapper = await mountList();
+    const createBtn = wrapper.findAll('button').find((b) => b.text().includes('发起招标'));
+    expect(createBtn).toBeTruthy();
+    expect(createBtn!.attributes('disabled')).toBeUndefined();
+  });
+
+  it('权限边界：GROUP_LEADER 看到「发起招标」被禁用（暂不可发起）', async () => {
+    useIpdAuthStore().identity = identity('GROUP_LEADER', '9007199254740993');
     api.listBidInvitations.mockResolvedValueOnce(pageOf([]));
     const wrapper = await mountList();
     const createBtn = wrapper.findAll('button').find((b) => b.text().includes('发起招标'));
