@@ -11,6 +11,7 @@ export default defineConfig({
       'apps/web-antd/src/store/**/*.test.ts',
       'apps/web-antd/src/views/ipd/**/*.test.ts',
     ],
+    setupFiles: ['./vitest.ipd.setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
