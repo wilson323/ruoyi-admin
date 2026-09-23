@@ -27,6 +27,17 @@ function stubAntd(): void {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 }
 
+/**
+ * vi.fn() 的 mockReset() 会清空之前设置的 mockResolvedValue，
+ * 导致 router.push(...) 变成 undefined，链式 .catch(...) 触发 TypeError。
+ * 本辅助函数在 reset 后立刻补回默认 Promise.resolve()，
+ * 所有使用 routerMock 的 beforeEach 都应调用本函数，不要 inline mockReset。
+ */
+function resetRouterMock(): void {
+  routerMock.push.mockReset().mockResolvedValue(undefined);
+  routerMock.resolve.mockReset().mockResolvedValue(undefined);
+}
+
 function identity(personType: IpdPersonType, id = '9007199254740993'): IpdIdentity {
   return {
     mustChangePwd: false, scope: 'FULL',
@@ -54,7 +65,7 @@ beforeEach(() => {
   api.getBidInvitation.mockReset();
   api.listBidInvitations.mockReset();
   api.withdrawBidInvitation.mockReset();
-  routerMock.push.mockReset().mockResolvedValue(undefined);
+  resetRouterMock();
 });
 
 afterEach(() => { vi.unstubAllGlobals(); });

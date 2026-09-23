@@ -192,7 +192,7 @@ const detail = ref<BidInvitation | null>(null);
 const myId = computed(() => auth.identity?.person.id ?? '');
 const isRdPm = computed(() => auth.identity?.person.personType === 'RD_PM');
 const canCreateBid = computed(() => ['MARKET_PM', 'SUPER_ADMIN'].includes(auth.identity?.person.personType ?? ''));
-const createDeniedReason = '发起招标通常由市场PM 操作，当前角色暂不可用。如需代创建请联系超级管理员。';
+const createDeniedReason = '发起招标通常由市场PM 操作，当前角色暂不可用。如需代创建请联系你的产品组长，由产品组长走超管指派端点（BID_INVITATION_ADMIN_ASSIGN）代为发起。';
 
 const statusOptions = [
   { label: '全部状态', value: '' },
