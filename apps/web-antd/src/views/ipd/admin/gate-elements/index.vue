@@ -579,7 +579,8 @@ function toElement(record: Record<string, unknown>): IpdGateElement {
           />
         </FormItem>
         <FormItem label="要素编码" name="elementCode">
-          <Input v-model:value="modalForm.elementCode" :disabled="!!editingId" :maxlength="64" placeholder="如 G1-E01" />
+          <!-- maxlength=16 对齐后端 GateElementService.CODE_MAX 与 DB element_code varchar(16)；原 64 会放行后端必拒的超长码（前后端长度契约漂移） -->
+          <Input v-model:value="modalForm.elementCode" :disabled="!!editingId" :maxlength="16" placeholder="如 G1-E01" />
         </FormItem>
         <FormItem label="要素名称" name="elementName">
           <Input v-model:value="modalForm.elementName" :maxlength="128" placeholder="如 客户验证完成" />
@@ -642,9 +643,10 @@ function toElement(record: Record<string, unknown>): IpdGateElement {
       />
       <Form :label-col="{ span: 6 }" :wrapper-col="{ span: 16 }">
         <FormItem label="新编码" required>
+          <!-- maxlength=16 对齐后端 CODE_MAX（复制编码同样走要素编码校验，原 64 漂移） -->
           <Input
             v-model:value="copyNewCode"
-            :maxlength="64"
+            :maxlength="16"
             placeholder="如 G1-E01-COPY"
           />
         </FormItem>
