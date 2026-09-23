@@ -153,7 +153,7 @@ export async function requestIpd(
       throw new IpdRequestError('服务响应格式异常，请稍后重试', response.status);
     }
     if (!response.ok || envelope.code !== 0) {
-      // 顺序：登录凭据特化 → 业务 code → HTTP 状态 → 通用兜底
+      // 顺序：登录凭据特化 → code=10001 后端真实消息(根因B) → 业务 code → HTTP 状态 → 通用兜底
       // （2026-09-06 第六批修：特化必须先于 code 表短路，且限定 code=10001——401+20002 冻结等非凭据语义不得误报「密码错误」，治理 Warning-3；
       //   R179-P0（2026-09-22）修：后端坏凭据真实形态是 400+10001+envelope.message=固定枚举，
       //   原 401 条件与真实形态不匹配致防御分支从未生效（live 探针实测：直调 loginIpd 拿到
@@ -167,12 +167,26 @@ export async function requestIpd(
         ? IPD_LOGIN_CREDENTIAL_TEXT
         : null;
       const fromCode = messageFromCode(envelope.code);
+      // R179-P0 根因B修复(2026-09-22 ORIGIN-本会话): code=10001 涵盖多语义(凭证/限流/离职/禁用),
+      // 后端 envelope.message 含真实语义(来自固定枚举, 见本文件 L38 注释), 但 messageFromCode(10001)
+      // '输入信息不符合要求' 是 catch-all 会覆盖真实消息(如限流'登录尝试过于频繁')。
+      // loginCredential 处理凭证(兄弟会话精确特化在 worktree r179-p0-frontend); 对其它 10001
+      // 子类(限流/离职/禁用), 尊重 envelope.message, 让真实错误透传给用户。
+      const loginSpecific10001Message = loginCredential == null
+        && path === '/auth/login'
+        && envelope.code === 10001
+        && typeof envelope.message === 'string'
+        && envelope.message.length > 0
+        && envelope.message !== fromCode
+        ? envelope.message
+        : null;
       // 2026-09-09 契约轮 R23：HTTP 状态特化补 409/429，403 文案与 30001 同源。
       // 修复：409（业务冲突）/429（限流）曾落到「服务暂时不可用」通用兜底，把冲突/限流误报成服务故障；
       // 403 特化仅在 code 表未命中时触达（已知码先走 fromCode），文案原「权限不足，请联系管理员」
       // 对 20002/20003/50011 等被 code 表遮蔽的场景语义不贴切，统一为 30001 同源文案。
       const message =
         loginCredential
+          ?? loginSpecific10001Message
           ?? fromCode
           ?? (response.status === 401 ? '登录已失效，请重新登录'
             : response.status === 403 ? '您没有执行此操作的权限'

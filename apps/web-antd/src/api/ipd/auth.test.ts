@@ -559,6 +559,46 @@ describe('BUSINESS_CODE_MESSAGES coverage via requestIpd', () => {
     expect(loginFetcher).toHaveBeenCalledTimes(2);
   });
 
+  it('login path 400 + code 10001 + 限流 envelope.message 透传真实文案（R179-P0 根因B）', async () => {
+    // 根因B（R179-P0）：后端 @RateLimiter 限流返 HTTP 400+code=10001+envelope.message='登录尝试过于频繁，请稍后再试'；
+    // 旧实现被 messageFromCode(10001)='输入信息不符合要求，请检查后重试' catch-all 覆盖，真实用户看不到限流提示。
+    // 修复：loginCredential 不命中（非凭证精确枚举）时，尊重 envelope.message（后端固定枚举安全，见 auth.ts L38-39 + 记忆 134c7a6b）。
+    // 设计意图见本文件 L3-4、L63-64 注释（「评审 Important-1：调用方按 envelopeMessage 精确比对」）。
+    const rateLimitMsg = '登录尝试过于频繁，请稍后再试';
+    const loginFetcher = vi.fn(() =>
+      Promise.resolve(errorEnvelope(10001, rateLimitMsg, 400)),
+    );
+    vi.stubGlobal('fetch', loginFetcher);
+    await expect(requestIpd('/auth/login', { method: 'POST', body: {} })).rejects.toThrow(
+      rateLimitMsg,
+    );
+    await expect(requestIpd('/auth/login', { method: 'POST', body: {} })).rejects.toThrow(
+      /登录尝试过于频繁/,
+    );
+    // 负面断言：不得退化为 catch-all 文案
+    await expect(requestIpd('/auth/login', { method: 'POST', body: {} })).rejects.not.toThrow(
+      /输入信息不符合要求/,
+    );
+    expect(loginFetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it('login path 400 + code 10001 + 离职 envelope.message 透传真实文案（R179-P0 根因B 同源，精确差异判别）', async () => {
+    // 证明修复基于 envelope.message !== fromCode（精确差异判别），非 message.includes('频繁') 子串匹配——
+    // 否则「账号已停用」不含「频繁」会错误落到 fromCode catch-all（区分于兄弟 worktree live-http.ts isLoginRateLimited 的子串思路）。
+    const dimissionMsg = '账号已停用，请联系管理员';
+    const loginFetcher = vi.fn(() =>
+      Promise.resolve(errorEnvelope(10001, dimissionMsg, 400)),
+    );
+    vi.stubGlobal('fetch', loginFetcher);
+    await expect(requestIpd('/auth/login', { method: 'POST', body: {} })).rejects.toThrow(
+      dimissionMsg,
+    );
+    await expect(requestIpd('/auth/login', { method: 'POST', body: {} })).rejects.not.toThrow(
+      /输入信息不符合要求/,
+    );
+    expect(loginFetcher).toHaveBeenCalledTimes(2);
+  });
+
   it('fetch 以 AbortError 拒绝（15s 定时器中止）→ kind="timeout"，文案「请求超时」而非误报断网', async () => {
     // 2026-09-08：超时中止与真断网分开归类；浏览器为 DOMException(AbortError)，
     // 此处用 name 改写的 Error 模拟同一拒绝形态。
