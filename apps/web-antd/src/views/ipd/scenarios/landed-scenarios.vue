@@ -3,19 +3,19 @@
  * 落地场景登记/批量导入页。接口为 /api/v1/scenarios/landed 与 /api/v1/scenarios/landed/import。
  *
  * 设计：
- * - 表格列出已登记落地场景（项目 / 场景编码 / 场景名 / 落地日期 / 金额）；
- * - 顶部「新增」按钮弹表单（项目/场景编码/场景名/落地日期/金额），提交 POST /api/v1/scenarios/landed；
- * - 「批量导入」按钮：上传 JSON 文件（接收 /api/v1/scenarios/landed/import 格式），解析后 POST；
- * - 提交后刷新表格。
+ * - 列表 GET 的 projectId 后端必填：优先读路由 query.projectId，否则由顶部项目下拉选定；
+ * - 缺 projectId 时展示空态提示，不发必 400 的无参请求（修法 A，owner 裁决）；
+ * - 表格列出当前项目已登记落地场景；「新增」/「批量导入」提交后按当前项目刷新。
  *
  * 权限：MARKET_PM / RD_PM / GROUP_LEADER / SUPER_ADMIN 可写；GUEST 走 no-access。
  *
- * 五态：拒绝（角色）/ 加载 / 列表 / 空态 / 拒绝与断网；不展示任何模拟数据（G-06）。
+ * 五态：拒绝（角色）/ 待选项目 / 加载 / 列表 / 空态 / 拒绝与断网；不展示任何模拟数据（G-06）。
  */
 import type { RuleObject } from 'ant-design-vue/es/form';
 import type { UploadProps } from 'ant-design-vue';
 
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import {
   Alert,
   Button,
@@ -50,10 +50,23 @@ import { PENDING_TEXT } from '../_shared/format';
 
 type Phase = 'error' | 'loading' | 'ready';
 
+const route = useRoute();
 const auth = useIpdAuthStore();
 const personType = computed(() => auth.identity?.person.personType ?? '');
 const GUEST_PERSON_TYPES = new Set(['GUEST']);
 const canRead = computed(() => !GUEST_PERSON_TYPES.has(personType.value));
+
+/**
+ * 从路由 query 解析 projectId（与 ai-docs / kpi-shared 同模式，不硬编码）。
+ *
+ * @returns 非空字符串 ID，或 undefined（缺参）
+ */
+function projectIdFromQuery(): string | undefined {
+  const raw = route.query.projectId;
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
 
 function rejectText(cause: unknown): string {
   if (cause instanceof IpdRequestError) {
@@ -92,16 +105,15 @@ const projectNameMap = computed(() => {
   return map;
 });
 
-/** 列表 + 筛选（按项目）。 */
-const phase = ref<Phase>('loading');
+/** 列表：projectId 来自路由 query 或顶部下拉（后端必填，缺参不请求）。 */
+const phase = ref<Phase>('ready');
 const offline = ref(false);
 const errorMsg = ref('');
 const rows = ref<LandedScenario[]>([]);
-const filterProjectId = ref<undefined | string>(undefined);
-const visibleRows = computed(() => {
-  if (!filterProjectId.value) return rows.value;
-  return rows.value.filter((row) => row.projectId === filterProjectId.value);
-});
+const selectedProjectId = ref<undefined | string>(projectIdFromQuery());
+const hasProjectId = computed(
+  () => typeof selectedProjectId.value === 'string' && selectedProjectId.value.trim().length > 0,
+);
 
 const columns = [
   { dataIndex: 'landedDate', key: 'landedDate', title: '落地日期', width: 130 },
@@ -139,12 +151,20 @@ function dateInputToIso(value: unknown): string {
   return yyyy + '-' + mm + '-' + dd;
 }
 
+/**
+ * 加载当前项目的落地场景列表；无 projectId 时清空并保持 ready（不发 GET）。
+ */
 async function load(): Promise<void> {
-  phase.value = 'loading';
   offline.value = false;
   errorMsg.value = '';
+  if (!hasProjectId.value) {
+    rows.value = [];
+    phase.value = 'ready';
+    return;
+  }
+  phase.value = 'loading';
   try {
-    rows.value = await listLandedScenarios();
+    rows.value = await listLandedScenarios({ projectId: selectedProjectId.value as string });
     phase.value = 'ready';
   } catch (cause) {
     phase.value = 'error';
@@ -155,6 +175,10 @@ async function load(): Promise<void> {
 
 onMounted(() => {
   void loadProjects();
+  if (canRead.value) void load();
+});
+
+watch(selectedProjectId, () => {
   if (canRead.value) void load();
 });
 
@@ -209,7 +233,7 @@ const createRules = computed<Record<string, RuleObject[]>>(() => ({
 function openCreate(): void {
   createForm.landedDate = undefined;
   createForm.landingAmount = undefined;
-  createForm.projectId = undefined;
+  createForm.projectId = selectedProjectId.value;
   createForm.scenarioCode = '';
   createForm.scenarioName = '';
   createOpen.value = true;
@@ -357,19 +381,20 @@ function reload(): void {
         <template #title>
           <Space>
             <span>已登记落地场景</span>
-            <Tag color="default">当前可见 {{ visibleRows.length }} 条 / 全量 {{ rows.length }} 条</Tag>
+            <Tag color="default">当前项目 {{ rows.length }} 条</Tag>
           </Space>
         </template>
         <Space wrap>
           <Select
-            v-model:value="filterProjectId"
+            v-model:value="selectedProjectId"
+            :loading="projectLoading"
             :options="projectOptions"
             allow-clear
             class="min-w-[240px]"
-            placeholder="按项目筛选"
+            placeholder="选择项目（必选）"
             show-search
           />
-          <Button @click="reload">刷新</Button>
+          <Button :disabled="!hasProjectId" @click="reload">刷新</Button>
           <Button type="primary" @click="openCreate">新增</Button>
           <Upload v-bind="uploadProps">
             <Button :loading="importBusy">批量导入（JSON）</Button>
@@ -378,7 +403,11 @@ function reload(): void {
         </Space>
       </Card>
 
-      <Card v-if="phase === 'loading'" class="text-center">
+      <Card v-if="!hasProjectId" class="text-center">
+        <Empty description="请先选择项目（或从带 ?projectId= 的链接进入），再查看该项目的落地场景。缺项目编号时不会请求列表接口。" />
+      </Card>
+
+      <Card v-else-if="phase === 'loading'" class="text-center">
         <Spin tip="正在加载落地场景" />
       </Card>
 
@@ -396,17 +425,13 @@ function reload(): void {
         </Alert>
 
         <Card v-else-if="rows.length === 0" class="text-center">
-          <Empty description="尚无落地场景记录。点击「新增」或「批量导入」录入第一批；接口已对接，按真实拒绝/断网状态展示。" />
-        </Card>
-
-        <Card v-else-if="visibleRows.length === 0" class="text-center">
-          <Empty description="当前过滤条件下无匹配场景。" />
+          <Empty description="该项目尚无落地场景记录。点击「新增」或「批量导入」录入第一批；接口已对接，按真实拒绝/断网状态展示。" />
         </Card>
 
         <Card v-else>
           <Table
             :columns="columns"
-            :data-source="visibleRows"
+            :data-source="rows"
             :pagination="{ pageSize: 20, showSizeChanger: false }"
             row-key="id"
             size="middle"

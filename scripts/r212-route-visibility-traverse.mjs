@@ -62,12 +62,20 @@ await page.fill('input[autocomplete="username"]', USER);
 await page.fill('input[type="password"]', PASS);
 await page.click('button:has-text("登录")');
 await page.waitForURL((u) => !u.toString().includes('/login'), { timeout: 30_000 });
-// 从 localStorage 取 token 给 HTTP 侧解析参数（失败则 HTTP 登录兑底）
-let token = '';
-for (const k of await page.evaluate(() => Object.keys(localStorage))) {
-  const v = await page.evaluate((key) => localStorage.getItem(key) || '', k);
-  const m = v.match(/"accessToken":"([^"]+)"/) || v.match(/"token":"([^"]+)"/);
-  if (m) { token = m[1]; break; }
+// IPD 会话在 sessionStorage 键 ruoyi-ipd.session（见 apps/web-antd CLAUDE.md）；
+// 优先 R212_TOKEN 环境变量覆盖，其次读浏览器会话，再失败则 HTTP 登录兑底。
+let token = process.env.R212_TOKEN || '';
+if (!token) {
+  token = await page.evaluate(() => {
+    try {
+      const raw = sessionStorage.getItem('ruoyi-ipd.session');
+      if (!raw) return '';
+      const data = JSON.parse(raw);
+      return typeof data?.accessToken === 'string' ? data.accessToken : '';
+    } catch {
+      return '';
+    }
+  });
 }
 if (!token) {
   const lr = await fetch(`${BACKEND}/api/v1/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: USER, password: PASS }) });
