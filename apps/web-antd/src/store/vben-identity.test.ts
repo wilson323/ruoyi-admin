@@ -24,8 +24,14 @@ describe('IPD 身份 → vben 边车语义映射', () => {
     expect(vbenRolesOf('RD_PM')).toEqual(['RD_PM']);
   });
 
-  it('非超管：codes 维持 IPD 语义 [scope, personType:xxx]', () => {
+  it('非超管：无后端码时 codes 维持 IPD 语义 [scope, personType:xxx]', () => {
     expect(vbenCodesOf('MARKET_PM', 'FULL')).toEqual(['FULL', 'personType:MARKET_PM']);
+  });
+
+  it('非超管：有后端 ipd: 码时优先透传', () => {
+    expect(
+      vbenCodesOf('RD_PM', 'FULL', ['ipd:project:list', 'ipd:project:query']),
+    ).toEqual(['ipd:project:list', 'ipd:project:query']);
   });
 
   it('scope 为空段被过滤', () => {

@@ -6,6 +6,8 @@ export interface IpdPerson {
   groupId: null | string;
   id: string;
   name: string;
+  /** 后端 /auth/me|/login 下发的 IPD 权限码（ipd:*）；缺省时前端走 scope/personType 降级。 */
+  permissionCodes?: string[];
   personType: IpdPersonType;
   username: string;
 }
@@ -105,6 +107,16 @@ export function parseIdentity(data: unknown): IpdIdentity {
     !['FULL', 'HANDOVER_ONLY', 'PASSWORD_CHANGE_REQUIRED'].includes(String(data.scope)) ||
     typeof data.mustChangePwd !== 'boolean'
   ) throw new IpdRequestError('身份信息格式异常，请重新登录');
+  let permissionCodes: string[] | undefined;
+  if (p.permissionCodes !== undefined) {
+    if (
+      !Array.isArray(p.permissionCodes) ||
+      !p.permissionCodes.every((code) => typeof code === 'string')
+    ) {
+      throw new IpdRequestError('身份信息格式异常，请重新登录');
+    }
+    permissionCodes = p.permissionCodes as string[];
+  }
   return {
     mustChangePwd: data.mustChangePwd,
     person: {
@@ -112,6 +124,7 @@ export function parseIdentity(data: unknown): IpdIdentity {
       groupId: p.groupId,
       id: p.id,
       name: p.name,
+      ...(permissionCodes !== undefined ? { permissionCodes } : {}),
       personType: p.personType as IpdPersonType,
       username: p.username,
     },

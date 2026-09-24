@@ -121,7 +121,11 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
         // 2026-09-11 权限断链修复：personType/scope 经 vben-identity 映射
         // （SUPER_ADMIN → roles ['superadmin'] + codes ['*:*:*']），
         // 否则 v-access:code 全判否、/system 整页守卫 403（见 vben-identity.ts）。
-        const permissions = vbenCodesOf(info.person.personType, info.scope);
+        const permissions = vbenCodesOf(
+          info.person.personType,
+          info.scope,
+          info.person.permissionCodes,
+        );
         useUserStore().setUserInfo({
           avatar: '',
           email: '',
@@ -150,6 +154,9 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
     // 平台会话随 IPD 会话同生共死：登出/失效时一并清除（AI 平台桥，2026-09-06）
     sessionStorage.removeItem(PLATFORM_STORAGE_KEY);
     accessStore.setAccessToken(null);
+    // 立即清空侧栏，避免下一账号首帧残留上一角色菜单；模块缓存由 buildAccessMenus 换角色时丢弃
+    accessStore.setAccessMenus([]);
+    accessStore.setIsAccessChecked(false);
   }
 
   function installSession(result: IpdLoginResult) {
@@ -236,6 +243,19 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
     const version = sessionVersion;
     try {
       identity.value = parseIdentity(await authenticatedRequest('/auth/me'));
+      // /auth/me 下发 permissionCodes 后立即灌入 accessStore，解除「通道未接通」临时放行
+      if (identity.value) {
+        const permissions = vbenCodesOf(
+          identity.value.person.personType,
+          identity.value.scope,
+          identity.value.person.permissionCodes,
+        );
+        accessStore.setAccessCodes(permissions);
+        const existing = useUserStore().userInfo;
+        if (existing) {
+          useUserStore().setUserInfo({ ...existing, permissions });
+        }
+      }
       return identity.value;
     } catch (cause) {
       if (version !== sessionVersion || (cause instanceof IpdRequestError && cause.kind === 'cancelled')) throw cause;

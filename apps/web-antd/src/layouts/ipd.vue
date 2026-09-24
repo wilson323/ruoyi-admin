@@ -11,7 +11,7 @@
  * 路由：/ipd 路由树并入 Root.children（router/routes/index.ts），与平台动态路由
  * 共用同一 BasicLayout 实例；本组件由 ipdLayoutRoute.component 挂载。
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 
 import { PhCalendarBlank as CalendarBlank } from '@phosphor-icons/vue';
 
@@ -39,8 +39,34 @@ const today = new Intl.DateTimeFormat('zh-CN', {
 const projects = ref<Project[]>([]);
 const currentProjectId = ref('');
 const CURRENT_PROJECT_KEY = 'ipd:current-project';
+/** 子页（如奖金池）表单改项目时派发，顶栏只改值不整页 reload。 */
+const PROJECT_SYNC_EVENT = 'ipd:current-project-changed';
+
+/**
+ * 应用全局项目 id：写入 localStorage；整页刷新仅在显式切换时使用。
+ */
+function applyProjectId(id: string, reload: boolean) {
+  if (!id || id === currentProjectId.value) {
+    if (id) window.localStorage.setItem(CURRENT_PROJECT_KEY, id);
+    return;
+  }
+  window.localStorage.setItem(CURRENT_PROJECT_KEY, id);
+  currentProjectId.value = id;
+  if (reload) window.location.reload();
+}
+
+/**
+ * 子页同步事件：更新顶栏选中项，不触发 reload（避免打断表单）。
+ */
+function onProjectSync(event: Event) {
+  const detail = (event as CustomEvent<{ projectId?: string }>).detail;
+  const id = typeof detail?.projectId === 'string' ? detail.projectId : '';
+  if (!id || !projects.value.some((p) => p.id === id)) return;
+  applyProjectId(id, false);
+}
 
 onMounted(async () => {
+  window.addEventListener(PROJECT_SYNC_EVENT, onProjectSync);
   try {
     projects.value = await listProjects();
     const saved = window.localStorage.getItem(CURRENT_PROJECT_KEY);
@@ -51,6 +77,10 @@ onMounted(async () => {
   } catch {
     projects.value = [];
   }
+});
+
+onUnmounted(() => {
+  window.removeEventListener(PROJECT_SYNC_EVENT, onProjectSync);
 });
 
 const currentProject = computed(
@@ -64,9 +94,7 @@ function projectLabel(p: Project): string {
 
 /** 切换全局当前项目：持久化后整页刷新，复刻原型 bootstrap 重载语义。 */
 function switchProject(id: string) {
-  if (id === currentProjectId.value) return;
-  window.localStorage.setItem(CURRENT_PROJECT_KEY, id);
-  window.location.reload();
+  applyProjectId(id, true);
 }
 </script>
 

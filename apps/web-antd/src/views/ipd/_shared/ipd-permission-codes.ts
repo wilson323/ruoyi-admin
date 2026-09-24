@@ -158,6 +158,7 @@ export const PAGE_PERMISSIONS: Record<string, readonly IpdPermissionCode[]> = {
   // 页29-32 KPI 考核
   '/ipd/kpi/functional': [IPD_PERMISSION_CODES.KPI_QUERY],
   '/ipd/kpi/project-score': [IPD_PERMISSION_CODES.KPI_QUERY],
+  '/ipd/kpi/raw-records': [IPD_PERMISSION_CODES.KPI_QUERY],
   // 页33 津贴台账
   '/ipd/incentive/allowance': [IPD_PERMISSION_CODES.SYSTEM_CONFIG_READ],
   // 页34 奖金池核算
@@ -191,7 +192,10 @@ export const PAGE_PERMISSIONS: Record<string, readonly IpdPermissionCode[]> = {
   // 页46 SOP 模板
   '/ipd/admin/sop': [IPD_PERMISSION_CODES.SOP_TEMPLATE_EDIT],
   // 页48 AI 模型配置
-  '/ipd/admin/ai-config': [IPD_PERMISSION_CODES.AI_MODEL_EDIT],
+  '/ipd/admin/ai-config': [
+    IPD_PERMISSION_CODES.AI_MODEL_LIST,
+    IPD_PERMISSION_CODES.AI_MODEL_EDIT,
+  ],
   // 页49 超管移交
   '/ipd/admin/handover': [IPD_PERMISSION_CODES.HANDOVER_CANCEL],
   // 审计日志

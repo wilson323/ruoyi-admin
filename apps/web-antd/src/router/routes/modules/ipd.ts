@@ -306,7 +306,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
           // R149 录入/展示：KPI 原始数据录入/展示 —— 后端 /api/v1/kpi/raw-records 待交付，
           //   前端先把录入/展示闭环；仅 GROUP_LEADER 可写，UI + 路由双闸门禁（meta.access 占位用既有 KPI_QUERY）。
           component: () => import('#/views/ipd/kpi/raw-records.vue'),
-          meta: { access: [...(PAGE_PERMISSIONS['/ipd/kpi/raw-records'] ?? [IPD_PERMISSION_CODES.KPI_QUERY])], activePath: '/ipd/performance', hideInMenu: true, title: 'KPI 原始数据' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/kpi/raw-records'] ?? [])], activePath: '/ipd/performance', hideInMenu: true, title: 'KPI 原始数据' },
           name: 'IpdKpiRawRecords',
           path: 'raw-records',
         },
@@ -440,14 +440,14 @@ const ipdLayoutRoute: RouteRecordRaw = {
         // 页46 SOP 模板 —— fe-admin 整体覆盖
         {
           component: () => import('#/views/ipd/admin/sop-template/index.vue'),
-          meta: { access: [IPD_PERMISSION_CODES.SOP_TEMPLATE_EDIT], title: 'SOP 模板' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/admin/sop'] ?? [])], title: 'SOP 模板' },
           name: 'IpdAdminSop',
           path: 'sop',
         },
         // 页47 Gate 评审要素 —— fe-admin 整体覆盖
         {
           component: () => import('#/views/ipd/admin/gate-elements/index.vue'),
-          meta: { access: [IPD_PERMISSION_CODES.GATE_ELEMENT_LIST], title: 'Gate 评审要素' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/admin/gate-elements'] ?? [])], title: 'Gate 评审要素' },
           name: 'IpdAdminGateElements',
           path: 'gate-elements',
         },
@@ -467,14 +467,14 @@ const ipdLayoutRoute: RouteRecordRaw = {
         },
         {
           component: () => import('#/views/ipd/cert/templates/index.vue'),
-          meta: { access: [IPD_PERMISSION_CODES.CERT_TEMPLATE_LIST], title: '国别认证清单模板库' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/admin/cert-templates'] ?? [])], title: '国别认证清单模板库' },
           name: 'IpdAdminCertTemplates',
           path: 'cert-templates',
         },
         // 页48 AI 模型配置 —— fe-admin 整体覆盖
         {
           component: () => import('#/views/ipd/admin/ai-models/index.vue'),
-          meta: { access: [IPD_PERMISSION_CODES.AI_MODEL_LIST, IPD_PERMISSION_CODES.AI_MODEL_EDIT], title: 'AI 模型配置' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/admin/ai-config'] ?? [])], title: 'AI 模型配置' },
           name: 'IpdAdminAiConfig',
           path: 'ai-config',
         },
@@ -489,7 +489,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
         //    前端预检；currentPassword 差异与 replacementLeadId/readiness 端点增量已在页内登记）
         {
           component: () => import('#/views/ipd/admin/handover/index.vue'),
-          meta: { access: [IPD_PERMISSION_CODES.HANDOVER_CANCEL], title: '超级管理员移交' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/admin/handover'] ?? [])], title: '超级管理员移交' },
           name: 'IpdAdminHandover',
           path: 'handover',
         },

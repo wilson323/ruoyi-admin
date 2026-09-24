@@ -143,6 +143,7 @@ export const useAuthStore = defineStore('auth', () => {
         groupId: string | null;
         id: string;
         name: string;
+        permissionCodes?: string[];
         personType: string;
         username: string;
       };
@@ -155,7 +156,7 @@ export const useAuthStore = defineStore('auth', () => {
     const userInfo: UserInfo = {
       avatar: '',
       email: '',
-      permissions: vbenCodesOf(person.personType, scope),
+      permissions: vbenCodesOf(person.personType, scope, person.permissionCodes),
       realName: person.name,
       roles: vbenRolesOf(person.personType),
       userId: person.id as unknown as number,

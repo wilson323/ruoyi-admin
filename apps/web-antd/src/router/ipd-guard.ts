@@ -93,6 +93,19 @@ let platformHydrationAttempted = false;
 
 /** 统一菜单（AI 平台 + IPD 工作台分组）动态路由：构建成功后缓存；失败静默降级为空白侧栏。 */
 let platformMenusCache: MenuRecordRaw[] = [];
+
+/**
+ * 清空侧栏菜单模块缓存（登出 / 换角色前调用）。
+ * 若不清理，下一账号会复用上一角色的 platformMenusCache，首帧侧栏残留超管菜单项。
+ */
+export function resetIpdAccessMenuCache(): void {
+  menusBuiltForRole = '';
+  platformRoutesReady = false;
+  platformMenusCache = [];
+  platformHydrationAttempted = false;
+}
+
+/** 统一菜单（AI 平台 + IPD 工作台分组）动态路由：构建成功后缓存；失败静默降级为空白侧栏。 */
 async function ensurePlatformAccess(router: import('vue-router').Router): Promise<MenuRecordRaw[]> {
   // 已挂载时返回缓存菜单而非空数组：caller 依赖菜单计算侧栏渲染与重导航
   // （2026-09-06 浏览器实测修复）
@@ -115,6 +128,10 @@ async function buildAccessMenus(
   personType: string,
 ): Promise<true | { path: string; replace: boolean }> {
   const accessStore = useAccessStore();
+  // 换角色必须丢弃上一角色菜单缓存，否则 ensurePlatformAccess 短路返回超管 16 项（R211b）。
+  platformRoutesReady = false;
+  platformMenusCache = [];
+  accessStore.setAccessMenus([]);
   let menus: MenuRecordRaw[] = [];
   try {
     menus = await ensurePlatformAccess(router);
@@ -254,6 +271,10 @@ export async function ipdNavigationGuard(to: RouteLocationNormalized, router: im
   }
 
   if (menusBuiltForRole !== identity.person.personType) {
+    // 登出后 menusBuiltForRole 可能仍是旧角色：先复位再重建，确保不命中旧缓存
+    if (menusBuiltForRole) {
+      resetIpdAccessMenuCache();
+    }
     const rebuilt = await buildAccessMenus(to, router, identity.person.personType);
     if (rebuilt !== true) return rebuilt;
   }
