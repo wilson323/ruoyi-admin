@@ -3,75 +3,114 @@
 #
 # 元根因: M-Root-11 配置存在但无消费者（工具链假设漂移）
 # 来源: docs/ipd-系统说明/门禁脚本骨架设计-20260923.md §二
+# 修复卡: r211b-orphan-script（FAIL_SEED 真注入 / 孤儿 PAGE_PERMISSIONS / ??[] 漏键 / hasAccess 双锚）
 #
 # 检测逻辑:
-#   1. 扫描 apps/web-antd/src/router/routes/modules/ipd.ts 所有路由的 meta.access 配置
-#   2. 对每个 meta.access 权限码, grep ipd-guard.ts 是否有 hasAccess() 消费者
-#   3. 若 meta.access 存在但无消费者 → 标记为「孤悬配置」→ exit 1
+#   1. 从 ipd-permission-codes.ts 提取 PAGE_PERMISSIONS 声明路径
+#   2. 从 ipd.ts 提取 PAGE_PERMISSIONS['path'] 引用 + 校验键存在（禁止 ?? [] 静默空权限）
+#   3. 声明无路由引用 → 孤悬配置；引用键不在声明表 → 错拼误放行
+#   4. ipd-guard.ts 须同时有「function hasAccess」定义与调用点（注释骗不过）
 #
 # FAIL_SEED 双向触发:
-#   FAIL_SEED=false (默认) — 正常模式, 扫描全部 meta.access, 若全有消费者 → exit 0
-#   FAIL_SEED=true        — 故意跳过消费者检查 → exit 1 + 提示信息
+#   FAIL_SEED=false (默认) — 正常扫描；无孤儿/错键且 hasAccess 双锚 → exit 0
+#   FAIL_SEED=true        — 注入假孤儿路径走同一检测路径 → 必 exit 1
 #
-# 依赖: grep, awk
+# 依赖: bash, grep, awk, sort, uniq
 # 超时: 30s
-# 调用方: CI / 手动 / pre-commit (待 owner 拍板挂入)
 
 set -euo pipefail
 
 FAIL_SEED="${FAIL_SEED:-false}"
-ROUTE_FILE="apps/web-antd/src/router/routes/modules/ipd.ts"
-GUARD_FILE="apps/web-antd/src/router/ipd-guard.ts"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROUTE_FILE="$ROOT/apps/web-antd/src/router/routes/modules/ipd.ts"
+GUARD_FILE="$ROOT/apps/web-antd/src/router/ipd-guard.ts"
+PERMISSION_CODES_FILE="$ROOT/apps/web-antd/src/views/ipd/_shared/ipd-permission-codes.ts"
+# 刻意不设 meta.access / 仅用字面量权限码的 PAGE_PERMISSIONS 键（白名单，不算孤儿）
+# 更新时与导航地图同步；禁止用注释「骗过」消费者检查。
+INTENTIONAL_NO_ROUTE_CONSUMER_FILE="$ROOT/scripts/meta-access-intentional-orphans.txt"
 
-echo "[check-meta-access-orphan] 开始扫描 meta.access 孤悬配置 (M-Root-11)..."
+echo "[check-meta-access-orphan] 开始扫描 meta.access / PAGE_PERMISSIONS 孤悬配置 (M-Root-11)..."
 
-if [ ! -f "$ROUTE_FILE" ]; then
-  echo "[check-meta-access-orphan] ❌ FAIL: 路由文件不存在: $ROUTE_FILE"
+for f in "$ROUTE_FILE" "$GUARD_FILE" "$PERMISSION_CODES_FILE"; do
+  if [ ! -f "$f" ]; then
+    echo "[check-meta-access-orphan] ❌ FAIL: 文件不存在: $f"
+    exit 1
+  fi
+done
+
+# --- hasAccess 双锚：定义 + 调用（注释中的 hasAccess 不算定义）---
+HAS_DEF=$(grep -cE '^export function hasAccess\(' "$GUARD_FILE" || true)
+HAS_CALL=$(grep -cE '[^a-zA-Z]hasAccess\(' "$GUARD_FILE" || true)
+# 调用点至少应多于定义本身（守卫主体调用）
+if [ "$HAS_DEF" -lt 1 ] || [ "$HAS_CALL" -lt 2 ]; then
+  echo "[check-meta-access-orphan] ❌ FAIL: ipd-guard.ts 缺少 hasAccess 定义或调用双锚 (def=$HAS_DEF call=$HAS_CALL)"
   exit 1
 fi
 
-if [ ! -f "$GUARD_FILE" ]; then
-  echo "[check-meta-access-orphan] ❌ FAIL: 守卫文件不存在: $GUARD_FILE"
-  exit 1
+# --- PAGE_PERMISSIONS 声明路径 ---
+DECLARED=$(grep -oE "'/ipd/[^']+':" "$PERMISSION_CODES_FILE" | sed "s/'//g;s/://g" | sort -u)
+DECLARED_COUNT=$(printf '%s\n' "$DECLARED" | grep -c . || true)
+echo "[check-meta-access-orphan] PAGE_PERMISSIONS 声明路径数: $DECLARED_COUNT"
+
+# --- 路由对 PAGE_PERMISSIONS['...'] 的引用 ---
+REFERENCED=$(grep -oE "PAGE_PERMISSIONS\['/ipd/[^']+'\]" "$ROUTE_FILE" | sed "s/PAGE_PERMISSIONS\['//;s/'\]//" | sort -u)
+REF_COUNT=$(printf '%s\n' "$REFERENCED" | grep -c . || true)
+echo "[check-meta-access-orphan] 路由 PAGE_PERMISSIONS 引用数: $REF_COUNT"
+
+# --- 错拼：引用了不存在的键（?? [] 会静默变空权限）---
+MISSING_KEYS=""
+while IFS= read -r key; do
+  [ -z "$key" ] && continue
+  if ! printf '%s\n' "$DECLARED" | grep -qxF "$key"; then
+    MISSING_KEYS="${MISSING_KEYS}${key}"$'\n'
+  fi
+done <<< "$REFERENCED"
+
+# --- 孤悬：声明了但路由从未 PAGE_PERMISSIONS['path'] 引用 ---
+# 允许白名单（字面量 meta.access 消费同一权限语义，或刻意未挂路由）
+INTENTIONAL=""
+if [ -f "$INTENTIONAL_NO_ROUTE_CONSUMER_FILE" ]; then
+  INTENTIONAL=$(grep -vE '^\s*(#|$)' "$INTENTIONAL_NO_ROUTE_CONSUMER_FILE" | sort -u || true)
 fi
 
-# 提取所有 meta.access 引用的权限码（取 IPermissionCode 常量名 + 字面量）
-# 路由 meta.access 既可以 [...PAGE_PERMISSIONS['/x']] 也可以 [IPD_PERMISSION_CODES.X]
-ACCESS_USAGES=$(grep -oE "access:\s*\[[^]]+\]" "$ROUTE_FILE" || true)
+ORPHANS=""
+while IFS= read -r key; do
+  [ -z "$key" ] && continue
+  if printf '%s\n' "$REFERENCED" | grep -qxF "$key"; then
+    continue
+  fi
+  if [ -n "$INTENTIONAL" ] && printf '%s\n' "$INTENTIONAL" | grep -qxF "$key"; then
+    continue
+  fi
+  # 字面量权限码路由：若 ipd.ts 中出现该 path 字符串则视为已挂路由（非 PAGE_PERMISSIONS 引用）
+  if grep -qE "path:\s*'$key'|path:\s*\"$key\"" "$ROUTE_FILE"; then
+    continue
+  fi
+  ORPHANS="${ORPHANS}${key}"$'\n'
+done <<< "$DECLARED"
 
-if [ -z "$ACCESS_USAGES" ]; then
-  echo "[check-meta-access-orphan] ✅ PASS: 无 meta.access 配置 (无需检查)"
-  exit 0
-fi
-
-# 提取 PAGE_PERMISSIONS 表里所有引用过的路径 (从 ipd-permission-codes.ts)
-PERMISSION_CODES_FILE="apps/web-antd/src/views/ipd/_shared/ipd-permission-codes.ts"
-if [ ! -f "$PERMISSION_CODES_FILE" ]; then
-  echo "[check-meta-access-orphan] ❌ FAIL: 权限码集中表不存在: $PERMISSION_CODES_FILE"
-  exit 1
-fi
-
-# 提取 PAGE_PERMISSIONS 中所有路径（即所有声明过权限的路由）
-ROUTE_PATHS=$(grep -oE "'/ipd/[^']+':" "$PERMISSION_CODES_FILE" | grep -oE "'/ipd/[^']+'" | tr -d "'" | sort -u)
-
-# FAIL_SEED 双向触发: FAIL_SEED=true 时故意跳过消费者存在性检查，强制判定为孤悬
+# FAIL_SEED：注入假孤儿，走同一判定路径
 if [ "$FAIL_SEED" = "true" ]; then
-  echo "[check-meta-access-orphan] FAIL_SEED=true: 故意跳过消费者检查 → exit 1"
-  echo "[check-meta-access-orphan] ❌ FAIL (FAIL_SEED 注入): 自证能红 PASS"
+  ORPHANS="${ORPHANS}/ipd/__fail_seed_orphan__"$'\n'
+  echo "[check-meta-access-orphan] FAIL_SEED=true: 已注入假孤儿 /ipd/__fail_seed_orphan__"
+fi
+
+ORPHAN_COUNT=$(printf '%s\n' "$ORPHANS" | grep -c . || true)
+MISSING_COUNT=$(printf '%s\n' "$MISSING_KEYS" | grep -c . || true)
+
+if [ "$MISSING_COUNT" -gt 0 ]; then
+  echo "[check-meta-access-orphan] ❌ FAIL: 路由引用了不存在的 PAGE_PERMISSIONS 键（?? [] 会误放行）:"
+  printf '%s\n' "$MISSING_KEYS" | sed '/^$/d' | sed 's/^/  - /'
   exit 1
 fi
 
-# 检查 hasAccess 消费者是否存在
-HAS_HAS_ACCESS=$(grep -c "hasAccess\|meta\.access" "$GUARD_FILE" || true)
-if [ "$HAS_HAS_ACCESS" -eq 0 ]; then
-  echo "[check-meta-access-orphan] ❌ FAIL: ipd-guard.ts 未消费 meta.access (hasAccess 缺失)"
-  echo "[check-meta-access-orphan]        路由 $ROUTE_FILE 声明的 meta.access 全部为孤悬配置"
+if [ "$ORPHAN_COUNT" -gt 0 ]; then
+  echo "[check-meta-access-orphan] ❌ FAIL: PAGE_PERMISSIONS 孤悬声明（无路由消费者）:"
+  printf '%s\n' "$ORPHANS" | sed '/^$/d' | sed 's/^/  - /'
+  echo "[check-meta-access-orphan]        若属刻意不设码/字面量消费，请登记 scripts/meta-access-intentional-orphans.txt"
   exit 1
 fi
 
-# 统计路由声明的权限路由数 + 报告守卫已消费
-ROUTE_COUNT=$(echo "$ROUTE_PATHS" | wc -l | tr -d ' ')
-echo "[check-meta-access-orphan] 扫描到 $ROUTE_COUNT 个声明了权限的路由"
-echo "[check-meta-access-orphan] ipd-guard.ts 已有 hasAccess 消费者 (匹配 $HAS_HAS_ACCESS 处)"
-echo "[check-meta-access-orphan] ✅ PASS: meta.access 全部有消费者 (M-Root-11 根除)"
+echo "[check-meta-access-orphan] hasAccess 双锚 OK (def=$HAS_DEF call=$HAS_CALL)"
+echo "[check-meta-access-orphan] ✅ PASS: 无孤悬 PAGE_PERMISSIONS / 无错拼键 (声明 $DECLARED_COUNT / 引用 $REF_COUNT)"
 exit 0

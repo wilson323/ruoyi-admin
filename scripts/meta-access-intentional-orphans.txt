@@ -1,0 +1,5 @@
+# meta-access-intentional-orphans.txt
+# PAGE_PERMISSIONS 键刻意不通过 PAGE_PERMISSIONS['path'] 引用、或暂无独立路由挂载。
+# 每行一个路径；# 开头为注释。更新前先确认导航地图与 ipd.ts。
+#
+# 当前为空：脚本对「路由 path: 已挂载」的声明自动放行，无需白名单。
