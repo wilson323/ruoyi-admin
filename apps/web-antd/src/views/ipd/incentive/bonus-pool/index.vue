@@ -9,7 +9,7 @@
  *
  * 端点：POST /bonus-pool/compute（DRAFT 入库）→ POST /{id}/freeze（DRAFT→CONFIRMED）→ POST /{id}/distribute（CONFIRMED→DISTRIBUTED）。
  */
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import {
   Alert,
   Button,
@@ -41,6 +41,11 @@ import { listProjectItems } from '../../../../api/ipd/project';
 import { formatDateTime, formatMoney, formatPercent, PENDING_TEXT } from '../../_shared/format';
 import { ZK_RULE_BONUS_POOL_FORMULA, renderRulesDescription } from '../../_shared/zk-ipd-rules';
 import { bonusStateLabel, bonusStateTone, STATUS_TONE } from '../../_shared/ipd-enums';
+
+/** 与 layouts/ipd.vue 阶段轨道全局项目下拉共用同一持久化键。 */
+const CURRENT_PROJECT_KEY = 'ipd:current-project';
+/** 表单内选项目后通知顶栏同步（避免用户以为顶部下拉无效）。 */
+const PROJECT_SYNC_EVENT = 'ipd:current-project-changed';
 
 defineOptions({
   name: 'IpdBonusPool',
@@ -105,23 +110,58 @@ const previewBasePool = computed(() => previewReceipts.value * (Number(form.pool
 const pools = ref<BonusPool[]>([]);
 const loading = ref(false);
 const errorMsg = ref('');
+/** 是否已对当前 projectId 发起过列表请求（区分「未选项目」与「已选但无数据」空态文案）。 */
+const listAttempted = ref(false);
+
+/**
+ * 空态文案：未选项目 / 请求失败 / 已选项目但无记录，三者不得共用「请先填写项目编号」。
+ */
+const emptyDescription = computed(() => {
+  if (errorMsg.value) return errorMsg.value;
+  if (!form.projectId.trim()) return '请先在上方选择项目，或使用顶栏全局项目切换后再点「刷新列表」';
+  if (listAttempted.value) return '该项目暂无奖金池记录，可填写回款后触发核算生成草稿';
+  return '请选择项目后点击「刷新列表」';
+});
+
+/**
+ * 将表单项目与顶栏全局选择器对齐：写 localStorage 并派发同步事件（不整页 reload）。
+ */
+function syncGlobalProject(projectId: string) {
+  const id = projectId.trim();
+  if (!id || typeof window === 'undefined') return;
+  window.localStorage.setItem(CURRENT_PROJECT_KEY, id);
+  window.dispatchEvent(new CustomEvent(PROJECT_SYNC_EVENT, { detail: { projectId: id } }));
+}
 
 async function loadList() {
   if (!form.projectId.trim()) {
     pools.value = [];
+    listAttempted.value = false;
+    errorMsg.value = '';
     return;
   }
   loading.value = true;
   errorMsg.value = '';
   try {
     pools.value = await listBonusPools(form.projectId.trim());
+    listAttempted.value = true;
   } catch (cause) {
     pools.value = [];
+    listAttempted.value = true;
     errorMsg.value = rejectText(cause);
   } finally {
     loading.value = false;
   }
 }
+
+watch(
+  () => form.projectId,
+  (next, prev) => {
+    if (next === prev) return;
+    syncGlobalProject(next);
+    void loadList();
+  },
+);
 
 const computing = ref(false);
 const currentResult = ref<BonusPool | null>(null);
@@ -181,12 +221,18 @@ async function onDistribute(pool: BonusPool | Record<string, any>) {
 }
 
 onMounted(async () => {
-  // 首次进入不自动拉奖金池列表（必须先选项目），避免误跨项目；仅拉项目下拉数据源。
+  // 拉项目下拉；若顶栏已选全局项目则回填表单并自动刷列表（R211c：避免同一项目选两次）。
   try {
     const items = await listProjectItems();
     projectOptions.value = items.map((p) => ({ label: `${p.name} · ${p.code}`, value: String(p.id) }));
   } catch {
     projectOptions.value = []; // G-06：加载失败降级空列表，不阻断页面
+  }
+  const saved =
+    typeof window !== 'undefined' ? window.localStorage.getItem(CURRENT_PROJECT_KEY) : null;
+  if (saved && projectOptions.value.some((o) => o.value === saved)) {
+    form.projectId = saved;
+    await loadList();
   }
 });
 
@@ -368,7 +414,7 @@ const columns = [
           </template>
         </template>
         <template #emptyText>
-          <Empty :description="errorMsg || '请先填写项目编号后点击「刷新列表」'" />
+          <Empty :description="emptyDescription" />
         </template>
       </Table>
     </Card>

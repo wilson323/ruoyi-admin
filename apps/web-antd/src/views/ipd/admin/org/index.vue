@@ -44,6 +44,17 @@ function rejectText(cause: unknown): string {
   }
   return cause instanceof Error ? cause.message : '操作失败，请稍后重试';
 }
+
+/**
+ * 产品组描述展示清洗：历史 Mock 种子文案统一标 LOCAL_FIXTURE（不改库，只读展示）。
+ */
+function displayGroupDescription(raw: null | string | undefined): string {
+  const text = (raw ?? '').trim();
+  if (!text) return PENDING_TEXT;
+  if (text === 'Mock 初始化' || /^mock\s*初始化$/i.test(text)) return 'LOCAL_FIXTURE';
+  return text;
+}
+
 const isTransportError = (cause: unknown): boolean =>
   cause instanceof IpdRequestError && cause.kind === 'transport';
 
@@ -180,7 +191,7 @@ function reload() {
                 <span v-else class="text-muted-foreground ml-2 text-xs">{{ PENDING_TEXT }}</span>
               </template>
               <template v-else-if="column.key === 'description'">
-                <span>{{ record.description || PENDING_TEXT }}</span>
+                <span>{{ displayGroupDescription(record.description) }}</span>
               </template>
               <template v-else-if="column.key === 'parentId'">
                 <span v-if="record.parentId" class="tabular-nums">#{{ record.parentId }}</span>
