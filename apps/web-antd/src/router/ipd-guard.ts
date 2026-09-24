@@ -63,7 +63,11 @@ function hasAuthority(to: RouteLocationNormalized, identity: IpdIdentity): boole
  * - 空数组 → 放行（与 hasAuthority 一致语义）
  * - SUPER_ADMIN 全通码 '*:*:*' → 放行（vben v-access:code 语义对齐）
  * - meta.access 任一权限码在 accessCodes 里 → 放行（OR 语义）
- * - 都不满足 → 路由层拦截 → /ipd/no-access
+ * - 权限码通道未接通（accessCodes 无任何 ipd: 码）→ 放行，由后端 @SaCheckPermission/403 兜底
+ *   （2026-09-24 R211b 运行态实测修复：后端尚未把 ipd: 码下发进 accessCodes，
+ *   非超管 accessCodes 恒为 []/['FULL','personType:X']，原实现在此处把全部非超管角色
+ *   从 24 条业务路由误拦到 /ipd/no-access；通道接通后本分支自动失效、闸恢复真拦截）
+ * - 通道已接通且都不满足 → 路由层拦截 → /ipd/no-access
  *
  * 设计依据: docs/ipd-系统说明/权限三套体系边界-20260923.md §2.2（meta.access 装饰性实锤）
  *            docs/ipd-系统说明/隐式依赖三反模式-20260923.md §四（M-Root-12 多套闸不同步）
@@ -72,7 +76,13 @@ export function hasAccess(to: RouteLocationNormalized, accessCodes: string[]): b
   const access = to.meta.access as string[] | undefined;
   if (!access || access.length === 0) return true;
   if (accessCodes.includes('*:*:*')) return true;
-  return access.some((code) => accessCodes.includes(code));
+  if (access.some((code) => accessCodes.includes(code))) return true;
+  if (!accessCodes.some((code) => code.startsWith('ipd:'))) {
+    // 权限码下发通道未接通：路由闸没有判断依据，放行并依赖后端 403 兜底（前端比后端严 = 误伤）。
+    console.warn('[ipd-guard] meta.access 闸：accessCodes 不含任何 ipd: 权限码，通道未接通，本路由放行由后端鉴权兜底', to.path);
+    return true;
+  }
+  return false;
 }
 
 /** 已构建菜单对应的角色（personType）：与当前身份不一致时重建（菜单接口按角色返回，导航地图权限矩阵）。 */

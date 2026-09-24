@@ -46,18 +46,27 @@ describe('R185-P1 hasAccess (route-level meta.access gate)', () => {
     ).toBe(true);
   });
 
-  it('meta.access 无一命中且非超管 → 拦截', () => {
+  it('通道已接通（codes 含 ipd: 码）且 meta.access 无一命中 → 拦截', () => {
     expect(
-      hasAccess(
-        makeRoute(['BID_INVITATION_ADMIN_ASSIGN']),
-        ['personType:RD_PM'],
-      ),
+      hasAccess(makeRoute(['ipd:project:list']), [
+        'ipd:bid:create',
+        'personType:RD_PM',
+      ]),
     ).toBe(false);
   });
 
-  it('meta.access 非空但 accessCodes 为空 → 拦截', () => {
+  it('权限码通道未接通（codes 无任何 ipd: 码）→ 放行，后端 403 兜底（2026-09-24 R211b 运行态误拦修复）', () => {
+    // 非超管现状：accessCodes = ['FULL','personType:RD_PM'] 或 []，不含 ipd: 码。
+    // 旧实现在此处把全部非超管从 24 条业务路由拦到 /ipd/no-access（浏览器实测复现）。
+    expect(
+      hasAccess(makeRoute(['ipd:project:list']), ['personType:RD_PM']),
+    ).toBe(true);
+    expect(hasAccess(makeRoute(['ipd:project:list']), [])).toBe(true);
+  });
+
+  it('meta.access 非空、accessCodes 为空 → 放行（同上：空码集 = 通道未接通）', () => {
     expect(
       hasAccess(makeRoute(['BID_INVITATION_ADMIN_ASSIGN']), []),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
