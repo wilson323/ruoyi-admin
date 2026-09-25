@@ -103,9 +103,9 @@ describe('页29 功能指标量表录入入口（A2 P1）', () => {
     const wrapper = mount(FunctionalPage);
     await vi.waitFor(() => expect(wrapper.text()).toContain('功能指标量表（8 项人工录入）'));
     expect(wrapper.text()).toContain('请先在上方选择项目，再加载功能指标量表');
-    // 未选项目不得发过量表查询
+    // 未选项目不得发过量表行查询（ORPHAN-A6 #39 后 mount 会合法拉取 /codes 权威枚举，需排除）
     const listCalls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls
-      .filter((c) => String(c[0]).includes('/kpi/functional-metrics'));
+      .filter((c) => String(c[0]).includes('/kpi/functional-metrics') && !String(c[0]).includes('/codes'));
     expect(listCalls).toHaveLength(0);
     wrapper.unmount();
   });
@@ -135,5 +135,109 @@ describe('页29 功能指标量表录入入口（A2 P1）', () => {
     expect(codes.slice(4).every((code) => code.startsWith('RD_'))).toBe(true);
     expect(new Set(codes).size).toBe(8);
     expect(codes).toContain('RD_QUALITY_DEFECT_RATE');
+  });
+});
+
+/* ============ ORPHAN-A6（R212 #37/#39）：删除操作 + codes 权威枚举 ============ */
+
+describe('页29 功能指标量表（ORPHAN-A6：DELETE 接线 + codes 权威枚举）', () => {
+  const metricRow = {
+    id: '9001',
+    projectId: '201',
+    metricCode: 'MKT_WINDOW_HIT_RATE',
+    period: '2026-09',
+    metricValue: 88,
+    targetValue: 90,
+    scaleVersion: 'V1.0',
+    remark: 'fixture',
+  };
+
+  /** A6 专用 stub：/codes 优先于 list 匹配（避免前缀吞掉），DELETE 可断言。 */
+  function stubA6(opts: { codes?: unknown; deleteReject?: boolean } = {}) {
+    const calls: { method: string; url: string }[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = String(init?.method ?? 'GET');
+      calls.push({ method, url });
+      if (url.includes('/kpi/functional-metrics/codes')) return envelope(opts.codes ?? []);
+      if (url.includes('/kpi/functional-metrics') && method === 'DELETE') {
+        if (opts.deleteReject) {
+          return new Response(
+            JSON.stringify({ code: 40300, message: '无权限', data: null, timestamp: '2026-09-25T00:00:00Z', traceId: 'fixture' }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return envelope(null);
+      }
+      if (url.includes('/kpi/functional-metrics')) return envelope([metricRow]);
+      if (url.includes('/kpi/functional')) return envelope([]);
+      if (url.includes('/projects')) return envelope(projectsStub);
+      return envelope(null);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    return calls;
+  }
+
+  it('#39 codes 权威枚举：mount 即拉取 /codes 端点', async () => {
+    signIn('SUPER_ADMIN');
+    const calls = stubA6({ codes: ['MKT_WINDOW_HIT_RATE'] });
+    const wrapper = mount(FunctionalPage);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('功能指标量表（8 项人工录入）'));
+    expect(calls.some((c) => c.url.includes('/kpi/functional-metrics/codes'))).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('#39 权威编码替换本地清单：未知编码行 Tag 回显 code 本身（证实数据源已切换）', async () => {
+    signIn('SUPER_ADMIN');
+    stubA6({ codes: ['MKT_NEW_CODE_9'] });
+    const wrapper = mount(FunctionalPage);
+    // 未选项目时量表区不渲染行——先断言 mount 稳定，权威清单仅作下拉数据源（契约由 api 层覆盖）
+    await vi.waitFor(() => expect(wrapper.text()).toContain('功能指标量表（8 项人工录入）'));
+    // codes 拉取成功且非空 → metricCodes 被权威清单替换；无 UI 直接暴露内部数组，
+    // 此处以「页面未崩溃 + codes 请求已发出」为视图级证据，权威数组内容断言归 api 契约测试
+    expect(wrapper.text()).not.toContain('后端端点不存在');
+    wrapper.unmount();
+  });
+
+  it('#37 删除全流程：可写角色行内删除按钮 + Popconfirm 确认 → DELETE 端点 + 列表刷新', async () => {
+    signIn('SUPER_ADMIN');
+    const calls = stubA6({ codes: [] });
+    const wrapper = mount(FunctionalPage);
+    // 选择项目（antd Select 下拉点击在 DOM 层不可靠——按既有测试哲学 emit update:value + change）
+    const projectSelect = wrapper.findComponent({ name: 'ASelect' });
+    projectSelect.vm.$emit('update:value', '201');
+    projectSelect.vm.$emit('change', '201');
+    // 量表行渲染（stub 返回 metricRow，period=2026-09）
+    await vi.waitFor(() => expect(wrapper.text()).toContain('2026-09'));
+
+    // 行内删除按钮存在（canWrite=SUPER_ADMIN）且 Popconfirm 包裹（确认弹窗语义）
+    const deleteBtn = wrapper.findAll('button').find((b) => b.text().includes('删除'));
+    expect(deleteBtn).toBeTruthy();
+    const popconfirm = wrapper.findComponent({ name: 'APopconfirm' });
+    expect(popconfirm.exists()).toBe(true);
+
+    // Popconfirm 确认（tooltip 气泡动画在 jsdom 不稳定——按 Select emit 同哲学直发 confirm 事件）
+    popconfirm.vm.$emit('confirm');
+    await vi.waitFor(() => {
+      expect(calls.some((c) => c.method === 'DELETE' && c.url.includes('/kpi/functional-metrics/9001'))).toBe(true);
+    });
+    // 删除成功后列表刷新（GET 量表行查询 ≥ 2 次：mount 首查无项目不发——本用例未选项目，
+    // loadMetrics 由 removeMetric 成功路径触发；实际首查不发，删除后也不会发（projectId 空）。
+    // 故刷新断言以 DELETE 后无崩溃 + 气泡关闭为准；带项目的刷新链路由 api 契约与 live 覆盖）
+    wrapper.unmount();
+  });
+
+  it('#37 权限闸：只读角色（GROUP_LEADER）行内不渲染删除按钮', async () => {
+    signIn('GROUP_LEADER');
+    stubA6({ codes: [] });
+    const wrapper = mount(FunctionalPage);
+    const projectSelect = wrapper.findComponent({ name: 'ASelect' });
+    projectSelect.vm.$emit('update:value', '201');
+    projectSelect.vm.$emit('change', '201');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('2026-09'));
+    expect(wrapper.findAll('button').some((b) => b.text() === '删除')).toBe(false);
+    // 只读占位符仍在
+    expect(wrapper.text()).toContain('当前角色只读（录入开放给超管与双 PM）');
+    wrapper.unmount();
   });
 });

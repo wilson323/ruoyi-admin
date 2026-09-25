@@ -12,6 +12,17 @@
  * 不展示任何模拟数据（G-06）。
  *
  * 路由：/ipd/kpi/shared?projectId=&period=
+ *
+ * ORPHAN-A7 增量（R212 #79/#80/#82，看板卡 670aecdf，原型页30，2026-09-25）：
+ * - #79 双组长确认列表卡：GET /kpi/shared/confirms?projectId&period[&status]，
+ *   K01-K04 每指标一行（PENDING/CONFIRMED/OVERDUE 筛选；OVERDUE 为读时派生态），
+ *   行内 confirmedByMe 标识 + 首签/次签人时间双列。
+ * - #80 月度截止配置卡：GET /kpi/shared/deadline-config（dayOfMonth/cutoffTime/version/
+ *   source/configuredValue）；后端未交付 PUT 写端点，变更走系统配置管理（kpi.monthlyDeadlineDay），
+ *   本页只读展示 + 如实标注。
+ * - #82 确认签署：POST /kpi/shared/{id}/confirm（Popconfirm 二次确认；权限
+ *   ipd:kpi-shared:confirm = GROUP_LEADER/SUPER_ADMIN，视图按 personType 闸显；
+ *   同人重签/已确认行由后端 40002/STATE_CONFLICT 拒绝，错误如实透出）。
  */
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -23,13 +34,21 @@ import {
   DescriptionsItem,
   Empty,
   InputNumber,
+  Popconfirm,
+  Select,
   Spin,
   Table,
   Tag,
+  message as antMessage,
 } from 'ant-design-vue';
 
 import {
+  type SharedKpiConfirmRow,
+  type SharedKpiDeadlineConfig,
   type SharedKpiRecord,
+  confirmSharedKpi,
+  getSharedDeadlineConfig,
+  listSharedConfirms,
   listSharedKpis,
 } from '../../../../api/ipd/kpi';
 import {
@@ -37,6 +56,7 @@ import {
   listBonusPools,
 } from '../../../../api/ipd/bonus';
 import { IpdRequestError } from '../../../../api/ipd/auth';
+import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { formatDateTime, PENDING_TEXT } from '../../_shared/format';
 import {
   renderRulesDescription,
@@ -44,6 +64,11 @@ import {
 } from '../../_shared/zk-ipd-rules';
 
 defineOptions({ name: 'IpdKpiShared', meta: { ipdCard: 'P0-10.30' } });
+
+/** ORPHAN-A7 #82：签署权限 = ipd:kpi-shared:confirm 持有者（GROUP_LEADER / SUPER_ADMIN）。 */
+const auth = useIpdAuthStore();
+const personType = computed(() => auth.identity?.person.personType ?? '');
+const canSign = computed(() => ['GROUP_LEADER', 'SUPER_ADMIN'].includes(personType.value));
 
 const route = useRoute();
 const router = useRouter();
@@ -94,7 +119,7 @@ async function loadShared(): Promise<void> {
   loadingRecords.value = true;
   recordsError.value = '';
   try {
-    recordsData.value = await listSharedKpis(Number(filters.projectId), filters.period.trim());
+    recordsData.value = await listSharedKpis(String(filters.projectId), filters.period.trim());
   } catch (cause) {
     recordsData.value = [];
     recordsError.value = rejectText(cause);
@@ -120,10 +145,88 @@ async function loadBonus(): Promise<void> {
   }
 }
 
+// ===== ORPHAN-A7 #79：双组长确认列表 =====
+const confirmsData = ref<SharedKpiConfirmRow[]>([]);
+const confirmsLoading = ref(false);
+const confirmsError = ref('');
+const confirmsLoaded = ref(false);
+const confirmStatusFilter = ref<undefined | string>(undefined);
+
+const confirmStatusOptions = [
+  { label: '全部状态', value: '' },
+  { label: '待确认', value: 'PENDING' },
+  { label: '已确认', value: 'CONFIRMED' },
+  { label: '已逾期', value: 'OVERDUE' },
+];
+
+async function loadConfirms(): Promise<void> {
+  if (!canQuery.value) {
+    confirmsData.value = [];
+    return;
+  }
+  confirmsLoading.value = true;
+  confirmsError.value = '';
+  try {
+    const status = confirmStatusFilter.value ? confirmStatusFilter.value : undefined;
+    confirmsData.value = await listSharedConfirms(String(filters.projectId), filters.period.trim(), status);
+    confirmsLoaded.value = true;
+  } catch (cause) {
+    confirmsData.value = [];
+    confirmsLoaded.value = true;
+    confirmsError.value = rejectText(cause);
+  } finally {
+    confirmsLoading.value = false;
+  }
+}
+
+// ===== ORPHAN-A7 #82：确认签署 =====
+const signingId = ref<null | string>(null);
+
+/** 可签署：持签署权限 + 本人未签过 + 行未完成双签（OVERDUE 仍可补签，后端语义）。 */
+function canSignRow(row: SharedKpiConfirmRow): boolean {
+  return canSign.value && !row.confirmedByMe && row.status !== 'CONFIRMED';
+}
+
+async function signConfirm(row: SharedKpiConfirmRow): Promise<void> {
+  if (signingId.value) return;
+  signingId.value = row.id;
+  try {
+    const result = await confirmSharedKpi(row.id);
+    if (result.confirmed) {
+      antMessage.success(`双签完成：${row.metricCode} 已确认`);
+    } else {
+      antMessage.info(`首签成功：${row.metricCode} 等待第二位组长签署`);
+    }
+    await loadConfirms();
+  } catch (cause) {
+    antMessage.error(rejectText(cause));
+  } finally {
+    signingId.value = null;
+  }
+}
+
+// ===== ORPHAN-A7 #80：月度截止配置（只读；写路径后端未交付） =====
+const deadlineConfig = ref<null | SharedKpiDeadlineConfig>(null);
+const deadlineLoading = ref(false);
+const deadlineError = ref('');
+
+async function loadDeadlineConfig(): Promise<void> {
+  deadlineLoading.value = true;
+  deadlineError.value = '';
+  try {
+    deadlineConfig.value = await getSharedDeadlineConfig();
+  } catch (cause) {
+    deadlineConfig.value = null;
+    deadlineError.value = rejectText(cause);
+  } finally {
+    deadlineLoading.value = false;
+  }
+}
+
 async function load(): Promise<void> {
   if (!canQuery.value) return;
   loaded.value = true;
-  await Promise.all([loadShared(), loadBonus()]);
+  await Promise.all([loadShared(), loadBonus(), loadConfirms(), loadDeadlineConfig()]);
 }
 
 onMounted(() => {
@@ -180,6 +283,34 @@ function scoreText(score: null | number | string | undefined): string {
   if (score === null || score === undefined || score === '') return PENDING_TEXT;
   return String(score);
 }
+
+/** ORPHAN-A7：确认行状态映射（PENDING=待确认 / CONFIRMED=已确认 / OVERDUE=已逾期·读时派生）。 */
+function confirmStatusTag(status: null | string | undefined): { color: string; text: string } {
+  if (status === 'CONFIRMED') return { color: 'success', text: '已确认' };
+  if (status === 'OVERDUE') return { color: 'error', text: '已逾期' };
+  if (status === 'PENDING') return { color: 'warning', text: '待确认' };
+  return { color: 'default', text: status ?? PENDING_TEXT };
+}
+
+/** ORPHAN-A7：截止配置来源映射（HIGH-4.1 契约：FACTORY_DEFAULT / DB_ACTIVE / DB_INACTIVE）。 */
+function deadlineSourceText(source: null | string | undefined): string {
+  if (source === 'DB_ACTIVE') return '库内生效（DB_ACTIVE）';
+  if (source === 'DB_INACTIVE') return '库内停用·回退默认（DB_INACTIVE）';
+  if (source === 'FACTORY_DEFAULT') return '工厂默认（FACTORY_DEFAULT）';
+  return source ?? PENDING_TEXT;
+}
+
+const confirmColumns = [
+  { title: '指标', key: 'metric', width: 200 },
+  { title: '项目', dataIndex: 'projectName', key: 'projectName', width: 160 },
+  { title: '周期', dataIndex: 'period', key: 'period', width: 100 },
+  { title: '权重', key: 'weight', width: 90 },
+  { title: '截止时间', key: 'deadlineAt', width: 160 },
+  { title: '状态', key: 'status', width: 100 },
+  { title: '首签', key: 'firstSign', width: 150 },
+  { title: '次签', key: 'secondSign', width: 150 },
+  { title: '操作', key: 'action', width: 130 },
+];
 
 const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recordsError.value && recordsData.value.length === 0);
 </script>
@@ -266,6 +397,103 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
             </template>
           </Table>
         </div>
+      </template>
+    </Card>
+
+    <Card class="mb-4">
+      <template #title>
+        双组长确认（K01-K04）
+        <span class="ml-2 text-xs text-gray-400">GET /kpi/shared/confirms</span>
+      </template>
+      <template #extra>
+        <Select
+          v-model:value="confirmStatusFilter"
+          :options="confirmStatusOptions"
+          style="width: 140px"
+          @change="loadConfirms"
+        />
+      </template>
+      <Spin v-if="confirmsLoading" tip="加载中...">
+        <div style="min-height: 120px"></div>
+      </Spin>
+      <template v-else>
+        <div v-if="confirmsError" class="mb-3">
+          <Alert :message="'确认列表加载失败'" :description="confirmsError" type="error" show-icon />
+        </div>
+        <Empty
+          v-else-if="confirmsLoaded && confirmsData.length === 0"
+          description="该期无共担 KPI 确认行。K01-K04 确认行在归集提交（POST /kpi/shared）后自动生成 PENDING 行。"
+        />
+        <Table
+          v-else
+          :columns="confirmColumns"
+          :data-source="confirmsData"
+          :pagination="false"
+          :row-key="(record: Record<string, any>) => String(record.id ?? '')"
+          size="small"
+          bordered
+        >
+          <template #bodyCell="{ column, record }: { column: Record<string, any>; record: Record<string, any> }">
+            <template v-if="column.key === 'metric'">
+              <div>{{ record.metricName || PENDING_TEXT }}</div>
+              <div class="text-xs text-gray-400">{{ record.metricCode }}</div>
+            </template>
+            <template v-else-if="column.key === 'weight'">
+              <span class="tabular-nums">{{ record.weight ?? PENDING_TEXT }}</span>
+            </template>
+            <template v-else-if="column.key === 'deadlineAt'">
+              {{ formatDateTime(record.deadlineAt) }}
+            </template>
+            <template v-else-if="column.key === 'status'">
+              <Tag :color="confirmStatusTag(record.status).color">{{ confirmStatusTag(record.status).text }}</Tag>
+            </template>
+            <template v-else-if="column.key === 'firstSign'">
+              <div>{{ record.firstConfirmedBy ? '#' + record.firstConfirmedBy : PENDING_TEXT }}</div>
+              <div class="text-xs text-gray-400">{{ formatDateTime(record.firstConfirmedAt) }}</div>
+            </template>
+            <template v-else-if="column.key === 'secondSign'">
+              <div>{{ record.secondConfirmedBy ? '#' + record.secondConfirmedBy : PENDING_TEXT }}</div>
+              <div class="text-xs text-gray-400">{{ formatDateTime(record.secondConfirmedAt) }}</div>
+            </template>
+            <template v-else-if="column.key === 'action'">
+              <Popconfirm
+                v-if="canSignRow(record as SharedKpiConfirmRow)"
+                :title="`确认签署 ${record.metricCode}？（首签/次签按后端双签规则判定）`"
+                ok-text="签署"
+                cancel-text="取消"
+                @confirm="signConfirm(record as SharedKpiConfirmRow)"
+              >
+                <Button size="small" type="primary" :loading="signingId === record.id">确认签署</Button>
+              </Popconfirm>
+              <Tag v-else-if="(record as SharedKpiConfirmRow).confirmedByMe" color="blue">我已签署</Tag>
+              <span v-else class="text-xs text-gray-400">—</span>
+            </template>
+          </template>
+        </Table>
+      </template>
+    </Card>
+
+    <Card class="mb-4">
+      <template #title>
+        月度截止配置
+        <span class="ml-2 text-xs text-gray-400">GET /kpi/shared/deadline-config</span>
+      </template>
+      <Spin v-if="deadlineLoading" tip="加载中...">
+        <div style="min-height: 80px"></div>
+      </Spin>
+      <template v-else>
+        <Alert v-if="deadlineError" :message="'截止配置加载失败'" :description="deadlineError" type="error" show-icon />
+        <Descriptions v-else-if="deadlineConfig" :column="3" size="small" bordered>
+          <DescriptionsItem label="截止日（次月第 N 个工作日）">{{ deadlineConfig.dayOfMonth }}</DescriptionsItem>
+          <DescriptionsItem label="当前解析截止时刻">{{ formatDateTime(deadlineConfig.cutoffTime) }}</DescriptionsItem>
+          <DescriptionsItem label="配置版本">{{ deadlineConfig.version }}</DescriptionsItem>
+          <DescriptionsItem label="取值来源">{{ deadlineSourceText(deadlineConfig.source) }}</DescriptionsItem>
+          <DescriptionsItem label="库内配置值">{{ deadlineConfig.configuredValue ?? PENDING_TEXT }}</DescriptionsItem>
+          <DescriptionsItem label="写路径">
+            <span class="text-xs text-gray-500">后端未交付 PUT 端点；变更走系统配置管理（kpi.monthlyDeadlineDay）</span>
+          </DescriptionsItem>
+        </Descriptions>
+        <Empty v-else description="暂无截止配置数据" />
       </template>
     </Card>
 

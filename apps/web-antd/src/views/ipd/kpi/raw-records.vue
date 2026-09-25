@@ -2,8 +2,11 @@
 /**
  * KPI 原始数据录入/展示页。接口为 GET/POST /api/v1/kpi/raw-records。
  *
- * 设计：8 项固定 KPI 类型枚举（REVENUE/CHANNEL_COUNT/NPS/SCENE_COUNT/BUG_COUNT/
- * COMPLAINT_COUNT/CERT_COUNT/COMPLETION_RATE）；按 projectId + kpiType 筛选已录入记录；
+ * 设计：KPI 类型枚举由权威端点 GET /api/v1/kpi/raw-records/types 下发
+ * （ORPHAN-A6 #40，R212 看板卡 8338f2fa，2026-09-25 接线；此前硬编码 8 项）；
+ * 拉取失败/为空回退本地清单（REVENUE/CHANNEL_COUNT/NPS/SCENE_COUNT/BUG_COUNT/
+ * COMPLAINT_COUNT/CERT_COUNT/COMPLETION_RATE，与后端 listSupportedTypes 同源口径）；
+ * 按 projectId + kpiType 筛选已录入记录；
  * 顶部表单新增一条（项目下拉 + KPI 类型下拉 + 期间日期 + 原始值数字 + 备注）。
  *
  * 权限：仅 GROUP_LEADER（产品组长）可见可写；超管可在审批链上看到本组数据但本页面限定组长；
@@ -37,6 +40,7 @@ import {
   type KpiRawType,
   type RawKpiRecord,
   createRawKpiRecord,
+  listRawKpiRecordTypes,
   listRawKpiRecords,
 } from '../../../api/ipd/kpi';
 import { IpdRequestError } from '../../../api/ipd/auth';
@@ -147,11 +151,26 @@ const visibleRows = computed(() => {
   });
 });
 
-const typeLabelMap = computed(() => {
-  const map = new Map<string, string>();
-  for (const t of KPI_RAW_TYPES) map.set(t.value, t.label);
-  return map;
-});
+/** ORPHAN-A6 #40：本地 8 项清单降级为回退口径 + label 字典（权威编码来自 /types 端点）。 */
+const LOCAL_TYPE_LABELS = new Map<string, string>(KPI_RAW_TYPES.map((t) => [t.value, t.label]));
+const rawTypeOptions = ref<{ label: string; value: string }[]>(
+  KPI_RAW_TYPES.map((t) => ({ label: t.label, value: t.value })),
+);
+
+async function loadRawTypes(): Promise<void> {
+  try {
+    const types = await listRawKpiRecordTypes();
+    // 防御：仅接受非空字符串数组（异常包络/空清单一律回退本地口径）
+    const sanitized = Array.isArray(types) ? types.filter((t): t is string => typeof t === 'string' && t.length > 0) : [];
+    if (sanitized.length) {
+      rawTypeOptions.value = sanitized.map((t) => ({ label: LOCAL_TYPE_LABELS.get(t) ?? t, value: t }));
+    }
+  } catch {
+    // 权威枚举不可达 → 回退本地 8 项（与后端 listSupportedTypes 同源，G-06 不造假）
+  }
+}
+
+const typeLabelMap = computed(() => new Map<string, string>(rawTypeOptions.value.map((o) => [o.value, o.label])));
 
 const columns = [
   { dataIndex: 'period', key: 'period', title: '期间', width: 120 },
@@ -207,6 +226,8 @@ async function load(): Promise<void> {
 
 onMounted(() => {
   void loadProjects();
+  // ORPHAN-A6 #40：types 权威枚举（组长可见下拉/表格消费；失败回退本地 8 项）
+  if (isLeader.value) void loadRawTypes();
   if (isLeader.value) void load();
 });
 
@@ -294,9 +315,9 @@ function reload(): void {
             <FormItem label="KPI 类型" name="kpiType">
               <Select
                 v-model:value="createForm.kpiType"
-                :options="[...KPI_RAW_TYPES]"
+                :options="rawTypeOptions"
                 allow-clear
-                placeholder="选择 8 项 KPI 之一"
+                placeholder="选择 KPI 类型（权威枚举）"
               />
             </FormItem>
             <FormItem label="期间日期" name="period">
@@ -357,7 +378,7 @@ function reload(): void {
           />
           <Select
             v-model:value="filterKpiType"
-            :options="[...KPI_RAW_TYPES]"
+            :options="rawTypeOptions"
             allow-clear
             class="min-w-[220px]"
             placeholder="按 KPI 类型筛选"

@@ -16,12 +16,24 @@
  * （PUT /performance/kpis/...）后端仍未交付，后端为
  * 汇总计算读端点 + 共担 KPI 列表读端点，维持真缺口登记。
  *
- * KPI 原始数据录入（raw-records）来源：前端录入/展示界面按 8 项固定类型枚举
- * （REVENUE / CHANNEL_COUNT / NPS / SCENE_COUNT / BUG_COUNT / COMPLAINT_COUNT /
- * CERT_COUNT / COMPLETION_RATE）。后端写端点 /api/v1/kpi/raw-records 待交付，
- * 当前前端页面如实展示「后端端点不存在」错误，不假绿。
+ * KPI 原始数据录入（raw-records）：类型枚举改由权威端点 GET /kpi/raw-records/types
+ * 下发（ORPHAN-A6，2026-09-25 接线）；本地 8 项清单降级为回退口径（拉取失败/为空时使用，
+ * 编码与后端 KpiRawRecordService.listSupportedTypes 同源：REVENUE / CHANNEL_COUNT / NPS /
+ * SCENE_COUNT / BUG_COUNT / COMPLAINT_COUNT / CERT_COUNT / COMPLETION_RATE）。
+ *
+ * ORPHAN-A6（看板卡 8338f2fa，R212 孤儿桶 #37/#39/#40）增量：
+ * - DELETE /kpi/functional-metrics/{id}（软删除，ipd:kpi:config）
+ * - GET  /kpi/functional-metrics/codes（权威枚举，页面消费见 functional/index.vue）
+ * - GET  /kpi/raw-records/types（权威枚举，页面消费见 raw-records.vue）
+ *
+ * ORPHAN-A7（看板卡 670aecdf，R212 孤儿桶 #79/#80/#82，原型页30）增量：
+ * - GET  /kpi/shared/confirms?projectId&period[&status]（双组长确认列表，P3-1.2-BACKEND）
+ * - GET  /kpi/shared/deadline-config（月度截止配置视图，HIGH-4.1；
+ *   后端无 PUT 写端点——配置变更走 SystemConfigController PUT /system-configs/{key}
+ *   的 kpi.monthlyDeadlineDay，本文件不封装写路径，如实登记）
+ * - POST /kpi/shared/{id}/confirm（双组长签署，ipd:kpi-shared:confirm）
  */
-import { ipdGet, ipdPost, ipdPut } from './http';
+import { ipdDelete, ipdGet, ipdPost, ipdPut } from './http';
 
 /** 功能 KPI 指标来源项（KpiRecordService.KpiSourceItem；value 为原始值，contribution=value×weight）。 */
 export interface KpiSourceItem {
@@ -140,7 +152,7 @@ export function createRawKpiRecord(body: RawKpiRecordCreateReq): Promise<RawKpiR
  * 注：服务同时实现 POST /kpi/shared（归集录入）与 POST /kpi/shared/deadline-scan（月度逾期扫描，
  * 仅超管），本文件暂不封装这两个端点——归集录入走表单专用 mutation hook，扫描由后端 cron 触发。
  */
-export function listSharedKpis(projectId: number, period: string): Promise<SharedKpiRecord[]> {
+export function listSharedKpis(projectId: string, period: string): Promise<SharedKpiRecord[]> {
   return ipdGet<SharedKpiRecord[]>('/kpi/shared', { projectId, period });
 }
 
@@ -204,4 +216,112 @@ export function listFunctionalMetricCodes(): Promise<string[]> {
 /** 录入 / 更新一条功能指标（PUT upsert；同 (projectId, metricCode, period) 覆盖不追加）。 */
 export function upsertFunctionalMetric(body: FunctionalMetricUpsertReq): Promise<FunctionalMetricRecord> {
   return ipdPut<FunctionalMetricRecord>('/kpi/functional-metrics', body);
+}
+
+/* =============== ORPHAN-A6（R212 #37/#39/#40，看板卡 8338f2fa） =============== */
+
+/**
+ * 软删除一条功能指标量表记录（R212 #37）。
+ *
+ * 真值：DELETE /api/v1/kpi/functional-metrics/{id} → KpiFunctionalMetricsController.delete
+ *   （权限 ipd:kpi:config，超管 + 双 PM；软删除，Controller javadoc 自证）。
+ * 成功返回 code=0 data=null；行不存在/权限不足按包络错误上抛（IpdRequestError）。
+ */
+export function deleteFunctionalMetric(id: string): Promise<void> {
+  return ipdDelete<void>(`/kpi/functional-metrics/${id}`);
+}
+
+/**
+ * KPI 原始记录类型权威枚举（R212 #40；R149 期页面曾硬编码 8 项，本端点接线后前端以下发为准）。
+ *
+ * 真值：GET /api/v1/kpi/raw-records/types → KpiRawRecordController.listTypes
+ *   （权限 ipd:kpi:raw:query，MARKET_PM / RD_PM / GROUP_LEADER / SUPER_ADMIN）。
+ */
+export function listRawKpiRecordTypes(): Promise<string[]> {
+  return ipdGet<string[]>('/kpi/raw-records/types');
+}
+
+/* =============== ORPHAN-A7（R212 #79/#80/#82，看板卡 670aecdf，原型页30） =============== */
+
+/**
+ * 共担 KPI 双组长确认行（P3-1.2-BACKEND，看板卡 56d97bb0 DTO 契约）。
+ * 字段对齐后端 vo.KpiSharedConfirmView（字符串 ID + ISO 时间，防 BigInt 截断）。
+ * status：PENDING=待确认 / CONFIRMED=已双签 / OVERDUE=已逾期（读时派生，不落库）。
+ */
+export interface SharedKpiConfirmRow {
+  id: string;
+  period: string;
+  projectId: string;
+  projectName: null | string;
+  personId: null | string;
+  personName: null | string;
+  metricCode: string;
+  metricName: null | string;
+  weight: null | number | string;
+  deadlineAt: null | string;
+  status: string;
+  firstConfirmedBy: null | string;
+  firstConfirmedAt: null | string;
+  secondConfirmedBy: null | string;
+  secondConfirmedAt: null | string;
+  /** 当前登录人是否已参与签署（前端「待我确认 / 我已确认」渲染依据）。 */
+  confirmedByMe: boolean;
+}
+
+/**
+ * 月度截止配置视图（HIGH-4.1；GET /kpi/shared/deadline-config 返回契约）。
+ * source：FACTORY_DEFAULT=工厂默认 5 / DB_ACTIVE=库内生效 / DB_INACTIVE=库内停用回退默认。
+ * 注：后端无 PUT 写端点，配置变更走 SystemConfig（key=kpi.monthlyDeadlineDay）。
+ */
+export interface SharedKpiDeadlineConfig {
+  dayOfMonth: number;
+  cutoffTime: null | string;
+  version: number;
+  source: string;
+  configuredValue: null | string;
+}
+
+/** 双组长签署结果（confirmed=true 表示第二签落齐、行已 CONFIRMED）。 */
+export interface SharedKpiConfirmResult {
+  confirmed: boolean;
+  status: string;
+  firstConfirmedBy: null | string;
+  secondConfirmedBy: null | string;
+}
+
+/**
+ * 双组长确认视角列表（R212 #79）。
+ *
+ * 真值：GET /api/v1/kpi/shared/confirms?projectId&period[&status]
+ *   → SharedKpiController.listConfirms（权限 ipd:kpi:query 四角色；
+ *   status 仅支持 PENDING/CONFIRMED/OVERDUE，不传=全部；项目级 IDOR 防御与 listShared 同严）。
+ */
+export function listSharedConfirms(
+  projectId: string,
+  period: string,
+  status?: string,
+): Promise<SharedKpiConfirmRow[]> {
+  const query: Record<string, unknown> = status === undefined ? { projectId, period } : { projectId, period, status };
+  return ipdGet<SharedKpiConfirmRow[]>('/kpi/shared/confirms', query);
+}
+
+/**
+ * 月度截止配置读（R212 #80 读侧；写侧后端未交付，见接口注释）。
+ *
+ * 真值：GET /api/v1/kpi/shared/deadline-config → SharedKpiController.getDeadlineConfig
+ *   （权限 ipd:kpi:query；无查询参数）。
+ */
+export function getSharedDeadlineConfig(): Promise<SharedKpiDeadlineConfig> {
+  return ipdGet<SharedKpiDeadlineConfig>('/kpi/shared/deadline-config');
+}
+
+/**
+ * 双组长签署（R212 #82；首签记 first，第二位不同组长签记 second 并落 CONFIRMED）。
+ *
+ * 真值：POST /api/v1/kpi/shared/{id}/confirm → SharedKpiController.confirm
+ *   （权限 ipd:kpi-shared:confirm，GROUP_LEADER / SUPER_ADMIN；
+ *   同人重签 40002 DUAL_SIGN_INCOMPLETE、已确认再签 STATE_CONFLICT、OVERDUE 行仍可签）。
+ */
+export function confirmSharedKpi(id: string): Promise<SharedKpiConfirmResult> {
+  return ipdPost<SharedKpiConfirmResult>(`/kpi/shared/${id}/confirm`);
 }

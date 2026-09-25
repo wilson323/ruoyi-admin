@@ -8,10 +8,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IpdRequestError } from '../../../../api/ipd/auth';
 import type { BonusPool } from '../../../../api/ipd/bonus';
-import type { SharedKpiRecord } from '../../../../api/ipd/kpi';
+import type { SharedKpiConfirmRow, SharedKpiDeadlineConfig, SharedKpiRecord } from '../../../../api/ipd/kpi';
 import SharedKpi from './index.vue';
+import { useIpdAuthStore } from '../../../../store/ipd-auth';
 
-const kpiApi = vi.hoisted(() => ({ listSharedKpis: vi.fn() }));
+const kpiApi = vi.hoisted(() => ({
+  listSharedKpis: vi.fn(),
+  // ORPHAN-A7：页30 新增三端点（组件 onMounted 并行消费，mock 必须齐备）
+  listSharedConfirms: vi.fn(),
+  getSharedDeadlineConfig: vi.fn(),
+  confirmSharedKpi: vi.fn(),
+}));
 const bonusApi = vi.hoisted(() => ({ listBonusPools: vi.fn() }));
 vi.mock('../../../../api/ipd/kpi', () => kpiApi);
 vi.mock('../../../../api/ipd/bonus', () => bonusApi);
@@ -46,7 +53,16 @@ function pool(overrides: Partial<BonusPool> = {}): BonusPool {
 beforeEach(() => {
   setActivePinia(createPinia());
   kpiApi.listSharedKpis.mockReset();
+  kpiApi.listSharedConfirms.mockReset();
+  kpiApi.getSharedDeadlineConfig.mockReset();
+  kpiApi.confirmSharedKpi.mockReset();
   bonusApi.listBonusPools.mockReset();
+  // ORPHAN-A7 默认值：确认行空 + 截止配置 fixture（既有用例不感知新卡数据）
+  kpiApi.listSharedConfirms.mockResolvedValue([]);
+  kpiApi.getSharedDeadlineConfig.mockResolvedValue({
+    dayOfMonth: 5, cutoffTime: '2026-10-07 18:00:00', version: 0, source: 'FACTORY_DEFAULT', configuredValue: null,
+  } satisfies SharedKpiDeadlineConfig);
+  kpiApi.confirmSharedKpi.mockResolvedValue({ confirmed: false, status: 'PENDING', firstConfirmedBy: '9001', secondConfirmedBy: null });
   routerMock.push.mockReset();
   routerMock.replace.mockReset();
   routeState.params = {};
@@ -55,6 +71,15 @@ beforeEach(() => {
 });
 
 afterEach(() => { vi.restoreAllMocks(); });
+
+/** ORPHAN-A7 #82：签署闸按 personType 判定（GROUP_LEADER / SUPER_ADMIN 可签）。 */
+function signIn(personType: 'GROUP_LEADER' | 'MARKET_PM' | 'RD_PM' | 'SUPER_ADMIN'): void {
+  useIpdAuthStore().identity = {
+    mustChangePwd: false,
+    scope: 'FULL',
+    person: { id: '9001', groupId: 'GRP-1', name: 'fixture', username: 'fixture', personType, accountStatus: 'ACTIVE' },
+  };
+}
 
 describe('IPD 共担 KPI 归集页 (page 30 / P0-10.30)', () => {
   it('happy path: 5 records across revisions [3, 2, 1] grouped DESC with both PM columns', async () => {
@@ -92,8 +117,8 @@ describe('IPD 共担 KPI 归集页 (page 30 / P0-10.30)', () => {
     expect(pos2).toBeGreaterThan(pos3);
     expect(pos1).toBeGreaterThan(pos2);
 
-    // API 形态：projectId 转 Number、period trim
-    expect(kpiApi.listSharedKpis).toHaveBeenCalledWith(1001, '2026-09');
+    // API 形态：projectId 字符串透传（与 listBonusPools 统一）、period trim
+    expect(kpiApi.listSharedKpis).toHaveBeenCalledWith('1001', '2026-09');
     wrapper.unmount();
   });
 
@@ -216,6 +241,133 @@ describe('IPD 共担 KPI 归集页 (page 30 / P0-10.30)', () => {
     // 等拒绝态文案（rejectText → transport → 「无法连接服务」）
     await vi.waitFor(() => expect(wrapper.text()).toContain('无法连接服务，请检查网络后重试'));
     expect(wrapper.text()).toContain('共担 KPI 加载失败');
+    wrapper.unmount();
+  });
+});
+
+/* ========= ORPHAN-A7（R212 #79/#80/#82，看板卡 670aecdf）：页30 三端点接线 ========= */
+
+function confirmRow(overrides: Partial<SharedKpiConfirmRow> = {}): SharedKpiConfirmRow {
+  return {
+    id: '9101',
+    period: '2026-09',
+    projectId: '1001',
+    projectName: '智慧园区视频分析',
+    personId: '9001',
+    personName: '组长甲',
+    metricCode: 'K01',
+    metricName: '销量/出货量达成率',
+    weight: '0.30',
+    deadlineAt: '2026-10-07 18:00:00',
+    status: 'PENDING',
+    firstConfirmedBy: null,
+    firstConfirmedAt: null,
+    secondConfirmedBy: null,
+    secondConfirmedAt: null,
+    confirmedByMe: false,
+    ...overrides,
+  };
+}
+
+describe('页30 双组长确认 + 截止配置（ORPHAN-A7）', () => {
+  it('#79 确认列表渲染：K01-K04 行 + 状态映射 + 首签/次签列 + 查询参数形态', async () => {
+    kpiApi.listSharedKpis.mockResolvedValueOnce([record()]);
+    bonusApi.listBonusPools.mockResolvedValueOnce([]);
+    kpiApi.listSharedConfirms.mockResolvedValueOnce([
+      confirmRow({ id: '9101', metricCode: 'K01', status: 'PENDING' }),
+      confirmRow({ id: '9102', metricCode: 'K02', status: 'CONFIRMED', firstConfirmedBy: '9001', firstConfirmedAt: '2026-09-28 10:00:00', secondConfirmedBy: '9002', secondConfirmedAt: '2026-09-29 11:00:00', confirmedByMe: true }),
+      confirmRow({ id: '9103', metricCode: 'K03', status: 'OVERDUE' }),
+    ]);
+    const wrapper = mount(SharedKpi);
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('销量/出货量达成率'));
+    // 状态三态映射
+    expect(wrapper.text()).toContain('待确认');
+    expect(wrapper.text()).toContain('已确认');
+    expect(wrapper.text()).toContain('已逾期');
+    // 首签/次签列（#id + 时间）
+    expect(wrapper.text()).toContain('#9001');
+    expect(wrapper.text()).toContain('#9002');
+    // confirmedByMe 行渲染「我已签署」（无身份 → canSign false + confirmedByMe true 分支）
+    expect(wrapper.text()).toContain('我已签署');
+    // 查询参数形态：projectId 字符串透传 + period + 不传 status（filter 未选）
+    expect(kpiApi.listSharedConfirms).toHaveBeenCalledWith('1001', '2026-09', undefined);
+    wrapper.unmount();
+  });
+
+  it('#79 状态筛选：OVERDUE 选中后 status 参数透传', async () => {
+    kpiApi.listSharedKpis.mockResolvedValueOnce([record()]);
+    bonusApi.listBonusPools.mockResolvedValueOnce([]);
+    kpiApi.listSharedConfirms.mockResolvedValue([]);
+    const wrapper = mount(SharedKpi);
+    await vi.waitFor(() => expect(kpiApi.listSharedConfirms).toHaveBeenCalled());
+
+    // 状态筛选 Select（extra 位置）emit change → loadConfirms 透传 OVERDUE
+    const statusSelect = wrapper.findComponent({ name: 'ASelect' });
+    statusSelect.vm.$emit('update:value', 'OVERDUE');
+    statusSelect.vm.$emit('change', 'OVERDUE');
+    await vi.waitFor(() => {
+      expect(kpiApi.listSharedConfirms).toHaveBeenLastCalledWith('1001', '2026-09', 'OVERDUE');
+    });
+    wrapper.unmount();
+  });
+
+  it('#82 签署动作：组长身份可见按钮 → Popconfirm 确认 → confirmSharedKpi + 列表刷新', async () => {
+    signIn('GROUP_LEADER');
+    kpiApi.listSharedKpis.mockResolvedValueOnce([record()]);
+    bonusApi.listBonusPools.mockResolvedValueOnce([]);
+    kpiApi.listSharedConfirms.mockResolvedValue([confirmRow({ status: 'PENDING', confirmedByMe: false })]);
+    const wrapper = mount(SharedKpi);
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('确认签署'));
+    // Popconfirm confirm 事件（jsdom 气泡动画不可靠——emit 哲学与 functional 页一致）
+    const popconfirm = wrapper.findComponent({ name: 'APopconfirm' });
+    expect(popconfirm.exists()).toBe(true);
+    popconfirm.vm.$emit('confirm');
+    await vi.waitFor(() => expect(kpiApi.confirmSharedKpi).toHaveBeenCalledWith('9101'));
+    // 签署后确认列表刷新（listSharedConfirms 再次被调）
+    await vi.waitFor(() => expect(kpiApi.listSharedConfirms.mock.calls.length).toBeGreaterThanOrEqual(2));
+    wrapper.unmount();
+  });
+
+  it('#82 权限闸：PM 身份（无 ipd:kpi-shared:confirm）不渲染签署按钮，PENDING 行显示占位', async () => {
+    signIn('MARKET_PM');
+    kpiApi.listSharedKpis.mockResolvedValueOnce([record()]);
+    bonusApi.listBonusPools.mockResolvedValueOnce([]);
+    kpiApi.listSharedConfirms.mockResolvedValue([confirmRow({ status: 'PENDING', confirmedByMe: false })]);
+    const wrapper = mount(SharedKpi);
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('销量/出货量达成率'));
+    expect(wrapper.text()).not.toContain('确认签署');
+    wrapper.unmount();
+  });
+
+  it('#80 截止配置卡：dayOfMonth/cutoff/source 渲染 + 写路径未交付标注', async () => {
+    kpiApi.listSharedKpis.mockResolvedValueOnce([record()]);
+    bonusApi.listBonusPools.mockResolvedValueOnce([]);
+    kpiApi.getSharedDeadlineConfig.mockResolvedValueOnce({
+      dayOfMonth: 7, cutoffTime: '2026-10-09 18:00:00', version: 3, source: 'DB_ACTIVE', configuredValue: '7',
+    } satisfies SharedKpiDeadlineConfig);
+    const wrapper = mount(SharedKpi);
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('库内生效（DB_ACTIVE）'));
+    expect(wrapper.text()).toContain('月度截止配置');
+    expect(wrapper.text()).toContain('后端未交付 PUT 端点');
+    expect(kpiApi.getSharedDeadlineConfig).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it('#79/#80 拒绝路径：confirms 拒绝走 Alert、deadline 拒绝独立报错（互不拖垮）', async () => {
+    kpiApi.listSharedKpis.mockResolvedValueOnce([record()]);
+    bonusApi.listBonusPools.mockResolvedValueOnce([]);
+    kpiApi.listSharedConfirms.mockRejectedValueOnce(new IpdRequestError('network', 0, 0, 'transport'));
+    kpiApi.getSharedDeadlineConfig.mockRejectedValueOnce(new IpdRequestError('boom', 500, 50000, 'http'));
+    const wrapper = mount(SharedKpi);
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('确认列表加载失败'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('截止配置加载失败'));
+    // 主列表不受影响
+    expect(wrapper.text()).toContain('共担 KPI 归集');
     wrapper.unmount();
   });
 });

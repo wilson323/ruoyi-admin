@@ -154,3 +154,52 @@ describe('KPI 原始数据录入页 (R149 录入/展示)', () => {
     wrapper.unmount();
   });
 });
+
+/* ====== ORPHAN-A6 #40（R212，看板卡 8338f2fa）：types 权威枚举接线 ====== */
+
+describe('KPI 原始数据录入页（ORPHAN-A6：raw-records/types 权威枚举）', () => {
+  /** A6 专用 stub：/types 优先匹配（避免被 /kpi/raw-records 前缀吞掉），可注入未知类型行。 */
+  function stubA6(opts: { types?: unknown; typesReject?: boolean; rows?: unknown[] } = {}) {
+    const calls: { method: string; url: string }[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ method: String(init?.method ?? 'GET'), url });
+      if (url.includes('/kpi/raw-records/types')) {
+        if (opts.typesReject) throw new TypeError('network unavailable');
+        return envelope(opts.types ?? []);
+      }
+      if (url.includes('/kpi/raw-records')) return envelope(opts.rows ?? rawRows);
+      if (url.includes('/projects')) return envelope(projectsStub);
+      return envelope(null, 40400);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    return calls;
+  }
+
+  it('组长 mount 即拉取 GET /kpi/raw-records/types（权威枚举数据源）', async () => {
+    const calls = stubA6({ types: ['REVENUE', 'NPS'] });
+    const wrapper = mount(RawRecords);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('1280.5'));
+    expect(calls.some((c) => c.url.includes('/kpi/raw-records/types'))).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('权威清单替换本地清单：未知类型行 Tag 回显 code 本身（证实数据源已切换）', async () => {
+    stubA6({
+      types: ['NEW_TYPE_X'],
+      rows: [{ ...rawRows[0]!, id: 'RK-X', kpiType: 'NEW_TYPE_X', rawValue: 66.6 }],
+    });
+    const wrapper = mount(RawRecords);
+    // 未知类型不在本地字典 → 回显 code 本身（权威枚举生效的直接视图证据）
+    await vi.waitFor(() => expect(wrapper.text()).toContain('NEW_TYPE_X'));
+    wrapper.unmount();
+  });
+
+  it('types 拉取失败：回退本地 8 项口径，页面不崩（REVENUE 行仍显示本地中文 label）', async () => {
+    stubA6({ typesReject: true });
+    const wrapper = mount(RawRecords);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('销售收入（万元）'));
+    expect(wrapper.text()).toContain('1280.5');
+    wrapper.unmount();
+  });
+});

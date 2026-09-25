@@ -9,6 +9,13 @@
  * （市场 4 + 研发 4，DOC-01 §4 既定口径）人工录入。读权限 ipd:kpi:config:query（四角色），
  * 写权限 ipd:kpi:config（超管 + 双 PM）。scaleVersion 为 VARCHAR(50) 自由文本，
  * 不与 kpi_rule_snapshots 建外键（R-A2 约束）。
+ *
+ * ORPHAN-A6 增量（R212 #37/#39，看板卡 8338f2fa，2026-09-25）：
+ * - #37 DELETE /api/v1/kpi/functional-metrics/{id}（软删除）接入操作列，Popconfirm 二次确认，
+ *   成功后刷新量表；权限与 upsert 同码 ipd:kpi:config（canWrite 同闸）。
+ * - #39 GET /api/v1/kpi/functional-metrics/codes（权威枚举）接入下拉数据源——
+ *   onMounted 拉取，成功后替换本地 8 项清单；失败/为空回退本地口径（label 映射保留本地
+ *   中文文案，未知编码回显 code 本身，不造假）。
  */
 import type { RuleObject } from 'ant-design-vue/es/form';
 
@@ -22,6 +29,7 @@ import {
   FormItem,
   Input,
   InputNumber,
+  Popconfirm,
   Select,
   Space,
   Table,
@@ -33,7 +41,9 @@ import {
   KPI_FUNCTIONAL_METRIC_CODES,
   type FunctionalMetricRecord,
   type KpiSourceItem,
+  deleteFunctionalMetric,
   getFunctionalKpi,
+  listFunctionalMetricCodes,
   listFunctionalMetrics,
   upsertFunctionalMetric,
 } from '../../../../api/ipd/kpi';
@@ -93,6 +103,8 @@ const networkDown = computed(() => loaded.value && !errorMsg.value && items.valu
 onMounted(() => {
   void load();
   void loadMetricProjects();
+  // ORPHAN-A6 #39：codes 权威枚举先行拉取（失败回退本地 8 项，不阻塞页面）
+  void loadMetricCodes();
 });
 
 // ===== A2 P1：功能指标量表（8 项人工录入） =====
@@ -111,8 +123,25 @@ const metricProjectOptions = computed(() =>
   })),
 );
 
-const metricOptions = KPI_FUNCTIONAL_METRIC_CODES.map((item) => ({ label: item.label, value: item.value }));
-const metricLabelMap = new Map<string, string>(KPI_FUNCTIONAL_METRIC_CODES.map((item) => [item.value, item.label]));
+/** ORPHAN-A6 #39：本地 8 项清单降级为回退口径 + label 字典（权威编码来自 /codes 端点）。 */
+const LOCAL_METRIC_LABELS = new Map<string, string>(KPI_FUNCTIONAL_METRIC_CODES.map((item) => [item.value, item.label]));
+const metricCodes = ref<string[]>(KPI_FUNCTIONAL_METRIC_CODES.map((item) => item.value));
+
+async function loadMetricCodes(): Promise<void> {
+  try {
+    const codes = await listFunctionalMetricCodes();
+    // 防御：仅接受非空字符串数组（异常包络/空清单一律回退本地口径）
+    const sanitized = Array.isArray(codes) ? codes.filter((c): c is string => typeof c === 'string' && c.length > 0) : [];
+    if (sanitized.length) metricCodes.value = sanitized;
+  } catch {
+    // 权威枚举不可达 → 回退本地 8 项（与后端 DOC-01 §4 口径同源，G-06 不造假）
+  }
+}
+
+const metricOptions = computed(() =>
+  metricCodes.value.map((code) => ({ label: LOCAL_METRIC_LABELS.get(code) ?? code, value: code })),
+);
+const metricLabelMap = computed(() => new Map<string, string>(metricOptions.value.map((item) => [item.value, item.label])));
 
 const metricColumns = [
   { dataIndex: 'metricCode', key: 'metricCode', title: '功能指标（8 项）', width: 220 },
@@ -121,7 +150,7 @@ const metricColumns = [
   { dataIndex: 'targetValue', key: 'targetValue', title: '目标值', width: 110 },
   { dataIndex: 'scaleVersion', key: 'scaleVersion', title: '量表版本', width: 140 },
   { dataIndex: 'remark', key: 'remark', title: '备注' },
-  { dataIndex: 'action', key: 'action', title: '操作', width: 90 },
+  { dataIndex: 'action', key: 'action', title: '操作', width: 150 },
 ];
 
 interface MetricFormState {
@@ -243,6 +272,23 @@ function openEdit(record: FunctionalMetricRecord): void {
   metricForm.scaleVersion = record.scaleVersion ?? '';
   metricForm.remark = record.remark ?? '';
   metricFormVisible.value = true;
+}
+
+/** ORPHAN-A6 #37：软删除（Popconfirm 确认后执行；权限与 upsert 同闸 canWrite）。 */
+const metricDeletingId = ref<null | string>(null);
+
+async function removeMetric(record: FunctionalMetricRecord): Promise<void> {
+  if (!record.id || metricDeletingId.value) return;
+  metricDeletingId.value = record.id;
+  try {
+    await deleteFunctionalMetric(record.id);
+    antMessage.success('功能指标已删除');
+    await loadMetrics();
+  } catch (cause) {
+    antMessage.error(ipdErrorText(cause, { fallback: '功能指标删除失败' }));
+  } finally {
+    metricDeletingId.value = null;
+  }
 }
 
 function cancelMetricForm(): void {
@@ -446,7 +492,24 @@ const metricEmptyText = computed(() => {
             {{ asMetric(record).remark || '—' }}
           </template>
           <template v-else-if="column.key === 'action'">
-            <Button v-if="canWrite" size="small" type="link" @click="openEdit(asMetric(record))">编辑</Button>
+            <Space v-if="canWrite">
+              <Button size="small" type="link" @click="openEdit(asMetric(record))">编辑</Button>
+              <Popconfirm
+                :disabled="!asMetric(record).id"
+                title="确认删除该条量表记录？（软删除，权限 ipd:kpi:config）"
+                ok-text="删除"
+                ok-type="danger"
+                cancel-text="取消"
+                @confirm="removeMetric(asMetric(record))"
+              >
+                <Button
+                  danger
+                  size="small"
+                  type="link"
+                  :loading="metricDeletingId === asMetric(record).id"
+                >删除</Button>
+              </Popconfirm>
+            </Space>
             <span v-else class="text-xs text-gray-400">—</span>
           </template>
         </template>
