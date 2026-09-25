@@ -117,3 +117,49 @@ export function cancelHandover(
 export function getPmDirectory(): Promise<{ directory: PmDirectoryEntry[]; total: number }> {
   return ipdGet<{ directory: PmDirectoryEntry[]; total: number }>('/pm-directory');
 }
+
+/**
+ * —— R215 WP3.1 批次（ORPHAN-A8，卡 786da825）增补：移交域补端点 2 条 ——
+ *
+ * 真值：HandoverController（R-NEW-B-1 收口批交付，2026-09-24 R212 分桶表 #24/#26）：
+ * - POST /handovers/{id}/archive（AC-HAND-05）：归档已 COMPLETED 的移交，写 archived_at +
+ *   审计快照，不删记录、不反转责任；幂等（重复归档直接返回原记录）；权限=移交双方/
+ *   项目主组组长/超管（Service 内对象级判定，前端不做可见性之外的门控）。
+ * - GET /handovers/monthly-attribution?projectId&month（AC-HAND-08）：按月在任 PM 归属；
+ *   month 格式 yyyy-MM（Service 校验，非法抛业务异常）；权限=项目在职成员或超管
+ *   （IpdIdorGuard.requireProjectMemberOrSuperAdmin，跨组不可读）。
+ * 注：HandoverView 不输出 archivedAt 字段，归档态对收件箱不可见（inbox 白名单
+ * DRAFT/COMPLETED 不过滤 archived），前端按幂等语义处理（重复点击不报错）。
+ *
+ * live 实测（2026-09-25 dev，经 vite 代理 15666，超管凭据）：
+ * - 对 DRAFT 记录 archive / 不存在 id archive 均返回 400/10001（ServiceException 走
+ *   PARAM_INVALID，message 携带精确原因「仅 COMPLETED 移交可归档（当前 DRAFT）」），非 50002；
+ * - monthly-attribution month 格式非法同为 400/10001（非 50010）；不存在项目返回
+ *   200 + 空数组（宽容语义，不 404）；跨组越权 403/30001「非项目成员，无权访问」；
+ * - COMPLETED 归档正向 200 因 dev 库造数路径全被业务守卫封死（onBehalf/batch 仅限
+ *   离职冻结人员、accept 仅接手人本人）未做 live，行为由契约测试锁定。
+ */
+
+/** AC-HAND-08 归属行（HandoverController.AttributionRow；personId 后端已字符串化，daysInRole 为 int）。 */
+export interface HandoverAttributionRow {
+  daysInRole: number;
+  fromDate: null | string;
+  personId: string;
+  personName: string;
+  role: string;
+  source: string;
+  toDate: null | string;
+}
+
+/** AC-HAND-05：归档已 COMPLETED 的移交（幂等；权限后端校验：移交双方/项目组长/超管）。 */
+export function archiveHandover(id: string): Promise<HandoverView> {
+  return ipdPost<HandoverView>(`/handovers/${id}/archive`);
+}
+
+/** AC-HAND-08：按月在任 PM 归属查询（month=yyyy-MM；仅项目在职成员/超管，后端守卫）。 */
+export function getMonthlyAttribution(
+  projectId: string,
+  month: string,
+): Promise<HandoverAttributionRow[]> {
+  return ipdGet<HandoverAttributionRow[]>('/handovers/monthly-attribution', { projectId, month });
+}

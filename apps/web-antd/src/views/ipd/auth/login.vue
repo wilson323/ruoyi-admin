@@ -2,10 +2,14 @@
 import { onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { IPD_HOME, IPD_PASSWORD } from '../../../router/ipd-guard';
+import { IPD_HOME, IPD_PASSWORD, isAuthPath } from '../../../router/ipd-guard';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
 import ipdLogoUrl from '../../../assets/ipd-logo.png';
 import '../_shared/ipd-theme.css';
+// R215 WP3.1 批次（ORPHAN-A12，卡 be9a3017）：企微 Mock 扫码登录入口（页 01）。
+// 开关口径见 api/ipd/auth-wecom.ts 头注：后端 ipd.auth.qr-login.enabled 默认关（409+50019 拒绝），
+// 前端 VITE_IPD_WECOM_QR_LOGIN 默认关；两端独立、可能漂移，负例以 409/50019 为准。
+import { wecomQrLogin, WECOM_QR_LOGIN_ENABLED } from '../../../api/ipd/auth-wecom';
 
 const auth = useIpdAuthStore();
 const router = useRouter();
@@ -81,12 +85,50 @@ async function submit() {
     await auth.login(form.username.trim(), form.password);
     form.password = '';
     const redirect = router.currentRoute.value.query.redirect;
-    const target = typeof redirect === 'string' && redirect.startsWith('/ipd')
+    // R215-P3（卡 5370d5a3）：redirect 指向 auth 区自身（如守卫生成的 /ipd/auth/login）
+    // 时必须忽略、落工作台，否则登录成功后被弹回登录页自身 → 无路由时 404。
+    const target = typeof redirect === 'string' && redirect.startsWith('/ipd') && !isAuthPath(redirect)
       ? redirect
       : IPD_HOME;
     await router.replace(auth.mustChangePassword ? IPD_PASSWORD : target);
   } catch {
     form.password = '';
+  }
+}
+
+/** —— R215 A12：企微 Mock 扫码登录（POST /auth/wecom/qr-login）——
+ *  与上方账号登录 submit 并行的独立提交通道；成功后会话落地复用 store 公开能力
+ *  （adoptSession → refreshIdentity → 平台票 best-effort），redirect 规则与 submit
+ *  同源（R215-P3 卡 5370d5a3：auth 区自身须忽略、落工作台）——本卡不改动 submit，
+ *  同规则复制于此。 */
+const wecomUserId = ref('');
+const wecomBusy = ref(false);
+const wecomError = ref('');
+async function submitWecom() {
+  if (!WECOM_QR_LOGIN_ENABLED || wecomBusy.value || auth.busy) return;
+  const id = wecomUserId.value.trim();
+  if (!id) {
+    wecomError.value = '请输入企业微信账号标识（Mock 联调阶段直接输入 userId）';
+    return;
+  }
+  wecomBusy.value = true;
+  wecomError.value = '';
+  try {
+    const result = await wecomQrLogin(id);
+    auth.adoptSession(result);
+    await auth.refreshIdentity();
+    // 平台会话 best-effort：与 store.login 同降级口径（换票失败不阻断 IPD 登录）
+    try { await auth.renewPlatformSession(); } catch { /* 降级 */ }
+    const redirect = router.currentRoute.value.query.redirect;
+    const target = typeof redirect === 'string' && redirect.startsWith('/ipd') && !isAuthPath(redirect)
+      ? redirect
+      : IPD_HOME;
+    await router.replace(auth.mustChangePassword ? IPD_PASSWORD : target);
+  } catch (cause) {
+    // 50019（开关关）已在 api 层特判为专用文案；其余（404 未绑定/限流/网络）透传权威 message
+    wecomError.value = cause instanceof Error ? cause.message : '扫码登录失败，请重试';
+  } finally {
+    wecomBusy.value = false;
   }
 }
 </script>
@@ -113,7 +155,15 @@ async function submit() {
         <p>全球市场及产品共享中心</p>
         <div class="login-mode-tabs">
           <button type="button" :class="{ active: mode === 'account' }" @click="mode = 'account'">姓名账号</button>
-          <button type="button" :class="{ active: mode === 'wecom' }" @click="mode = 'wecom'">企业微信扫码</button>
+          <button
+          type="button"
+          :class="{ active: mode === 'wecom', disabled: !WECOM_QR_LOGIN_ENABLED }"
+          :aria-disabled="WECOM_QR_LOGIN_ENABLED ? undefined : 'true'"
+          :title="WECOM_QR_LOGIN_ENABLED ? undefined : '企业微信扫码登录未启用（默认关闭，需管理员开启）'"
+          @click="mode = 'wecom'"
+        >
+          企业微信扫码
+        </button>
         </div>
         <form v-if="mode === 'account'" @submit.prevent="submit">
           <label>
@@ -173,9 +223,37 @@ async function submit() {
             <span v-else>开发库真实账号；密码已从本地 .env.development.local 自动填充</span>
           </div>
         </form>
+        <!-- R215 A12：企微扫码入口区块——仅前端开关开启时可达（tab 已置灰）；
+             v-else 兜底保留未启用文案，防编程式切 mode 后落空白 -->
         <div v-else class="wecom-login">
-          <div class="qr-placeholder"><span>企业微信正式扫码</span></div>
-          <p class="wecom-pending">企业微信登录暂未开放，请切换「姓名账号」登录。无法登录时请联系产品组长。</p>
+          <template v-if="WECOM_QR_LOGIN_ENABLED">
+            <div class="qr-placeholder"><span>企业微信扫码（Mock 联调）</span></div>
+            <form @submit.prevent="submitWecom">
+              <label>
+                企业微信 UserId
+                <input
+                  v-model="wecomUserId"
+                  name="wecomUserId"
+                  autocomplete="off"
+                  :maxlength="128"
+                  :disabled="wecomBusy"
+                  placeholder="已绑定企微的 userId（Mock 阶段直填，真实企微接入后改为 OAuth2 扫码）"
+                  required
+                />
+              </label>
+              <div v-if="wecomError" class="form-error" role="alert">{{ wecomError }}</div>
+              <button class="login-button" type="submit" :disabled="wecomBusy">
+                {{ wecomBusy ? '正在登录…' : '扫码登录工作台' }}
+              </button>
+            </form>
+            <p class="wecom-pending">
+              Mock 扫码不冒充真实企微接入：仅已绑定企微的账号可登录（未绑定将被拒绝）；同账号 60 秒内最多 5 次。
+            </p>
+          </template>
+          <template v-else>
+            <div class="qr-placeholder"><span>企业微信正式扫码</span></div>
+            <p class="wecom-pending">企业微信登录暂未开放，请切换「姓名账号」登录。无法登录时请联系产品组长。</p>
+          </template>
         </div>
         <div class="guest-demand-entry">
           <span>
@@ -368,6 +446,12 @@ async function submit() {
   border-radius: 6px;
 }
 
+/* R215 A12：扫码入口开关关时的置灰态（与后端 ipd.auth.qr-login.enabled 默认关对齐） */
+.login-mode-tabs button.disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .login-mode-tabs button.active {
   color: var(--blue);
   background: white;
@@ -497,6 +581,12 @@ async function submit() {
   color: var(--muted);
   border: 1px dashed #ccd3df;
   border-radius: 10px;
+}
+
+.wecom-login form {
+  display: grid;
+  gap: 14px;
+  text-align: left;
 }
 
 .wecom-pending {

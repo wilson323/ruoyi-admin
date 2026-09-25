@@ -78,15 +78,18 @@ function loginAs(id: string, personType: 'GROUP_LEADER' | 'MARKET_PM' | 'RD_PM' 
 function stubApi(opts: {
   acceptSideEffect?: boolean;
   adminResult?: null;
+  attribution?: unknown[];
   batchResult?: HandoverBatchResult[];
   directory?: typeof directory;
   inbox?: HandoverView[];
   inboxError?: boolean;
   onAccept?: (body: unknown) => void;
   onAdmin?: (body: unknown) => void;
+  onArchive?: () => void;
   onBatch?: (body: unknown) => void;
   onCancel?: (body: unknown) => void;
   onInitiate?: (body: unknown) => void;
+  pending?: unknown[];
   projects?: typeof projects;
   projectsError?: boolean;
 } = {}) {
@@ -141,6 +144,18 @@ function stubApi(opts: {
     if (method === 'POST' && url === '/api/v1/handovers/super-admin') {
       opts.onAdmin?.(body);
       return response(null);
+    }
+    // —— R215 A8 新增端点（archive / monthly-attribution / hr-sync pending-handovers） ——
+    if (method === 'POST' && url === '/api/v1/handovers/22/archive') {
+      opts.onArchive?.();
+      return response(records.find((r) => r.id === '22') ?? completed);
+    }
+    if (method === 'GET' && url.startsWith('/api/v1/handovers/monthly-attribution')) {
+      return response(opts.attribution ?? []);
+    }
+    if (method === 'GET' && url === '/api/v1/hr-sync/pending-handovers') {
+      // 默认空数组：组长/超管的既有用例 mount 即自动拉取，404 兜底会渲染错误文案干扰断言
+      return response(opts.pending ?? []);
     }
     return response(null, 404, 40400);
   });
@@ -1005,5 +1020,110 @@ describe('IPD handover page (prototype HandoffWorkbench adaptation)', () => {
       expect(initiateCalled).toBe(false);
       wrapper.unmount();
     });
+  });
+});
+
+// ─────────────── R215 WP3.1 批次（ORPHAN-A8）：归档 / 月度归属 / 离职待移交清单 ───────────────
+describe('R215 A8: archive + monthly attribution + pending handovers', () => {
+  it('COMPLETED 详情可归档：确认弹窗 → POST /handovers/22/archive → 幂等返回原记录', async () => {
+    let archived = false;
+    const { calls } = stubApi({ inbox: [{ ...completed }], onArchive: () => { archived = true; } });
+    loginAs(me.id, 'MARKET_PM');
+    const wrapper = mount(Handover);
+    // completed.fromPersonId=me → 落「我发起的」且为默认选中
+    await vi.waitFor(() => expect(wrapper.text()).toContain('归档此移交'));
+    await wrapper.findAll('button').find((button) => button.text().includes('归档此移交'))!.trigger('click');
+    // Modal.confirm 渲染在 body（wrapper 之外），确认按钮带 okText
+    await vi.waitFor(() => {
+      const ok = [...document.querySelectorAll('.ant-modal-confirm-btns button')]
+        .find((button) => (button as HTMLElement).textContent?.includes('确认归档'));
+      expect(ok).toBeDefined();
+    });
+    const ok = [...document.querySelectorAll('.ant-modal-confirm-btns button')]
+      .find((button) => (button as HTMLElement).textContent?.includes('确认归档')) as HTMLElement;
+    ok.click();
+    await vi.waitFor(() => expect(archived).toBe(true));
+    const archiveCall = calls.find((call) => call.method === 'POST' && call.url === '/api/v1/handovers/22/archive');
+    expect(archiveCall).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it('月度归属查询：选项目+月份 → GET /handovers/monthly-attribution?projectId=1&month=2026-09 → 渲染归属行', async () => {
+    const { calls } = stubApi({
+      attribution: [
+        // 人名用独有锚（directory fixture 的 me/colleague 名与归因行重名，不能作断言信号）
+        { personId: '7', personName: '归属甲', role: 'MARKET_PM', fromDate: '2026-09-01', toDate: '2026-09-30', daysInRole: 30, source: 'BINDING' },
+        { personId: '8', personName: '归属乙', role: 'MARKET_PM', fromDate: null, toDate: '2026-08-31', daysInRole: 0, source: 'TRANSFER' },
+      ],
+    });
+    loginAs(me.id, 'MARKET_PM');
+    const wrapper = mount(Handover);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('月度归属查询'));
+    // MARKET_PM 视角：select 0-2=发起区，3=归因区项目；month input 以 placeholder 定位。
+    // projects 候选是 mount 后二次异步加载，必须等 option 渲染完再 setValue（否则选中无效→按钮 disabled）
+    const selects = wrapper.findAll('select');
+    expect(selects.length).toBeGreaterThanOrEqual(4);
+    await vi.waitFor(() => {
+      expect(selects[3]!.findAll('option').map((option) => option.text())).toContain('演示项目 · P-001');
+    });
+    await selects[3]!.setValue('1');
+    const monthInput = wrapper.findAll('input').find((input) => input.attributes('placeholder') === '2026-09');
+    expect(monthInput).toBeDefined();
+    await monthInput!.setValue('2026-09');
+    await wrapper.findAll('button').find((button) => button.text().includes('查询归属'))!.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('归属甲'));
+    expect(wrapper.text()).toContain('在任绑定');
+    expect(wrapper.text()).toContain('移交生效');
+    const query = calls.find((call) => call.method === 'GET' && call.url.startsWith('/api/v1/handovers/monthly-attribution'));
+    expect(query?.url).toBe('/api/v1/handovers/monthly-attribution?projectId=1&month=2026-09');
+    wrapper.unmount();
+  });
+
+  it('月度归属月份格式防呆：2026-9 不发请求，显示格式错误提示', async () => {
+    const { calls } = stubApi();
+    loginAs(me.id, 'MARKET_PM');
+    const wrapper = mount(Handover);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('月度归属查询'));
+    const selects = wrapper.findAll('select');
+    await vi.waitFor(() => {
+      expect(selects[3]!.findAll('option').map((option) => option.text())).toContain('演示项目 · P-001');
+    });
+    await selects[3]!.setValue('1');
+    const monthInput = wrapper.findAll('input').find((input) => input.attributes('placeholder') === '2026-09');
+    await monthInput!.setValue('2026-9');
+    await wrapper.findAll('button').find((button) => button.text().includes('查询归属'))!.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('月份格式应为 yyyy-MM'));
+    expect(calls.find((call) => call.url.includes('monthly-attribution'))).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('组长登录自动拉离职待移交清单并渲染（含 escalate 已升级徽标）', async () => {
+    const { calls } = stubApi({
+      pending: [
+        { personId: 900101, name: '张三', employeeNo: 'E001', groupId: 12, frozenSince: '2026-09-10T08:00:00Z', activeProjects: 2, ageDays: 18, escalate: true },
+        { personId: 900102, name: '李四', employeeNo: null, groupId: null, frozenSince: null, activeProjects: 0, ageDays: 3, escalate: false },
+      ],
+    });
+    loginAs(leader.id, 'GROUP_LEADER');
+    const wrapper = mount(Handover);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('离职待移交人员'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('张三'));
+    expect(wrapper.text()).toContain('已升级');
+    expect(wrapper.text()).toContain('观察中');
+    // Long 归一后的活跃项目数/冻结天数渲染
+    expect(wrapper.text()).toContain('18');
+    const pendingCall = calls.find((call) => call.method === 'GET' && call.url === '/api/v1/hr-sync/pending-handovers');
+    expect(pendingCall).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it('权限负例：普通 PM 不渲染清单区块、不发起 /hr-sync/pending-handovers 请求', async () => {
+    const { calls } = stubApi();
+    loginAs(me.id, 'MARKET_PM');
+    const wrapper = mount(Handover);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('月度归属查询'));
+    expect(wrapper.text()).not.toContain('离职待移交人员');
+    expect(calls.find((call) => call.url.includes('hr-sync'))).toBeUndefined();
+    wrapper.unmount();
   });
 });

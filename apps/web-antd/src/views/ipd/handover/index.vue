@@ -20,7 +20,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 
-import { message } from 'ant-design-vue';
+import { message, Modal } from 'ant-design-vue';
 import { SendOutlined, SwapOutlined, UserSwitchOutlined } from '@ant-design/icons-vue';
 
 import { useIpdAuthStore } from '../../../store/ipd-auth';
@@ -28,19 +28,24 @@ import { formatDateTime } from '../_shared/format';
 import { ipdErrorText } from '../_shared/ipd-error-text';
 import {
   acceptHandover,
+  archiveHandover,
   batchHandover,
   cancelHandover,
   getHandoverInbox,
+  getMonthlyAttribution,
   getPmDirectory,
   HANDOVER_CANCEL_CONFIRM_PHRASE,
   initiateHandover,
   transferSuperAdmin,
+  type HandoverAttributionRow,
   type HandoverBatchResult,
   type HandoverRole,
   type HandoverView,
   type PmDirectoryEntry,
 } from '../../../api/ipd/handover';
 import { listProjects, type Project } from '../../../api/ipd/project';
+// R215 WP3.1 批次（ORPHAN-A8）：离职待移交清单（HrSyncController，页 27）
+import { listPendingHandovers, type PendingHandoverPerson } from '../../../api/ipd/hr-sync';
 
 const auth = useIpdAuthStore();
 const meId = computed(() => auth.identity?.person.id ?? '');
@@ -101,6 +106,10 @@ onMounted(async () => {
   try {
     projects.value = await listProjects();
   } catch { /* 发起表单的项目候选加载失败不阻断收件箱 */ }
+});
+/** R215 A8：组长/超管进入页面即拉离职待移交清单；普通成员该端点 403，不自动打（负例见测试）。 */
+onMounted(() => {
+  if (isLeader.value) void loadPending();
 });
 
 /**
@@ -267,6 +276,91 @@ async function submitAdminTransfer(): Promise<void> {
     adminBusy.value = false;
   }
 }
+
+/** —— R215 A8 · AC-HAND-05 归档（POST /handovers/{id}/archive）：COMPLETED 记录收纳 ——
+ *  幂等（重复归档返回原记录不报错）；权限（移交双方/项目组长/超管）由后端对象级校验，
+ *  前端只按状态机门控（COMPLETED 才可归档），不做客户端预判。 */
+const archiving = ref(false);
+function confirmArchive(): void {
+  if (!selected.value || selected.value.status !== 'COMPLETED' || archiving.value) return;
+  const record = selected.value;
+  Modal.confirm({
+    title: '归档这条移交记录？',
+    content: `项目 ${record.projectId} · ${roleText[record.handoverRole] ?? record.handoverRole}：${nameOf(record.fromPersonId)} → ${nameOf(record.toPersonId)}。归档仅写入归档时间与审计快照，保留历史、不撤销责任转移；操作幂等，可重复归档。`,
+    okText: '确认归档',
+    cancelText: '取消',
+    onOk: async () => {
+      archiving.value = true;
+      try {
+        await archiveHandover(record.id);
+        message.success('移交记录已归档（历史保留）');
+        await load();
+      } catch (cause) {
+        message.error(ipdErrorText(cause, { fallback: '归档失败，请稍后重试' }));
+      } finally {
+        archiving.value = false;
+      }
+    },
+  });
+}
+
+/** —— R215 A8 · AC-HAND-08 月度归属（GET /handovers/monthly-attribution?projectId&month） ——
+ *  口径（HandoverService）：月初 PM 领取当月全额不按天折算；当月跨月移交次月起归新 PM。
+ *  权限=项目在职成员或超管（后端 IpdIdorGuard 守卫，跨组 403）；month 格式 yyyy-MM
+ *  由后端 Service 校验，前端仅做防呆正则避免明显无效请求。 */
+const currentMonth = (() => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+})();
+const attributionProjectId = ref('');
+const attributionMonth = ref(currentMonth);
+const attributionRows = ref<HandoverAttributionRow[]>([]);
+const attributionBusy = ref(false);
+const attributionError = ref('');
+const attributionQueried = ref(false);
+const ATTRIBUTION_SOURCE_TEXT: Record<string, string> = { BINDING: '在任绑定', TRANSFER: '移交生效' };
+async function submitAttribution(): Promise<void> {
+  if (!attributionProjectId.value || attributionBusy.value) return;
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(attributionMonth.value.trim())) {
+    attributionError.value = '月份格式应为 yyyy-MM（如 2026-09）';
+    return;
+  }
+  attributionBusy.value = true;
+  attributionError.value = '';
+  try {
+    attributionRows.value = await getMonthlyAttribution(
+      attributionProjectId.value,
+      attributionMonth.value.trim(),
+    );
+    attributionQueried.value = true;
+  } catch (cause) {
+    attributionRows.value = [];
+    attributionQueried.value = false;
+    attributionError.value = ipdErrorText(cause, { fallback: '归属查询失败，请稍后重试' });
+  } finally {
+    attributionBusy.value = false;
+  }
+}
+
+/** —— R215 A8 · 离职待移交清单（GET /hr-sync/pending-handovers；组长+超管） ——
+ *  与 A11 离职动作页（views/ipd/admin/identity-sync）分工：那边做离职冻结/企微解绑操作，
+ *  本页做冻结后的清单跟踪（FROZEN_PENDING_HANDOVER 人员 + 活跃项目数 + 15 日升级标记）。 */
+const pendingList = ref<PendingHandoverPerson[]>([]);
+const pendingBusy = ref(false);
+const pendingError = ref('');
+async function loadPending(): Promise<void> {
+  if (!isLeader.value || pendingBusy.value) return;
+  pendingBusy.value = true;
+  pendingError.value = '';
+  try {
+    pendingList.value = await listPendingHandovers();
+  } catch (cause) {
+    pendingList.value = [];
+    pendingError.value = ipdErrorText(cause, { fallback: '待移交清单加载失败，请稍后重试' });
+  } finally {
+    pendingBusy.value = false;
+  }
+}
 </script>
 
 <template>
@@ -371,6 +465,15 @@ async function submitAdminTransfer(): Promise<void> {
               </button>
             </div>
           </div>
+          <!-- R215 A8 · AC-HAND-05：归档（与撤销同状态机门控 COMPLETED；幂等，后端校验参与方/组长/超管） -->
+          <div class="archive-row">
+            <p class="cancel-hint">
+              归档把已完成移交收纳进历史（写入归档时间与审计快照，不删除记录、不反转责任）；操作幂等，权限为移交双方 / 项目组长 / 超管（后端校验）。
+            </p>
+            <button :disabled="archiving" class="primary-button archive-action" type="button" @click="confirmArchive">
+              归档此移交
+            </button>
+          </div>
         </template>
         <div v-else class="empty-state">
           <div><SwapOutlined /></div>
@@ -426,6 +529,57 @@ async function submitAdminTransfer(): Promise<void> {
       </div>
     </section>
 
+    <!-- R215 A8 · AC-HAND-08：月度归属查询（GET /handovers/monthly-attribution；项目成员/超管可查） -->
+    <section class="surface attribution-section">
+      <div class="section-title">
+        <div>
+          <h2>月度归属查询</h2>
+          <p>按月在任 PM 归属：月初 PM 领取当月全额（不按天折算）；当月完成的移交自次月起归新 PM。仅项目在职成员与超管可查（后端校验）。</p>
+        </div>
+      </div>
+      <div class="create-form attribution-form">
+        <label>
+          项目
+          <select v-model="attributionProjectId">
+            <option disabled value="">选择项目</option>
+            <option v-for="item in projects" :key="item.id" :value="item.id">{{ item.name }} · {{ item.code }}</option>
+          </select>
+        </label>
+        <label>
+          月份（yyyy-MM）
+          <input v-model="attributionMonth" placeholder="2026-09" />
+        </label>
+        <button
+          :disabled="!attributionProjectId || attributionBusy"
+          class="primary-button"
+          type="button"
+          @click="submitAttribution"
+        >
+          查询归属
+        </button>
+      </div>
+      <div v-if="attributionError" class="attribution-error">{{ attributionError }}</div>
+      <div v-else-if="attributionQueried" class="attribution-result">
+        <table class="attribution-table">
+          <thead>
+            <tr><th>人员</th><th>角色</th><th>归属区间</th><th>在任天数</th><th>来源</th></tr>
+          </thead>
+          <tbody>
+            <tr v-if="!attributionRows.length">
+              <td class="attribution-blank" colspan="5">该月无在任 PM 归属记录。</td>
+            </tr>
+            <tr v-for="(row, i) in attributionRows" :key="`${row.personId}-${i}`">
+              <td>{{ row.personName }}</td>
+              <td>{{ roleText[row.role] ?? row.role }}</td>
+              <td>{{ row.fromDate ?? '—' }} ~ {{ row.toDate ?? '—' }}</td>
+              <td>{{ row.daysInRole }}</td>
+              <td>{{ ATTRIBUTION_SOURCE_TEXT[row.source] ?? row.source }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <template v-if="isLeader">
       <section class="surface batch-section">
         <div class="section-title">
@@ -478,6 +632,45 @@ async function submitAdminTransfer(): Promise<void> {
             <i class="status-pill" :class="result.status.toLowerCase()">{{ result.status }}</i>
             <small v-if="result.reason">{{ result.reason }}</small>
           </div>
+        </div>
+      </section>
+
+      <!-- R215 A8 · 离职待移交清单（GET /hr-sync/pending-handovers；组长+超管；
+           离职冻结/企微解绑操作入口在「身份同步」页（A11），此处只做清单跟踪不重复造页面） -->
+      <section class="surface pending-section">
+        <div class="section-title">
+          <div>
+            <h2>离职待移交人员</h2>
+            <p>FROZEN_PENDING_HANDOVER 冻结人员及名下活跃项目；冻结超 15 日触发升级（BR-USER-06）。全部项目移交完成才终态 DISABLED。</p>
+          </div>
+          <button :disabled="pendingBusy" class="primary-button ghost-button" type="button" @click="loadPending">
+            {{ pendingBusy ? '刷新中…' : '刷新' }}
+          </button>
+        </div>
+        <div v-if="pendingError" class="attribution-error">{{ pendingError }}</div>
+        <div v-else class="attribution-result pending-result">
+          <table class="attribution-table">
+            <thead>
+              <tr><th>姓名</th><th>工号</th><th>冻结时间</th><th>活跃项目</th><th>冻结天数</th><th>升级状态</th></tr>
+            </thead>
+            <tbody>
+              <tr v-if="!pendingList.length && !pendingBusy">
+                <td class="attribution-blank" colspan="6">当前无离职待移交人员。</td>
+              </tr>
+              <tr v-for="row in pendingList" :key="row.personId">
+                <td>{{ row.name }}</td>
+                <td>{{ row.employeeNo ?? '—' }}</td>
+                <td>{{ formatDateTime(row.frozenSince) }}</td>
+                <td>{{ row.activeProjects }}</td>
+                <td>{{ row.ageDays }}</td>
+                <td>
+                  <i class="status-pill" :class="row.escalate ? 'rolled_back' : 'completed'">
+                    {{ row.escalate ? '已升级' : '观察中' }}
+                  </i>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -906,6 +1099,73 @@ async function submitAdminTransfer(): Promise<void> {
   background: #f6f8fb;
   border: 1px dashed #cfd9e5;
   border-radius: 6px;
+}
+
+/* —— R215 A8 追加：归档 / 月度归属 / 离职待移交清单 —— */
+.archive-row {
+  display: grid;
+  gap: 10px;
+  padding: 14px 20px 18px;
+  border-top: 1px dashed var(--ipd-line);
+}
+
+.archive-row .archive-action {
+  justify-self: start;
+}
+
+.attribution-section,
+.pending-section {
+  margin-bottom: 18px;
+}
+
+.attribution-form {
+  grid-template-columns: 2fr 1fr auto;
+}
+
+.attribution-error {
+  padding: 10px 20px 14px;
+  font-size: 12px;
+  color: #a8071a;
+}
+
+.attribution-result {
+  padding: 0 20px 16px;
+}
+
+.pending-result {
+  padding-bottom: 18px;
+}
+
+.attribution-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.attribution-table th {
+  padding: 8px 10px;
+  font-weight: 650;
+  color: var(--ipd-muted);
+  text-align: left;
+  border-bottom: 1px solid var(--ipd-line);
+}
+
+.attribution-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ipd-line);
+}
+
+.attribution-blank {
+  color: var(--ipd-muted);
+  text-align: center;
+}
+
+.ghost-button {
+  color: var(--ipd-blue);
+  background: white;
+  border: 1px solid var(--ipd-blue);
+  box-shadow: none;
+  min-height: 32px;
 }
 
 /* 原型 styles.css 摘录；--blue/--line/--muted/--text/--green 映射为 --ipd-*。 */
