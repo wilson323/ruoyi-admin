@@ -9,7 +9,8 @@ import { useIpdAuthStore } from '../../../store/ipd-auth';
 
 const identity = { mustChangePwd: false, scope: 'FULL', person: { id: '900103', groupId: null, name: '测试人员', username: 'fixture', personType: 'MARKET_PM', accountStatus: 'ACTIVE' } };
 const pair = (suffix = 'one') => ({ ...identity, token: `access-${suffix}`, tokenType: 'Bearer', expiresIn: 900 });
-const response = (data: unknown, status = 200, code = 0, message?: string) => new Response(JSON.stringify({ code, message: message ?? (code ? '请求被拒绝' : 'ok'), data, timestamp: '2026-09-05', traceId: null }), { status, headers: { 'Content-Type': 'application/json' } });
+// R215-E2E-B：默认非零 code 的 message 置空（后端无 message → 查表链，如 401+20001→「登录已失效」）。
+const response = (data: unknown, status = 200, code = 0, message?: string) => new Response(JSON.stringify({ code, message: message ?? (code ? '' : 'ok'), data, timestamp: '2026-09-05', traceId: null }), { status, headers: { 'Content-Type': 'application/json' } });
 beforeEach(() => { sessionStorage.clear(); setActivePinia(createPinia()); });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 

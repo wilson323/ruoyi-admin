@@ -175,6 +175,62 @@ describe('页面级 codeTexts 优先级高于域默认与通用表', () => {
   });
 });
 
+describe('R215-E2E-B 后端响应体 message 透传（P0）', () => {
+  // requestIpd 构造 http 错误时：message=前端查表文案，envelopeMessage=后端响应体 message 原文。
+  const httpErrWithBackend = (code: number, envelopeMessage?: string, status = 400) =>
+    new IpdRequestError('前端查表文案', status, code, 'http', envelopeMessage);
+
+  it('后端带 message → 透传原文，即使 code 是已知码（50002/10001 一码多语义场景）', () => {
+    expect(ipdErrorText(httpErrWithBackend(50002, '该招标已有人正在终审，不可重复操作')))
+      .toBe('该招标已有人正在终审，不可重复操作');
+    expect(ipdErrorText(httpErrWithBackend(10001, '账号已停用，如有疑问联系管理员')))
+      .toBe('账号已停用，如有疑问联系管理员');
+  });
+
+  it('透传优先级最高：压过页面级 codeTexts 覆写与域默认', () => {
+    expect(
+      ipdErrorText(httpErrWithBackend(30001, '后端：该账号缺少 ipd:bid:select 权限'), {
+        codeTexts: { 30001: '页面专属文案' },
+      }),
+    ).toBe('后端：该账号缺少 ipd:bid:select 权限');
+    expect(ipdErrorText(httpErrWithBackend(50002, '后端原文冲突提示'), { domain: 'bid' }))
+      .toBe('后端原文冲突提示');
+  });
+
+  it('后端无 message / 空串 / 全空白 → 回退查表链（已知码命中通用表）', () => {
+    expect(ipdErrorText(httpErrWithBackend(10001))).toBe(IPD_COMMON_CODE_TEXTS[10001]);
+    expect(ipdErrorText(httpErrWithBackend(10001, ''))).toBe(IPD_COMMON_CODE_TEXTS[10001]);
+    expect(ipdErrorText(httpErrWithBackend(10001, '   '))).toBe(IPD_COMMON_CODE_TEXTS[10001]);
+  });
+
+  it('后端无 message 且 code 未知 → 仍走 HTTP 状态兜底 / fallback（查表链不被透传分支破坏）', () => {
+    expect(ipdErrorText(httpErrWithBackend(99999, undefined, 409)))
+      .toBe('数据状态已变更（可能已被其他人处理），请刷新后重试');
+    expect(ipdErrorText(httpErrWithBackend(99999, ''), { fallback: '页内失败' })).toBe('页内失败');
+  });
+
+  it('透传值去除首尾空白后返回', () => {
+    expect(ipdErrorText(httpErrWithBackend(50001, '  记录不存在，请刷新  ')))
+      .toBe('记录不存在，请刷新');
+  });
+
+  it('非 http 分支不受影响：transport 即便携带 envelopeMessage 仍返回断网文案', () => {
+    const err = new IpdRequestError('无法连接服务', 0, 0, 'transport', '不该透传的字串');
+    expect(ipdErrorText(err)).toBe('无法连接服务，请检查网络后重试');
+  });
+
+  it('withCodeTextOverrides 组合路径同样透传（工厂不吞后端 message）', () => {
+    const fn = withCodeTextOverrides({ 50002: '绑定文案' });
+    expect(fn(httpErrWithBackend(50002, '后端真实原因'))).toBe('后端真实原因');
+    expect(fn(httpErrWithBackend(50002, undefined))).toBe('绑定文案');
+  });
+
+  it('ipdErrorWithTrace：透传文案 + traceId 编号共存', () => {
+    const err = new IpdRequestError('前端查表文案', 409, 50002, 'http', '状态已变更原文', 't-9');
+    expect(ipdErrorWithTrace(err)).toBe('状态已变更原文（编号 t-9）');
+  });
+});
+
 describe('withCodeTextOverrides 工厂', () => {
   it('绑定 codeTexts 后调用不再传 codeTexts 也生效', () => {
     const fn = withCodeTextOverrides({ 30001: '绑定的文案' });
@@ -278,7 +334,8 @@ describe('与 auth.ts 的一致性 / 矛盾点（仅观察不修）', () => {
 
 describe('ipdErrorWithTrace 报障文案（P2-2，2026-09-09）', () => {
   it('有 traceId 的 http 错误：文案尾部附「（编号 xxx）」', () => {
-    const err = new IpdRequestError('msg', 400, 10001, 'http', 'env', 'trace-abc-123');
+    // R215-E2E-B 后第 5 参 envelopeMessage='env' 会被透传吞掉查表意图，改传 undefined 走查表链
+    const err = new IpdRequestError('msg', 400, 10001, 'http', undefined, 'trace-abc-123');
     expect(ipdErrorWithTrace(err)).toBe('输入信息不符合要求，请检查后重试（编号 trace-abc-123）');
   });
 

@@ -450,9 +450,11 @@ onMounted(async () => {
   const saved =
     typeof window !== 'undefined' ? window.localStorage.getItem(CURRENT_PROJECT_KEY) : null;
   if (saved && projectOptions.value.some((o) => o.value === saved)) {
+    // R215-E2E-D：列表/台账只由上方 form.projectId watch（唯一触发点）各拉一次。
+    // 原此处显式 loadList+loadLedgers 与 watch('')→saved 的触发叠加，单实例挂载
+    // 即把 /bonus-pool/page 与 /receipt-ledgers/by-project 各打两次（探针“双发”真因，
+    // 非布局双实例；计数回归见 index.test.ts）。
     form.projectId = saved;
-    await loadList(1);
-    await loadLedgers();
   }
 });
 

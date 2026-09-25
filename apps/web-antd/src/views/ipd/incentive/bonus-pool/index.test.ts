@@ -452,3 +452,36 @@ describe('页34 奖金池核算 — ORPHAN-A4/A5 增量', () => {
     granted.unmount();
   });
 });
+
+describe('R215-E2E-D 诊断：挂载期端点调用计数（单实例）', () => {
+  it('带全局选中项目挂载 → /bonus-pool/page 与 /receipt-ledgers/by-project 各恰好 1 次', async () => {
+    // 探针背景：奖金池页实测同一端点两次调用，疑为布局双实例。本用例在无布局的
+    // 单实例 mount 下计数：若仍 2 次 → 根因在页内（onMounted 显式调用与 form.projectId
+    // watch 双触发），而非双实例挂载（E2E-D 结论证据链，见 index.vue onMounted 修复注记）。
+    window.localStorage.setItem('ipd:current-project', '1001');
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes('/receipt-ledgers/by-project')) return envelope([]);
+      if (path.includes('/bonus-pool/page')) {
+        return envelope({ records: [], total: 0, size: 20, current: 1, pages: 0 });
+      }
+      if (path.includes('/projects')) {
+        return envelope([{ project: { id: '1001', name: '测试项目', code: 'PRJ-1001' } }]);
+      }
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mount(BonusPool);
+    await vi.waitFor(() => {
+      expect(fetcher.mock.calls.some((c) => String(c[0]).includes('/bonus-pool/page'))).toBe(true);
+    });
+    // 再等一拍让 watch 的 pre-flush 回调全部落地：若存在双触发，此刻必已发生
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const count = (frag: string) =>
+      fetcher.mock.calls.filter((c) => String(c[0]).includes(frag)).length;
+    expect(count('/bonus-pool/page')).toBe(1);
+    expect(count('/receipt-ledgers/by-project')).toBe(1);
+    wrapper.unmount();
+    window.localStorage.removeItem('ipd:current-project');
+  });
+});

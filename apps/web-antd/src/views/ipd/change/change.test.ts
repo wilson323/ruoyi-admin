@@ -9,7 +9,8 @@ import { type RequirementChange } from '../../../api/ipd/change';
 import Change from './index.vue';
 
 const response = (data: unknown, status = 200, code = 0) => new Response(
-  JSON.stringify({ code, message: code ? '请求不合法' : 'success', data, timestamp: '2026-09-06T00:00:00Z', traceId: 'fixture' }),
+  // R215-E2E-B：非零 code 的 message 置空 = 模拟后端无 message，用例保留「查表链」验证意图（透传契约由 ipd-error-text.test.ts 专测）。
+  JSON.stringify({ code, message: '', data, timestamp: '2026-09-06T00:00:00Z', traceId: 'fixture' }),
   { status, headers: { 'Content-Type': 'application/json' } },
 );
 

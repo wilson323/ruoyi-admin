@@ -11,7 +11,8 @@ import type { GateReviewView } from '../../../api/ipd/gate-review';
 import GatePanel from './gate-panel.vue';
 
 const response = (data: unknown, status = 200, code = 0, message?: string) => new Response(
-  JSON.stringify({ code, message: message ?? (code ? '请求不合法' : 'success'), data, timestamp: '2026-09-06T00:00:00Z', traceId: 'fixture' }),
+  // R215-E2E-B：默认非零 code 的 message 置空（后端无 message → 查表链意图保留）；显式传 message 的用例走透传断言。
+  JSON.stringify({ code, message: message ?? (code ? '' : 'success'), data, timestamp: '2026-09-06T00:00:00Z', traceId: 'fixture' }),
   { status, headers: { 'Content-Type': 'application/json' } },
 );
 

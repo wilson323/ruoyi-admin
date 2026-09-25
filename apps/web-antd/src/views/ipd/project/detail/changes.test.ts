@@ -20,7 +20,8 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import ChangesProjectTab from './changes.vue';
 
 const response = (data: unknown, code = 0) => new Response(
-  JSON.stringify({ code, message: code ? '请求不合法' : 'success', data, timestamp: '2026-09-06T00:00:00Z', traceId: 'fixture' }),
+  // R215-E2E-B：非零 code 的 message 置空（后端无 message → 查表链意图保留）。
+  JSON.stringify({ code, message: '', data, timestamp: '2026-09-06T00:00:00Z', traceId: 'fixture' }),
   { status: 200, headers: { 'Content-Type': 'application/json' } },
 );
 

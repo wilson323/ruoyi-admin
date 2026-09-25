@@ -97,11 +97,12 @@ describe('IPD review page (prototype StageConfirmPage)', () => {
   });
 
   it('surfaces gate failure details from the 400 envelope without loosening', async () => {
-    // requestIpd 契约：code!=0 走 messageFromCode 映射表短路（10001→阶段输入文案），envelope.message 不透传
+    // R215-E2E-B 契约：非 2xx 优先透传后端响应体 message（门禁细节直达用户）；
+    // 后端无 message 时才回退 code 表（10001→通用「输入信息不符合要求」会丢失具体原因）。
     stubApi(response(null, 400, 10001, '门禁校验失败：市场需求评审证据归档未完成'));
     const wrapper = await mountReview();
     await wrapper.get('.page-heading .primary-button').trigger('click');
-    await vi.waitFor(() => expect(wrapper.text()).toContain('阶段输入信息不符合要求，请检查后重试'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('门禁校验失败：市场需求评审证据归档未完成'));
     expect(wrapper.text()).toContain('提交概念阶段确认');
     wrapper.unmount();
   });

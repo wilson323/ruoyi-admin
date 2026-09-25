@@ -119,7 +119,8 @@ describe('IPD admin handover page (prototype SuperAdminSuccessionPanel adaptatio
   it('surfaces a friendly rejection when the backend refuses the transfer', async () => {
     stubApi({ directory: [leaderA], superAdminFail: true });
     loginAs('SUPER_ADMIN');
-    // 40000 不在 ipd-error-text 码表内 → 降级 fallback；不透出后端动态文案是集中表策略的预期行为
+    // R215-E2E-B：后端携带的具体拒绝原因优先透传（40000 原会落 fallback「移交失败」，
+    // 用户看不到真实原因）；现「检测到 3 名在任超管…」直达 message.error。
     const errorSpy = vi.spyOn(message, 'error');
     const wrapper = mount(AdminHandover);
     await vi.waitFor(() => expect(wrapper.text()).toContain('组长甲'));
@@ -129,7 +130,7 @@ describe('IPD admin handover page (prototype SuperAdminSuccessionPanel adaptatio
     await wrapper.findAll('button').find((button) => button.text().includes('确认移交超级管理员'))!.trigger('click');
 
     await vi.waitFor(() => expect(errorSpy).toHaveBeenCalled());
-    expect(String(errorSpy.mock.calls[0]?.[0])).toContain('移交失败');
+    expect(String(errorSpy.mock.calls[0]?.[0])).toContain('检测到 3 名在任超管');
     wrapper.unmount();
   });
 

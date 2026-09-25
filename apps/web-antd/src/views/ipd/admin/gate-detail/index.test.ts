@@ -25,7 +25,8 @@ function loginAs(personType: IpdIdentity['person']['personType'], personId = '7'
 }
 
 const envelope = (data: unknown, status = 200, code = 0): Response => new Response(
-  JSON.stringify({ code, message: code === 0 ? 'success' : '请求不合法', data, timestamp: '2026-09-22T00:00:00Z', traceId: 'fixture' }),
+  // R215-E2E-B：非零 code 的 message 置空（后端无 message → 查表链意图保留）。
+  JSON.stringify({ code, message: code === 0 ? 'success' : '', data, timestamp: '2026-09-22T00:00:00Z', traceId: 'fixture' }),
   { status, headers: { 'Content-Type': 'application/json' } },
 );
 

@@ -136,6 +136,13 @@ export function ipdErrorText(error: unknown, options: IpdErrorOptions = {}): str
     // 2026-09-06 第六批判例补：形状校验类（protocol）错误自带专属用户文案，不得降级为通用 fallback
     if (error.kind === 'protocol') return error.message;
     if (error.kind === 'http') {
+      // R215-E2E-B（P0，2026-09-25）：非 2xx 优先透传后端响应体 message 原文
+      // （requestIpd 将其存入 IpdRequestError.envelopeMessage，见 api/ipd/auth.ts L209）。
+      // 此前 http 分支一律查表，50002/10001 等一码多语义的业务拒绝被抹平成通用文案，
+      // 用户看不到真实失败原因（如「同一人不能重复确认」）。仅当后端无 message
+      // 或为空白时才回退下方三级查表链。protocol/transport 等分支不读 envelopeMessage，不受影响。
+      const backendMessage = error.envelopeMessage?.trim();
+      if (backendMessage) return backendMessage;
       const pageText = options.codeTexts?.[error.code];
       if (pageText) return pageText;
       const domainText = options.domain ? IPD_DOMAIN_DEFAULTS[options.domain]?.[error.code] : undefined;
