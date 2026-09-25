@@ -39,6 +39,7 @@ import {
 import { IpdRequestError } from '../../../../api/ipd/auth';
 import { listProjectItems } from '../../../../api/ipd/project';
 import { formatDateTime, formatMoney, formatPercent, PENDING_TEXT } from '../../_shared/format';
+import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 import { ZK_RULE_BONUS_POOL_FORMULA, renderRulesDescription } from '../../_shared/zk-ipd-rules';
 import { bonusStateLabel, bonusStateTone, STATUS_TONE } from '../../_shared/ipd-enums';
 
@@ -316,7 +317,7 @@ const columns = [
         </FormItem>
         <FormItem :wrapper-col="{ offset: 6, span: 14 }">
           <Space>
-            <Button type="primary" :disabled="!canCompute" :loading="computing" @click="onCompute">
+            <Button v-access:code="IPD_PERMISSION_CODES.BONUS_POOL_COMPUTE" type="primary" :disabled="!canCompute" :loading="computing" @click="onCompute">
               触发核算（落库 DRAFT）
             </Button>
             <Button :disabled="!form.projectId.trim()" :loading="loading" @click="loadList">
@@ -349,6 +350,7 @@ const columns = [
       <Space class="mt-3">
         <Button
           v-if="currentResult.status === 'DRAFT'"
+          v-access:code="IPD_PERMISSION_CODES.BONUS_POOL_FREEZE"
           :loading="actionId === currentResult.id"
           type="primary"
           @click="onFreeze(currentResult)"
@@ -357,6 +359,7 @@ const columns = [
         </Button>
         <Button
           v-if="currentResult.status === 'CONFIRMED'"
+          v-access:code="IPD_PERMISSION_CODES.BONUS_POOL_DISTRIBUTE"
           :loading="actionId === currentResult.id"
           type="primary"
           @click="onDistribute(currentResult)"

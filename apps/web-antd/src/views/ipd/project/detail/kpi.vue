@@ -24,6 +24,7 @@ import {
   InputNumber,
   Table,
   Tag,
+  Textarea,
 } from 'ant-design-vue';
 
 import {
@@ -34,6 +35,12 @@ import {
   getKpiTrend,
   getPerformanceKpi,
 } from '../../../../api/ipd/kpi';
+import {
+  type PostLaunchReviewView,
+  completeReview,
+  fetchPendingReview,
+} from '../../../../api/ipd/post-launch-review';
+import { IpdRequestError } from '../../../../api/ipd/auth';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
 
 defineOptions({ name: 'IpdProjectKpi', meta: { ipdCard: 'P0-10.32' } });
@@ -102,6 +109,66 @@ async function load(): Promise<void> {
 
 watch(projectId, (next) => {
   if (next) void load();
+}, { immediate: true });
+
+// ---------- R215 WP3.1 批次2（ORPHAN-A9）：④ 上市复盘（BR-KPI-08） ----------
+
+const review = ref<null | PostLaunchReviewView>(null);
+const reviewState = ref<'empty' | 'error' | 'loaded'>('empty');
+const reviewMsg = ref('');
+const reviewLoading = ref(false);
+const completing = ref(false);
+const completeMsg = ref('');
+/** 完成表单四项正文（actualRevenue 由 InputNumber 传数字；InputNumber 值域不含 null）。 */
+const completeForm = ref<{ actualRevenue: undefined | number; customerFeedback: string; kpiAchievement: string; lessons: string }>({
+  actualRevenue: undefined,
+  customerFeedback: '',
+  kpiAchievement: '',
+  lessons: '',
+});
+
+async function loadReview(): Promise<void> {
+  if (!projectId.value) return;
+  reviewLoading.value = true;
+  reviewMsg.value = '';
+  try {
+    review.value = await fetchPendingReview(projectId.value);
+    reviewState.value = 'loaded';
+  } catch (cause) {
+    // 后端契约：无待办时 service 抛业务异常（如 10001「项目无待完成复盘」）。
+    // ipdErrorText 会把 10001 映射为通用文案丢失原文，空态判定必须用 envelopeMessage 原文。
+    review.value = null;
+    reviewMsg.value = ipdErrorText(cause, { fallback: '复盘加载失败' });
+    const raw = cause instanceof IpdRequestError ? (cause.envelopeMessage ?? '') : '';
+    reviewState.value = /无|不存在|没有|未找到|待办|待完成/.test(raw) ? 'empty' : 'error';
+  } finally {
+    reviewLoading.value = false;
+  }
+}
+
+async function submitComplete(): Promise<void> {
+  if (!review.value) return;
+  completing.value = true;
+  completeMsg.value = '';
+  try {
+    const form = completeForm.value;
+    const done = await completeReview(review.value.id, {
+      actualRevenue: form.actualRevenue ?? undefined,
+      customerFeedback: form.customerFeedback.trim() || undefined,
+      kpiAchievement: form.kpiAchievement.trim() || undefined,
+      lessons: form.lessons.trim() || undefined,
+    });
+    review.value = done;
+    completeMsg.value = '复盘已完成（COMPLETED 终态）';
+  } catch (cause) {
+    completeMsg.value = ipdErrorText(cause, { fallback: '完成复盘失败' });
+  } finally {
+    completing.value = false;
+  }
+}
+
+watch(projectId, (next) => {
+  if (next) void loadReview();
 }, { immediate: true });
 
 const functionalColumns = [
@@ -213,6 +280,54 @@ const trendColumns = [
           </template>
         </template>
       </Table>
+    </Card>
+
+    <!-- R215 WP3.1 批次2（ORPHAN-A9）：④ 上市复盘（BR-KPI-08 上市后 30 日提醒/90 日升级） -->
+    <Card class="mb-4" title="④ 上市复盘（GET /post-launch-reviews/pending · BR-KPI-08）">
+      <div v-if="reviewLoading" class="py-4 text-center text-xs text-gray-500">正在加载待办复盘…</div>
+      <template v-else-if="reviewState === 'loaded' && review">
+        <Descriptions bordered :column="2" size="small" class="mb-3">
+          <DescriptionsItem label="复盘单号">#{{ review.id }}</DescriptionsItem>
+          <DescriptionsItem label="状态">
+            <Tag :color="review.status === 'PENDING' ? 'orange' : 'green'">{{ review.status }}</Tag>
+          </DescriptionsItem>
+          <DescriptionsItem label="计划时间">{{ review.scheduledAt ?? '—' }}</DescriptionsItem>
+          <DescriptionsItem label="负责人">{{ review.assigneeId ?? '—' }}</DescriptionsItem>
+        </Descriptions>
+        <div v-if="review.status === 'PENDING'" class="grid gap-3 md:grid-cols-2">
+          <div>
+            <div class="mb-1 text-xs text-gray-500">实际回款（元，选填）</div>
+            <InputNumber v-model:value="completeForm.actualRevenue" :min="0" style="width: 100%" placeholder="按千分位解析后传数字" />
+          </div>
+          <div>
+            <div class="mb-1 text-xs text-gray-500">客户反馈（选填）</div>
+            <Textarea v-model:value="completeForm.customerFeedback" :rows="2" :maxlength="500" />
+          </div>
+          <div>
+            <div class="mb-1 text-xs text-gray-500">KPI 达成情况（选填）</div>
+            <Textarea v-model:value="completeForm.kpiAchievement" :rows="2" :maxlength="500" />
+          </div>
+          <div>
+            <div class="mb-1 text-xs text-gray-500">经验教训（选填）</div>
+            <Textarea v-model:value="completeForm.lessons" :rows="2" :maxlength="500" />
+          </div>
+        </div>
+        <div class="mt-3 flex items-center gap-3">
+          <Button
+            v-if="review.status === 'PENDING'"
+            type="primary"
+            :loading="completing"
+            @click="submitComplete"
+          >完成复盘（COMPLETED 终态）</Button>
+          <span v-if="completeMsg" class="text-xs" :class="completeMsg.includes('失败') ? 'text-red-600' : 'text-green-600'">{{ completeMsg }}</span>
+        </div>
+      </template>
+      <Empty v-else-if="reviewState === 'empty'" description="暂无待办复盘（上市后 90 天自动生成；或由项目推进触发）" />
+      <Alert v-else :message="reviewMsg || '复盘加载失败'" type="error" show-icon>
+        <template #description>
+          <Button size="small" class="mt-1" @click="loadReview">重试</Button>
+        </template>
+      </Alert>
     </Card>
 
     <div class="mt-2 text-xs text-gray-500">

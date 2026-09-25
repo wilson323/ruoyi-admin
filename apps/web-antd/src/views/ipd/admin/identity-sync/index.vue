@@ -19,12 +19,15 @@ import {
   DescriptionsItem,
   Empty,
   Input,
+  Modal,
   Table,
   Tag,
+  Textarea,
 } from 'ant-design-vue';
 
 import { type PmDirectoryEntry, getPmDirectory } from '../../../../api/ipd/handover';
 import { IpdRequestError } from '../../../../api/ipd/auth';
+import { resignPerson, unbindWecom } from '../../../../api/ipd/person';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { formatDateTime, PENDING_TEXT } from '../../_shared/format';
@@ -77,6 +80,8 @@ const columns = [
   { title: '级别', dataIndex: 'level', key: 'level', width: 100 },
   { title: '所属产品组', dataIndex: 'groupName', key: 'groupName', width: 180 },
   { title: '组编号', dataIndex: 'groupId', key: 'groupId', width: 140 },
+  // R215 WP3.1 批次2（ORPHAN-A11）：离职冻结 / 企微解绑（附录 D6；超管）
+  { title: '治理操作', key: 'personActions', width: 200 },
 ];
 
 async function load(): Promise<void> {
@@ -111,6 +116,67 @@ onMounted(() => {
   // 首次进入记录一次本地时间戳；后端「最近同步时间」端点未交付。
   lastSyncAt.value = new Date().toISOString();
 });
+
+// ---------- R215 WP3.1 批次2（ORPHAN-A11）：离职冻结 / 企微解绑 ----------
+
+/** 弹窗动作类型；resign 权限=HR 或本人，unbind 权限=HR（超管/组长），本页超管专区两者均可。 */
+type PersonAction = 'resign' | 'unbind';
+
+const ACTION_META: Record<PersonAction, { api: (id: string, reason: string) => Promise<unknown>; danger: boolean; okText: string; tip: string; title: string }> = {
+  resign: {
+    api: resignPerson,
+    danger: true,
+    okText: '确认离职冻结',
+    tip: '将冻结账号并触发待移交项目清单（全部移交完成后终态 DISABLED；附录 D6 企微联动解绑）',
+    title: '离职冻结',
+  },
+  unbind: {
+    api: unbindWecom,
+    danger: false,
+    okText: '确认企微解绑',
+    tip: '解除企微绑定并联动账号 DISABLED（AC-USER-10：无企微无法扫码登录；不可逆，解除后无法再走企微登录）',
+    title: '企微解绑',
+  },
+};
+
+const actionOpen = ref(false);
+const actionKind = ref<PersonAction>('resign');
+const actionTarget = ref<PmDirectoryEntry | null>(null);
+const actionReason = ref('');
+const actionLoading = ref(false);
+const actionResult = ref('');
+
+function openPersonAction(kind: PersonAction, entry: PmDirectoryEntry): void {
+  actionKind.value = kind;
+  actionTarget.value = entry;
+  actionReason.value = '';
+  actionResult.value = '';
+  actionOpen.value = true;
+}
+
+async function confirmPersonAction(): Promise<void> {
+  const target = actionTarget.value;
+  const reason = actionReason.value.trim();
+  if (!target || !reason) return;
+  actionLoading.value = true;
+  try {
+    const result = await ACTION_META[actionKind.value].api(String(target.id), reason);
+    // resign 返回 ResignView（含待移交数/副作用标记）；unbind 返回 PersonView
+    if (actionKind.value === 'resign' && result && typeof result === 'object') {
+      const r = result as { message?: null | string; notificationsSent?: number; pendingProjects?: number };
+      actionResult.value = r.message ?? `已触发：待移交项目 ${r.pendingProjects ?? 0} 个，通知 ${r.notificationsSent ?? 0} 条`;
+    } else {
+      actionResult.value = '操作成功';
+    }
+    actionOpen.value = false;
+    // 目录已变（resign 后 employmentStatus 变化），静默刷新
+    await load();
+  } catch (cause) {
+    actionResult.value = rejectText(cause);
+  } finally {
+    actionLoading.value = false;
+  }
+}
 </script>
 
 <template>
@@ -184,6 +250,14 @@ onMounted(() => {
           <template v-else-if="column.key === 'level'">
             <span>{{ record.level ?? PENDING_TEXT }}</span>
           </template>
+          <!-- R215 WP3.1 批次2（ORPHAN-A11）：离职冻结 / 企微解绑（仅超管） -->
+          <template v-else-if="column.key === 'personActions'">
+            <div v-if="isSuperAdmin" class="flex gap-2">
+              <Button danger size="small" @click="openPersonAction('resign', record as PmDirectoryEntry)">离职冻结</Button>
+              <Button size="small" @click="openPersonAction('unbind', record as PmDirectoryEntry)">企微解绑</Button>
+            </div>
+            <span v-else class="text-xs text-gray-400">仅超管</span>
+          </template>
         </template>
       </Table>
 
@@ -205,5 +279,28 @@ onMounted(() => {
         </template>
       </Alert>
     </Card>
+
+    <!-- R215 WP3.1 批次2（ORPHAN-A11）：离职/解绑 reason 弹窗 -->
+    <Modal
+      v-model:open="actionOpen"
+      :title="`${ACTION_META[actionKind].title} — ${actionTarget?.name ?? ''}`"
+      :confirm-loading="actionLoading"
+      :ok-text="ACTION_META[actionKind].okText"
+      ok-type="primary"
+      :ok-button-props="{ danger: ACTION_META[actionKind].danger }"
+      cancel-text="取消"
+      :mask-closable="false"
+      @ok="confirmPersonAction"
+    >
+      <div class="mb-2 text-xs text-gray-500">{{ ACTION_META[actionKind].tip }}</div>
+      <Textarea
+        v-model:value="actionReason"
+        :maxlength="200"
+        :rows="3"
+        placeholder="操作原因（必填，1~200 字，将写入审计日志）"
+        show-count
+      />
+      <div v-if="actionResult" class="mt-2 text-xs" :class="actionOpen ? 'text-gray-400' : 'text-green-600'">{{ actionResult }}</div>
+    </Modal>
   </div>
 </template>
