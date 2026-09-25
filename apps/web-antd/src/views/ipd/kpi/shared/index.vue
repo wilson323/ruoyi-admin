@@ -33,7 +33,6 @@ import {
   Descriptions,
   DescriptionsItem,
   Empty,
-  InputNumber,
   Popconfirm,
   Select,
   Spin,
@@ -328,11 +327,12 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
       <div class="flex flex-wrap items-end gap-3">
         <div>
           <div class="mb-1 text-xs text-gray-500">项目编号</div>
-          <InputNumber
-            v-model:value="filters.projectId"
-            placeholder="如 1001"
+          <!-- E2E-A：禁 InputNumber（number 化致 19 位雪花截断）——string 原样输入/透传 -->
+          <input
+            v-model="filters.projectId"
+            placeholder="如 1001，19 位雪花 ID 原样粘贴"
+            class="ipd-input"
             style="width: 200px"
-            :min="1"
           />
         </div>
         <div>
