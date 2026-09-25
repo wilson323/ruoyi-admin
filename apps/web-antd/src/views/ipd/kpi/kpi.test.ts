@@ -131,6 +131,84 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
     wrapper.unmount();
   });
 
+  /* ============ R217-GAP-F11：生效规则说明面板（懒拉 + 只读两列表 + 三态） ============ */
+
+  it('GAP-F11 面板：首屏不请求 /kpi/rules（懒拉防冷启动多请求），展开后才拉并渲染 ruleKey/ruleValue 两列', async () => {
+    const calls = stubApi();
+    const wrapper = mount(KpiPage);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('12,000.00'));
+    expect(calls.some((c) => c.url.includes('/kpi/rules'))).toBe(false); // 未展开零请求
+    // 注：既有 stubApi 对 /kpi/rules 走 fallback response(null, 40400)→data null→守卫归 []→空态；
+    // 本用例先证「展开触发了请求」，行渲染见下一条独立 stub 用例。
+    const toggle = wrapper.findAll('button').find((b) => b.text().includes('展开'));
+    expect(toggle, '「展开」按钮应存在').toBeDefined();
+    await toggle!.trigger('click');
+    await vi.waitFor(() => expect(calls.some((c) => c.url.includes('/kpi/rules'))).toBe(true));
+    wrapper.unmount();
+  });
+
+  it('GAP-F11 面板：规则行渲染且 ruleValue 原样展示（0.15 不被数值化、19 位不截断）', async () => {
+    setActivePinia(createPinia());
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/kpi/performance')) return response(performanceSummary);
+      if (url.includes('/kpi/functional')) return response(functionalSources);
+      if (url.includes('/kpi/trend')) return response(trendPoints);
+      if (url.includes('/kpi/rules')) return response([
+        { ruleKey: 'kpi.weight.project-score', ruleValue: '0.15' },
+        { ruleKey: 'kpi.id.snowflake', ruleValue: '1234567890123456789' },
+      ]);
+      return response(null, 40400);
+    }));
+    const wrapper = mount(KpiPage);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('12,000.00'));
+    await wrapper.findAll('button').find((b) => b.text().includes('展开'))!.trigger('click');
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('kpi.weight.project-score');
+      expect(wrapper.text()).toContain('0.15');
+      expect(wrapper.text()).toContain('1234567890123456789'); // 非 1234567890123456800（number 化截断即红）
+    });
+    wrapper.unmount();
+  });
+
+  it('GAP-F11 面板：空源渲染「当前无生效规则快照」空态，不报错（javadoc 空列表语义）', async () => {
+    setActivePinia(createPinia());
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/kpi/performance')) return response(performanceSummary);
+      if (url.includes('/kpi/functional')) return response(functionalSources);
+      if (url.includes('/kpi/trend')) return response(trendPoints);
+      if (url.includes('/kpi/rules')) return response([]);
+      return response(null, 40400);
+    }));
+    const wrapper = mount(KpiPage);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('12,000.00'));
+    await wrapper.findAll('button').find((b) => b.text().includes('展开'))!.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('当前无生效规则快照'));
+    expect(wrapper.text()).not.toContain('加载失败');
+    wrapper.unmount();
+  });
+
+  it('GAP-F11 面板：加载失败不吞错，错误态显示后端原文（403+30001 透传链）', async () => {
+    setActivePinia(createPinia());
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/kpi/performance')) return response(performanceSummary);
+      if (url.includes('/kpi/functional')) return response(functionalSources);
+      if (url.includes('/kpi/trend')) return response(trendPoints);
+      if (url.includes('/kpi/rules')) return new Response(
+        JSON.stringify({ code: 30001, message: '无权访问该项目', data: null, timestamp: '2026-09-25T00:00:00Z', traceId: 'fixture' }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } },
+      );
+      return response(null, 40400);
+    }));
+    const wrapper = mount(KpiPage);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('12,000.00'));
+    await wrapper.findAll('button').find((b) => b.text().includes('展开'))!.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('无权访问该项目'));
+    wrapper.unmount();
+  });
+
   it('renders the registration section for prototype features without backend', async () => {
     stubApi();
     const wrapper = mount(KpiPage);

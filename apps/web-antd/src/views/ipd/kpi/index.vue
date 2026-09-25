@@ -16,7 +16,7 @@
 import { computed, onMounted, ref } from 'vue';
 
 import { message } from 'ant-design-vue';
-import { FundOutlined, LineChartOutlined, RiseOutlined, TableOutlined } from '@ant-design/icons-vue';
+import { FundOutlined, LineChartOutlined, ProfileOutlined, RiseOutlined, TableOutlined } from '@ant-design/icons-vue';
 
 import { formatMoney } from '../_shared/format';
 import { ipdErrorText } from '../_shared/ipd-error-text';
@@ -24,7 +24,9 @@ import {
   getFunctionalKpi,
   getKpiTrend,
   getPerformanceKpi,
+  listKpiRules,
   type KpiPerformanceSummary,
+  type KpiRuleView,
   type KpiSourceItem,
   type KpiTrendPoint,
 } from '../../../api/ipd/kpi';
@@ -85,6 +87,33 @@ function formatTrendValue(point: KpiTrendPoint): string {
   return num === null ? '—' : num.toFixed(2);
 }
 
+/* R217-GAP-F11：KPI 生效规则说明面板。
+   GET /kpi/rules（KpiRulesController，ipd:kpi:query 四角色只读）；
+   数据源=快照拍平→system_configs kpi.* 回退，空源=空列表（不 404，javadoc 实证）→渲染空态。
+   ruleValue 后端刻意 string 化防 BigInt 截断（KpiRuleView vo 注释）→ 原样展示，严禁 Number()/parseFloat。
+   懒拉：首次展开才发请求，防冷启动多请求（卡面 R215 计划要求）。 */
+const rulesOpen = ref(false);
+const rulesLoading = ref(false);
+const rulesLoaded = ref(false);
+const rulesError = ref('');
+const rules = ref<KpiRuleView[]>([]);
+
+async function toggleRules(): Promise<void> {
+  rulesOpen.value = !rulesOpen.value;
+  if (!rulesOpen.value || rulesLoaded.value || rulesLoading.value) return;
+  rulesLoading.value = true;
+  rulesError.value = '';
+  try {
+    rules.value = await listKpiRules();
+    rulesLoaded.value = true;
+  } catch (cause) {
+    // 失败不吞：ipdErrorText 透传后端原文（R215-E2E-B 链 + R217-E2E-B2 盲区修复双保险）
+    rulesError.value = ipdErrorText(cause, { fallback: '生效规则加载失败' });
+  } finally {
+    rulesLoading.value = false;
+  }
+}
+
 async function load(): Promise<void> {
   if (loading.value) return;
   loading.value = true;
@@ -122,11 +151,11 @@ onMounted(() => { void load(); });
       <div class="filter-bar">
         <label class="filter-label">
           <span>月份</span>
-          <input v-model="period" type="month" class="filter-input" :disabled="loading" />
+          <input id="kpi-period" v-model="period" name="kpi_period" type="month" class="filter-input" :disabled="loading" />
         </label>
         <label class="filter-label">
           <span>回看月数</span>
-          <select v-model.number="periods" class="filter-input" :disabled="loading">
+          <select id="kpi-periods" v-model.number="periods" name="kpi_periods" class="filter-input" :disabled="loading">
             <option :value="6">6 个月</option>
             <option :value="12">12 个月</option>
             <option :value="24">24 个月</option>
@@ -218,6 +247,37 @@ onMounted(() => { void load(); });
         </tbody>
       </table>
       <p v-else class="empty-tip">暂无趋势数据。</p>
+    </section>
+
+    <section class="surface rules-section">
+      <div class="section-title">
+        <div>
+          <h2><ProfileOutlined /> 生效规则说明</h2>
+          <p>当前生效的 KPI 计算规则（最新快照优先，回退系统配置 kpi.*）；四角色只读，规则值按后端原文展示。</p>
+        </div>
+        <button class="primary-btn" :disabled="rulesLoading" @click="toggleRules">
+          {{ rulesOpen ? '收起' : '展开' }}
+        </button>
+      </div>
+      <template v-if="rulesOpen">
+        <p v-if="rulesLoading" class="empty-tip">生效规则加载中…</p>
+        <p v-else-if="rulesError" class="empty-tip">{{ rulesError }}</p>
+        <table v-else-if="rules.length" class="ipd-table">
+          <thead>
+            <tr>
+              <th>规则键</th>
+              <th class="num">规则值</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="rule in rules" :key="rule.ruleKey">
+              <td>{{ rule.ruleKey }}</td>
+              <td class="num">{{ rule.ruleValue }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="empty-tip">当前无生效规则快照。</p>
+      </template>
     </section>
 
     <section class="surface gap-section">

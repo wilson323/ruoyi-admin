@@ -13,6 +13,7 @@ import {
   getSharedDeadlineConfig,
   listFunctionalMetricCodes,
   listFunctionalMetrics,
+  listKpiRules,
   listRawKpiRecordTypes,
   listSharedConfirms,
   listSharedKpis,
@@ -309,5 +310,72 @@ describe('kpi API contract (ORPHAN-A7: shared confirms + deadline-config + confi
     expect(cause).toBeInstanceOf(IpdRequestError);
     expect((cause as IpdRequestError).code).toBe(40002);
     expect((cause as IpdRequestError).envelopeMessage).toContain('同一人不能重复确认');
+  });
+});
+
+/* ====================== R217-GAP-F11：GET /kpi/rules 生效规则契约 ======================
+ * 真值：KpiRulesController（ipd:kpi:query 四角色，零参数，空源=空列表不 404；
+ * KpiRuleView record{ruleKey,ruleValue} 数值刻意 string 化防 BigInt 截断）。
+ */
+describe('listKpiRules (R217-GAP-F11)', () => {
+  it('GET /api/v1/kpi/rules：零 query、GET 语义、无 body', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope([]));
+    vi.stubGlobal('fetch', fetcher);
+    await listKpiRules();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
+    expect(url.pathname).toBe('/api/v1/kpi/rules');
+    expect(url.search).toBe('');
+    const init = fetcher.mock.calls[0]![1] as RequestInit;
+    expect(init.body ?? undefined).toBeUndefined();
+  });
+
+  it('行归一：ruleKey/ruleValue 恒 string，ruleValue="0.15" 不做 Number()/parseFloat（后端防 BigInt 截断契约）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(envelope([
+      { ruleKey: 'kpi.weight.project-score', ruleValue: '0.15' },
+      { ruleKey: 'kpi.ladder.max-level', ruleValue: '5' },
+      { ruleKey: 'kpi.snowflake-guard', ruleValue: '1234567890123456789' },
+    ])));
+    const rules = await listKpiRules();
+    expect(rules).toEqual([
+      { ruleKey: 'kpi.weight.project-score', ruleValue: '0.15' },
+      { ruleKey: 'kpi.ladder.max-level', ruleValue: '5' },
+      { ruleKey: 'kpi.snowflake-guard', ruleValue: '1234567890123456789' },
+    ]);
+    expect(typeof rules[0]!.ruleValue).toBe('string');
+    expect(rules[1]!.ruleValue).toBe('5'); // 非 5（number 化即红）
+    expect(rules[2]!.ruleValue).toBe('1234567890123456789'); // 19 位原样，无截断
+  });
+
+  it('空源 → 空数组不抛（对齐 javadoc：空列表语义，非 404）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(envelope([])));
+    await expect(listKpiRules()).resolves.toEqual([]);
+  });
+
+  it('非数组脏数据（后端形状漂移）→ 守卫归 []，不炸面板', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(envelope({ ruleKey: 'oops' })));
+    await expect(listKpiRules()).resolves.toEqual([]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(envelope(null)));
+    await expect(listKpiRules()).resolves.toEqual([]);
+  });
+
+  it('数组行缺键 → String 归一为空串（逐行守卫，不整表炸）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(envelope([{ ruleKey: 'kpi.a' }, null, { ruleValue: '0.2' }])));
+    await expect(listKpiRules()).resolves.toEqual([
+      { ruleKey: 'kpi.a', ruleValue: '' },
+      { ruleKey: '', ruleValue: '0.2' },
+    ]);
+  });
+
+  it('负例：无 kpi:query 权限 → 403/30001 抛 IpdRequestError，后端原文经 message/envelopeMessage 透传（R217-E2E-B2）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ code: 30001, message: '无权访问该项目', data: null, timestamp: '2026-09-25T00:00:00Z', traceId: 'fixture' }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } },
+    )));
+    const cause = await listKpiRules().then(() => null, (e: unknown) => e);
+    expect(cause).toBeInstanceOf(IpdRequestError);
+    expect((cause as IpdRequestError).code).toBe(30001);
+    expect((cause as IpdRequestError).status).toBe(403);
+    expect((cause as IpdRequestError).message).toBe('无权访问该项目');
   });
 });

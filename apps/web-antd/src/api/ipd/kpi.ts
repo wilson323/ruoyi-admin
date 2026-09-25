@@ -325,3 +325,34 @@ export function getSharedDeadlineConfig(): Promise<SharedKpiDeadlineConfig> {
 export function confirmSharedKpi(id: string): Promise<SharedKpiConfirmResult> {
   return ipdPost<SharedKpiConfirmResult>(`/kpi/shared/${id}/confirm`);
 }
+
+/* ====================== R217-GAP-F11：KPI 生效规则说明（读侧） ====================== */
+
+/**
+ * KPI 生效规则视图（后端 org.ruoyi.ipd.vo.KpiRuleView record 一一对应）。
+ *
+ * 数值统一 string 化是后端刻意设计（vo 注释：防前端 BigInt 截断，与 /api/v1 包络
+ * BigNumberSerializer 约定一致）——ruleValue 原样展示，严禁 Number()/parseFloat。
+ */
+export interface KpiRuleView {
+  ruleKey: string;
+  ruleValue: string;
+}
+
+/**
+ * 当前生效 KPI 规则清单（R108 paiban-02 方案 B，零 DB 变更；R215 设计意图「前端展示规则清单」）。
+ *
+ * 真值：GET /api/v1/kpi/rules → KpiRulesController.rules（:40-44）
+ *   （权限 ipd:kpi:query，MARKET_PM/RD_PM/GROUP_LEADER/SUPER_ADMIN 四角色可读 + requireInternal；
+ *   零 path/query 参数；数据源 kpi_rule_snapshots 最新快照 rule_json 拍平 → 回退 system_configs kpi.* 键；
+ *   空源返回空列表不 404（javadoc :37）→ 调用方渲染空态而非报错）。
+ * 守卫：非数组脏数据归 []（契约漂移不炸面板）；逐行 String() 归一。
+ */
+export async function listKpiRules(): Promise<KpiRuleView[]> {
+  // 按 unknown 落守卫再归一：后端契约是 KpiRuleView[]，但脏形状（非数组/缺键行）不得炸面板。
+  const data: unknown = await ipdGet<unknown>('/kpi/rules');
+  if (!Array.isArray(data)) return [];
+  return data
+    .filter((row): row is Record<string, unknown> => row !== null && typeof row === 'object' && !Array.isArray(row))
+    .map((row) => ({ ruleKey: String(row.ruleKey ?? ''), ruleValue: String(row.ruleValue ?? '') }));
+}
