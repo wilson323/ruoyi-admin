@@ -69,3 +69,63 @@ export function getBonusPool(id: string): Promise<BonusPool> {
 export function listBonusPools(projectId: string, status?: BonusStatus): Promise<BonusPool[]> {
   return ipdGet<BonusPool[]>('/bonus-pool/list', status ? { projectId, status } : { projectId });
 }
+
+/* ========== ORPHAN-A4 增量接线（R212 桶表 #10-12；看板卡 ac46043e；2026-09-25） ========== */
+
+/** MyBatis-Plus IPage 分页包络（BonusPoolController#page；与 bid.ts IpdPage 同构，本地声明避免跨域 import）。 */
+export interface BonusPoolPage {
+  current: number;
+  pages: number;
+  records: BonusPool[];
+  size: number;
+  total: number;
+}
+
+/**
+ * 分页查询奖金池（GET /bonus-pool/page；PERF-P0-2 替代全量 /list）。
+ * pageSize 默认 20、上限 200（后端 Math.min 兜底）；排序 calculatedAt DESC。
+ */
+export function pageBonusPools(projectId: string, pageNo = 1, pageSize = 20): Promise<BonusPoolPage> {
+  return ipdGet<BonusPoolPage>('/bonus-pool/page', { projectId, pageNo, pageSize });
+}
+
+/**
+ * 自动核算入参（后端 AutoComputeBonusPoolReq 真值）：
+ * - period 必填 YYYY-MM（服务端据 kpi_records 当月 comprehensive_score 推导 personalCoefficient，
+ *   前端不传 personalCoefficient）；
+ * - 其余字段语义同 ComputeBonusPoolReq。
+ */
+export interface AutoComputeBonusPoolReq {
+  achievementRate?: number | string;
+  actualReceipts: number | string;
+  period: string;
+  poolRate?: number | string;
+  projectId: string;
+}
+
+/**
+ * 自动核算（POST /bonus-pool/auto-compute；SEC-FIX-HIGH-5.2）。
+ * 权限 ipd:bonus-pool:compute + 后端 requireAdmin 兜底 → 实际仅超管（R215-N1 口径）；
+ * 组长持码调用会 403（后端兜底，前端码闸不放开）。
+ */
+export function autoComputeBonusPool(req: AutoComputeBonusPoolReq): Promise<BonusPool> {
+  return ipdPost<BonusPool>('/bonus-pool/auto-compute', req);
+}
+
+/** 绩效系数取数策略（后端 PreviewCoefficientReq.strategy；空 = 走 system_configs bonus.performance.strategy）。 */
+export type CoefficientStrategy = 'LAST_QUARTER' | 'PROJECT_SCORE' | 'WEIGHTED_AVG';
+
+/** 系数试算入参（后端 PreviewCoefficientReq：score 综合得分 [0,100] 必填；projectId 预留多项目叠加）。 */
+export interface PreviewCoefficientReq {
+  projectId: string;
+  score: number | string;
+  strategy?: CoefficientStrategy;
+}
+
+/**
+ * 绩效系数试算（POST /bonus-pool/coefficient/preview；P3-4.5 AC-INC-22/23/24）。
+ * 仅查表/计算，不写 audit_log、不 insert bonus_pools；权限同 compute（仅超管）。
+ */
+export function previewBonusCoefficient(req: PreviewCoefficientReq): Promise<BonusPool> {
+  return ipdPost<BonusPool>('/bonus-pool/coefficient/preview', req);
+}

@@ -69,7 +69,7 @@ describe('页34 奖金池核算', () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
       if (path.endsWith('/compute')) return envelope(draft);
-      if (path.endsWith('/list')) return envelope([draft]);
+      if (path.includes('/bonus-pool/page')) return envelope({ records: [draft], total: 1, size: 20, current: 1, pages: 1 });
       throw new Error(`unexpected fetch: ${path}`);
     });
     vi.stubGlobal('fetch', fetcher);
@@ -136,7 +136,7 @@ describe('页34 奖金池核算', () => {
     expect(computeBtn).toBeDefined();
     expect(computeBtn!.attributes('disabled')).toBeDefined();
     const called = fetcher.mock.calls.map((c) => String(c[0]));
-    expect(called.some((p) => p.endsWith('/compute') || p.includes('/bonus-pool/list'))).toBe(false);
+    expect(called.some((p) => p.endsWith('/compute') || p.includes('/bonus-pool/page'))).toBe(false);
     wrapper.unmount();
   });
 
@@ -179,12 +179,12 @@ describe('页34 奖金池核算', () => {
           calculatedAt: '2026-09-05 10:00:00',
         });
       }
-      if (path.endsWith('/list')) return envelope([{
+      if (path.includes('/bonus-pool/page')) return envelope({ records: [{
           id: 'BP-1', projectId: 'P-100', targetSales: 100000, poolRate: 0.05,
           basePool: 5000, coefficient: 1.2, achievementRate: 100,
           tierCoefficient: 0.8, finalPool: 4800, status: 'DRAFT',
           calculatedAt: '2026-09-05 10:00:00',
-        }]);
+        }], total: 1, size: 20, current: 1, pages: 1 });
       throw new Error(`unexpected fetch: ${path}`);
     });
     vi.stubGlobal('fetch', fetcher);
@@ -216,13 +216,13 @@ describe('页34 奖金池核算', () => {
           calculatedAt: '2026-09-05 10:00:00',
         });
       }
-      if (path.endsWith('/list')) {
-        return envelope([{
+      if (path.includes('/bonus-pool/page')) {
+        return envelope({ records: [{
           id: 'BP-1', projectId: 'P-100', targetSales: 100000, poolRate: 0.05,
           basePool: 5000, coefficient: 1, achievementRate: 100,
           tierCoefficient: 0.8, finalPool: 4000, status: 'CONFIRMED',
           calculatedAt: '2026-09-05 10:00:00',
-        }]);
+        }], total: 1, size: 20, current: 1, pages: 1 });
       }
       if (path.endsWith('/BP-1/freeze')) {
         return envelope({
@@ -258,7 +258,7 @@ describe('页34 奖金池核算', () => {
     const wrapper = mount(BonusPool);
     await wrapper.vm.$nextTick();
     const called = fetcher.mock.calls.map((c) => String(c[0]));
-    expect(called.some((p) => p.includes('/bonus-pool/list'))).toBe(false);
+    expect(called.some((p) => p.includes('/bonus-pool/page'))).toBe(false);
     wrapper.unmount();
   });
 
@@ -275,5 +275,180 @@ describe('页34 奖金池核算', () => {
       expect(fetcher.mock.calls.some((c) => String(c[0]).endsWith('/compute'))).toBe(true),
     );
     wrapper.unmount();
+  });
+});
+/* ========== ORPHAN-A4/A5 增量接线（页34：page 切量 + auto-compute + 系数试算 + 回款台账） ========== */
+
+describe('页34 奖金池核算 — ORPHAN-A4/A5 增量', () => {
+  /** 与上方 R215-N2 同语义 stub（无码 → el.remove()）。 */
+  function mountWithAccess(codes: string[]) {
+    const accessDirective = {
+      mounted(el: Element, binding: { value: string | string[] }) {
+        const values = Array.isArray(binding.value) ? binding.value : [binding.value];
+        if (codes.includes('*:*:*')) return;
+        if (!values.some((v) => codes.includes(v))) el.remove();
+      },
+    };
+    return mount(BonusPool, { global: { directives: { access: accessDirective } } });
+  }
+
+  /** 万能 fetch：/page 与台账按分支返回，其余兜底空包络。 */
+  function makeFetcher(extra: Record<string, unknown> = {}) {
+    return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.includes('/bonus-pool/page')) {
+        return envelope({ records: (extra.pageRecords as unknown[]) ?? [], total: 0, size: 20, current: 1, pages: 0 });
+      }
+      if (path.includes('/receipt-ledgers/by-project/')) {
+        return envelope((extra.ledgers as unknown[]) ?? []);
+      }
+      for (const [suffix, payload] of Object.entries(extra)) {
+        if (suffix !== 'pageRecords' && suffix !== 'ledgers' && path.endsWith(suffix) && init?.method === 'POST') {
+          return envelope(payload);
+        }
+      }
+      return envelope([]);
+    });
+  }
+
+  it('A4#10 切量：选项目后列表走 GET /bonus-pool/page（带 pageNo/pageSize 分页参数），不再调 /list', async () => {
+    const fetcher = makeFetcher({ pageRecords: [{ id: 'BP-7', status: 'DRAFT' }] });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mountWithAccess(['*:*:*']);
+    await setProjectSelect(wrapper, '1001');
+    await vi.waitFor(() => {
+      const pageCall = fetcher.mock.calls.map((c) => String(c[0])).find((p) => p.includes('/bonus-pool/page'));
+      expect(pageCall).toBeDefined();
+    });
+    const pageCall = fetcher.mock.calls.map((c) => String(c[0])).find((p) => p.includes('/bonus-pool/page'))!;
+    expect(pageCall).toContain('projectId=1001');
+    expect(pageCall).toContain('pageNo=1');
+    expect(pageCall).toContain('pageSize=20');
+    expect(fetcher.mock.calls.map((c) => String(c[0])).some((p) => p.endsWith('/bonus-pool/list'))).toBe(false);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('BP-7'));
+    wrapper.unmount();
+  });
+
+  it('A4#11 auto-compute：period 未填时按钮禁用；填 2026-08 后点击 → POST /bonus-pool/auto-compute body 含 period', async () => {
+    const fetcher = makeFetcher({ '/auto-compute': { id: 'BP-AUTO', status: 'DRAFT', finalPool: 6000 } });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mountWithAccess(['*:*:*']);
+    await setProjectSelect(wrapper, '1001');
+    await setInputNumber(wrapper, 0, 100000);
+    await wrapper.vm.$nextTick();
+    const autoBtn = wrapper.findAll('button').find((b) => b.text().includes('自动核算'));
+    expect(autoBtn).toBeDefined();
+    expect(autoBtn!.attributes('disabled')).toBeDefined(); // period 空 → 禁用
+    const periodInput = wrapper.findAll('input').find((i) => i.attributes('placeholder')?.includes('YYYY-MM'));
+    expect(periodInput).toBeDefined();
+    await periodInput!.setValue('2026-08');
+    await wrapper.vm.$nextTick();
+    expect(autoBtn!.attributes('disabled')).toBeUndefined();
+    await autoBtn!.trigger('click');
+    await vi.waitFor(() => {
+      const call = fetcher.mock.calls.find(([u, init]) => String(u).endsWith('/auto-compute') && (init as RequestInit | undefined)?.method === 'POST');
+      expect(call).toBeDefined();
+      expect(JSON.parse((call![1] as RequestInit).body as string)).toMatchObject({ projectId: '1001', period: '2026-08', actualReceipts: 100000 });
+    });
+    wrapper.unmount();
+  });
+
+  it('A4#12 系数试算：score=85 点击 → POST /coefficient/preview，展示返回系数（不落库文案）', async () => {
+    const fetcher = makeFetcher({ '/coefficient/preview': { id: 'PV-1', coefficient: 1.2, finalPool: 7200 } });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mountWithAccess(['*:*:*']);
+    await setProjectSelect(wrapper, '1001');
+    // 系数试算 score：页面 InputNumber 顺序 = actualReceipts(0), poolRate(1), achievementRate(2), personalCoefficient(3), preview.score(4)
+    await setInputNumber(wrapper, 4, 85);
+    await wrapper.vm.$nextTick();
+    const previewBtn = wrapper.findAll('button').find((b) => b.text().includes('试算绩效系数'));
+    expect(previewBtn!.attributes('disabled')).toBeUndefined();
+    await previewBtn!.trigger('click');
+    await vi.waitFor(() => {
+      const call = fetcher.mock.calls.find(([u, init]) => String(u).endsWith('/coefficient/preview') && (init as RequestInit | undefined)?.method === 'POST');
+      expect(call).toBeDefined();
+      expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({ projectId: '1001', score: 85 });
+    });
+    await vi.waitFor(() => expect(wrapper.text()).toContain('1.2'));
+    expect(wrapper.text()).toContain('不落库');
+    wrapper.unmount();
+  });
+
+  it('A5#75 回款台账：选项目后自动 GET /receipt-ledgers/by-project/{id} 并渲染行（净额/窗口标签）', async () => {
+    const fetcher = makeFetcher({
+      ledgers: [{
+        id: 'RL-1', projectId: '1001', receiptMonth: '2026-08',
+        receiptAmount: '1500000.00', refundAmount: '5000.00', netAmount: '1495000.00',
+        source: 'RECEIPT', inWindow: true, voucherUrl: null, createTime: '2026-09-25 10:00:00',
+      }],
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mountWithAccess(['*:*:*']);
+    await setProjectSelect(wrapper, '1001');
+    await vi.waitFor(() => expect(fetcher.mock.calls.map((c) => String(c[0])).some((p) => p.includes('/receipt-ledgers/by-project/1001'))).toBe(true));
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('1,495,000.00'); // 净回款（formatMoney）
+      expect(wrapper.text()).toContain('窗口内');
+    });
+    wrapper.unmount();
+  });
+
+  it('A5#76 录入：月份+金额填好后 POST /receipt-ledgers（body 不带 source/voucherHash）', async () => {
+    const fetcher = makeFetcher({ '/receipt-ledgers': { id: 'RL-2', receiptMonth: '2026-08', receiptAmount: '800000.00' } });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mountWithAccess(['*:*:*']);
+    await setProjectSelect(wrapper, '1001');
+    const monthInput = wrapper.findAll('input').find((i) => i.attributes('placeholder') === 'YYYY-MM');
+    await monthInput!.setValue('2026-08');
+    // 回款台账金额 InputNumber：actualReceipts(0), poolRate(1), achievementRate(2), personalCoefficient(3), preview.score(4), ledger.receiptAmount(5), ledger.refundAmount(6), refund.refundAmount(7)
+    await setInputNumber(wrapper, 5, 800000);
+    await wrapper.vm.$nextTick();
+    const recordBtn = wrapper.findAll('button').find((b) => b.text() === '录入回款');
+    expect(recordBtn).toBeDefined();
+    expect(recordBtn!.attributes('disabled')).toBeUndefined();
+    await recordBtn!.trigger('click');
+    await vi.waitFor(() => {
+      const call = fetcher.mock.calls.find(([u, init]) => String(u).endsWith('/receipt-ledgers') && (init as RequestInit | undefined)?.method === 'POST');
+      expect(call).toBeDefined();
+      const body = JSON.parse((call![1] as RequestInit).body as string);
+      expect(body).toEqual({ projectId: '1001', receiptMonth: '2026-08', receiptAmount: 800000 });
+    });
+    wrapper.unmount();
+  });
+
+  it('A5#77 退款冲减：月份+金额填好后 POST /receipt-ledgers/{projectId}/refunds body {month, refundAmount}', async () => {
+    const fetcher = makeFetcher({ '/refunds': { id: 'RL-1', receiptMonth: '2026-08', refundAmount: '3000.00' } });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mountWithAccess(['*:*:*']);
+    await setProjectSelect(wrapper, '1001');
+    const refundMonth = wrapper.findAll('input').find((i) => i.attributes('placeholder')?.includes('冲减月份'));
+    await refundMonth!.setValue('2026-08');
+    await setInputNumber(wrapper, 7, 3000);
+    await wrapper.vm.$nextTick();
+    const refundBtn = wrapper.findAll('button').find((b) => b.text() === '退款冲减');
+    expect(refundBtn!.attributes('disabled')).toBeUndefined();
+    await refundBtn!.trigger('click');
+    await vi.waitFor(() => {
+      const call = fetcher.mock.calls.find(([u, init]) => String(u).includes('/receipt-ledgers/1001/refunds') && (init as RequestInit | undefined)?.method === 'POST');
+      expect(call).toBeDefined();
+      expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({ month: '2026-08', refundAmount: 3000 });
+    });
+    wrapper.unmount();
+  });
+
+  it('N1 口径码闸负例（UI 层）：仅持 query 码 → 自动核算/试算/录入/退款 4 钮全被移除（403 兜底在后端 requireAdmin）', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const denied = mountWithAccess(['ipd:bonus-pool:query']);
+    const labels = ['自动核算', '试算绩效系数', '录入回款', '退款冲减'];
+    for (const label of labels) {
+      expect(denied.findAll('button').some((b) => b.text().includes(label))).toBe(false);
+    }
+    denied.unmount();
+    // 持 compute 码（超管 Catalog）→ 4 钮全部可见
+    const granted = mountWithAccess(['ipd:bonus-pool:compute']);
+    for (const label of labels) {
+      expect(granted.findAll('button').some((b) => b.text().includes(label))).toBe(true);
+    }
+    granted.unmount();
   });
 });
