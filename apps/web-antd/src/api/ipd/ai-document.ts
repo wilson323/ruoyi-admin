@@ -95,6 +95,28 @@ export function normalizeDateTime(value: string): string {
   return value.includes(' ') && !value.includes('T') ? value.replace(' ', 'T') : value;
 }
 
+/**
+ * 时间字段兼容层（R215 B4 实测）：后端 Date 序列化实为 epoch 毫秒数字
+ * （/versions createTime 与 /history createdAt 均现形 1790261069000），
+ * 早期代码只认字符串→时间全显「待补充」。现数字/字符串两态都收，无效值退回 null。
+ */
+export function toTimeText(value: unknown): null | string {
+  if (value == null) return null;
+  if (typeof value === 'number' || (typeof value === 'string' && /^\d{10,13}$/.test(value))) {
+    let ms = Number(value);
+    if (ms < 1e12) ms *= 1000; // 秒级时间戳补齐
+    const raw = new Date(ms);
+    if (Number.isNaN(raw.getTime())) return null;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${raw.getFullYear()}-${pad(raw.getMonth() + 1)}-${pad(raw.getDate())}T${pad(raw.getHours())}:${pad(raw.getMinutes())}:${pad(raw.getSeconds())}`;
+  }
+  if (typeof value === 'string') {
+    const normalized = normalizeDateTime(value);
+    return Number.isNaN(new Date(normalized).getTime()) ? null : normalized;
+  }
+  return null;
+}
+
 /** 收敛为前端契约：ID 一律字符串、token/版本号一律数字；格式异常直接拒绝，不做静默修补。 */
 export function parseAiDocument(data: unknown): AiDocument {
   const record = data !== null && typeof data === 'object' && !Array.isArray(data)
@@ -114,13 +136,13 @@ export function parseAiDocument(data: unknown): AiDocument {
   return {
     content: record.content,
     contentSha256: typeof record.contentSha256 === 'string' ? record.contentSha256 : null,
-    createTime: typeof record.createTime === 'string' ? normalizeDateTime(record.createTime) : null,
+    createTime: toTimeText(record.createTime),
     docType: typeof record.docType === 'string' ? record.docType : null,
     id: record.id,
     model: typeof record.model === 'string' ? record.model : null,
     parentVersionId: isIdString(record.parentVersionId) ? record.parentVersionId : null,
     projectId: record.projectId,
-    reviewedAt: typeof record.reviewedAt === 'string' ? normalizeDateTime(record.reviewedAt) : null,
+    reviewedAt: toTimeText(record.reviewedAt),
     reviewedBy: isIdString(record.reviewedBy) ? record.reviewedBy : null,
     status: record.status,
     title: record.title,
@@ -233,12 +255,40 @@ export async function listAiDocumentVersions(documentId: string): Promise<AiDocu
 }
 
 /**
- * 版本链回溯视图（P4-2.3 GET /api/v1/ai-documents/{id}/history）：
- * 后端按时间倒序 + 关键字段投影；前端目前与 listAiDocumentVersions 同构，
- * 保留独立封装便于后续后端扩展（如分组、按操作人筛选）切换实现。
+ * 版本链回溯视图单行（P4-2.3 GET /api/v1/ai-documents/{id}/history，AC-AI-05）：
+ * 后端 HistoryItem 投影——比 /versions 多 reviewedBy/archivedAt（谁审的、何时归档），
+ * 专为历史侧栏渲染。ID/人为后端 Long→字符串序列化（IPD 约定字符串 ID 透传）。
  */
-export async function getAiDocumentHistory(documentId: string): Promise<AiDocument[]> {
-  return listAiDocumentVersions(documentId);
+export interface AiDocumentHistoryItem {
+  archivedAt: null | string;
+  author: null | string;
+  createdAt: string;
+  reviewedBy: null | string;
+  status: string;
+  versionId: string;
+  versionNo: number;
+}
+
+/**
+ * 版本链回溯视图（R215 B4 真接）：原实现返 /versions 同构数据属冒充封装
+ * （history 端点因此长期挂在契约孤儿清单），现改调真正的 /history 端点，
+ * 补齐 reviewedBy/archivedAt 审计字段。链断时后端按 409/STATE_CONFLICT 报出。
+ */
+export async function getAiDocumentHistory(documentId: string): Promise<AiDocumentHistoryItem[]> {
+  const data = await ipdGet<unknown>(`/ai-documents/${documentId}/history`);
+  if (!Array.isArray(data)) throw new IpdRequestError('历史视图数据格式异常，请稍后重试');
+  return data.map((item) => {
+    const record = (item ?? {}) as Record<string, unknown>;
+    return {
+      archivedAt: toTimeText(record.archivedAt),
+      author: record.author == null ? null : String(record.author),
+      createdAt: toTimeText(record.createdAt) ?? '',
+      reviewedBy: record.reviewedBy == null ? null : String(record.reviewedBy),
+      status: String(record.status ?? ''),
+      versionId: String(record.versionId ?? ''),
+      versionNo: Number(record.versionNo ?? 0),
+    };
+  });
 }
 
 /**

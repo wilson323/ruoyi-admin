@@ -18,6 +18,7 @@ import {
   Button,
   Card,
   Col,
+  Divider,
   Drawer,
   Empty,
   Form,
@@ -38,9 +39,11 @@ import { PENDING_TEXT } from '../_shared/format';
 import {
   type AiDocument,
   type AiDocumentDiffField,
+  type AiDocumentHistoryItem,
   archiveAiDocumentVersion,
   generateAiDocument,
   getAiDocumentDiff,
+  getAiDocumentHistory,
   ipdApiErrorText,
   listAiDocumentVersions,
   registerAiDocument,
@@ -237,6 +240,10 @@ const chain = ref<AiDocument[]>([]);
 const chainLoading = ref(false);
 const chainError = ref<null | string>(null);
 const chainLoaded = ref(false);
+
+// R215 B4：操作历史（/history 回溯视图）——比版本链多「谁审的、何时归档」两个审计字段
+const historyRows = ref<AiDocumentHistoryItem[]>([]);
+const historyFailed = ref(false);
 const reviewingVersionId = ref<null | string>(null);
 const archivingVersionId = ref<null | string>(null);
 
@@ -260,9 +267,17 @@ async function loadChain(documentId: string) {
   }
   chainLoading.value = true;
   chainError.value = null;
+  historyRows.value = [];
+  historyFailed.value = false;
   try {
     chain.value = await listAiDocumentVersions(id);
     chainLoaded.value = true;
+    // 历史视图与版本链同源不同投影：失败不阻断链展示，只降级空态
+    try {
+      historyRows.value = await getAiDocumentHistory(id);
+    } catch {
+      historyFailed.value = true;
+    }
     // 对比区默认：v1 ↔ 最新版
     compareLeftId.value = chain.value[0]?.id ?? null;
     compareRightId.value = head.value?.id ?? null;
@@ -645,6 +660,31 @@ onMounted(() => {
       </ul>
 
       <Empty v-else description="该文档不存在版本数据，请确认文档 ID 是否正确。" />
+
+      <!-- R215 B4：操作历史（AC-AI-05 回溯视图，BR-AI-02 审核人可追溯） -->
+      <template v-if="chainLoaded && chain.length > 0">
+        <Divider class="my-4" />
+        <div class="mb-2 text-sm font-medium">操作历史</div>
+        <div v-if="historyFailed" class="text-muted-foreground text-sm" role="status">
+          历史视图加载失败，不影响上方版本链操作。
+        </div>
+        <ul v-else-if="historyRows.length > 0" class="m-0 list-none p-0" data-testid="ipd-ai-history">
+          <li
+            v-for="row in historyRows"
+            :key="row.versionId"
+            class="text-sm mb-1 flex flex-wrap items-center gap-2"
+          >
+            <Tag>v{{ row.versionNo }}</Tag>
+            <Tag :color="STATUS_META[row.status]?.color ?? 'default'">
+              {{ STATUS_META[row.status]?.text ?? row.status }}
+            </Tag>
+            <span class="text-muted-foreground">创建：{{ row.createdAt || PENDING_TEXT }}</span>
+            <span v-if="row.reviewedBy" class="text-muted-foreground">审核人：{{ row.reviewedBy }}</span>
+            <span v-if="row.archivedAt" class="text-muted-foreground">归档：{{ row.archivedAt }}</span>
+          </li>
+        </ul>
+        <div v-else class="text-muted-foreground text-sm" role="status">暂无历史记录。</div>
+      </template>
     </Card>
 
     <!-- ④ 版本对比 -->

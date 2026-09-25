@@ -14,6 +14,7 @@ import {
   rejectAiDocumentVersion,
   reviewAiDocumentVersion,
   reviseAiDocument,
+  toTimeText,
 } from './ai-document';
 import { IpdRequestError } from './auth';
 
@@ -143,6 +144,16 @@ describe('AI 文档版本链接口', () => {
     expect(() => parseAiDocument([docFixture()])).toThrow(IpdRequestError);
   });
 
+  it('时间字段兼容 epoch 毫秒（R215 B4 实测：后端 Date 序列化为数字，旧代码只认字符串致时间全显待补充）', () => {
+    const doc = parseAiDocument(docFixture({ createTime: 1790261069000, reviewedAt: 1790300000000 }));
+    expect(doc.createTime).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+    expect(doc.reviewedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+    // 字符串形态仍兼容；无效值退回 null 不伪装
+    expect(toTimeText('2026-09-19 09:00:00')).toBe('2026-09-19T09:00:00');
+    expect(toTimeText(null)).toBeNull();
+    expect(toTimeText('abc')).toBeNull();
+  });
+
   it('错误码映射为中文文案，未知码回退 fallback（不再透传 error.message，避免暴露后端字符串）', () => {
     expect(ipdApiErrorText(new IpdRequestError('x', 409, 50002, 'http'))).toContain('状态冲突');
     expect(ipdApiErrorText(new IpdRequestError('x', 413, 40013, 'http'))).toContain('AI 预算超出限制');
@@ -186,18 +197,34 @@ describe('AI 文档版本链接口', () => {
     expect(rejected.status).toBe('REJECTED');
   });
 
-  it('history 走 GET /ai-documents/{id}/history（前端复用 /versions 列表同构，独立封装便于后端扩展）', async () => {
+  it('history 真调 GET /ai-documents/{id}/history（R215 B4：原假复用 /versions 被锁成契约，现改真接后端 HistoryItem 投影）', async () => {
     const fetcher = vi.fn().mockImplementation(() =>
       Promise.resolve(response([
-        docFixture({ versionNo: 2 }),
-        docFixture({ id: '9007199254740993', versionNo: 1, parentVersionId: null }),
+        { archivedAt: '2026-09-20 10:30:00', author: '1001', createdAt: '2026-09-19 09:00:00', reviewedBy: '1002', status: 'ARCHIVED', versionId: '9007199254740994', versionNo: 2 },
+        { archivedAt: null, author: '1001', createdAt: '2026-09-18 09:00:00', reviewedBy: null, status: 'GENERATED', versionId: '9007199254740993', versionNo: 1 },
       ])),
     );
     vi.stubGlobal('fetch', fetcher);
     const history = await getAiDocumentHistory('1');
-    // 当前实现 = listAiDocumentVersions（= GET /versions）；保留端点便于后端独立扩展
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/ai-documents/1/versions');
+    // 契约关键：请求必须打在 /history 而非 /versions（旧假封装的漂移点）
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/ai-documents/1/history');
     expect(history).toHaveLength(2);
+    // HistoryItem 七字段：ID/人转字符串，versionNo 保持数字，null 保留不伪装空串
+    expect(history[0]).toMatchObject({
+      archivedAt: '2026-09-20T10:30:00',
+      author: '1001',
+      reviewedBy: '1002',
+      status: 'ARCHIVED',
+      versionId: '9007199254740994',
+      versionNo: 2,
+    });
+    expect(history[1]?.archivedAt).toBeNull();
+    expect(history[1]?.reviewedBy).toBeNull();
+  });
+
+  it('history 响应非数组抛错，不静默修补', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(response({ not: 'array' }))));
+    await expect(getAiDocumentHistory('1')).rejects.toThrow(IpdRequestError);
   });
 
   it('diff 走 GET /ai-documents/{id}/diff?from=&to=，解析 fields + changeType 分类', async () => {
