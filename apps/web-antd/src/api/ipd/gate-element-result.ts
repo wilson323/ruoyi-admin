@@ -3,7 +3,9 @@
  *
  * 真值：GateElementResultController（/api/v1/gates/{gateId}/element-results）。
  * 已交付端点：GET /elements（评审要素列表）、POST /element-results（提交逐项判定）、
- * POST /element-results/{resultId}/close（关闭带条件项）、POST /submit（提交评审结论）。
+ * POST /element-results/{resultId}/close（关闭带条件项）。
+ * R212 ORPHAN-A1 补齐（2026-09-24）：POST /submit（提交评审，强制输出物 ossId 必填）与
+ * GET /legacy（条件遗留清单，AC-GATE-17）此前仅头注释声明未封装（文档漂移），本次落函数。
  *
  * 设计要点：
  * - 33 要素逐项打勾，命中「is_veto=1」项时前端通过按钮置灰（硬阻断）；
@@ -66,6 +68,63 @@ export function closeGateElementResult(gateId: string, resultId: string, evidenc
     `/gates/${encodeURIComponent(gateId)}/element-results/${encodeURIComponent(resultId)}/close`,
     evidence,
   );
+}
+
+/**
+ * 条件遗留清单（GET /legacy；R212 ORPHAN-A1 接线，AC-GATE-17 防线）。
+ * 遗留查询仅依赖判定结果表：要素停用/删除不消除遗留；overdue=true 表示 OPEN 且已过关闭期限。
+ */
+export interface IpdGateLegacyItem {
+  /** 关闭证据（CLOSED 后必有；AC「关闭需证据」）。 */
+  closedEvidence: null | string;
+  /** 要素编码（要素已停用时后端退化为 "(已删要素)"）。 */
+  elementCode: string;
+  elementName: string;
+  /** OPEN 且已过 leftoverDueAt 时后端计算为 true。 */
+  overdue: boolean;
+  responsiblePersonId: null | string;
+  /** 判定结果行 id（与 close 端点的 resultId 同键）。 */
+  resultId: string;
+  result: GateElementResult | null | string;
+  leftoverDueAt: null | string;
+  leftoverItem: null | string;
+  leftoverStatus: 'CLOSED' | 'OPEN' | null;
+}
+
+/** 查条件遗留清单（含已关与未关；后端按 leftoverStatus IN (OPEN, CLOSED) 过滤）。 */
+export function listGateLegacyItems(gateId: string): Promise<IpdGateLegacyItem[]> {
+  return ipdGet<IpdGateLegacyItem[]>(`/gates/${encodeURIComponent(gateId)}/legacy`);
+}
+
+/** 强制输出物（[SEC-FIX-HIGH-1.1-FOLLOWUP]：只收 OSS ID，禁止任意外部 URL 防 SSRF）。 */
+export interface IpdGateSubmitOutputs {
+  /** 评审材料 OSS ID（必填，数字串）。 */
+  materialsOssId: string;
+  /** 会议纪要 OSS ID（必填，数字串）。 */
+  meetingMinutesOssId: string;
+}
+
+/** POST /submit 响应（GateElementResultController.GateView）。 */
+export interface IpdGateSubmitResult {
+  gateCode: string;
+  id: string;
+  /** 要素定义快照是否已冻结（submit 成功后为 true）。 */
+  snapshotFrozen: boolean;
+  startedAt: null | string;
+  status: string;
+  projectId: string;
+}
+
+/**
+ * 提交评审（POST /submit；R212 ORPHAN-A1 接线，看板 927fa743 后端已交付）。
+ * 后端守卫：全要素已判 + 否决项阻断（AC-GATE-15/19/20）+ 前序遗留阻断 + 快照冻结；
+ * body 的 ossId 为 Long，字符串透传防 19 位雪花精度损失（非数字由后端 @NotNull 校验拒绝）。
+ */
+export function submitGateReview(gateId: string, outputs: IpdGateSubmitOutputs): Promise<IpdGateSubmitResult> {
+  return ipdPost<IpdGateSubmitResult>(`/gates/${encodeURIComponent(gateId)}/submit`, {
+    materialsOssId: outputs.materialsOssId,
+    meetingMinutesOssId: outputs.meetingMinutesOssId,
+  });
 }
 
 /** 硬阻断检查：要素列表中 is_veto=true 且 result=FAIL 的条目数 > 0 ⇒ 提交按钮置灰。 */

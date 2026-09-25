@@ -11,7 +11,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import type { ComponentPublicInstance } from 'vue';
 
+import type { IpdIdentity } from '../../../../api/ipd/auth';
+import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import Index from './index.vue';
+
+/** 构造登录身份（R212 ORPHAN-A1 列席接线：personType 决定名单/邀约可见性）。 */
+function loginAs(personType: IpdIdentity['person']['personType'], personId = '7'): void {
+  useIpdAuthStore().identity = {
+    mustChangePwd: false,
+    person: { accountStatus: 'ACTIVE', groupId: null, id: personId, name: '测试用户', personType, username: 'tester' },
+    scope: 'FULL',
+  };
+}
 
 const envelope = (data: unknown, status = 200, code = 0): Response => new Response(
   JSON.stringify({ code, message: code === 0 ? 'success' : '请求不合法', data, timestamp: '2026-09-22T00:00:00Z', traceId: 'fixture' }),
@@ -289,6 +300,151 @@ describe('R177-A6 Gate 评审详情页 button-policy 接入契约', () => {
     const vm = wrapper.vm as unknown as ComponentPublicInstance;
     expect(vm).toBeTruthy();
     expect(wrapper.findAll('.ant-card').length).toBeGreaterThanOrEqual(3);
+    wrapper.unmount();
+  });
+});
+
+/** R212 ORPHAN-A1：列席 3 端点 + 条件遗留清单接线（2026-09-24）。 */
+describe('R177-A6 Gate 评审详情页 · ORPHAN-A1 列席与遗留接线', () => {
+  const reviewFixture = (gateId: string) => ({
+    gateId, gateCode: 'G3', status: 'PENDING', dualSign: true, leadSide: 'MARKET_PM',
+    round: 1, signDueAt: 1893456000000, extensionCount: 0, my: null, other: null, otherSubmitted: false,
+  });
+
+  function stubGateDetailApi(opts: { observerRow?: unknown; legacyRows?: unknown[] }) {
+    const calls: { method: string; url: string }[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      calls.push({ method, url });
+      if (url === '/api/v1/projects/101/gates') {
+        return envelope([{ id: '9001', projectId: '101', gateCode: 'G3', status: 'PENDING', currentRound: 1, signDueAt: 1893456000000, concludedAt: null }]);
+      }
+      if (url === '/api/v1/gates/9001/review') {
+        return envelope(reviewFixture('9001'));
+      }
+      if (method === 'GET' && url === '/api/v1/gates/9001/observers') {
+        return envelope(opts.observerRow === undefined ? [] : [opts.observerRow]);
+      }
+      if (method === 'POST' && url === '/api/v1/gates/9001/observers/invite') {
+        return envelope({ gateId: '9001', role: 'SALES', invitedCount: 1 });
+      }
+      if (method === 'POST' && url === '/api/v1/gates/9001/observers/7/opinion') {
+        return envelope({
+          id: '11', gateId: '9001', observerId: '7', role: 'SALES',
+          attended: 1, opinion: JSON.parse(String(init?.body ?? '{}')).opinion, invitedAt: 1789388463000,
+        });
+      }
+      if (method === 'GET' && url === '/api/v1/gates/9001/legacy') {
+        return envelope(opts.legacyRows ?? []);
+      }
+      throw new Error(`unexpected fetch: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    return { calls, fetcher };
+  }
+
+  it('组长身份挂载即自动调 GET /observers 并渲染列席行', async () => {
+    loginAs('GROUP_LEADER');
+    stubGateDetailApi({
+      observerRow: { id: '11', gateId: '9001', observerId: '9', role: 'QUALITY', attended: null, opinion: '关注产线良率', invitedAt: 1789388463000 },
+    });
+    const wrapper = await mountWith({ projectId: '101', gateId: '9001' });
+    await vi.waitFor(() => expect(wrapper.text()).toContain('关注产线良率'));
+    // GET /observers 真实发生（自动加载，组长身份）
+    const wrapperText = wrapper.text();
+    expect(wrapperText).toContain('列席人员与意见');
+    expect(wrapperText).toContain('邀约列席');
+    wrapper.unmount();
+  });
+
+  it('普通 PM 身份不自动调 GET /observers（后端仅组长/超管放行，前端前置避免必然失败请求）', async () => {
+    loginAs('MARKET_PM');
+    const { calls } = stubGateDetailApi({ observerRow: undefined });
+    const wrapper = await mountWith({ projectId: '101', gateId: '9001' });
+    await vi.waitFor(() => expect(wrapper.text()).toContain('列席人员与意见'));
+    expect(calls.some((call) => call.url === '/api/v1/gates/9001/observers')).toBe(false);
+    expect(wrapper.text()).toContain('列席名单仅组长/超管可查');
+    wrapper.unmount();
+  });
+
+  it('邀约列席：填 personId 后经 Popconfirm 确认 POST /observers/invite', async () => {
+    loginAs('GROUP_LEADER');
+    const { calls } = stubGateDetailApi({ observerRow: undefined });
+    const wrapper = await mountWith({ projectId: '101', gateId: '9001' });
+    await vi.waitFor(() => expect(wrapper.text()).toContain('邀约列席'));
+    const inviteInput = wrapper.find('input[placeholder*="列席人 personId"]');
+    expect(inviteInput.exists()).toBe(true);
+    await inviteInput.setValue('12, 15');
+    await wrapper.findAll('button').find((button) => button.text().includes('邀约列席'))!.trigger('click');
+    await vi.waitFor(() => expect(document.body.querySelector('.ant-popconfirm')).toBeTruthy());
+    (document.body.querySelector('.ant-popconfirm .ant-btn-primary') as HTMLElement)
+      .dispatchEvent(new Event('click'));
+    await vi.waitFor(() => {
+      const invite = calls.find((call) => call.method === 'POST' && call.url === '/api/v1/gates/9001/observers/invite');
+      expect(invite).toBeTruthy();
+    });
+    wrapper.unmount();
+  });
+
+  it('列席意见：仅本人行渲染提交入口，POST /observers/{observerId}/opinion 落库回显', async () => {
+    loginAs('GROUP_LEADER', '7'); // 本人 personId=7，与 observerId=7 匹配
+    // 双行 fixture（本人 observerId=7 + 他人 observerId=8）：stubGateDetailApi 仅支持单行，此处内联
+    const calls: { method: string; url: string }[] = [];
+    const twoRows = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      calls.push({ method, url });
+      if (url === '/api/v1/projects/101/gates') {
+        return envelope([{ id: '9001', projectId: '101', gateCode: 'G3', status: 'PENDING', currentRound: 1, signDueAt: 1893456000000, concludedAt: null }]);
+      }
+      if (url === '/api/v1/gates/9001/review') {
+        return envelope({ gateId: '9001', gateCode: 'G3', status: 'PENDING', dualSign: true, leadSide: 'MARKET_PM', round: 1, signDueAt: 1893456000000, extensionCount: 0, my: null, other: null, otherSubmitted: false });
+      }
+      if (method === 'GET' && url === '/api/v1/gates/9001/observers') {
+        return envelope([
+          { id: '11', gateId: '9001', observerId: '7', role: 'SALES', attended: null, opinion: null, invitedAt: 1789388463000 },
+          { id: '12', gateId: '9001', observerId: '8', role: 'QUALITY', attended: 1, opinion: '产线已验证', invitedAt: 1789388463000 },
+        ]);
+      }
+      if (method === 'POST' && url === '/api/v1/gates/9001/observers/7/opinion') {
+        return envelope({ id: '11', gateId: '9001', observerId: '7', role: 'SALES', attended: 1, opinion: JSON.parse(String(init?.body ?? '{}')).opinion, invitedAt: 1789388463000 });
+      }
+      throw new Error(`unexpected fetch: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', twoRows);
+    const wrapper = await mountWith({ projectId: '101', gateId: '9001' });
+    await vi.waitFor(() => expect(wrapper.text()).toContain('未提交'));
+    // 本人行出现意见输入与提交按钮；他人行显示「仅列席人本人可提交」
+    expect(wrapper.find('input[placeholder*="我的列席意见"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('仅列席人本人可提交');
+    await wrapper.find('input[placeholder*="我的列席意见"]').setValue('同意本次评审结论');
+    await wrapper.findAll('button').find((button) => button.text() === '提交意见')!.trigger('click');
+    await vi.waitFor(() => {
+      const opinion = calls.find((call) => call.method === 'POST' && call.url === '/api/v1/gates/9001/observers/7/opinion');
+      expect(opinion).toBeTruthy();
+    });
+    await vi.waitFor(() => expect(wrapper.text()).toContain('同意本次评审结论'));
+    wrapper.unmount();
+  });
+
+  it('条件遗留清单：手动加载 GET /legacy 渲染 OPEN/逾期标记', async () => {
+    loginAs('GROUP_LEADER');
+    stubGateDetailApi({
+      legacyRows: [
+        { resultId: 'er-2', elementCode: 'G1-02', elementName: '商业模式可行性', result: 'PASS_WITH_CONDITION',
+          leftoverItem: '补充单位经济测算', responsiblePersonId: '7', leftoverDueAt: '2026-09-20T23:59:59',
+          leftoverStatus: 'OPEN', closedEvidence: null, overdue: true },
+      ],
+    });
+    const wrapper = await mountWith({ projectId: '101', gateId: '9001' });
+    await vi.waitFor(() => expect(wrapper.text()).toContain('条件遗留清单'));
+    // 未加载前不发起请求（低频查看数据手动拉取）
+    expect(wrapper.text()).toContain('加载遗留清单');
+    await wrapper.findAll('button').find((button) => button.text().includes('加载遗留清单'))!.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('补充单位经济测算'));
+    expect(wrapper.text()).toContain('已逾期');
+    expect(wrapper.text()).toContain('未关闭');
     wrapper.unmount();
   });
 });

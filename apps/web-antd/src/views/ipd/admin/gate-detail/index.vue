@@ -9,6 +9,14 @@
  * 按钮决策：与 button-policy.ts 状态机一一对应（PENDING/APPROVED/REJECTED/ABSTAINED_TIMEOUT × 9 按钮）。
  * 权限码：sign/reopen/arbitrate/final-ruling 走 GATE_REVIEW_APPROVE；extend 仅超管走 SYSTEM_CONFIG_READ（占位）；
  * refresh 走 GATE_REVIEW_LIST。权限层独立于状态决策矩阵（双闸门禁）。
+ *
+ * R212 ORPHAN-A1（2026-09-24）补接线 5 端点（此前 view.observers 仅静态渲染、legacy/submit 零调用）：
+ * - GET  /gates/{gateId}/observers                    列席人+意见（后端仅组长/超管放行；前端 personType 双闸）
+ * - POST /gates/{gateId}/observers/invite             邀约列席（仅超管/组长；role 白名单 5 类）
+ * - POST /gates/{gateId}/observers/{observerId}/opinion 列席意见（仅 observer 本人，前端按 person.id 匹配）
+ * - GET  /gates/{gateId}/legacy                       条件遗留清单（AC-GATE-17；本页新增卡片承接）
+ * - POST /gates/{gateId}/submit                       评审提交——接在页24 评审工作台 gate-panel.vue
+ *   「提交评审结论」按钮（要素判定流程宿主），本页不重复入口。
  */
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
@@ -21,6 +29,7 @@ import {
   Empty,
   Input,
   Popconfirm,
+  Select,
   Space,
   Spin,
   Table,
@@ -31,17 +40,25 @@ import {
 
 import {
   type GateDecision,
+  type GateObserverRole,
+  type GateObserverView,
   type GateReviewView,
   type GateStatus,
   type ProjectGateItem,
+  GATE_OBSERVER_ROLE_OPTIONS,
   arbitrateGate,
   extendGateDeadline,
   finalRulingGate,
   getGateReview,
+  inviteGateObservers,
+  listGateObservers,
   listProjectGates,
   reopenGate,
   signGate,
+  submitGateObserverOpinion,
 } from '../../../../api/ipd/gate-review';
+import { type IpdGateLegacyItem, listGateLegacyItems } from '../../../../api/ipd/gate-element-result';
+import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
 import { formatDateTime } from '../../_shared/format';
@@ -150,13 +167,178 @@ async function loadView(): Promise<void> {
   }
 }
 
+/* ---------- R212 ORPHAN-A1：列席（MEDIUM-1.3）与条件遗留（AC-GATE-17）接线 ---------- */
+
+const auth = useIpdAuthStore();
+/** 后端 GateReviewService 语义：查名单/邀约仅 GROUP_LEADER/SUPER_ADMIN（personType 双闸，减少必然失败的请求）。 */
+const isLeader = computed(() => auth.identity?.person.personType === 'GROUP_LEADER');
+const isSuperAdmin = computed(() => auth.identity?.person.personType === 'SUPER_ADMIN');
+const canManageObservers = computed(() => isLeader.value || isSuperAdmin.value);
+/** 列席意见仅 observer 本人可提交（后端 recordOpinion 断言 actor.id == observerId）。 */
+const myPersonId = computed(() => auth.identity?.person.id ?? '');
+
+const observers = ref<GateObserverView[]>([]);
+const observersLoading = ref(false);
+const observersError = ref('');
+const observerBusy = ref(false);
+
+/** 邀约表单：personId 手输（后端无人员列表端点，逗号分隔多值）+ 角色白名单单选。 */
+const inviteObserverIdsText = ref('');
+const inviteRole = ref<GateObserverRole>('SALES');
+
+/** 解析手输 personId（逗号/空格分隔，去空去重，剔除非数字项）。 */
+function parseObserverIds(): string[] {
+  return [...new Set(
+    inviteObserverIdsText.value.split(/[,，\s]+/).map((v) => v.trim()).filter((v) => /^\d+$/.test(v)),
+  )];
+}
+
+async function loadObservers(): Promise<void> {
+  const gid = activeGateId.value;
+  if (!gid) return;
+  observersLoading.value = true;
+  observersError.value = '';
+  try {
+    observers.value = await listGateObservers(gid);
+  } catch (cause) {
+    observers.value = [];
+    observersError.value = ipdErrorText(cause, { fallback: '列席名单加载失败' });
+  } finally {
+    observersLoading.value = false;
+  }
+}
+
+async function doInviteObservers(): Promise<void> {
+  const gid = activeGateId.value;
+  if (!gid || observerBusy.value) return;
+  const ids = parseObserverIds();
+  if (ids.length === 0) {
+    observersError.value = '请填写至少 1 个列席人 personId（数字，逗号分隔）';
+    return;
+  }
+  observerBusy.value = true;
+  observersError.value = '';
+  try {
+    const result = await inviteGateObservers(gid, ids, inviteRole.value);
+    antMessage.success(`已邀约 ${result.invitedCount} 位列席人（角色 ${result.role}）`);
+    inviteObserverIdsText.value = '';
+    await loadObservers();
+  } catch (cause) {
+    observersError.value = ipdErrorText(cause, { fallback: '邀约列席失败' });
+  } finally {
+    observerBusy.value = false;
+  }
+}
+
+/** 本人意见草稿（按 observerId 分桶，避免多行串值）。 */
+const opinionDrafts = ref<Record<string, string>>({});
+
+async function doSubmitObserverOpinion(observer: GateObserverView): Promise<void> {
+  const gid = activeGateId.value;
+  if (!gid || observerBusy.value) return;
+  const opinion = (opinionDrafts.value[observer.observerId] ?? '').trim();
+  if (!opinion) {
+    observersError.value = '列席意见不能为空（1~2000 字）';
+    return;
+  }
+  observerBusy.value = true;
+  observersError.value = '';
+  try {
+    const updated = await submitGateObserverOpinion(gid, observer.observerId, opinion);
+    const idx = observers.value.findIndex((row) => row.observerId === observer.observerId);
+    if (idx >= 0) observers.value.splice(idx, 1, updated);
+    antMessage.success('列席意见已提交（不入主审投票）');
+  } catch (cause) {
+    observersError.value = ipdErrorText(cause, { fallback: '列席意见提交失败' });
+  } finally {
+    observerBusy.value = false;
+  }
+}
+
+/** 表格行操作包装：slot record 为宽松类型，收窄后转调（vue-tsc 严格检查）。 */
+function submitOpinionFromRow(record: Record<string, unknown>): void {
+  void doSubmitObserverOpinion(record as unknown as GateObserverView);
+}
+
+/** 列席角色 → 中文标签（白名单外的原样透出）。 */
+const OBSERVER_ROLE_LABEL: Readonly<Record<string, string>> = Object.freeze({
+  AFTERSALES: '售后',
+  COMPLIANCE: '合规',
+  QUALITY: '品质',
+  SALES: '销售',
+  SUPPLY: '供应',
+});
+
+const observerRoleLabel = (role: string): string => OBSERVER_ROLE_LABEL[role] ?? role;
+
+const observerColumns = [
+  { title: '列席人 personId', dataIndex: 'observerId', key: 'observerId', width: 120 },
+  { title: '角色', key: 'role', width: 90 },
+  { title: '出席', key: 'attended', width: 70 },
+  { title: '意见', key: 'opinion' },
+  { title: '邀约时间', key: 'invitedAt', width: 170 },
+  { title: '操作', key: 'opinionAction', width: 260 },
+];
+
+/* ---------- 条件遗留清单（GET /legacy；AC-GATE-17） ---------- */
+
+const legacyItems = ref<IpdGateLegacyItem[]>([]);
+const legacyLoading = ref(false);
+const legacyError = ref('');
+/** 手动加载（低频查看数据，不随视图自动拉取）。 */
+const legacyLoadedOnce = ref(false);
+
+async function loadLegacy(): Promise<void> {
+  const gid = activeGateId.value;
+  if (!gid || legacyLoading.value) return;
+  legacyLoading.value = true;
+  legacyError.value = '';
+  try {
+    legacyItems.value = await listGateLegacyItems(gid);
+    legacyLoadedOnce.value = true;
+  } catch (cause) {
+    legacyItems.value = [];
+    legacyError.value = ipdErrorText(cause, { fallback: '条件遗留清单加载失败' });
+  } finally {
+    legacyLoading.value = false;
+  }
+}
+
+const legacyColumns = [
+  { title: '要素', key: 'element', width: 220 },
+  { title: '判定', dataIndex: 'result', key: 'result', width: 150 },
+  { title: '遗留项', dataIndex: 'leftoverItem', key: 'leftoverItem' },
+  { title: '状态', key: 'leftoverStatus', width: 100 },
+  { title: '关闭期限', key: 'leftoverDueAt', width: 170 },
+  { title: '责任人', dataIndex: 'responsiblePersonId', key: 'responsiblePersonId', width: 100 },
+  { title: '关闭证据', dataIndex: 'closedEvidence', key: 'closedEvidence' },
+];
+
+const LEFTOVER_STATUS_LABEL: Readonly<Record<string, string>> = Object.freeze({
+  CLOSED: '已关闭',
+  OPEN: '未关闭',
+});
+
 onMounted(async () => {
   await loadList();
   await loadView();
+  // 列席名单仅组长/超管可查（后端 400 拒绝其余角色），前端按 personType 前置避免必然失败的请求
+  if (canManageObservers.value && activeGateId.value) {
+    void loadObservers();
+  }
 });
 
 watch(activeGateId, () => {
   void loadView();
+  // 切换 Gate 时重置列席/遗留数据（避免跨 Gate 展示脏数据）
+  observers.value = [];
+  observersError.value = '';
+  legacyItems.value = [];
+  legacyError.value = '';
+  legacyLoadedOnce.value = false;
+  if (canManageObservers.value && activeGateId.value) {
+    void loadObservers();
+  }
 });
 
 /** 当前 Gate 在列表中的索引行（用于导航 / 详情显示）。 */
@@ -422,6 +604,161 @@ void decisionText; // 保留函数供潜在扩展（如详情对话框），避�
           </div>
         </template>
       </Spin>
+    </Card>
+
+    <Card title="列席人员与意见（MEDIUM-1.3 · GET /gates/{gateId}/observers）">
+      <template #extra>
+        <Button
+          v-if="canManageObservers && activeGateId"
+          v-access:code="IPD_PERMISSION_CODES.GATE_REVIEW_LIST"
+          size="small"
+          :loading="observersLoading"
+          @click="loadObservers"
+        >
+          刷新列席名单
+        </Button>
+      </template>
+
+      <div v-if="observersError" class="mb-3">
+        <Alert :message="observersError" show-icon type="error" />
+      </div>
+
+      <template v-if="!canManageObservers">
+        <Empty description="列席名单仅组长/超管可查（后端 GateReviewService 权限语义）；列席人本人可在下方被邀约行的操作位提交意见" />
+      </template>
+      <template v-else>
+        <div v-if="!activeGateId" class="mb-3">
+          <Empty description="缺少 gateId：请先在下方列表选择或手输 Gate 编号" />
+        </div>
+        <template v-else>
+          <!-- 邀约列席：后端无人员列表端点，personId 手输（逗号分隔）；role 白名单 5 类 -->
+          <div class="mb-3 flex flex-wrap items-center gap-2">
+            <Input
+              v-model:value="inviteObserverIdsText"
+              placeholder="列席人 personId（数字，多个用逗号分隔）"
+              style="width: 320px"
+              :maxlength="200"
+            />
+            <Select
+              v-model:value="inviteRole"
+              :options="[...GATE_OBSERVER_ROLE_OPTIONS]"
+              style="width: 110px"
+            />
+            <Popconfirm
+              title="确认邀约所选人员列席本 Gate 评审？（将发送知会通知）"
+              @confirm="doInviteObservers"
+            >
+              <Button
+                v-access:code="IPD_PERMISSION_CODES.GATE_REVIEW_APPROVE"
+                size="small"
+                type="primary"
+                :disabled="observerBusy || !parseObserverIds().length"
+              >
+                邀约列席
+              </Button>
+            </Popconfirm>
+            <span class="text-xs text-muted-foreground">邀请后审计留痕并知会被邀请人；重复邀请幂等不报错</span>
+          </div>
+
+          <Table
+            :columns="observerColumns"
+            :data-source="observers"
+            :loading="observersLoading"
+            :pagination="false"
+            row-key="id"
+            size="small"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'role'">
+                <Tag>{{ observerRoleLabel(String(record.role)) }}</Tag>
+              </template>
+              <template v-else-if="column.key === 'attended'">
+                <Tag :color="record.attended ? 'success' : 'default'">{{ record.attended ? '已出席' : '未出席' }}</Tag>
+              </template>
+              <template v-else-if="column.key === 'opinion'">
+                <span v-if="record.opinion">{{ record.opinion }}</span>
+                <span v-else class="text-muted-foreground">未提交</span>
+              </template>
+              <template v-else-if="column.key === 'invitedAt'">{{ fmtDate(record.invitedAt) }}</template>
+              <template v-else-if="column.key === 'opinionAction'">
+                <!-- 仅 observer 本人可提交意见（后端 recordOpinion 断言 actor.id == observerId） -->
+                <Space v-if="String(record.observerId) === myPersonId" :size="6" wrap>
+                  <Input
+                    v-model:value="opinionDrafts[String(record.observerId)]"
+                    placeholder="我的列席意见（1~2000 字）"
+                    size="small"
+                    style="width: 180px"
+                    :maxlength="2000"
+                  />
+                  <Button
+                    size="small"
+                    :disabled="observerBusy"
+                    @click="submitOpinionFromRow(record)"
+                  >
+                    提交意见
+                  </Button>
+                </Space>
+                <span v-else class="text-xs text-muted-foreground">仅列席人本人可提交</span>
+              </template>
+            </template>
+          </Table>
+          <div class="mt-2 text-xs text-muted-foreground">
+            列席意见不入主审投票（不动 gate_reviews）；邀约/名单查询权限码走 GATE_REVIEW_APPROVE / GATE_REVIEW_LIST 双闸
+          </div>
+        </template>
+      </template>
+    </Card>
+
+    <Card title="条件遗留清单（AC-GATE-17 · GET /gates/{gateId}/legacy）">
+      <template #extra>
+        <Button
+          v-if="activeGateId"
+          v-access:code="IPD_PERMISSION_CODES.GATE_REVIEW_LIST"
+          size="small"
+          :loading="legacyLoading"
+          @click="loadLegacy"
+        >
+          {{ legacyLoadedOnce ? '刷新遗留清单' : '加载遗留清单' }}
+        </Button>
+      </template>
+
+      <div v-if="legacyError" class="mb-3">
+        <Alert :message="legacyError" show-icon type="error" />
+      </div>
+
+      <Empty
+        v-if="!activeGateId"
+        description="缺少 gateId：请先在下方列表选择或手输 Gate 编号"
+      />
+      <Table
+        v-else-if="legacyLoadedOnce || legacyLoading"
+        :columns="legacyColumns"
+        :data-source="legacyItems"
+        :loading="legacyLoading"
+        :pagination="false"
+        row-key="resultId"
+        size="small"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'element'">
+            <span>{{ record.elementCode }} · {{ record.elementName }}</span>
+          </template>
+          <template v-else-if="column.key === 'leftoverStatus'">
+            <Tag :color="record.leftoverStatus === 'CLOSED' ? 'success' : 'processing'">
+              {{ LEFTOVER_STATUS_LABEL[String(record.leftoverStatus)] ?? String(record.leftoverStatus) }}
+            </Tag>
+            <Tag v-if="record.overdue" color="error">已逾期</Tag>
+          </template>
+          <template v-else-if="column.key === 'leftoverDueAt'">{{ fmtDate(record.leftoverDueAt) }}</template>
+        </template>
+      </Table>
+      <Empty
+        v-else
+        description="条件通过项的遗留跟踪视图：点击右上角「加载遗留清单」拉取（要素停用/删除不消除遗留）"
+      />
+      <div v-if="legacyLoadedOnce && legacyItems.length === 0 && !legacyLoading" class="mt-2 text-xs text-muted-foreground">
+        当前 Gate 无条件遗留项（PASS_WITH_CONDITION 关闭后仍可在本清单查看 CLOSED 记录）
+      </div>
     </Card>
 
     <Card title="项目维度 Gate 列表（GET /projects/{id}/gates）">

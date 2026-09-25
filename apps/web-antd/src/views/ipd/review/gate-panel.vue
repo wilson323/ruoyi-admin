@@ -18,6 +18,10 @@
      - 层2：每要素 PASS / FAIL / 条件通过 三选一 + 条件项必填 closeDeadline+responsiblePersonId；
      - 层3：逐项调 submitGateElementResult 提交判定结果；
      - 层4：提交前预检查 + 红字提示（否决项 FAIL 阻断、必填项缺失）。
+  5. R212 ORPHAN-A1（2026-09-24）：POST /gates/{gateId}/submit 接线——「提交评审结论」
+     按钮此前仅做前端预检查未发请求。后端 [SEC-FIX-HIGH-1.1-FOLLOWUP] 契约要求
+     materialsOssId + meetingMinutesOssId 必填（Long，服务端按 ossId 解析 URL，禁外部
+     URL 防 SSRF）；文件上传入口仍是已登记真缺口，本面板收 OSS ID 数字串手输。
 -->
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
@@ -45,6 +49,7 @@ import {
   isFallbackElement,
   listGateElementViews,
   submitGateElementResult,
+  submitGateReview,
   type GateElementResult,
   type IpdGateElementView,
 } from '../../../api/ipd/gate-element-result';
@@ -142,6 +147,40 @@ const canSubmitElements = computed(() => {
   if (elementValidation.value.length > 0) return false;
   return elements.value.length > 0;
 });
+
+/** R212 ORPHAN-A1：强制输出物 OSS ID（后端 submit 必填；纯数字校验，空/非法禁用提交）。 */
+const materialsOssId = ref('');
+const meetingMinutesOssId = ref('');
+const submitBusy = ref(false);
+const submitError = ref('');
+
+const isDigits = (v: string): boolean => /^\d+$/.test(v.trim());
+
+/** submit 可用：要素预检查通过 + 双 OSS ID 均为合法数字串。 */
+const canSubmitReview = computed(
+  () => canSubmitElements.value && isDigits(materialsOssId.value) && isDigits(meetingMinutesOssId.value),
+);
+
+/** 提交评审结论（POST /submit）：全要素已判+否决阻断由后端二次守卫，前端先做硬阻断。 */
+async function submitReview(): Promise<void> {
+  if (!view.value || !canSubmitReview.value || submitBusy.value) return;
+  submitBusy.value = true;
+  submitError.value = '';
+  try {
+    const result = await submitGateReview(view.value.gateId, {
+      materialsOssId: materialsOssId.value.trim(),
+      meetingMinutesOssId: meetingMinutesOssId.value.trim(),
+    });
+    message.success(
+      `评审已提交（${result.gateCode} · 快照${result.snapshotFrozen ? '已冻结' : '未冻结'}），进入签署流程`,
+    );
+    view.value = await getGateReview(view.value.gateId);
+  } catch (cause) {
+    submitError.value = ipdErrorText(cause, { fallback: '评审提交失败' });
+  } finally {
+    submitBusy.value = false;
+  }
+}
 
 const elementResultOptions: Array<{ label: string; value: GateElementResult }> = [
   { label: '通过', value: 'PASS' },
@@ -512,15 +551,35 @@ function finalRuling(decision: GateDecision): void {
             <li v-for="(msg, idx) in elementValidation" :key="idx">{{ msg }}</li>
           </ul>
         </div>
+        <div v-if="submitError" class="gate-error" data-testid="gate-submit-error">{{ submitError }}</div>
         <div class="gate-elements-foot">
+          <!-- 强制输出物（SEC-FIX-HIGH-1.1-FOLLOWUP）：只收 OSS ID，服务端按 ossId 解析，禁任意外部 URL -->
+          <div class="submit-outputs">
+            <input
+              v-model="materialsOssId"
+              class="element-input"
+              data-testid="gate-submit-materials-oss"
+              inputmode="numeric"
+              placeholder="评审材料 OSS ID（必填数字）"
+            />
+            <input
+              v-model="meetingMinutesOssId"
+              class="element-input"
+              data-testid="gate-submit-minutes-oss"
+              inputmode="numeric"
+              placeholder="会议纪要 OSS ID（必填数字）"
+            />
+          </div>
           <button
             type="button"
             class="primary-button"
             data-testid="gate-elements-submit"
-            :disabled="!canSubmitElements || busy"
-            :title="vetoFailureCount > 0 ? `否决项 FAIL ${vetoFailureCount} 项被阻断` : (elementValidation.length > 0 ? '必填项未完成' : '提交评审结论')"
+            v-access:code="IPD_PERMISSION_CODES.GATE_REVIEW_APPROVE"
+            :disabled="!canSubmitReview || busy || submitBusy"
+            :title="vetoFailureCount > 0 ? `否决项 FAIL ${vetoFailureCount} 项被阻断` : (elementValidation.length > 0 ? '必填项未完成' : (!isDigits(materialsOssId) || !isDigits(meetingMinutesOssId) ? '需先填写材料与纪要 OSS ID' : '提交评审结论'))"
+            @click="submitReview"
           >
-            提交评审结论（{{ elements.length }} 项）
+            {{ submitBusy ? '提交中…' : `提交评审结论（${elements.length} 项）` }}
           </button>
         </div>
       </article>
@@ -1018,6 +1077,17 @@ function finalRuling(decision: GateDecision): void {
 
 .element-actions {
   margin-top: 4px;
+}
+
+.submit-outputs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.submit-outputs .element-input {
+  width: 220px;
 }
 
 .gate-elements-foot {

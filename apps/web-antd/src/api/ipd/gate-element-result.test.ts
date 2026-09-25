@@ -3,7 +3,14 @@
  */
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { closeGateElementResult, countVetoFailures, listGateElementViews, submitGateElementResult } from './gate-element-result';
+import {
+  closeGateElementResult,
+  countVetoFailures,
+  listGateElementViews,
+  listGateLegacyItems,
+  submitGateElementResult,
+  submitGateReview,
+} from './gate-element-result';
 
 const envelope = (data: unknown) =>
   new Response(
@@ -44,6 +51,36 @@ describe('gate element result API contract', () => {
     await closeGateElementResult('gate-1', 'er-1', { evidenceRef: 'att-1', note: '已补材料' });
     const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
     expect(url.pathname).toBe('/api/v1/gates/gate-1/element-results/er-1/close');
+  });
+
+  // R212 ORPHAN-A1：GET /legacy 条件遗留清单（AC-GATE-17）
+  it('GET /gates/{id}/legacy returns leftover rows with overdue flag', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope([
+      { resultId: 'er-2', elementCode: 'G1-02', elementName: '商业模式可行性', result: 'PASS_WITH_CONDITION',
+        leftoverItem: '补充单位经济测算', responsiblePersonId: '7', leftoverDueAt: '2026-09-30',
+        leftoverStatus: 'OPEN', closedEvidence: null, overdue: false },
+    ]));
+    vi.stubGlobal('fetch', fetcher);
+    const items = await listGateLegacyItems('gate-1');
+    const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
+    expect(url.pathname).toBe('/api/v1/gates/gate-1/legacy');
+    expect(items[0]!.leftoverStatus).toBe('OPEN');
+    expect(items[0]!.overdue).toBe(false);
+  });
+
+  // R212 ORPHAN-A1：POST /submit 提交评审（SEC-FIX-HIGH-1.1-FOLLOWUP 强制输出物 ossId）
+  it('POST /gates/{id}/submit sends string ossIds as mandatory outputs（19 位雪花无损透传）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope(
+      { id: 'gate-1', projectId: '101', gateCode: 'G3', status: 'PENDING', startedAt: '2026-09-24T10:00:00', snapshotFrozen: true },
+    ));
+    vi.stubGlobal('fetch', fetcher);
+    const result = await submitGateReview('gate-1', { materialsOssId: '2096266884247736321', meetingMinutesOssId: '2096266884247736322' });
+    expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/gates/gate-1/submit');
+    const init = fetcher.mock.calls[0]![1] as RequestInit;
+    expect(init.method).toBe('POST');
+    // 字符串 ID 契约 → 后端 Long 由 Jackson 宽松转换；19 位雪花必须原样透传防精度损失
+    expect(JSON.parse(String(init.body))).toEqual({ materialsOssId: '2096266884247736321', meetingMinutesOssId: '2096266884247736322' });
+    expect(result.snapshotFrozen).toBe(true);
   });
 });
 
