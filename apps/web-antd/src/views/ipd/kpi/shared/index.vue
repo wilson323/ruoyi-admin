@@ -329,7 +329,10 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
           <div class="mb-1 text-xs text-gray-500">项目编号</div>
           <!-- E2E-A：禁 InputNumber（number 化致 19 位雪花截断）——string 原样输入/透传 -->
           <input
+            id="kpi-shared-project-id"
             v-model="filters.projectId"
+            name="kpi_shared_project_id"
+            aria-label="项目编号"
             placeholder="如 1001，19 位雪花 ID 原样粘贴"
             class="ipd-input"
             style="width: 200px"
@@ -338,7 +341,10 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
         <div>
           <div class="mb-1 text-xs text-gray-500">归集周期（YYYY-MM）</div>
           <input
+            id="kpi-shared-period"
             v-model="filters.period"
+            name="kpi_shared_period"
+            aria-label="归集周期"
             placeholder="2026-09"
             class="ipd-input"
           />
@@ -406,7 +412,9 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
         <span class="ml-2 text-xs text-gray-400">GET /kpi/shared/confirms</span>
       </template>
       <template #extra>
+        <label for="kpi-confirm-status-filter" class="sr-only">确认状态筛选</label>
         <Select
+          id="kpi-confirm-status-filter"
           v-model:value="confirmStatusFilter"
           :options="confirmStatusOptions"
           style="width: 140px"

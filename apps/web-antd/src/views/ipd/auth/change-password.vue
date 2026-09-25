@@ -98,7 +98,9 @@ async function logout() {
         <label>
           当前临时密码
           <input
+            id="current-password"
             v-model="form.currentPassword"
+            name="current_password"
             type="password"
             autocomplete="current-password"
             :maxlength="72"
@@ -110,7 +112,9 @@ async function logout() {
           <label>
             新密码
             <input
+              id="new-password"
               v-model="form.newPassword"
+              name="new_password"
               type="password"
               autocomplete="new-password"
               :maxlength="72"
@@ -121,7 +125,9 @@ async function logout() {
           <label>
             确认新密码
             <input
+              id="confirm-password"
               v-model="form.confirmation"
+              name="confirm_password"
               type="password"
               autocomplete="new-password"
               :maxlength="72"

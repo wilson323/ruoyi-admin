@@ -282,7 +282,7 @@ function navToTrack(code: string): void {
       </Form.Item>
       <!-- 蜜罐字段：对人不渲染为可见控件（tabindex=-1 且移出屏幕），非空即被服务端拒绝并记审计 spam_rejected -->
       <div class="absolute -left-[9999px] top-0" aria-hidden="true">
-        <label>Website<input v-model="form.website" type="text" tabindex="-1" autocomplete="off" /></label>
+        <label>Website<input id="portal-honeypot-website" v-model="form.website" type="text" tabindex="-1" autocomplete="off" /></label>
       </div>
       <Alert v-if="throttle.active.value" class="mt-4" type="warning" show-icon
         :message="throttle.message.value" data-testid="portal-submit-throttled" role="status" />

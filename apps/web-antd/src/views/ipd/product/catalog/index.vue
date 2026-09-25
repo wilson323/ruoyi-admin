@@ -93,7 +93,7 @@ onMounted(async () => {
             <small>固定字段：产品型号、产品名称、产品线、当前版本、市场PM工号、状态</small>
             <label class="ipd-cat-file">
               选择文件
-              <input accept=".xlsx" disabled type="file" @change="onFileChange" />
+              <input id="catalog-import-file" name="catalog_import_file" accept=".xlsx" disabled type="file" @change="onFileChange" />
             </label>
             <span v-if="fileChosen" class="ipd-cat-file-name">{{ fileChosen }}</span>
             <button

@@ -224,7 +224,7 @@ async function createChange(): Promise<void> {
       <AimOutlined />
       <label>
         变更项目
-        <select v-model="activeId">
+        <select id="change-active-project" v-model="activeId" name="change_active_project_id">
           <option disabled value="">选择项目</option>
           <option v-for="item in projects" :key="item.id" :value="item.id">
             {{ item.name }} · {{ item.code }}
@@ -349,34 +349,34 @@ async function createChange(): Promise<void> {
         <div class="create-form">
           <label>
             变更项目
-            <select :value="activeId" disabled>
+            <select id="change-create-project" :value="activeId" name="change_create_project_id" disabled>
               <option v-if="activeProject">{{ activeProject.name }} · {{ activeProject.code }}</option>
               <option v-else value="">未选择项目</option>
             </select>
           </label>
           <label>
             关联需求
-            <select v-model="createForm.requirementId" required :disabled="demandsLoading">
+            <select id="change-create-requirement" v-model="createForm.requirementId" name="change_create_requirement_id" required :disabled="demandsLoading">
               <option value="" disabled>请选择需求（{{ demands.length }} 条）</option>
               <option v-for="d in demands" :key="d.id" :value="d.id">{{ d.title ?? '未命名需求' }} · #{{ d.id }}</option>
             </select>
           </label>
           <label>
             变更类型
-            <input v-model="createForm.changeType" placeholder="如：功能范围调整 / 性能目标修订" required />
+            <input id="change-create-type" v-model="createForm.changeType" name="change_create_type" placeholder="如：功能范围调整 / 性能目标修订" required />
           </label>
           <label>
             变更原因
-            <textarea v-model="createForm.reason" required rows="3" />
+            <textarea id="change-create-reason" v-model="createForm.reason" name="change_create_reason" required rows="3" />
           </label>
           <div class="field-grid two">
             <label>
               变更前快照（JSON）
-              <textarea v-model="createForm.beforeSnapshot" placeholder="范围/成本/时限/质量四维度，提交双签前必填" />
+              <textarea id="change-create-before-snapshot" v-model="createForm.beforeSnapshot" name="change_create_before_snapshot" placeholder="范围/成本/时限/质量四维度，提交双签前必填" />
             </label>
             <label>
               变更后快照（JSON）
-              <textarea v-model="createForm.afterSnapshot" placeholder="范围/成本/时限/质量四维度，提交双签前必填" />
+              <textarea id="change-create-after-snapshot" v-model="createForm.afterSnapshot" name="change_create_after_snapshot" placeholder="范围/成本/时限/质量四维度，提交双签前必填" />
             </label>
           </div>
           <div class="handoff-note">

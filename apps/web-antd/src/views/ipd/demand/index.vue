@@ -315,7 +315,10 @@ onMounted(() => {
           </div>
           <select
             v-if="isSuperAdmin"
+            id="demand-product-filter"
             v-model="productFilter"
+            name="demand_product_filter"
+            aria-label="按产品筛选需求"
             data-testid="demand-product-filter"
             @change="onProductFilterChange"
           >

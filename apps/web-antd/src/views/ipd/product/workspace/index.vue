@@ -119,7 +119,14 @@ onMounted(() => {
         <p>产品是长期经营对象，可包含多个在研或已结项的IPD项目；项目空间则是其中一次具体立项/迭代。</p>
       </div>
       <div class="ipd-pw-actions">
-        <select v-model="productId" data-testid="pw-product-select" @change="onProductChange">
+        <select
+          id="pw-product-select"
+          v-model="productId"
+          name="pw_product_id"
+          aria-label="选择产品"
+          data-testid="pw-product-select"
+          @change="onProductChange"
+        >
           <option v-for="p in products" :key="p.id" :value="p.id">
             {{ p.modelCode ?? p.productCode }} · {{ p.productName }}
           </option>

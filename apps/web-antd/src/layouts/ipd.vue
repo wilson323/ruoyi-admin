@@ -108,6 +108,8 @@ function switchProject(id: string) {
       <label class="rail-project">
         <span>项目</span>
         <select
+          id="ipd-global-project-select"
+          name="ipd_global_project_id"
           :value="currentProjectId"
           data-testid="ipd-project-select"
           @change="switchProject(($event.target as HTMLSelectElement).value)"

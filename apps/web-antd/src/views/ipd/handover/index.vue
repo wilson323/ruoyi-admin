@@ -439,7 +439,7 @@ async function loadPending(): Promise<void> {
             <span>完成时间：{{ formatDateTime(selected.completedAt) }}</span>
           </div>
           <div v-if="canAccept" class="accept-row">
-            <input v-model="acceptRef" placeholder="备案号（接任后达项目数上限时必填，AC-TEAM-11）" />
+            <input id="handover-accept-ref" v-model="acceptRef" name="handover_accept_ref" aria-label="备案号" placeholder="备案号（接任后达项目数上限时必填，AC-TEAM-11）" />
             <button :disabled="accepting" class="primary-button" type="button" @click="accept">
               <UserSwitchOutlined />
               确认接收项目
@@ -453,8 +453,8 @@ async function loadPending(): Promise<void> {
               已生效移交在完成后 24 小时内可撤销（发起人 / 接手人 / 项目组长 / 超管），撤销会把项目责任反转回原归属。
             </p>
             <div class="cancel-row">
-              <input v-model="cancelReason" placeholder="撤销原因（必填）" />
-              <input v-model="cancelConfirmation" :placeholder="`输入：${HANDOVER_CANCEL_CONFIRM_PHRASE}`" />
+              <input id="handover-cancel-reason" v-model="cancelReason" name="handover_cancel_reason" aria-label="撤销原因" placeholder="撤销原因（必填）" />
+              <input id="handover-cancel-confirmation" v-model="cancelConfirmation" name="handover_cancel_confirmation" aria-label="撤销确认短语" :placeholder="`输入：${HANDOVER_CANCEL_CONFIRM_PHRASE}`" />
               <button
                 :disabled="!cancelReason.trim() || cancelConfirmation !== HANDOVER_CANCEL_CONFIRM_PHRASE || cancelling"
                 class="primary-button danger-action"
@@ -493,21 +493,21 @@ async function loadPending(): Promise<void> {
       <div class="create-form">
         <label>
           项目
-          <select v-model="projectId">
+          <select id="handover-project-id" v-model="projectId" name="handover_project_id">
             <option disabled value="">选择项目</option>
             <option v-for="item in projects" :key="item.id" :value="item.id">{{ item.name }} · {{ item.code }}</option>
           </select>
         </label>
         <label>
           移交角色
-          <select v-model="role">
+          <select id="handover-role" v-model="role" name="handover_role">
             <option value="MARKET_PM">市场PM</option>
             <option value="RD_PM">研发PM</option>
           </select>
         </label>
         <label>
           接任人
-          <select v-model="toPersonId">
+          <select id="handover-to-person" v-model="toPersonId" name="handover_to_person_id">
             <option disabled value="">选择接任人</option>
             <option v-for="entry in candidates" :key="entry.id" :value="entry.id">
               {{ entry.name }}{{ entry.groupName ? ` · ${entry.groupName}` : '' }}
@@ -516,11 +516,11 @@ async function loadPending(): Promise<void> {
         </label>
         <label>
           备案号（可选）
-          <input v-model="approvalRef" placeholder="接任后达项目数上限时必填" />
+          <input id="handover-approval-ref" v-model="approvalRef" name="handover_approval_ref" placeholder="接任后达项目数上限时必填" />
         </label>
         <label class="wide">
           交接说明
-          <input v-model="note" />
+          <input id="handover-note" v-model="note" name="handover_note" />
         </label>
         <button :disabled="!projectId || !toPersonId || initiating" class="primary-button" type="button" @click="submitInitiate">
           <SendOutlined />
@@ -540,14 +540,14 @@ async function loadPending(): Promise<void> {
       <div class="create-form attribution-form">
         <label>
           项目
-          <select v-model="attributionProjectId">
+          <select id="attribution-project-id" v-model="attributionProjectId" name="attribution_project_id">
             <option disabled value="">选择项目</option>
             <option v-for="item in projects" :key="item.id" :value="item.id">{{ item.name }} · {{ item.code }}</option>
           </select>
         </label>
         <label>
           月份（yyyy-MM）
-          <input v-model="attributionMonth" placeholder="2026-09" />
+          <input id="attribution-month" v-model="attributionMonth" name="attribution_month" placeholder="2026-09" />
         </label>
         <button
           :disabled="!attributionProjectId || attributionBusy"
@@ -591,36 +591,36 @@ async function loadPending(): Promise<void> {
         <div class="create-form">
           <label>
             原负责人
-            <select v-model="batchFrom">
+            <select id="batch-from" v-model="batchFrom" name="batch_from_person_id">
               <option disabled value="">选择原负责人</option>
               <option v-for="entry in directory" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
             </select>
           </label>
           <label>
             移交角色
-            <select v-model="batchRole">
+            <select id="batch-role" v-model="batchRole" name="batch_role">
               <option value="MARKET_PM">市场PM</option>
               <option value="RD_PM">研发PM</option>
             </select>
           </label>
           <label>
             接任人
-            <select v-model="batchTo">
+            <select id="batch-to" v-model="batchTo" name="batch_to_person_id">
               <option disabled value="">选择接任人</option>
               <option v-for="entry in batchCandidates" :key="entry.id" :value="entry.id">{{ entry.name }}</option>
             </select>
           </label>
           <label>
             项目编号（可选）
-            <input v-model="batchProjects" placeholder="逗号分隔；留空=全部活跃项目" />
+            <input id="batch-projects" v-model="batchProjects" name="batch_projects" placeholder="逗号分隔；留空=全部活跃项目" />
           </label>
           <label>
             统一备案号
-            <input v-model="batchApprovalRef" />
+            <input id="batch-approval-ref" v-model="batchApprovalRef" name="batch_approval_ref" />
           </label>
           <label class="wide">
             统一交接说明
-            <input v-model="batchNote" placeholder="本批移交的总体说明（与单项目发起表单相互独立）" />
+            <input id="batch-note" v-model="batchNote" name="batch_note" placeholder="本批移交的总体说明（与单项目发起表单相互独立）" />
           </label>
           <button :disabled="!batchFrom || !batchTo || batchBusy" class="primary-button" type="button" @click="submitBatch">
             批量移交
@@ -685,7 +685,7 @@ async function loadPending(): Promise<void> {
         <div class="create-form">
           <label>
             新超级管理员
-            <select v-model="adminTo">
+            <select id="admin-transfer-to" v-model="adminTo" name="admin_transfer_to_person_id">
               <option disabled value="">选择交接对象</option>
               <option v-for="entry in adminCandidates" :key="entry.id" :value="entry.id">
                 {{ entry.name }}{{ entry.employeeNo ? ` · ${entry.employeeNo}` : '' }}
@@ -694,7 +694,7 @@ async function loadPending(): Promise<void> {
           </label>
           <label>
             确认短语
-            <input v-model="adminConfirmation" placeholder="输入：确认移交管理员" />
+            <input id="admin-transfer-confirmation" v-model="adminConfirmation" name="admin_transfer_confirmation" placeholder="输入：确认移交管理员" />
           </label>
           <button
             :disabled="!adminTo || adminConfirmation !== '确认移交管理员' || adminBusy"

@@ -142,11 +142,11 @@ async function goPage(next: number): Promise<void> {
       <div class="summary-filter">
         <label>
           月份
-          <input v-model="month" type="month" />
+          <input id="report-month" v-model="month" name="report_month" type="month" />
         </label>
         <label>
           关键字
-          <input v-model="keyword" placeholder="项目编号 / 名称" @keyup.enter="load(true)" />
+          <input id="report-keyword" v-model="keyword" name="report_keyword" placeholder="项目编号 / 名称" @keyup.enter="load(true)" />
         </label>
         <button :disabled="!month || loading" class="primary-button" type="button" @click="load(true)">
           查询

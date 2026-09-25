@@ -154,7 +154,7 @@ async function submitStage(): Promise<void> {
       <AimOutlined />
       <label>
         阶段确认项目
-        <select v-model="activeId">
+        <select id="active-project-select" v-model="activeId" name="active_project_id">
           <option disabled value="">选择项目</option>
           <option v-for="item in projects" :key="item.id" :value="item.id">
             {{ item.name }} · {{ item.code }}
@@ -271,7 +271,10 @@ async function submitStage(): Promise<void> {
           </div>
           <div class="waiver-request">
             <input
+              id="waiver-reason-input"
               v-model="waiverReason"
+              name="waiver_reason"
+              aria-label="豁免原因"
               placeholder="说明至少 10 个字的豁免原因、风险和补救计划"
             />
             <button

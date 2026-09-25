@@ -349,7 +349,10 @@ function finalRuling(decision: GateDecision): void {
 
     <div class="gate-locate">
       <input
+        id="gate-locate-input"
         v-model="gateIdInput"
+        name="gate_id_input"
+        aria-label="Gate 编号"
         placeholder="输入 Gate 编号定位评审（由审计/通知提供）"
         @keyup.enter="loadGate"
       />
@@ -414,7 +417,10 @@ function finalRuling(decision: GateDecision): void {
         <footer>
           <template v-if="canSign">
             <input
+              id="gate-sign-opinion-input"
               v-model="opinion"
+              name="sign_opinion"
+              aria-label="签署意见"
               class="gate-opinion-input"
               placeholder="签署意见（可空）；驳回请写明整改要求"
             />
@@ -511,17 +517,26 @@ function finalRuling(decision: GateDecision): void {
 
             <div v-if="draftResults[el.elementId]?.result === 'PASS_WITH_CONDITION'" class="element-cond">
               <input
+                :id="`el-${el.elementId}-responsible-person`"
                 v-model="draftResults[el.elementId]!.responsiblePersonId"
+                name="responsible_person_id"
+                aria-label="责任人编号"
                 class="element-input"
                 placeholder="责任人编号（必填）"
               />
               <input
+                :id="`el-${el.elementId}-close-deadline`"
                 v-model="draftResults[el.elementId]!.closeDeadline"
+                name="close_deadline"
+                aria-label="关闭期限"
                 class="element-input"
                 placeholder="关闭期限 YYYY-MM-DD（必填）"
               />
               <input
+                :id="`el-${el.elementId}-condition-note`"
                 v-model="draftResults[el.elementId]!.conditionNote"
+                name="condition_note"
+                aria-label="条件说明"
                 class="element-input"
                 placeholder="条件说明（可选）"
               />
@@ -556,14 +571,20 @@ function finalRuling(decision: GateDecision): void {
           <!-- 强制输出物（SEC-FIX-HIGH-1.1-FOLLOWUP）：只收 OSS ID，服务端按 ossId 解析，禁任意外部 URL -->
           <div class="submit-outputs">
             <input
+              id="gate-materials-oss-input"
               v-model="materialsOssId"
+              name="materials_oss_id"
+              aria-label="评审材料OSS ID"
               class="element-input"
               data-testid="gate-submit-materials-oss"
               inputmode="numeric"
               placeholder="评审材料 OSS ID（必填数字）"
             />
             <input
+              id="gate-meeting-minutes-oss-input"
               v-model="meetingMinutesOssId"
+              name="meeting_minutes_oss_id"
+              aria-label="会议纪要OSS ID"
               class="element-input"
               data-testid="gate-submit-minutes-oss"
               inputmode="numeric"

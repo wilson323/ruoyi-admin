@@ -131,7 +131,7 @@ onMounted(() => {
         <div v-else class="create-form">
           <label>
             新超级管理员
-            <select v-model="adminTo">
+            <select id="admin-handover-to" v-model="adminTo" name="admin_handover_to_person_id">
               <option disabled value="">选择交接对象</option>
               <option v-for="entry in candidates" :key="entry.id" :value="entry.id">
                 {{ entry.name }}{{ entry.groupName ? ` · ${entry.groupName}` : '' }}
@@ -140,11 +140,11 @@ onMounted(() => {
           </label>
           <label>
             交接说明（可选）
-            <input v-model="note" placeholder="默认写入：超级管理员移交（页49）" />
+            <input id="admin-handover-note" v-model="note" name="admin_handover_note" placeholder="默认写入：超级管理员移交（页49）" />
           </label>
           <label>
             确认短语
-            <input v-model="confirmation" :placeholder="`输入：${CONFIRM_PHRASE}`" />
+            <input id="admin-handover-confirmation" v-model="confirmation" name="admin_handover_confirmation" :placeholder="`输入：${CONFIRM_PHRASE}`" />
           </label>
           <ul class="readiness" :class="{ ready }">
             <li v-for="check in checks" :key="check.text" :class="{ ok: check.ok }">
