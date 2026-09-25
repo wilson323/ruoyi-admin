@@ -9,8 +9,17 @@ vi.mock('../api/ipd/auth', async (importOriginal) => {
 });
 vi.mock('../api/core/user', () => ({ getUserInfoApi: vi.fn() }));
 vi.mock('@vben/stores', () => ({
-  useAccessStore: () => ({ setAccessToken: vi.fn(), setAccessCodes: vi.fn() }),
-  useUserStore: () => ({ userInfo: null, setUserInfo: vi.fn() }),
+  // mock 面对齐 store 全部调用点（7d3ed1a/4d41143 加固后新增 setAccessMenus/setIsAccessChecked
+  // 与读点 accessCodes/accessToken/userStore.permissions；缺口曾致 5 用例 TypeError，R215 B3 顺手修）
+  useAccessStore: () => ({
+    accessCodes: [],
+    accessToken: '',
+    setAccessCodes: vi.fn(),
+    setAccessMenus: vi.fn(),
+    setAccessToken: vi.fn(),
+    setIsAccessChecked: vi.fn(),
+  }),
+  useUserStore: () => ({ userInfo: null, permissions: [], setUserInfo: vi.fn() }),
 }));
 
 import { IPD_LOGIN_CREDENTIAL_TEXT, IpdRequestError } from '../api/ipd/auth';

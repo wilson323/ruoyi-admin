@@ -16,6 +16,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { PhCalendarBlank as CalendarBlank } from '@phosphor-icons/vue';
 
 import { listProjects, type Project } from '../api/ipd/project';
+import AiAssistant from '../views/ipd/_shared/ai-assistant.vue';
 import '../views/ipd/_shared/ipd-theme.css';
 import '../views/ipd/_shared/ipd-a11y.css';
 
@@ -74,6 +75,9 @@ onMounted(async () => {
       projects.value.some((p) => p.id === saved) && saved
         ? saved
         : (projects.value[0]?.id ?? '');
+    // R215 B3：默认选中也持久化（AI 副驾等全局组件读 ipd:current-project 注入项目上下文；
+    // 原先仅显式切换时写入，首访时上下文缺失）
+    applyProjectId(currentProjectId.value, false);
   } catch {
     projects.value = [];
   }
@@ -134,6 +138,8 @@ function switchProject(id: string) {
     <div class="ipd-stage-content">
       <router-view />
     </div>
+    <!-- R215 AI 融合批次3：全局 AI 副驾入口（后端三档上下文 + RAG，见 ai-copilot.ts 契约注释） -->
+    <AiAssistant />
   </div>
 </template>
 
