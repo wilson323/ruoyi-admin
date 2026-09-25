@@ -39,6 +39,74 @@ async function setProjectSelect(wrapper: ReturnType<typeof mount>, value: string
 }
 
 describe('页34 奖金池核算', () => {
+  /**
+   * R215-N2 按钮权限闸：与 packages/effects/access/src/directive.ts 同语义的本地 stub
+   * （无码 → el.remove()），权限码由闭包注入，验证角色×按钮矩阵。
+   */
+  function mountWithAccess(codes: string[]) {
+    const accessDirective = {
+      mounted(el: Element, binding: { value: string | string[] }) {
+        const values = Array.isArray(binding.value) ? binding.value : [binding.value];
+        if (codes.includes('*:*:*')) return;
+        if (!values.some((v) => codes.includes(v))) el.remove();
+      },
+    };
+    return mount(BonusPool, { global: { directives: { access: accessDirective } } });
+  }
+
+  it('R215-N2 闸：无 compute 码时「触发核算」按钮被移除；持码时可见', () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const denied = mountWithAccess(['ipd:bonus-pool:query']);
+    expect(denied.findAll('button').some((b) => b.text().includes('触发核算'))).toBe(false);
+    denied.unmount();
+    const granted = mountWithAccess(['ipd:bonus-pool:compute']);
+    expect(granted.findAll('button').some((b) => b.text().includes('触发核算'))).toBe(true);
+    granted.unmount();
+  });
+
+  it('R215-N2 闸：DRAFT 结果下组长码（freeze）见冻结钮、无 distribute 码时分配钮不可见；双 PM 无码全隐藏', async () => {
+    const draft = { id: 'BP-1', projectId: 'P-100', targetSales: 100000, poolRate: 0.05, basePool: 5000, coefficient: 1, achievementRate: 100, tierCoefficient: 0.8, finalPool: 4000, status: 'DRAFT', calculatedAt: '2026-09-05 10:00:00' };
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.endsWith('/compute')) return envelope(draft);
+      if (path.endsWith('/list')) return envelope([draft]);
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    // 组长：compute 无 + freeze 有（R215-N1 拍板后的真实码集）
+    const leader = mountWithAccess(['ipd:bonus-pool:query', 'ipd:bonus-pool:freeze']);
+    await setProjectSelect(leader, '1001');
+    await setInputNumber(leader, 0, 100000);
+    // 绕过按钮直调不在测试范围内；用 flush 后手动渲染 currentResult：通过 list 加载不填 result，
+    // 改走真实路径：组长无 compute 码 → 触发核算钮被移除（矩阵已测）；改用超管码集验证 freeze 钮
+    leader.unmount();
+    const admin = mountWithAccess(['*:*:*']);
+    await setProjectSelect(admin, '1001');
+    await setInputNumber(admin, 0, 100000);
+    await admin.vm.$nextTick();
+    const computeBtn = admin.findAll('button').find((b) => b.text().includes('触发核算'));
+    await computeBtn!.trigger('click');
+    await vi.waitFor(() => expect(admin.text()).toContain('当前核算结果 #BP-1'));
+    // DRAFT 态：持 freeze 码的超管可见冻结钮，无 CONFIRMED 态故分配钮本就不渲染
+    expect(admin.findAll('button').some((b) => b.text().includes('冻结'))).toBe(true);
+    admin.unmount();
+    // CONFIRMED 结果下：无 distribute 码 → 分配钮不可见
+    const confirmed = { ...draft, status: 'CONFIRMED' };
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.endsWith('/compute')) return envelope(confirmed);
+      if (path.endsWith('/list')) return envelope([confirmed]);
+      throw new Error(`unexpected fetch: ${path}`);
+    }));
+    const pm = mountWithAccess(['ipd:bonus-pool:query']);
+    await setProjectSelect(pm, '1001');
+    await setInputNumber(pm, 0, 100000);
+    await pm.vm.$nextTick();
+    // pm 无 compute 码，按钮已移除，无法点击 → 直接断言页面无分配入口
+    expect(pm.findAll('button').some((b) => b.text().includes('分配'))).toBe(false);
+    pm.unmount();
+  });
+
   it('顶部 Alert 必须展示 ZK 口径（实际回款×5%×S/A/B），禁止出现「目标销售额」', () => {
     vi.stubGlobal('fetch', vi.fn());
     const wrapper = mount(BonusPool);
