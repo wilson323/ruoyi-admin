@@ -13,6 +13,7 @@
 -->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { FileTextOutlined } from '@ant-design/icons-vue';
 import { Alert, Modal, Select, message } from 'ant-design-vue';
 
@@ -28,6 +29,7 @@ import { DEMAND_STATUS_TONE, demandStateLabel } from '../_shared/ipd-enums';
 import '../_shared/ipd-theme.css';
 
 const auth = useIpdAuthStore();
+const router = useRouter();
 const isSuperAdmin = computed(() => auth.identity?.person.personType === 'SUPER_ADMIN');
 const demandRules = computed(() => renderRulesDescription(RULES_BY_PAGE.demand));
 
@@ -59,6 +61,11 @@ const loadError = ref('');
 const statusFilter = ref('all');
 const productFilter = ref('');
 const busyId = ref('');
+
+/** 详情下钻（R215-E2E-C）：id 为 19 位雪花 string，路径拼接不做任何数值转换。 */
+function openDetail(demand: IpdDemand) {
+  void router.push(`/ipd/requirements/${demand.id}`);
+}
 
 async function loadDemands() {
   loadError.value = '';
@@ -344,6 +351,7 @@ onMounted(() => {
               <i :class="DEMAND_STATUS_TONE[d.status]" class="ipd-req-status-pill">
                 {{ demandStateLabel(d.status, d.status) }}
               </i>
+              <button type="button" @click="openDetail(d)">详情</button>
               <button v-if="canStart(d)" :disabled="busyId === d.id" type="button" @click="onTriage(d, 'EVALUATING')">
                 开始分析
               </button>
@@ -412,7 +420,11 @@ onMounted(() => {
           </div>
           <div v-for="d in visibleProjectDemands" :key="d.id" class="ipd-req-row">
             <span>
-              <strong>{{ d.title ?? '—' }}</strong>
+              <strong>
+                <button class="ipd-req-rowlink" type="button" @click="openDetail(d)">
+                  {{ d.title ?? '—' }}
+                </button>
+              </strong>
               <small>提交人 {{ d.submitterName ?? '—' }}</small>
             </span>
             <span>
@@ -727,6 +739,21 @@ onMounted(() => {
   font-size: 12px;
   line-height: 1.55;
   color: #566176;
+}
+
+/* 项目需求 tab 行内详情链接（R215-E2E-C）：重置 button 默认外观，视觉等同文本链接 */
+.ipd-req-rowlink {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.ipd-req-rowlink:hover {
+  text-decoration: underline;
 }
 
 /* .demand-actions */

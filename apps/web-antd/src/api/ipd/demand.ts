@@ -3,6 +3,7 @@
  *
  * 后端真值（G-04 以代码为准，2026-09-06 DemandController.java）：
  * - GET /demands?productId=&status= → { demands[], total }（无分页；ID 为 Long 字符串）；
+ * - GET /demands/{id} → 与列表同套 14 字段（R215-E2E-C 2026-09-25 补详情缺口）；
  * - POST /demands/{id}/triage { status, marketPmId?, rdPmId? }（权限 ipd:product:edit）；
  * - POST /demands/{id}/link-project { projectId }（SUBMITTED/ACCEPTED 绑定后置 SCHEDULED）；
  * - status 值域（v3 TS-06）：SUBMITTED/ACCEPTED/EVALUATING/SCHEDULED/PROCESSING/CLOSED/ARCHIVED；
@@ -54,6 +55,11 @@ export interface DemandListResult {
 /** 需求列表（productId/status 可选过滤）。 */
 export function fetchDemands(query?: { productId?: string; status?: string }): Promise<DemandListResult> {
   return ipdGet<DemandListResult>('/demands', query);
+}
+
+/** 需求详情（R215-E2E-C 补缺口；后端 GET /demands/{id}，与列表同套字段；id 全程 string 透传）。 */
+export function fetchDemandDetail(id: string): Promise<IpdDemand> {
+  return ipdGet<IpdDemand>(`/demands/${encodeURIComponent(id)}`);
 }
 
 /** 分流：设定状态（可同时分派双PM）。 */

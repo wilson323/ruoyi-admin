@@ -13,6 +13,7 @@
  *   F5. 双 tab 切换 — 产品需求 ↔ 项目需求
  */
 import { flushPromises, mount } from '@vue/test-utils';
+import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -125,13 +126,30 @@ async function mountDemand() {
   setActivePinia(pinia);
   // 不在此处预填 listProducts/listProjects mock：让各测试用例按需配置（避免覆盖用例自身的 mockResolvedValue）。
   // 用例未配置时，vi.fn() 默认返回 undefined，组件的 try/catch 会兜底为空数组，行为无害。
-  const wrapper = mount(DemandPage, { global: { plugins: [pinia] } });
+  const wrapper = mount(DemandPage, { global: { plugins: [pinia, router] } });
   await flushPromises();
   return wrapper;
 }
 
-beforeEach(() => {
+/** 列表页自 R215-E2E-C 起注入 useRouter（详情下钻），测试统一提供内存路由消除 injection 警告。 */
+let router: Router;
+
+async function makeRouter(): Promise<Router> {
+  const r = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { component: DemandPage, path: '/ipd/requirements' },
+      { component: { template: '<div>detail</div>' }, path: '/ipd/requirements/:id' },
+    ],
+  });
+  r.push('/ipd/requirements');
+  await r.isReady();
+  return r;
+}
+
+beforeEach(async () => {
   setActivePinia(createPinia());
+  router = await makeRouter();
   fetchDemandsMock.mockReset();
   triageDemandMock.mockReset();
   linkDemandProjectMock.mockReset();
@@ -214,7 +232,7 @@ describe('F1. 列表/筛选', () => {
     ]);
     listProjectsMock.mockResolvedValue([]);
     fetchDemandsMock.mockResolvedValue({ demands: [demand()], total: 1 });
-    const wrapper = mount(DemandPage, { global: { plugins: [pinia] } });
+    const wrapper = mount(DemandPage, { global: { plugins: [pinia, router] } });
     await flushPromises();
     await vi.waitFor(() => expect(fetchDemandsMock).toHaveBeenCalled());
     const productSelect = wrapper.find('[data-testid="demand-product-filter"]');
@@ -245,7 +263,7 @@ describe('F1. 列表/筛选', () => {
     ]);
     listProjectsMock.mockResolvedValue([]);
     fetchDemandsMock.mockResolvedValue({ demands: [], total: 0 });
-    const wrapper = mount(DemandPage, { global: { plugins: [pinia] } });
+    const wrapper = mount(DemandPage, { global: { plugins: [pinia, router] } });
     await flushPromises();
     await vi.waitFor(() => expect(fetchDemandsMock).toHaveBeenCalledTimes(1));
     expect(fetchDemandsMock.mock.calls[0]?.[0]).toBeUndefined();
@@ -621,6 +639,54 @@ describe('F5. 双 tab 切换', () => {
     expect(wrapper.text()).toContain('产品组长初审');
     expect(wrapper.text()).toContain('超级管理员终审');
     expect(wrapper.text()).toContain('§五.5');
+    wrapper.unmount();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// F6. 详情下钻（R215-E2E-C 看板卡 f4445a05）
+// ──────────────────────────────────────────────────────────────────────────────
+describe('F6. 详情下钻（R215-E2E-C）', () => {
+  it('产品 tab 卡片点「详情」→ /ipd/requirements/{id}（19 位 id string 原样拼接）', async () => {
+    loginAs('MARKET_PM');
+    fetchDemandsMock.mockResolvedValue({
+      demands: [demand({ id: '2103330885699985410' })],
+      total: 1,
+    });
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const wrapper = mount(DemandPage, { global: { plugins: [pinia, router] } });
+    await flushPromises();
+
+    const detailBtn = wrapper.findAll('button').find((b) => b.text() === '详情');
+    expect(detailBtn, '需求卡片必须有详情入口（此前无点击处理器）').toBeDefined();
+    await detailBtn!.trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/ipd/requirements/2103330885699985410');
+    wrapper.unmount();
+  });
+
+  it('项目 tab 行内标题可点 → 同一路由（双入口一致）', async () => {
+    loginAs('MARKET_PM');
+    fetchDemandsMock.mockResolvedValue({
+      demands: [demand({ id: '2103330885699985411', projectId: '9140001', status: 'SCHEDULED' })],
+      total: 1,
+    });
+    listProjectsMock.mockResolvedValue([projectFixture({ id: '9140001', name: 'ZK项目A' }) as unknown as Project]);
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const wrapper = mount(DemandPage, { global: { plugins: [pinia, router] } });
+    await flushPromises();
+
+    // 切到项目需求 tab
+    const tabBtn = wrapper.findAll('button').find((b) => b.text() === '项目需求');
+    await tabBtn!.trigger('click');
+    await flushPromises();
+    const rowLink = wrapper.find('.ipd-req-rowlink');
+    expect(rowLink.exists()).toBe(true);
+    await rowLink.trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/ipd/requirements/2103330885699985411');
     wrapper.unmount();
   });
 });

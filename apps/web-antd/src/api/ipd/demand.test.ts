@@ -3,6 +3,7 @@
  *
  * 重点覆盖：
  * - fetchDemands 列表：productId 可选过滤；demands/total 字段透传；
+ * - fetchDemandDetail 详情（R215-E2E-C）：GET /demands/{id}、19 位雪花 id string 无损透传；
  * - triageDemand 分流：POST /demands/{id}/triage、body 序列化；
  * - linkDemandProject 关联项目：POST /demands/{id}/link-project、body 仅含 projectId；
  * - URL 编码（id 含特殊字符不抛错）；
@@ -12,7 +13,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IpdRequestError } from './auth';
-import { fetchDemands, linkDemandProject, triageDemand } from './demand';
+import { fetchDemandDetail, fetchDemands, linkDemandProject, triageDemand } from './demand';
 
 const envelope = (data: unknown, status = 200, code = 0): Response =>
   new Response(
@@ -169,6 +170,31 @@ describe('demand API — linkDemandProject 关联项目', () => {
     vi.stubGlobal('fetch', fetcher);
     await linkDemandProject('a b/c', 'p-1');
     expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/demands/a%20b%2Fc/link-project');
+  });
+});
+
+describe('demand API — fetchDemandDetail 详情（R215-E2E-C 补缺口）', () => {
+  it('GET /demands/{id}：19 位雪花 id 全程 string 无损透传（URL 与返回值均不截精度）', async () => {
+    const snowflake = '2103330885699985410'; // Number() 会截成 2103330885699985400 → 404/403 血泪教训
+    const fetcher = vi.fn().mockResolvedValue(envelope(demandFixture({ id: snowflake })));
+    vi.stubGlobal('fetch', fetcher);
+    const result = await fetchDemandDetail(snowflake);
+    expect(fetcher.mock.calls[0]?.[0]).toBe(`/api/v1/demands/${snowflake}`);
+    expect(typeof result.id).toBe('string');
+    expect(result.id).toBe(snowflake);
+  });
+
+  it('id 含特殊字符：详情路径同走 encodeURIComponent（与 triage/link-project 同源）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope(demandFixture({ id: 'a b/c' })));
+    vi.stubGlobal('fetch', fetcher);
+    await fetchDemandDetail('a b/c');
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/demands/a%20b%2Fc');
+  });
+
+  it('详情不存在/越权：HTTP 4xx + envelope.code != 0 抛 IpdRequestError', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope(null, 404, 10004));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(fetchDemandDetail('9999999999999999999')).rejects.toBeInstanceOf(IpdRequestError);
   });
 });
 
