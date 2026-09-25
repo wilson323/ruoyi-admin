@@ -29,6 +29,17 @@ function handoverSurface(path: string): boolean {
 }
 
 /**
+ * R215-P3（卡 5370d5a3）：路径是否 auth 区自身（登录/改密等认证面，含 /login 别名、
+ * /auth 父路由与误入的 /ipd/auth/** 形态；兼容携带 query 的 fullPath 值）。
+ * 登录成功回调与守卫的 redirect 目标均不得是 auth 路径：否则登录后被弹回登录页自身，
+ * 路径无路由时落 catch-all 404（缺陷实测：/ipd/auth/login 登录成功后 404）。
+ */
+export function isAuthPath(fullPath: string): boolean {
+  const pathname = fullPath.split('?')[0] ?? fullPath;
+  return pathname === '/login' || /^\/(ipd\/)?auth($|\/)/.test(pathname);
+}
+
+/**
  * 身份 → 目的地（纯函数，便于契约测试）。
  * - 匿名：仅登录区与游客门户；
  * - 待改密：只能停留在改密页（AC-AUTH-02）；
@@ -227,8 +238,14 @@ export async function ipdNavigationGuard(to: RouteLocationNormalized, router: im
   const identity = auth.identity;
   if (!identity) {
     const destination = identityDestination(to.path, null);
-    return destination === true ? true
-      : { path: destination, query: to.fullPath === IPD_HOME ? {} : { redirect: to.fullPath }, replace: true };
+    if (destination === true) return true;
+    // R215-P3（5370d5a3）：来源页是 auth 区自身（如误入的 /ipd/auth/login）时不携带
+    // redirect，否则登录成功后被弹回 auth 路径 → 无路由时 catch-all 404。
+    return {
+      path: destination,
+      query: to.fullPath === IPD_HOME || isAuthPath(to.fullPath) ? {} : { redirect: to.fullPath },
+      replace: true,
+    };
   }
   if (identity.mustChangePwd || identity.scope === 'PASSWORD_CHANGE_REQUIRED') {
     return to.path === IPD_PASSWORD ? true : { path: IPD_PASSWORD, replace: true };

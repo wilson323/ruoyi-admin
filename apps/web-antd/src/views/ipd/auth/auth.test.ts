@@ -106,7 +106,7 @@ describe('IPD navigation and password rules', () => {
 });
 
 async function mountPage(component: typeof Login | typeof ChangePassword | typeof Account) {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component }, { path: IPD_LOGIN, component: Login }, { path: IPD_PASSWORD, component: ChangePassword }, { path: IPD_ACCOUNT, component: Login }] });
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component }, { path: IPD_LOGIN, component: Login }, { path: IPD_PASSWORD, component: ChangePassword }, { path: IPD_ACCOUNT, component: Login }, { path: IPD_HOME, component: Login }, { path: '/ipd/projects/:projectId/overview', component: Login }] });
   await router.push('/'); await router.isReady();
   const wrapper = mount(component, { global: { plugins: [router] } });
   return { wrapper, router };
@@ -154,6 +154,39 @@ describe('IPD authentication components', () => {
     expect(wrapper.findAll('input')[1]?.element.value).toBe('');
     wrapper.unmount();
   });
+  it('R215-P3: lands on the workbench when redirect points at the auth surface itself (/ipd/auth/login)', async () => {
+    // 缺陷复现路径：匿名误入 /ipd/auth/login → 守卫带 redirect=/ipd/auth/login →
+    // 登录成功后旧逻辑 startsWith('/ipd') 放行 → replace 回 /ipd/auth/login → catch-all 404。
+    const full = { ...identity, mustChangePwd: false, scope: 'FULL' } as const;
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response({ ...full, token: 'test-session', tokenType: 'Bearer', expiresIn: 900 }))
+      .mockResolvedValueOnce(response(full));
+    vi.stubGlobal('fetch', fetcher);
+    const { wrapper, router } = await mountPage(Login);
+    await router.replace({ path: '/', query: { redirect: '/ipd/auth/login' } });
+    await wrapper.findAll('input')[0]?.setValue('fixture-user');
+    await wrapper.findAll('input')[1]?.setValue('fixture-value');
+    await wrapper.get('form').trigger('submit');
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe(IPD_HOME));
+    expect(router.currentRoute.value.query).toEqual({});
+    wrapper.unmount();
+  });
+
+  it('still follows a legitimate /ipd deep-link redirect after login', async () => {
+    const full = { ...identity, mustChangePwd: false, scope: 'FULL' } as const;
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response({ ...full, token: 'test-session', tokenType: 'Bearer', expiresIn: 900 }))
+      .mockResolvedValueOnce(response(full));
+    vi.stubGlobal('fetch', fetcher);
+    const { wrapper, router } = await mountPage(Login);
+    await router.replace({ path: '/', query: { redirect: '/ipd/projects/42/overview' } });
+    await wrapper.findAll('input')[0]?.setValue('fixture-user');
+    await wrapper.findAll('input')[1]?.setValue('fixture-value');
+    await wrapper.get('form').trigger('submit');
+    await vi.waitFor(() => expect(router.currentRoute.value.fullPath).toBe('/ipd/projects/42/overview'));
+    wrapper.unmount();
+  });
+
   it('submits the real password form, clears secrets and requires a new login', async () => {
     const auth = useIpdAuthStore(); auth.token = 'test-session'; auth.identity = identity;
     const fetcher = vi.fn().mockResolvedValue(response(null)); vi.stubGlobal('fetch', fetcher);

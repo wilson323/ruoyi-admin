@@ -17,7 +17,7 @@
 import type { RouteLocationNormalized } from 'vue-router';
 import { describe, expect, it } from 'vitest';
 
-import { hasAccess } from './ipd-guard';
+import { hasAccess, isAuthPath } from './ipd-guard';
 
 function makeRoute(access?: string[]): RouteLocationNormalized {
   return {
@@ -68,5 +68,34 @@ describe('R185-P1 hasAccess (route-level meta.access gate)', () => {
     expect(
       hasAccess(makeRoute(['BID_INVITATION_ADMIN_ASSIGN']), []),
     ).toBe(true);
+  });
+});
+
+describe('R215-P3 isAuthPath（redirect 目标排除 auth 区自身，卡 5370d5a3）', () => {
+  it('auth 路径（登录/改密//login 别名/误入的 /ipd/auth/**，含携带 query 的 fullPath）→ true', () => {
+    for (const p of [
+      '/auth/login',
+      '/login',
+      '/auth/login?redirect=%2Fipd',
+      '/ipd/auth/login', // 缺陷实测形态：登录成功后被弹回此路径 → catch-all 404
+      '/ipd/auth/login?x=1',
+      '/auth/change-password',
+      '/auth',
+      '/ipd/auth',
+    ]) {
+      expect(isAuthPath(p), p).toBe(true);
+    }
+  });
+
+  it('业务/公开路径 → false（redirect 正常放行，不误伤）', () => {
+    for (const p of [
+      '/ipd/workbench',
+      '/ipd/projects/42/overview',
+      '/ipd/authority-config',
+      '/portal/submit',
+      '/system/user',
+    ]) {
+      expect(isAuthPath(p), p).toBe(false);
+    }
   });
 });
