@@ -137,7 +137,7 @@ export type IpdAuthenticatedPath =
   | '/auth/logout'
   | '/auth/me'
   | '/auth/platform-token';
-export type IpdRequestOptions = { body?: object; method?: 'GET' | 'POST' | 'PUT' };
+export type IpdRequestOptions = { body?: object; method?: 'DELETE' | 'GET' | 'POST' | 'PUT' };
 
 /** IPD has its own code=0 envelope and keeps IDs/decimal strings unchanged. */
 export async function requestIpd(

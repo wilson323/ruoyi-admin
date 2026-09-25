@@ -33,3 +33,8 @@ export async function ipdPut<T = unknown>(path: string, body?: object): Promise<
   const auth = useIpdAuthStore();
   return (await auth.authenticatedRequest(path, { method: 'PUT', body })) as T;
 }
+
+export async function ipdDelete<T = unknown>(path: string): Promise<T> {
+  const auth = useIpdAuthStore();
+  return (await auth.authenticatedRequest(path, { method: 'DELETE' })) as T;
+}

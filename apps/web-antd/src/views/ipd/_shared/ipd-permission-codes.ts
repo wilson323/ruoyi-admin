@@ -93,6 +93,10 @@ export const IPD_PERMISSION_CODES = {
   BONUS_POOL_FREEZE: 'ipd:bonus-pool:freeze',
   BONUS_POOL_DISTRIBUTE: 'ipd:bonus-pool:distribute',
 
+  // 角色权限配置（R215 权限可配置化；元权限码固定于超管 Java 目录，不可被 DB 配置——自举保护）
+  ROLE_PERMISSION_QUERY: 'ipd:role-permission:query',
+  ROLE_PERMISSION_EDIT: 'ipd:role-permission:edit',
+
   // 贡献度（P3-6.2）
   CONTRIBUTION_QUERY: 'ipd:contribution:query',
   CONTRIBUTION_SAVE: 'ipd:contribution:save',

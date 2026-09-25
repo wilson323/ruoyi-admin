@@ -437,6 +437,14 @@ const ipdLayoutRoute: RouteRecordRaw = {
           name: 'IpdAdminBusinessConfig',
           path: 'business-config',
         },
+        {
+          // R215 权限可配置化（owner 2026-09-24）：ipd_role_permission DB 覆盖层配置页；
+          //   后端 /api/v1/role-permissions 5 端点仅超管（注解+兜底三保险），路由同步单超管门禁。
+          component: () => import('#/views/ipd/admin/role-permission.vue'),
+          meta: { authority: ['SUPER_ADMIN'], title: '角色权限配置' },
+          name: 'IpdAdminRolePermission',
+          path: 'role-permission',
+        },
         // 页46 SOP 模板 —— fe-admin 整体覆盖
         {
           component: () => import('#/views/ipd/admin/sop-template/index.vue'),
