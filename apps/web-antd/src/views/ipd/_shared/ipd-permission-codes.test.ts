@@ -196,8 +196,8 @@ describe('A13 19 个零引用权限码已接入（v-access:code 或 meta.access�
  *   4. STAGE_ACTION_INSTANTIATE 与 DELIVERABLE 同字面值（已在 9fde989 之前记录），
  *      本次仅在 INSTANTIATE 行加碰撞 doc 注释，不重复加 v-access 指令
  */
-describe('A23 13 个零引用权限码已处置（reserved 注释 12 + 碰撞 doc 1）', () => {
-  // 13 目标常量 key（R175-A 将 4 项 gate-element reserved 转 A13 后剩余：17 - 4 = 13）
+describe('A23 11 个零引用权限码已处置（reserved 注释 10 + 碰撞 doc 1；R215-F6 摘除 COMPLIANCE_* 2 项）', () => {
+  // 11 目标常量 key（R175-A 后 13；R215 GAP-F6 合规视图交付摘除 COMPLIANCE_READ/WRITE → 11）
   const reservedCodes: readonly string[] = [
     // 优先级 1：与现有视图弱关联
     IPD_PERMISSION_CODES.PROJECT_QUERY,
@@ -211,16 +211,16 @@ describe('A23 13 个零引用权限码已处置（reserved 注释 12 + 碰撞 do
     IPD_PERMISSION_CODES.COEFFICIENT_CONFIRM,
     IPD_PERMISSION_CODES.SWITCHING_ACCEPTANCE_QUERY,
     IPD_PERMISSION_CODES.SWITCHING_ACCEPTANCE_ADMIN,
-    IPD_PERMISSION_CODES.COMPLIANCE_READ,
-    IPD_PERMISSION_CODES.COMPLIANCE_WRITE,
+    // R215 GAP-F6：COMPLIANCE_READ/WRITE 已接 /ipd/admin/compliance（路由 meta.access + 按钮 v-access），
+    //   从 reserved 处置名单摘除（13 → 11）；keys/distinct 计数不变（71/70）。
     IPD_PERMISSION_CODES.STAGE_ACTION_LIST,
     // STAGE_ACTION_INSTANTIATE 与 DELIVERABLE 同字面值，DELIVERABLE 已接入；
     // INSTANTIATE 仅加碰撞 doc 注释，不重复 v-access 指令
     IPD_PERMISSION_CODES.STAGE_ACTION_INSTANTIATE,
   ];
 
-  it('A23 目标码数量 = 13（R175-A 后：17 - 4 gate-element 转 A13 = 13）', () => {
-    expect(reservedCodes.length).toBe(13);
+  it('A23 目标码数量 = 11（R175-A 后 13，R215-F6 摘除 COMPLIANCE_* 2 项）', () => {
+    expect(reservedCodes.length).toBe(11);
   });
 
   it('A23 不新增码：distinct count = 70（R175-A 镜像基线；R215 新增 ROLE_PERMISSION_QUERY/EDIT）', () => {

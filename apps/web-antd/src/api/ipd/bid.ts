@@ -183,3 +183,39 @@ export function submitBidResponse(body: SubmitBidResponseBody): Promise<BidRespo
 export function withdrawBidResponse(id: string): Promise<BidResponse> {
   return ipdPut(`/bid-responses/${encodeURIComponent(id)}/withdraw`);
 }
+
+/**
+ * R215 GAP-F1：修改招标条件请求（BidController#modifyInvitation，query 参数，全可选）。
+ * 注意：后端 @RequestParam 只读 query string（BidController.java:126-133），JSON body 会被静默忽略；
+ * expireAt 必须 yyyy-MM-dd HH:mm:ss（@DateTimeFormat pattern @:130），禁 ISO 带 T/Z 串。
+ */
+export interface ModifyBidInvitationBody {
+  content?: string;
+  /** 有效期截止（yyyy-MM-dd HH:mm:ss，与实体 BidInvitation.expireAt 同格式） */
+  expireAt?: string;
+  title?: string;
+}
+
+/**
+ * 修改招标条件（发起人本人在有效期内；AC-TEAM-13，service 层校验 createBy 与 OPEN 状态）。
+ * 对应 BidController#modifyInvitation — PUT /api/v1/bid-invitations/{id}/modify?title=&content=&expireAt=
+ * ipdPut 无 query 形参（http.ts:32）→ 参照 select 的 URL 内联拼法；空值不拼，逐值 encodeURIComponent
+ * （空格编为 %20，Spring 侧按 RFC 3986 解码；不用 URLSearchParams 的 + 号形态，避免容器解码差异）。
+ */
+export function modifyBidInvitation(id: string, body: ModifyBidInvitationBody): Promise<BidInvitation> {
+  const parts: string[] = [];
+  if (body.title !== undefined && body.title !== '') parts.push(`title=${encodeURIComponent(body.title)}`);
+  if (body.content !== undefined && body.content !== '') parts.push(`content=${encodeURIComponent(body.content)}`);
+  if (body.expireAt !== undefined && body.expireAt !== '') parts.push(`expireAt=${encodeURIComponent(body.expireAt)}`);
+  const query = parts.length > 0 ? `?${parts.join('&')}` : '';
+  return ipdPut(`/bid-invitations/${encodeURIComponent(id)}/modify${query}`);
+}
+
+/**
+ * 超管强制指派（AC-TEAM-09：仅 EXPIRED 挂起超 30 日的招标单；requireAdmin + ipd:bid-invitation:admin-assign）。
+ * 对应 BidController#adminAssign — PUT /api/v1/bid-invitations/{id}/admin-assign?targetPersonId=
+ * targetPersonId 为后端 Long（@RequestParam @:143），前端 string 透传禁 Number()（19 位雪花精度）。
+ */
+export function adminAssignBidInvitation(id: string, targetPersonId: string): Promise<BidInvitation> {
+  return ipdPut(`/bid-invitations/${encodeURIComponent(id)}/admin-assign?targetPersonId=${encodeURIComponent(targetPersonId)}`);
+}

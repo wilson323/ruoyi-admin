@@ -10,7 +10,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IpdRequestError } from './auth';
-import { resignPerson, unbindWecom } from './person';
+import { rehirePerson, resignPerson, unbindWecom } from './person';
 
 const envelope = (data: unknown, status = 200, code = 0): Response =>
   new Response(
@@ -86,5 +86,55 @@ describe('人员治理 API（R215 A11）', () => {
     const denied = vi.fn().mockResolvedValue(envelope(null, 403, 30001));
     vi.stubGlobal('fetch', denied);
     await expect(unbindWecom('900101', 'r')).rejects.toBeInstanceOf(IpdRequestError);
+  });
+});
+
+describe('人员复职（R215 GAP-F3 · PersonController#rehire AC-USER-09）', () => {
+  it('rehirePerson(900101) → POST /persons/900101/rehire，note 省略时 body {}（不塞 null/空串）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({ ...unbindFixture, employmentStatus: 'ACTIVE', accountStatus: 'ACTIVE' }));
+    vi.stubGlobal('fetch', fetcher);
+    const r = await rehirePerson('900101');
+    const call = fetcher.mock.calls[0]!;
+    expect(call[0]).toBe('/api/v1/persons/900101/rehire');
+    expect(call[1]?.method).toBe('POST');
+    expect(JSON.parse(call[1].body)).toEqual({});
+    expect(r.employmentStatus).toBe('ACTIVE');
+  });
+
+  it('rehirePerson(id, 返岗说明) → body 仅含 note 单键', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope(unbindFixture));
+    vi.stubGlobal('fetch', fetcher);
+    await rehirePerson('900101', '返岗说明');
+    expect(JSON.parse(fetcher.mock.calls[0]![1].body)).toEqual({ note: '返岗说明' });
+  });
+
+  it('PersonView 透传：id 恒 string + wecomUserId 后端脱敏 "***"', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({
+      id: '2096266884247736321', name: '李四', employmentStatus: 'ACTIVE', accountStatus: 'ACTIVE', wecomUserId: '***',
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    const r = await rehirePerson('2096266884247736321');
+    expect(typeof r.id).toBe('string');
+    expect(r.id).toBe('2096266884247736321'); // 19 位雪花逐字符无损（后端 String.valueOf，PersonController.java:61）
+    expect(r.wecomUserId).toBe('***');
+  });
+
+  it('19 位雪花 personId → URL 逐字符无损（禁 Number 塌缩）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope(unbindFixture));
+    vi.stubGlobal('fetch', fetcher);
+    await rehirePerson('2096266884247736321', 'n');
+    expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/persons/2096266884247736321/rehire');
+  });
+
+  it('权限负例：非组长/超管 403/30001 → IpdRequestError（requireLeaderOrAdmin）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(envelope(null, 403, 30001)));
+    await expect(rehirePerson('900101')).rejects.toBeInstanceOf(IpdRequestError);
+  });
+
+  it('状态冲突：DISABLED 账户复职被 50002 拒「需先解禁」→ 错误透传不吞', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(envelope(null, 409, 50002)));
+    const cause = await rehirePerson('900101').catch((e: unknown) => e);
+    expect(cause).toBeInstanceOf(IpdRequestError);
+    expect((cause as IpdRequestError).code).toBe(50002);
   });
 });

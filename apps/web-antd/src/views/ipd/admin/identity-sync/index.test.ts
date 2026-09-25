@@ -145,9 +145,18 @@ describe('页44 人员同步（P0-10.44；超管专区）', () => {
 
   it('业务拒绝：后端 envelope 异常 → 渲染加载失败 Alert，可点「刷新人员目录」恢复', async () => {
     setupIdentity('SUPER_ADMIN');
-    const fetcher = vi.fn()
-      .mockResolvedValueOnce(envelope(null, 400, 10001))
-      .mockResolvedValueOnce(envelope({ directory, total: directory.length }));
+    let dirCalls = 0;
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/v1/pm-directory') {
+        dirCalls += 1;
+        return dirCalls === 1
+          ? envelope(null, 400, 10001)
+          : envelope({ directory, total: directory.length });
+      }
+      if (url === '/api/v1/hr-sync/pending-handovers') return envelope([]);
+      return envelope(null, 404, 40400);
+    });
     vi.stubGlobal('fetch', fetcher);
     const wrapper = mount(IdentitySyncPage);
     await vi.waitFor(() => expect(wrapper.text()).toContain('输入信息不符合要求'));
@@ -161,7 +170,7 @@ describe('页44 人员同步（P0-10.44；超管专区）', () => {
     expect(retry, '「刷新人员目录」按钮应存在').toBeDefined();
     await retry!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('张三'));
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(dirCalls).toBe(2); // 首载 + 手动刷新各一次目录请求
     wrapper.unmount();
   });
 
@@ -186,6 +195,102 @@ describe('页44 人员同步（P0-10.44；超管专区）', () => {
 
     expect(wrapper.text()).toContain('三个同步按钮在 identity-source Controller 交付前禁用');
 
+    wrapper.unmount();
+  });
+});
+
+// ---------- R215 GAP-F3：复职入口（PersonController#rehire AC-USER-09） ----------
+const frozenPending = [
+  { personId: '2096266884247736321', name: '赵六', employeeNo: 'A009', groupId: 'G1', frozenSince: '2026-09-10T08:00:00Z', activeProjects: 1, ageDays: 5, escalate: false },
+];
+
+describe('页44 人员同步 - R215 GAP-F3 复职入口', () => {
+  it('超管 + 冻结清单非空：渲染「离职冻结人员」Card 与「复职」按钮，personId 19 位逐字符无损进 URL', async () => {
+    setupIdentity('SUPER_ADMIN');
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/v1/pm-directory') return envelope({ directory, total: directory.length });
+      if (url === '/api/v1/hr-sync/pending-handovers') return envelope(frozenPending);
+      if (url === '/api/v1/persons/2096266884247736321/rehire' && init?.method === 'POST') {
+        return envelope({ id: '2096266884247736321', name: '赵六', employmentStatus: 'ACTIVE', accountStatus: 'ACTIVE', wecomUserId: '***' });
+      }
+      return envelope(null, 404, 40400);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mount(IdentitySyncPage);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('离职冻结人员'));
+    expect(wrapper.text()).toContain('赵六');
+    const rehireBtn = wrapper.findAll('button').find((b) => /复\s*职/.test(b.text()));
+    expect(rehireBtn, '「复职」按钮应存在').toBeDefined();
+    await rehireBtn!.trigger('click');
+    // note 留空 → 仍允许提交（optional 分支），body 归一为 {}（禁空串入库）
+    const vm = wrapper.vm as unknown as { actionKind: string; actionReason: string; confirmPersonAction: () => Promise<void> };
+    expect(vm.actionKind).toBe('rehire');
+    vm.actionReason = '';
+    await vm.confirmPersonAction();
+    const rehireCall = fetcher.mock.calls.find(([t, i]) => String(t).endsWith('/rehire') && (i as RequestInit)?.method === 'POST');
+    expect(rehireCall, 'POST /persons/{id}/rehire 应被派发').toBeDefined();
+    // 19 位雪花逐字符无损（禁 Number 塌缩）
+    expect(String(rehireCall![0])).toBe('/api/v1/persons/2096266884247736321/rehire');
+    expect(JSON.parse(String((rehireCall![1] as RequestInit).body))).toEqual({});
+    wrapper.unmount();
+  });
+
+  it('复职填备注 → body 仅含 note 单键；非超管不渲染冻结清单', async () => {
+    setupIdentity('SUPER_ADMIN');
+    const fetcher = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/v1/pm-directory') return envelope({ directory, total: directory.length });
+      if (url === '/api/v1/hr-sync/pending-handovers') return envelope(frozenPending);
+      if (url.endsWith('/rehire')) {
+        return envelope({ id: '2096266884247736321', name: '赵六', employmentStatus: 'ACTIVE', accountStatus: 'ACTIVE', wecomUserId: '***' });
+      }
+      return envelope(null, 404, 40400);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mount(IdentitySyncPage);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('离职冻结人员'));
+    const vm = wrapper.vm as unknown as {
+      openPersonAction: (kind: string, entry: { id: string; name: string }) => void;
+      actionReason: string;
+      confirmPersonAction: () => Promise<void>;
+    };
+    vm.openPersonAction('rehire', { id: '2096266884247736321', name: '赵六' });
+    vm.actionReason = '返岗说明';
+    await vm.confirmPersonAction();
+    const rehireCall = fetcher.mock.calls.find(([t, i]) => String(t).endsWith('/rehire') && (i as RequestInit)?.method === 'POST');
+    expect(JSON.parse(String((rehireCall![1] as RequestInit).body))).toEqual({ note: '返岗说明' });
+    wrapper.unmount();
+
+    // 非超管：冻结清单区块不渲染（loadFrozen 直接短路）
+    sessionStorage.clear();
+    setActivePinia(createPinia());
+    setupIdentity('MARKET_PM');
+    const pmFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/v1/pm-directory') return envelope({ directory, total: directory.length });
+      return envelope(null, 404, 40400);
+    });
+    vi.stubGlobal('fetch', pmFetch);
+    const pmWrapper = mount(IdentitySyncPage);
+    await vi.waitFor(() => expect(pmWrapper.text()).toContain('张三'));
+    expect(pmWrapper.text()).not.toContain('离职冻结人员');
+    expect(pmWrapper.text()).not.toMatch(/复\s*职/);
+    pmWrapper.unmount();
+  });
+
+  it('hr-sync 端点被拒（403）：静默降级，不阻塞人员目录、不出错误 Alert', async () => {
+    setupIdentity('SUPER_ADMIN');
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/v1/pm-directory') return envelope({ directory, total: directory.length });
+      return envelope(null, 403, 30001);
+    }));
+    const wrapper = mount(IdentitySyncPage);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('张三'));
+    expect(wrapper.text()).not.toContain('离职冻结人员');
+    // 目录主体正常（既有 load 的 200 分支）
+    expect(wrapper.text()).not.toContain('加载失败');
     wrapper.unmount();
   });
 });

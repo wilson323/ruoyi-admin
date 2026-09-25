@@ -501,6 +501,15 @@ const ipdLayoutRoute: RouteRecordRaw = {
           name: 'IpdAdminHandover',
           path: 'handover',
         },
+        // R215 GAP-F6 合规中心（ComplianceController P2-5.1 四端点；AC-COMP-01~05）。
+        //   权限码 COMPLIANCE_READ/WRITE 为既有登记（A23 reserved 注释已随视图交付解除），
+        //   路由准入挂 READ，WRITE 仅按钮级 v-access（删除请求登记）。
+        {
+          component: () => import('#/views/ipd/admin/compliance/index.vue'),
+          meta: { access: [IPD_PERMISSION_CODES.COMPLIANCE_READ], title: '合规中心' },
+          name: 'IpdAdminCompliance',
+          path: 'compliance',
+        },
       ],
     },
     // R149 录入/展示：运营管理（顶层超管入口，含回款预警）。纯分组/重定向父路由：

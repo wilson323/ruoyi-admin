@@ -10,9 +10,11 @@ import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import List from './index.vue';
 
 const api = vi.hoisted(() => ({
+  adminAssignBidInvitation: vi.fn(),
   closeBidInvitation: vi.fn(),
   getBidInvitation: vi.fn(),
   listBidInvitations: vi.fn(),
+  modifyBidInvitation: vi.fn(),
   withdrawBidInvitation: vi.fn(),
 }));
 vi.mock('../../../../api/ipd/bid', () => api);
@@ -61,7 +63,9 @@ function pageOf(records: BidInvitation[]): IpdPage<BidInvitation> {
 beforeEach(() => {
   stubAntd();
   setActivePinia(createPinia());
+  api.adminAssignBidInvitation.mockReset();
   api.closeBidInvitation.mockReset();
+  api.modifyBidInvitation.mockReset();
   api.getBidInvitation.mockReset();
   api.listBidInvitations.mockReset();
   api.withdrawBidInvitation.mockReset();
@@ -246,5 +250,98 @@ describe('页19 招标单列表 - 五态与权限', () => {
     expect(api.listBidInvitations).toHaveBeenCalledTimes(2);
     const secondCall = api.listBidInvitations.mock.calls[1];
     expect(secondCall![0].status).toBeUndefined();
+  });
+});
+
+// ---------- R215 GAP-F1：修改招标条件 / 超管指派 入口（PUT query 端点接线） ----------
+describe('页19 招标单列表 - R215 GAP-F1 修改/超管指派入口', () => {
+  it('MARKET_PM 发起人 + OPEN 行：展示「修改」入口；非发起人不可见', async () => {
+    useIpdAuthStore().identity = identity('MARKET_PM', '9007199254740993');
+    api.listBidInvitations.mockResolvedValueOnce(pageOf([
+      invitation(),
+      invitation({ id: 'OTHER', createBy: 'someone-else' }),
+    ]));
+    const wrapper = await mountList();
+    const html = wrapper.html();
+    // 本人行有「修改」（注意「重新加载」等按钮不冲突：精确文本匹配）
+    expect(wrapper.findAll('button').some((b) => b.text().trim() === '修改')).toBe(true);
+    expect(html).toContain('修改');
+  });
+
+  it('SUPER_ADMIN + EXPIRED 行：展示「超管指派」；MARKET_PM 或非 EXPIRED 不展示', async () => {
+    useIpdAuthStore().identity = identity('SUPER_ADMIN', '9007199254740993');
+    api.listBidInvitations.mockResolvedValueOnce(pageOf([
+      invitation({ id: 'EXP-1', status: 'EXPIRED', createBy: 'someone-else' }),
+      invitation({ id: 'OPEN-1', status: 'OPEN', createBy: 'someone-else' }),
+    ]));
+    const wrapper = await mountList();
+    expect(wrapper.findAll('button').some((b) => b.text().includes('超管指派'))).toBe(true);
+
+    useIpdAuthStore().identity = identity('MARKET_PM', '9007199254740993');
+    api.listBidInvitations.mockResolvedValueOnce(pageOf([invitation({ id: 'EXP-2', status: 'EXPIRED' })]));
+    const pmWrapper = await mountList();
+    expect(pmWrapper.findAll('button').some((b) => b.text().includes('超管指派'))).toBe(false);
+  });
+
+  it('超管指派提交：targetPersonId 19 位雪花字符串逐字符无损透传（禁 Number）', async () => {
+    useIpdAuthStore().identity = identity('SUPER_ADMIN', '9007199254740993');
+    const expired = invitation({ id: '2096266884247736300', status: 'EXPIRED', createBy: 'someone-else' });
+    api.listBidInvitations.mockResolvedValueOnce(pageOf([expired]));
+    const wrapper = await mountList();
+    api.adminAssignBidInvitation.mockResolvedValueOnce(invitation({ id: '2096266884247736300', status: 'SELECTED' }));
+    const vm = wrapper.vm as unknown as {
+      openAssign: (r: BidInvitation) => void;
+      assignPersonId: { value: string } | string;
+      submitAssign: () => Promise<void>;
+    };
+    vm.openAssign(expired);
+    // script-setup ref 经 vm 暴露后自动解包：直接赋字符串
+    (vm as unknown as { assignPersonId: string }).assignPersonId = '2096266884247736321';
+    await vm.submitAssign();
+    await flushPromises();
+    expect(api.adminAssignBidInvitation).toHaveBeenCalledWith(
+      '2096266884247736300',
+      '2096266884247736321',
+    );
+    // 非法输入（含小数点）→ 前端拦截，api 不被调用
+    api.adminAssignBidInvitation.mockClear();
+    vm.openAssign(expired);
+    (vm as unknown as { assignPersonId: string }).assignPersonId = '20.96';
+    await vm.submitAssign();
+    expect(api.adminAssignBidInvitation).not.toHaveBeenCalled();
+  });
+
+  it('修改提交：三字段全量走 modifyBidInvitation；过期 expireAt 前端拦截', async () => {
+    useIpdAuthStore().identity = identity('MARKET_PM', '9007199254740993');
+    const open = invitation({ id: '9' });
+    api.listBidInvitations.mockResolvedValueOnce(pageOf([open]));
+    const wrapper = await mountList();
+    api.modifyBidInvitation.mockResolvedValueOnce(invitation({ id: '9', title: '新招标标题' }));
+    const vm = wrapper.vm as unknown as {
+      openModify: (r: BidInvitation) => void;
+      submitModify: () => Promise<void>;
+      modifyForm: { content: string; expireAt: string; title: string };
+      modifyError: string;
+    };
+    vm.openModify(open);
+    vm.modifyForm.title = '新招标标题';
+    vm.modifyForm.content = '新招标内容说明';
+    vm.modifyForm.expireAt = '2026-10-01 23:59:59';
+    await vm.submitModify();
+    await flushPromises();
+    expect(api.modifyBidInvitation).toHaveBeenCalledWith('9', {
+      content: '新招标内容说明',
+      expireAt: '2026-10-01 23:59:59',
+      title: '新招标标题',
+    });
+    // 过去时间 → 校验拦截（后端 AC-TEAM-13 有效期内 + @DateTimeFormat 双保险的前端预检）
+    api.modifyBidInvitation.mockClear();
+    vm.openModify(open);
+    vm.modifyForm.title = '新招标标题';
+    vm.modifyForm.content = '新招标内容说明';
+    vm.modifyForm.expireAt = '2020-01-01 00:00:00';
+    await vm.submitModify();
+    expect(api.modifyBidInvitation).not.toHaveBeenCalled();
+    expect(vm.modifyError).toContain('晚于当前时间');
   });
 });

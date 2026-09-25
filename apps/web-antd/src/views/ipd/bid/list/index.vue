@@ -79,6 +79,13 @@
               <Button v-if="isCreator(asBid(record)) && record.status === 'OPEN'" size="small" type="link" @click="goSelect(asBid(record))">遴选</Button>
               <Button v-if="isCreator(asBid(record)) && record.status === 'SELECTED'" size="small" type="link" @click="goSelect(asBid(record))">查看遴选结果</Button>
               <Button size="small" type="link" @click="openDetail(asBid(record))">详情</Button>
+              <Button
+                v-if="isCreator(asBid(record)) && record.status === 'OPEN'"
+                size="small"
+                type="link"
+                :loading="isBusy(asBid(record), 'modify')"
+                @click="openModify(asBid(record))"
+              >修改</Button>
               <Popconfirm
                 v-if="isCreator(asBid(record)) && record.status === 'OPEN'"
                 title="确认撤回该招标单？创建超过 24 小时后将无法撤回。"
@@ -93,6 +100,14 @@
               >
                 <Button size="small" type="link" danger :loading="isBusy(asBid(record), 'close')">关闭</Button>
               </Popconfirm>
+              <!-- R215 GAP-F1：AC-TEAM-09 超管对挂起（EXPIRED）招标单强制指派；30 日年龄门禁由后端硬校验 -->
+              <Button
+                v-if="isSuperAdmin && record.status === 'EXPIRED'"
+                size="small"
+                type="link"
+                :loading="isBusy(asBid(record), 'assign')"
+                @click="openAssign(asBid(record))"
+              >超管指派</Button>
             </Space>
             <div v-if="actionError === record.id" class="mt-1 text-xs">
               <span class="text-destructive">{{ ipdErrorText(actionErrorCause, { domain: 'bid', fallback: '操作失败，请稍后重试' }) }}</span>
@@ -132,23 +147,67 @@
         </template>
       </Spin>
     </Drawer>
+
+    <!-- R215 GAP-F1：修改招标条件（AC-TEAM-13 发起人本人 + OPEN + 有效期内；PUT query 三参，expireAt yyyy-MM-dd HH:mm:ss） -->
+    <Modal
+      v-model:open="modifyOpen"
+      title="修改招标条件"
+      :confirm-loading="isBusy(modifyTarget ?? ({} as BidInvitation), 'modify')"
+      ok-text="保存修改"
+      cancel-text="取消"
+      :mask-closable="false"
+      @ok="submitModify"
+    >
+      <Alert v-if="modifyError" class="mb-2" :message="modifyError" type="error" show-icon />
+      <div class="mb-1 text-xs text-gray-500">招标标题（不少于 4 字）</div>
+      <Input v-model:value="modifyForm.title" :maxlength="120" class="mb-2" />
+      <div class="mb-1 text-xs text-gray-500">招标内容（4~4000 字）</div>
+      <Textarea v-model:value="modifyForm.content" :rows="4" :maxlength="4000" class="mb-2" />
+      <div class="mb-1 text-xs text-gray-500">有效期截止（yyyy-MM-dd HH:mm:ss）</div>
+      <DatePicker
+        v-model:value="modifyForm.expireAt"
+        show-time
+        value-format="YYYY-MM-DD HH:mm:ss"
+        format="YYYY-MM-DD HH:mm:ss"
+        style="width: 100%"
+      />
+    </Modal>
+
+    <!-- R215 GAP-F1：超管强制指派（仅 EXPIRED 挂起超 30 日，后端 BidInvitationService:509-518 硬校验；人员 ID string 透传） -->
+    <Modal
+      v-model:open="assignOpen"
+      title="超管指派研发PM"
+      :confirm-loading="isBusy(assignTarget ?? ({} as BidInvitation), 'assign')"
+      ok-text="确认指派"
+      cancel-text="取消"
+      :mask-closable="false"
+      @ok="submitAssign"
+    >
+      <Alert v-if="assignError" class="mb-2" :message="assignError" type="error" show-icon />
+      <div class="mb-1 text-xs text-gray-500">目标研发PM 人员 ID（纯数字，雪花 ID 按字符串提交）</div>
+      <Input v-model:value="assignPersonId" :maxlength="24" placeholder="如 2096266884247736321" />
+      <p class="mt-1 text-xs text-gray-400">仅对挂起（已过期）超 30 日的招标单可用；提交后招标单直接置为「已遴选」。</p>
+    </Modal>
   </div>
 </template>
 
 <script setup lang="ts">
 // 页19 招标组队-招标单列表（看板卡 P0-10.19；后端 P2-3.1 / P2-3.2 已交付）。
 // 布局：状态筛选 + 待我应标筛选 + 分页表格 + 行内操作（应标/遴选/撤回/关闭/详情抽屉）。
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   Alert,
   Button,
   Card,
   Checkbox,
+  DatePicker,
   Descriptions,
   Drawer,
   Empty,
+  Input,
   message,
+  Modal,
   Popconfirm,
   Select,
   Space,
@@ -158,9 +217,11 @@ import {
   Tooltip,
 } from 'ant-design-vue';
 import {
+  adminAssignBidInvitation,
   closeBidInvitation,
   getBidInvitation,
   listBidInvitations,
+  modifyBidInvitation,
   withdrawBidInvitation,
 } from '../../../../api/ipd/bid';
 import type { BidInvitation, IpdPage } from '../../../../api/ipd/bid';
@@ -189,7 +250,9 @@ const detailLoading = ref(false);
 const detailError = ref<unknown>(null);
 const detail = ref<BidInvitation | null>(null);
 
+const Textarea = Input.TextArea;
 const myId = computed(() => auth.identity?.person.id ?? '');
+const isSuperAdmin = computed(() => auth.identity?.person.personType === 'SUPER_ADMIN');
 const isRdPm = computed(() => auth.identity?.person.personType === 'RD_PM');
 const canCreateBid = computed(() => ['MARKET_PM', 'SUPER_ADMIN'].includes(auth.identity?.person.personType ?? ''));
 const createDeniedReason = '发起招标通常由市场PM 操作，当前角色暂不可用。如需代创建请联系你的产品组长，由产品组长走超管指派端点（BID_INVITATION_ADMIN_ASSIGN）代为发起。';
@@ -247,11 +310,11 @@ function isInvitedRdPm(record: BidInvitation): boolean {
   return isRdPm.value && record.status === 'OPEN' && invited;
 }
 
-function isBusy(record: BidInvitation, action: 'close' | 'withdraw'): boolean {
-  return busyKey.value === `${record.id}:${action}`;
+function isBusy(record: BidInvitation, action: 'assign' | 'close' | 'modify' | 'withdraw'): boolean {
+  return !!record.id && busyKey.value === `${record.id}:${action}`;
 }
 
-function markBusy(record: BidInvitation, action: 'close' | 'withdraw'): void {
+function markBusy(record: BidInvitation, action: 'assign' | 'close' | 'modify' | 'withdraw'): void {
   busyKey.value = `${record.id}:${action}`;
 }
 
@@ -324,6 +387,83 @@ async function doClose(record: BidInvitation): Promise<void> {
     message.success('招标单已关闭');
     await load();
   } catch (cause) {
+    actionError.value = record.id;
+    actionErrorCause.value = cause;
+  } finally {
+    busyKey.value = '';
+  }
+}
+
+// ---------- R215 GAP-F1：修改招标条件 / 超管指派（P2-3.3 AC-TEAM-13 / AC-TEAM-09） ----------
+const modifyOpen = ref(false);
+const modifyTarget = ref<BidInvitation | null>(null);
+const modifyError = ref('');
+const modifyForm = reactive({ content: '', expireAt: '', title: '' });
+const assignOpen = ref(false);
+const assignTarget = ref<BidInvitation | null>(null);
+const assignPersonId = ref('');
+const assignError = ref('');
+
+function openModify(record: BidInvitation): void {
+  modifyTarget.value = record;
+  modifyForm.title = record.title ?? '';
+  modifyForm.content = record.content ?? '';
+  modifyForm.expireAt = record.expireAt ?? '';
+  modifyError.value = '';
+  modifyOpen.value = true;
+}
+
+async function submitModify(): Promise<void> {
+  const record = modifyTarget.value;
+  if (!record || busyKey.value === `${record.id}:modify`) return;
+  const title = modifyForm.title.trim();
+  const content = modifyForm.content.trim();
+  if (title.length < 4) { modifyError.value = '招标标题不少于 4 字'; return; }
+  if (content.length < 4 || content.length > 4000) { modifyError.value = '招标内容需 4~4000 字'; return; }
+  if (!modifyForm.expireAt || new Date(modifyForm.expireAt.replace(' ', 'T')).getTime() <= Date.now()) {
+    modifyError.value = '有效期截止须晚于当前时间（格式 yyyy-MM-dd HH:mm:ss）';
+    return;
+  }
+  markBusy(record, 'modify');
+  try {
+    // 三值全量提交（后端 service 直接 set 三字段，BidInvitationService.java:456-458）
+    await modifyBidInvitation(record.id, { content, expireAt: modifyForm.expireAt, title });
+    message.success('招标条件已修改');
+    modifyOpen.value = false;
+    await load();
+  } catch (cause) {
+    modifyOpen.value = false;
+    actionError.value = record.id;
+    actionErrorCause.value = cause;
+  } finally {
+    busyKey.value = '';
+  }
+}
+
+function openAssign(record: BidInvitation): void {
+  assignTarget.value = record;
+  assignPersonId.value = '';
+  assignError.value = '';
+  assignOpen.value = true;
+}
+
+async function submitAssign(): Promise<void> {
+  const record = assignTarget.value;
+  if (!record) return;
+  const targetPersonId = assignPersonId.value.trim();
+  // 19 位雪花 ID 校验：仅数字串，禁 Number()（string 透传，参照 create/index.vue:167 先例）
+  if (!/^\d+$/.test(targetPersonId)) {
+    assignError.value = '请填写目标研发PM 的人员 ID（纯数字字符串）';
+    return;
+  }
+  markBusy(record, 'assign');
+  try {
+    await adminAssignBidInvitation(record.id, targetPersonId);
+    message.success('已超管指派，招标单置为「已遴选」');
+    assignOpen.value = false;
+    await load();
+  } catch (cause) {
+    assignOpen.value = false;
     actionError.value = record.id;
     actionErrorCause.value = cause;
   } finally {

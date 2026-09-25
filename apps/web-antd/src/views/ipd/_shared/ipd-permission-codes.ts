@@ -117,8 +117,8 @@ export const IPD_PERMISSION_CODES = {
   AUDIT_LOG_EXPORT: 'ipd:audit-log:export',
 
   // 合规（AC-COMP-01/04/05）
-  COMPLIANCE_READ: 'ipd:compliance:read', /* reserved (A23): 无合规视图 */
-  COMPLIANCE_WRITE: 'ipd:compliance:write', /* reserved (A23): 无合规视图 */
+  COMPLIANCE_READ: 'ipd:compliance:read', // R215 GAP-F6 已接视图：/ipd/admin/compliance（路由 meta.access）
+  COMPLIANCE_WRITE: 'ipd:compliance:write', // R215 GAP-F6 已接按钮：合规中心-删除请求登记（v-access）
 
   // 系统参数
   SYSTEM_CONFIG_LIST: 'ipd:system-config:list',

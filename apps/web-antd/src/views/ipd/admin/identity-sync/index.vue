@@ -27,7 +27,8 @@ import {
 
 import { type PmDirectoryEntry, getPmDirectory } from '../../../../api/ipd/handover';
 import { IpdRequestError } from '../../../../api/ipd/auth';
-import { resignPerson, unbindWecom } from '../../../../api/ipd/person';
+import { type PendingHandoverPerson, listPendingHandovers } from '../../../../api/ipd/hr-sync';
+import { rehirePerson, resignPerson, unbindWecom } from '../../../../api/ipd/person';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { formatDateTime, PENDING_TEXT } from '../../_shared/format';
@@ -102,6 +103,33 @@ async function load(): Promise<void> {
 
 onMounted(load);
 
+// ---------- R215 GAP-F3：离职冻结·待移交清单（复职入口数据源） ----------
+// 纠偏记录：准备包 F3 写「DISABLED 行展示复职」，但后端 rehire 明确拒绝 DISABLED
+// （PersonService.java:320-323「账户已禁用，需先解禁后再复职」），且在职目录 GET
+// /pm-directory 仅返回 ACTIVE 人员（PmDirectoryController.java:44）——DISABLED 行在本页
+// 既不可见也非法。以后端真值为准：复职入口挂 GET /hr-sync/pending-handovers
+// （FROZEN_PENDING_HANDOVER = resign 后合法复职窗口，hr-sync.ts 既有封装复用，不另造 api）。
+const frozenRows = ref<PendingHandoverPerson[]>([]);
+const frozenColumns = [
+  { title: '姓名', dataIndex: 'name', key: 'name', width: 140 },
+  { title: '工号', dataIndex: 'employeeNo', key: 'employeeNo', width: 140 },
+  { title: '冻结时间', dataIndex: 'frozenSince', key: 'frozenSince', width: 200 },
+  { title: '待移交项目', dataIndex: 'activeProjects', key: 'activeProjects', width: 110 },
+  { title: '冻结天数', dataIndex: 'ageDays', key: 'ageDays', width: 100 },
+  { title: '复职操作', key: 'rehireAction', width: 120 },
+];
+
+async function loadFrozen(): Promise<void> {
+  if (!isSuperAdmin.value) { frozenRows.value = []; return; }
+  try {
+    frozenRows.value = await listPendingHandovers();
+  } catch {
+    // 静默降级：hr-sync 端点权限外/故障不阻塞人员目录主体功能
+    frozenRows.value = [];
+  }
+}
+onMounted(loadFrozen);
+
 const lastSyncAt = ref<string | null>(null);
 const lastSyncMeta = computed(() => {
   if (!entries.value.length) return PENDING_TEXT;
@@ -119,10 +147,21 @@ onMounted(() => {
 
 // ---------- R215 WP3.1 批次2（ORPHAN-A11）：离职冻结 / 企微解绑 ----------
 
-/** 弹窗动作类型；resign 权限=HR 或本人，unbind 权限=HR（超管/组长），本页超管专区两者均可。 */
-type PersonAction = 'resign' | 'unbind';
+/** 弹窗动作类型；resign 权限=HR 或本人，unbind/rehire 权限=HR（超管/组长），本页超管专区均可。 */
+type PersonAction = 'rehire' | 'resign' | 'unbind';
 
-const ACTION_META: Record<PersonAction, { api: (id: string, reason: string) => Promise<unknown>; danger: boolean; okText: string; tip: string; title: string }> = {
+const ACTION_META: Record<PersonAction, { api: (id: string, reason: string) => Promise<unknown>; danger: boolean; optional?: boolean; okText: string; tip: string; title: string }> = {
+  // R215 GAP-F3：复职（AC-USER-09）。后端 eligibility=employment RESIGNED ∧ account≠DISABLED
+  // （PersonService.java:316-323，DISABLED 需先解禁会被 50002 拒）；note 选填，空串经
+  // rehirePerson 归一为不传（body {}），禁 '' 入库审计。
+  rehire: {
+    api: (id: string, reason: string) => rehirePerson(id, reason || undefined),
+    danger: false,
+    okText: '确认复职',
+    optional: true,
+    tip: '恢复 employment/account 至 ACTIVE（AC-USER-09；仅 HR=超管/组长可操作，跨组被拒；备注选填，写入审计日志）',
+    title: '复职',
+  },
   resign: {
     api: resignPerson,
     danger: true,
@@ -141,12 +180,13 @@ const ACTION_META: Record<PersonAction, { api: (id: string, reason: string) => P
 
 const actionOpen = ref(false);
 const actionKind = ref<PersonAction>('resign');
-const actionTarget = ref<PmDirectoryEntry | null>(null);
+/** 操作对象：在职目录行（PmDirectoryEntry）或冻结清单行（映射为 {id,name}）——弹窗只需 id+name。 */
+const actionTarget = ref<{ id: string; name: null | string } | null>(null);
 const actionReason = ref('');
 const actionLoading = ref(false);
 const actionResult = ref('');
 
-function openPersonAction(kind: PersonAction, entry: PmDirectoryEntry): void {
+function openPersonAction(kind: PersonAction, entry: { id: string; name: null | string }): void {
   actionKind.value = kind;
   actionTarget.value = entry;
   actionReason.value = '';
@@ -157,7 +197,8 @@ function openPersonAction(kind: PersonAction, entry: PmDirectoryEntry): void {
 async function confirmPersonAction(): Promise<void> {
   const target = actionTarget.value;
   const reason = actionReason.value.trim();
-  if (!target || !reason) return;
+  // rehire 的 note 选填（RehireRequest 无 @NotBlank）；resign/unbind 的 reason 必填（@NotBlank）
+  if (!target || (!reason && !ACTION_META[actionKind.value].optional)) return;
   actionLoading.value = true;
   try {
     const result = await ACTION_META[actionKind.value].api(String(target.id), reason);
@@ -165,6 +206,10 @@ async function confirmPersonAction(): Promise<void> {
     if (actionKind.value === 'resign' && result && typeof result === 'object') {
       const r = result as { message?: null | string; notificationsSent?: number; pendingProjects?: number };
       actionResult.value = r.message ?? `已触发：待移交项目 ${r.pendingProjects ?? 0} 个，通知 ${r.notificationsSent ?? 0} 条`;
+    } else if (actionKind.value === 'rehire') {
+      actionResult.value = '已复职（employment/account → ACTIVE）';
+      await loadFrozen();
+      await load();
     } else {
       actionResult.value = '操作成功';
     }
@@ -280,6 +325,30 @@ async function confirmPersonAction(): Promise<void> {
       </Alert>
     </Card>
 
+    <!-- R215 GAP-F3：离职冻结·待移交清单（复职入口；数据源 hr-sync/pending-handovers，仅超管且有数据时渲染） -->
+    <Card v-if="isSuperAdmin && frozenRows.length > 0" class="mb-4" title="离职冻结人员（可复职，AC-USER-09）">
+      <Table
+        :columns="frozenColumns"
+        :data-source="frozenRows"
+        :pagination="{ pageSize: 10, showSizeChanger: false }"
+        :row-key="(record: Record<string, any>) => String(record.personId ?? '')"
+        size="small"
+        bordered
+      >
+        <template #bodyCell="{ column, record }: { column: Record<string, any>; record: Record<string, any> }">
+          <template v-if="column.key === 'frozenSince'">
+            <span>{{ record.frozenSince ?? PENDING_TEXT }}</span>
+          </template>
+          <template v-else-if="column.key === 'rehireAction'">
+            <Button size="small" type="primary" @click="openPersonAction('rehire', { id: String(record.personId ?? ''), name: String(record.name ?? '') })">复职</Button>
+          </template>
+        </template>
+      </Table>
+      <div class="mt-2 text-xs text-gray-500">
+        复职仅适用于「离职冻结待移交」窗口（employment=RESIGNED 且账户未终态 DISABLED）；已禁用账户请先走解禁流程。
+      </div>
+    </Card>
+
     <!-- R215 WP3.1 批次2（ORPHAN-A11）：离职/解绑 reason 弹窗 -->
     <Modal
       v-model:open="actionOpen"
@@ -297,7 +366,7 @@ async function confirmPersonAction(): Promise<void> {
         v-model:value="actionReason"
         :maxlength="200"
         :rows="3"
-        placeholder="操作原因（必填，1~200 字，将写入审计日志）"
+        :placeholder="ACTION_META[actionKind].optional ? '备注（选填，1~200 字，留空不写入）' : '操作原因（必填，1~200 字，将写入审计日志）'"
         show-count
       />
       <div v-if="actionResult" class="mt-2 text-xs" :class="actionOpen ? 'text-gray-400' : 'text-green-600'">{{ actionResult }}</div>
