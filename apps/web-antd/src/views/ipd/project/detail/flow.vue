@@ -5,6 +5,9 @@
  * 六阶段进度（当前阶段高亮）→ 当前阶段门禁推进（advance-stage 失败时 400/10001
  * message 含明细，同时拉 gate-checklist 只读清单辅助定位）→ 全项目动作列表。
  *
+ * R215 GAP-F8（2026-09-25）：追加「项目 SOP 快照」Drawer（GET /sop-templates/instances?
+ * projectId=，service IDOR 项目成员可见）；模板实例化 instantiate 归 GAP-B2 等 owner 拍板，本页不接按钮。
+ *
  * 规格 vs 代码差异（G-04 以代码为准）：
  * - key-gates 五节点签署链（P2-5）后端未交付，阶段推进以 gate-checklist 只读清单呈现；
  * - 动作 stageId 是阶段表外键，无 stageId→编码映射端点，动作表不做阶段分组；
@@ -16,6 +19,7 @@ import {
   Alert,
   Button,
   Card,
+  Drawer,
   Space,
   Spin,
   Steps,
@@ -32,6 +36,7 @@ import {
   type Project,
 } from '../../../../api/ipd/project';
 import { listStageActions, type StageAction } from '../../../../api/ipd/stage-action';
+import { listSopTemplateInstances, type IpdSopInstance } from '../../../../api/ipd/sop-template';
 import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import {
   STAGE_ORDER,
@@ -169,6 +174,67 @@ const actionPagination = computed(() => ({
   showSizeChanger: false,
   showTotal: (total: number) => `共 ${total} 条`,
 }));
+
+// ---------- 项目 SOP 快照（R215 GAP-F8；GET /sop-templates/instances?projectId=）----------
+
+const sopOpen = ref(false);
+const sopLoading = ref(false);
+const sopError = ref('');
+const sopInstances = ref<IpdSopInstance[]>([]);
+
+async function loadSopInstances(): Promise<void> {
+  sopLoading.value = true;
+  sopError.value = '';
+  try {
+    sopInstances.value = await listSopTemplateInstances(projectId.value);
+  } catch (cause) {
+    sopInstances.value = [];
+    sopError.value = isTransportError(cause)
+      ? '无法连接服务，请检查网络后重试'
+      : ipdErrorText(cause, { domain: 'project', fallback: 'SOP 快照加载失败，请稍后重试' });
+  } finally {
+    sopLoading.value = false;
+  }
+}
+
+function openSopSnapshots(): void {
+  sopOpen.value = true;
+  void loadSopInstances();
+}
+
+/** 实例状态三色：ACTIVE 绿 / SUPERSEDED 灰 / ARCHIVED 红（未知值灰兜底原样展示）。 */
+function sopStatusColor(status: string): string {
+  if (status === 'ACTIVE') return 'success';
+  if (status === 'ARCHIVED') return 'error';
+  return 'default';
+}
+
+function sopStatusText(status: string): string {
+  if (status === 'ACTIVE') return '生效中';
+  if (status === 'SUPERSEDED') return '已替代';
+  if (status === 'ARCHIVED') return '已归档';
+  return status || '未知';
+}
+
+/**
+ * 快照 JSON 视图兜底（api 层原样透传，解析归本层）：合法 JSON pretty 展开，
+ * 非法则原文展示（SopTemplateInstance.snapshotJson 不可变串，BR-IPD-SOP-03）。
+ */
+function snapshotText(json: string): string {
+  try {
+    return JSON.stringify(JSON.parse(json), null, 2);
+  } catch {
+    return json || '（空快照）';
+  }
+}
+
+const sopColumns = [
+  { dataIndex: 'instanceVersion', key: 'instanceVersion', title: '实例版本', width: 90 },
+  { key: 'status', title: '状态', width: 100 },
+  { dataIndex: 'instantiatedAt', key: 'instantiatedAt', title: '实例化时间', width: 210 },
+  { dataIndex: 'instantiatedBy', key: 'instantiatedBy', title: '实例化人', width: 140 },
+  { dataIndex: 'templateId', key: 'templateId', title: '模板 ID', width: 190 },
+];
 </script>
 
 <template>
@@ -254,6 +320,9 @@ const actionPagination = computed(() => ({
       </Card>
 
       <Card title="阶段动作（全项目）">
+        <template #extra>
+          <Button size="small" @click="openSopSnapshots">项目 SOP 快照</Button>
+        </template>
         <Table
           :columns="actionColumns"
           :data-source="actions"
@@ -281,6 +350,50 @@ const actionPagination = computed(() => ({
           深管动作完成需登记交付物、轻管动作需录入实际完成日期等字段（BR-IPD-03/04），操作在动作详情页进行。
         </div>
       </Card>
+
+      <Drawer v-model:open="sopOpen" title="项目 SOP 快照" width="720">
+        <Alert v-if="sopError" class="mb-3" :message="sopError" show-icon type="error">
+          <template #description>
+            <Button size="small" @click="loadSopInstances">重试</Button>
+          </template>
+        </Alert>
+        <div v-else-if="sopLoading" class="py-8 text-center">
+          <Spin>正在加载 SOP 快照……</Spin>
+        </div>
+        <div v-else-if="!sopInstances.length" class="text-muted-foreground text-sm">
+          本项目尚无 SOP 实例快照（模板实例化随立项流程产生，此读口按项目维度列出历史快照）。
+        </div>
+        <Table
+          v-else
+          :columns="sopColumns"
+          :data-source="sopInstances"
+          :pagination="false"
+          :scroll="{ x: 760 }"
+          row-key="id"
+          size="small"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'status'">
+              <Tag :color="sopStatusColor(record.status)">{{ sopStatusText(record.status) }}</Tag>
+            </template>
+            <template v-else-if="column.key === 'instantiatedAt'">
+              {{ record.instantiatedAt ?? '—' }}
+            </template>
+            <template v-else-if="column.key === 'instantiatedBy'">
+              {{ record.instantiatedBy ?? '—' }}
+            </template>
+          </template>
+          <template #expandedRowRender="{ record }">
+            <div class="text-muted-foreground mb-1 text-xs">
+              实例 {{ record.id }} ｜ 快照不可变，实例化后不随模板迭代变化（BR-IPD-SOP-03）
+            </div>
+            <pre class="bg-muted max-h-64 overflow-auto rounded p-2 text-xs">{{ snapshotText(record.snapshotJson) }}</pre>
+          </template>
+          <template #emptyText>
+            <span>本项目尚无 SOP 实例快照</span>
+          </template>
+        </Table>
+      </Drawer>
     </template>
   </div>
 </template>

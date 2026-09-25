@@ -10,8 +10,12 @@
  * - 发布只影响此后实例化的项目，在研项目保持原版本（AC-IPD-27）。
  * - ID 一律按字符串处理（Long 序列化可能为数字，这里归一化为字符串）。
  *
- * ✅ 2026-09-17 契约对齐：SopTemplateController 已交付 8 端点（list / current / get / copy / update / publish / revert / instantiate / instances），
- * 本文件 9 函数均已对齐真活路径；R27 P0-4 已闭环（commit 7175b90e 反思报告抽样实证）。
+ * ✅ 契约对齐（R215 GAP-F8，2026-09-25 头注纠偏）：SopTemplateController 实有 9 端点
+ * （list :44 / current :52 / get :60 / copy :68 / update :75 / publish :83 / revert :90 /
+ *  instantiate :97 / instances :106），此前头注自称「9 函数均已对齐」系虚标——实测仅 7 export。
+ * 本文件现 8 函数 = 版本链读写 7 + instances 快照读口（本轮 F8 补齐）；
+ * instantiate（POST /{templateId}/instantiate，query projectId 无 body）域归属钉死随 GAP-B2
+ * 等 owner 拍板，本卡不接、不虚标（准备包 gap-f7-f11-change-plans.md §F8 纠偏①③）。
  */
 import { ipdGet, ipdPost } from './http';
 
@@ -106,4 +110,66 @@ export function publishSopTemplate(id: string): Promise<IpdSopTemplateItem> {
  */
 export function revertSopTemplate(id: string): Promise<IpdSopTemplateItem> {
   return ipdPost<unknown>(`/sop-templates/${id}/revert`).then(normalizeItem);
+}
+
+// ----- 实例快照读口（R215 GAP-F8；controller :96-111。instantiate 归 GAP-B2 未接）-----
+
+/** 实例状态值域（SopTemplateInstance.Status :65-69：ACTIVE|SUPERSEDED|ARCHIVED；未知值 string 兜底）。 */
+export type IpdSopInstanceStatus = 'ACTIVE' | 'ARCHIVED' | 'SUPERSEDED' | string;
+
+/**
+ * 项目实例快照（domain/SopTemplateInstance.java:24-59）。
+ * id/templateId/projectId/instanceVersion 均 Long（雪花双形态）→ 一律 string 透传
+ * （instanceVersion 理论可超 2^53，同样不做数值化）；snapshotJson 为不可变 JSON 串
+ * （快照点动作目录全集，BR-IPD-SOP-03），解析兜底在视图层、api 层原样透传；
+ * instantiatedAt（java.util.Date → ISO 串，JacksonConfig 未定制其序列化）与
+ * instantiatedBy（Person ID，后端即 String）原样透传，严禁日期运算；
+ * delFlag/tenantId 展示无意义，不建模。
+ */
+export interface IpdSopInstance {
+  id: string;
+  instanceVersion: string;
+  instantiatedAt: null | string;
+  instantiatedBy: null | string;
+  projectId: string;
+  snapshotJson: string;
+  status: IpdSopInstanceStatus;
+  templateId: string;
+}
+
+/** 实例行归一（仿 normalizeItem 范式；全字段 string 透传，无计数类 Number 点）。 */
+function normalizeInstance(raw: unknown): IpdSopInstance {
+  const row = toRecord(raw);
+  return {
+    id: row.id === undefined || row.id === null ? '' : String(row.id),
+    instanceVersion:
+      row.instanceVersion === undefined || row.instanceVersion === null
+        ? ''
+        : String(row.instanceVersion),
+    instantiatedAt: row.instantiatedAt == null ? null : String(row.instantiatedAt),
+    instantiatedBy: row.instantiatedBy == null ? null : String(row.instantiatedBy),
+    projectId: row.projectId === undefined || row.projectId === null ? '' : String(row.projectId),
+    snapshotJson: String(row.snapshotJson ?? ''),
+    status: String(row.status ?? ''),
+    templateId: row.templateId === undefined || row.templateId === null ? '' : String(row.templateId),
+  };
+}
+
+/**
+ * 按项目列出 SOP 实例快照（controller :106-111，权限注解码 ipd:sop-template:list + requireInternal；
+ * service listInstancesByProject :418-429 项目成员 IDOR fail-closed、SUPER_ADMIN 豁免，instanceVersion 倒序）。
+ * projectId 必填（@RequestParam Long :108）：空串在 api 层显式拒绝、不发请求
+ * （准备包「不发请求 / PARAM_INVALID 透传」二选一，本实现锁定前者）。
+ * query 按 URL 内联模板拼串（stage-action.ts:166 同款；projectId 数字串经 encodeURIComponent 防注入）。
+ * 对应 SopTemplateController#listInstances — GET /sop-templates/instances?projectId=
+ */
+export async function listSopTemplateInstances(projectId: string): Promise<IpdSopInstance[]> {
+  const pid = String(projectId ?? '').trim();
+  if (!pid) {
+    throw new Error('projectId 必填：GET /sop-templates/instances 需携带项目 ID');
+  }
+  const rows = await ipdGet<unknown[]>(
+    `/sop-templates/instances?projectId=${encodeURIComponent(pid)}`,
+  );
+  return Array.isArray(rows) ? rows.map(normalizeInstance) : [];
 }
