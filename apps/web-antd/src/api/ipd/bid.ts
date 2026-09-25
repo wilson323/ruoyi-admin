@@ -219,3 +219,97 @@ export function modifyBidInvitation(id: string, body: ModifyBidInvitationBody): 
 export function adminAssignBidInvitation(id: string, targetPersonId: string): Promise<BidInvitation> {
   return ipdPut(`/bid-invitations/${encodeURIComponent(id)}/admin-assign?targetPersonId=${encodeURIComponent(targetPersonId)}`);
 }
+
+/**
+ * R215 GAP-F2：招标单「校验型创建」请求体（BidP231Controller.CreateBidInvitationRequest）。
+ * 后端真值：dto/CreateBidInvitationRequest.java:30-60 + service/BidP231Validator.java（防绕过二重校验）。
+ * 契约要点：
+ * - projectId：后端 Long @NotNull（:32-33）。前端一律 string 透传，禁 Number()/InputNumber——
+ *   19 位雪花超 2^53 会精度截断；JSON 字符串形态由后端 Jackson String→Long 无损收编。
+ * - expireAt：DTO 无 @DateTimeFormat，但全局 spring.jackson.date-format=yyyy-MM-dd HH:mm:ss
+ *   （ruoyi-admin application.yml:150）→ 与既有 POST /bid-invitations 现网口径一致（准备包 §F2 施工核对点闭环）。
+ * - targetPersonId：ONE_TO_ONE 必填；PUBLIC 必须整键缺省——后端 Validator 对 PUBLIC 显式拒填
+ *   （BidP231Validator「PUBLIC 模式禁止指定 targetPersonId」），传 null 亦拒。
+ * - requiredLevel(L1..L5)/slaDays(1..90)：PUBLIC 选填，后端写入 content 扩展字段；ONE_TO_ONE 模式忽略。
+ * - slaDays 是计数非 ID，允许 number；ID 类字段禁数值化红线不变。
+ */
+export interface CreateBidInvitationP231Body {
+  content?: string;
+  /** 有效期截止（yyyy-MM-dd HH:mm:ss，须未来时间 @Future） */
+  expireAt: string;
+  mode: 'ONE_TO_ONE' | 'PUBLIC';
+  /** 所属项目雪花 ID（string 透传禁 Number()） */
+  projectId: string;
+  /** 公开征集应标者等级门槛 L1..L5（选填，仅 PUBLIC 生效） */
+  requiredLevel?: string;
+  /** 公开征集响应 SLA 天数 1..90（选填，仅 PUBLIC 生效；计数字段允许 number） */
+  slaDays?: number;
+  /** 受邀研发PM 雪花 ID（ONE_TO_ONE 必填；PUBLIC 禁填——调用方须整键省略） */
+  targetPersonId?: string;
+  /** 招标标题（≤200） */
+  title: string;
+}
+
+/**
+ * 校验型创建招标单（AC-TEAM-01/02；BR-TEAM-03；创建即 OPEN）。
+ * 对应 BidP231Controller#createValidated — POST /api/v1/bid-invitations/p231-create（BidP231Controller.java:42-47）
+ * 权限 ipd:bid-invitation:create + requireProjectCreator + 项目同组校验（service 层）。
+ * 与旧口 POST /bid-invitations（createBidInvitation，保留一个迭代）的差异：
+ * 本口带 projectId 必填、mode/targetPersonId 互斥语义、expireAt @Future 与 requiredLevel/slaDays 扩展。
+ */
+export function createBidInvitationP231(body: CreateBidInvitationP231Body): Promise<BidInvitation> {
+  return ipdPost('/bid-invitations/p231-create', body);
+}
+
+/**
+ * R215 GAP-F9：我的应标分页参数（BidController#listByRdPm query 形态，@RequestParam 默认 1/20；
+ * pageSize 有 service 侧 200 硬上限（javadoc:167），超限由后端钳制/拒绝，前端不重复该逻辑）。
+ */
+export interface ListMyBidResponsesParams {
+  pageNo?: number;
+  pageSize?: number;
+}
+
+/**
+ * 分页查询某研发 PM 的全部应标（R215 GAP-F9「我的应标」；BidController#listByRdPm
+ * — GET /api/v1/bid-responses/by-rd-pm/{rdPmId}?pageNo=&pageSize=，@GetMapping :170、
+ * 权限注解 ipd:project:query 在 :169，纠偏节⑤行号微偏；requireInternal :176）。
+ * - rdPmId 是 Person ID：调用方从 /auth/me 的 person.id（string）取，禁复用 vben userStore
+ *   被污染的数值态 userId（store/ipd-auth.ts:135 `as unknown as number` 类型面诱导算术，
+ *   19 位雪花一经算术即精度碎）；本函数 path 段 encodeURIComponent + string 透传禁 Number()；
+ * - IDOR 三分支放行（本人 / SUPER_ADMIN / 关联项目在职 ProjectMember，service javadoc:166 +
+ *   W5-E-2.4 :175），服务端会话推导，前端不拼任何绕过参数；
+ * - IPage 包络归一：records[].id/invitationId/rdPmId String()（BigNumberSerializer number/string
+ *   双形态），total/pages/size/current 计数类 Number()。
+ */
+export async function listBidResponsesByRdPm(
+  rdPmId: string,
+  params: ListMyBidResponsesParams = {},
+): Promise<IpdPage<BidResponse>> {
+  // 以 unknown 收包络再逐字段归一（后端 IPage 的 Long 字段是 number/string 双形态，
+  // 直接按 BidResponse 形状断言会被 BigNumberSerializer 的 number 下发骗过类型面）
+  const page = await ipdGet<Record<string, unknown> | null>(
+    `/bid-responses/by-rd-pm/${encodeURIComponent(rdPmId)}`,
+    { ...params },
+  );
+  const rows = Array.isArray(page?.records) ? (page.records as unknown[]) : [];
+  return {
+    current: Number(page?.current ?? 1),
+    pages: Number(page?.pages ?? 0),
+    records: rows.map((raw) => {
+      const r = (raw ?? {}) as Record<string, unknown>;
+      return {
+        createBy: r.createBy == null ? null : String(r.createBy),
+        createTime: r.createTime == null ? null : String(r.createTime),
+        id: String(r.id ?? ''),
+        invitationId: String(r.invitationId ?? ''),
+        rdPmId: r.rdPmId == null ? null : String(r.rdPmId),
+        responseNote: r.responseNote == null ? null : String(r.responseNote),
+        respondedAt: r.respondedAt == null ? null : String(r.respondedAt),
+        status: String(r.status ?? ''),
+      };
+    }),
+    size: Number(page?.size ?? 0),
+    total: Number(page?.total ?? 0),
+  };
+}

@@ -28,12 +28,33 @@
 
       <Form layout="vertical">
         <Form.Item
+          label="所属项目 ID"
+          required
+          :validate-status="errors.projectId ? 'error' : ''"
+          :help="errors.projectId"
+        >
+          <!-- R215 GAP-F2：p231-create 校验型入口 projectId 必填（后端 Long @NotNull，雪花 ID 禁数值化）。
+               string input 样板见 2138774（kpi/shared 页 InputNumber→string input 修法），禁 InputNumber/Number()。 -->
+          <Input
+            id="bid-project-id"
+            v-model:value="form.projectId"
+            :maxlength="24"
+            placeholder="请输入所属项目 ID（纯数字，19 位雪花 ID 原样粘贴）"
+            :disabled="submitting"
+          />
+          <p class="text-muted-foreground mt-1 text-xs">
+            仅项目创建人可在其项目下发起招标（后端 requireProjectCreator + 同组校验）。
+          </p>
+        </Form.Item>
+
+        <Form.Item
           label="招标标题"
           required
           :validate-status="errors.title ? 'error' : ''"
           :help="errors.title"
         >
           <Input
+            id="bid-title"
             v-model:value="form.title"
             :maxlength="120"
             show-count
@@ -73,6 +94,7 @@
           :help="errors.targetPersonId"
         >
           <Input
+            id="bid-target-person-id"
             v-model:value="form.targetPersonId"
             :maxlength="24"
             placeholder="请输入受邀研发PM 的人员 ID（纯数字）"
@@ -81,6 +103,32 @@
           <p class="text-muted-foreground mt-1 text-xs">
             系统暂未提供研发PM 花名册查询，请向受邀研发PM 获取其人员 ID 后填入。
           </p>
+        </Form.Item>
+
+        <Form.Item v-if="form.mode === 'PUBLIC'" label="应标等级门槛（选填）">
+          <!-- DTO 语义对齐 CreateBidInvitationRequest.requiredLevel @Pattern L1..L5（仅 PUBLIC 生效） -->
+          <Select
+            id="bid-required-level"
+            v-model:value="form.requiredLevel"
+            :options="levelOptions"
+            allow-clear
+            placeholder="不限等级"
+            :disabled="submitting"
+            style="width: 200px"
+          />
+        </Form.Item>
+
+        <Form.Item v-if="form.mode === 'PUBLIC'" label="响应 SLA 天数（选填，1~90）">
+          <!-- slaDays 是计数非 ID，允许数字控件；区间对齐后端 @Size(min=1,max=90) -->
+          <InputNumber
+            v-model:value="form.slaDays"
+            :min="1"
+            :max="90"
+            :precision="0"
+            placeholder="如 7"
+            :disabled="submitting"
+            style="width: 200px"
+          />
         </Form.Item>
 
         <Form.Item
@@ -110,12 +158,14 @@
 </template>
 
 <script setup lang="ts">
-// 页20 发起招标（看板卡 P0-10.20；后端 POST /bid-invitations 已交付，创建即 OPEN）。
-// 字段以后端 BidInvitation 实体真值为准：title / content / mode / targetPersonId / expireAt。
+// 页20 发起招标（看板卡 P0-10.20；R215 GAP-F2 起提交切换至校验型入口 POST /bid-invitations/p231-create，
+// BidP231Controller.java:42-47；创建即 OPEN。旧口 api createBidInvitation 保留一个迭代未删）。
+// 字段以后端 CreateBidInvitationRequest DTO 真值为准：projectId / title / content / mode / targetPersonId /
+// expireAt（+PUBLIC 选填 requiredLevel / slaDays）。ID 一律 string 透传，禁 Number()（19 位雪花精度红线）。
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { Alert, Button, Card, DatePicker, Form, Input, Radio, message } from 'ant-design-vue';
-import { createBidInvitation } from '../../../../api/ipd/bid';
+import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Radio, Select, message } from 'ant-design-vue';
+import { createBidInvitationP231 } from '../../../../api/ipd/bid';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
 import '../../_shared/ipd-theme.css';
@@ -129,10 +179,21 @@ const isMarketSide = computed(() => ['MARKET_PM', 'SUPER_ADMIN'].includes(auth.i
 const submitting = ref(false);
 const submitError = ref('');
 
+const levelOptions = [
+  { label: 'L1', value: 'L1' },
+  { label: 'L2', value: 'L2' },
+  { label: 'L3', value: 'L3' },
+  { label: 'L4', value: 'L4' },
+  { label: 'L5', value: 'L5' },
+];
+
 const form = reactive({
   content: '',
   expireAt: '',
   mode: 'ONE_TO_ONE' as 'ONE_TO_ONE' | 'PUBLIC',
+  projectId: '',
+  requiredLevel: undefined as string | undefined,
+  slaDays: undefined as number | undefined,
   targetPersonId: '',
   title: '',
 });
@@ -140,6 +201,7 @@ const form = reactive({
 const errors = reactive({
   content: '',
   expireAt: '',
+  projectId: '',
   targetPersonId: '',
   title: '',
 });
@@ -155,10 +217,14 @@ function defaultExpireAt(): string {
 }
 
 function validate(): boolean {
+  errors.projectId = '';
   errors.title = '';
   errors.content = '';
   errors.targetPersonId = '';
   errors.expireAt = '';
+  if (!/^\d+$/.test(form.projectId.trim())) {
+    errors.projectId = '请填写所属项目 ID（纯数字）';
+  }
   const title = form.title.trim();
   if (title.length < 4) errors.title = '招标标题不少于 4 字';
   const content = form.content.trim();
@@ -172,7 +238,7 @@ function validate(): boolean {
   } else if (new Date(form.expireAt.replace(' ', 'T')).getTime() <= Date.now()) {
     errors.expireAt = '有效期截止须晚于当前时间';
   }
-  return !errors.title && !errors.content && !errors.targetPersonId && !errors.expireAt;
+  return !errors.projectId && !errors.title && !errors.content && !errors.targetPersonId && !errors.expireAt;
 }
 
 function goBack(): void {
@@ -187,11 +253,16 @@ async function submit(): Promise<void> {
   submitting.value = true;
   submitError.value = '';
   try {
-    await createBidInvitation({
+    // R215 GAP-F2：切至校验型入口。PUBLIC 模式整键省略 targetPersonId（后端 BidP231Validator 对 PUBLIC 拒填，
+    // 传 null 亦拒）；requiredLevel/slaDays 仅 PUBLIC 且填了才带上（ONE_TO_ONE 后端忽略，省为净）。
+    await createBidInvitationP231({
       content: form.content.trim(),
       expireAt: form.expireAt,
       mode: form.mode,
-      targetPersonId: form.mode === 'ONE_TO_ONE' ? form.targetPersonId.trim() : null,
+      projectId: form.projectId.trim(),
+      ...(form.mode === 'PUBLIC' && form.requiredLevel ? { requiredLevel: form.requiredLevel } : {}),
+      ...(form.mode === 'PUBLIC' && form.slaDays !== undefined && form.slaDays !== null ? { slaDays: form.slaDays } : {}),
+      ...(form.mode === 'ONE_TO_ONE' ? { targetPersonId: form.targetPersonId.trim() } : {}),
       title: form.title.trim(),
     });
     message.success('招标单已创建，当前状态：招标中');

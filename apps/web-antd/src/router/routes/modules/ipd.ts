@@ -207,6 +207,15 @@ const ipdLayoutRoute: RouteRecordRaw = {
           meta: { activePath: '/ipd/bids', hideInMenu: true, title: '遴选' },
           name: 'IpdBidSelect', path: ':bidId/select',
         },
+        // R215 GAP-F9 研发PM「我的应标」（GET /bid-responses/by-rd-pm/{personId}，
+        //   BidController:170；rdPmId 取 /auth/me person.id string，禁 userStore.userId 数值态——
+        //   store/ipd-auth.ts:135 污染点）。IDOR 三分支服务端推导；直达 URL 交付
+        //   （准备包「入口按钮 F1 顺路带/本卡直达二选一」取后者），activePath 归组研发招募。
+        {
+          component: () => import('#/views/ipd/bid/my-responses/index.vue'),
+          meta: { activePath: '/ipd/bids', hideInMenu: true, title: '我的应标' },
+          name: 'IpdBidMyResponses', path: 'my-responses',
+        },
       ],
     },
     // ⑥ 变更管理（原型 /changes，一级入口；2026-09-06 复刻 ChangesPage：接 RequirementChangeController
@@ -509,6 +518,17 @@ const ipdLayoutRoute: RouteRecordRaw = {
           meta: { access: [IPD_PERMISSION_CODES.COMPLIANCE_READ], title: '合规中心' },
           name: 'IpdAdminCompliance',
           path: 'compliance',
+        },
+        // R215 GAP-F7 人员同步任务页（PersonSyncController 5 端点；后端为代码内 require*，
+        //   无 @SaCheckPermission 注解码 → 前端零权限码登记，凭空登记=镜像污染，沿 F3 裁决）。
+        //   路由双角色门禁（submit/retry 组长可用，requireLeaderOrAdmin :53/:62）；
+        //   list/abnormal/retry-all 三条 requireAdmin 仅超管（:71/:82/:90）→ 页内按角色收敛，
+        //   组长不渲染列表/批量回补。authority 子路由覆写先例 business-config :436。
+        {
+          component: () => import('#/views/ipd/admin/person-sync/index.vue'),
+          meta: { authority: ['SUPER_ADMIN', 'GROUP_LEADER'], title: '同步任务' },
+          name: 'IpdAdminPersonSync',
+          path: 'person-sync',
         },
       ],
     },
