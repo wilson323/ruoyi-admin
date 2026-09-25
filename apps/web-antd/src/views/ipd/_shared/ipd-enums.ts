@@ -44,6 +44,143 @@ export function roleText(role: null | string | undefined, fallback = '未知角�
   return ROLE_TEXT[role] ?? fallback;
 }
 
+/**
+ * 权限码中文名（R215 UX 汉化：角色权限配置页等面向管理员的界面禁止裸露 ipd:* 代码）。
+ *
+ * <p>与后端 org.ruoyi.ipd.security.IpdPermissionCode 常量值对齐；仅展示用途，不参与鉴权。
+ * 新增码未收录时 {@link permissionText} 回显原码（不显示'未知'，避免误导）。
+ */
+export const IPD_PERMISSION_TEXT: Record<string, string> = {
+  // 项目
+  'ipd:project:list': '查看项目列表',
+  'ipd:project:query': '查询项目',
+  'ipd:project:add': '新建项目',
+  'ipd:project:edit': '修改项目状态',
+  // 产品
+  'ipd:product:list': '查看产品列表',
+  'ipd:product:query': '查询产品',
+  'ipd:product:add': '新建产品',
+  'ipd:product:edit': '产品绑定项目',
+  // 阶段动作
+  'ipd:stage-action:list': '查看阶段动作',
+  'ipd:stage-action:edit': '执行阶段动作',
+  'ipd:stage-action:add': '登记阶段交付物',
+  // 国别认证模板
+  'ipd:cert-template:list': '查看认证模板',
+  'ipd:cert-template:add': '新增认证模板',
+  'ipd:cert-template:remove': '删除认证模板',
+  // Gate 评审要素
+  'ipd:gate-element:list': '查看评审要素',
+  'ipd:gate-element:add': '新增评审要素',
+  'ipd:gate-element:edit': '修改评审要素',
+  'ipd:gate-element:remove': '停用评审要素',
+  'ipd:gate-element:publish': '发布评审要素',
+  'ipd:gate-element:archive': '归档评审要素',
+  'ipd:gate-element:copy': '复制评审要素',
+  'ipd:gate-element:revert': '回溯评审要素版本',
+  'ipd:gate-element:restore': '恢复归档评审要素',
+  // 删除申请
+  'ipd:deletion-request:submit': '提交删除申请',
+  'ipd:deletion-request:leader': '删除申请组长初审',
+  'ipd:deletion-request:admin': '删除申请超管终审',
+  'ipd:deletion-request:archive': '归档删除申请',
+  'ipd:deletion-request:purge': '彻底清除删除申请',
+  'ipd:deletion-request:withdraw': '撤回删除申请',
+  // Gate 评审
+  'ipd:gate-review:list': '查看 Gate 评审',
+  'ipd:gate-review:add': '发起 Gate 评审',
+  'ipd:gate-review:edit': '审批 Gate 评审',
+  // 考核系数
+  'ipd:coefficient:propose': '提议考核系数',
+  'ipd:coefficient:confirm': '确认考核系数',
+  // 站内通知
+  'ipd:notification:read': '查看站内通知',
+  'ipd:notification:dispatch': '手动派发通知',
+  // AI 文档助手
+  'ipd:ai-document:list': '查看 AI 文档',
+  'ipd:ai-document:add': '登记 AI 文档',
+  'ipd:ai-document:edit': '修订 AI 文档',
+  'ipd:ai-document:review': '审核 AI 文档',
+  // AI 模型配置
+  'ipd:ai-model:list': '查看 AI 模型配置',
+  'ipd:ai-model:edit': '修改 AI 模型配置',
+  'ipd:ai-copilot:chat': '使用 AI 副驾问答',
+  // SOP 模板
+  'ipd:sop-template:list': '查看 SOP 模板',
+  'ipd:sop-template:edit': '编辑 SOP 模板',
+  // KPI 考核
+  'ipd:kpi:query': '查询 KPI 考核',
+  'ipd:kpi-shared:confirm': '共担 KPI 确认签署',
+  'ipd:kpi-shared:collect': '共担 KPI 归集',
+  'ipd:kpi:raw:create': 'KPI 原始数据录入',
+  'ipd:kpi:raw:query': 'KPI 原始数据查询',
+  'ipd:kpi:config': '功能指标量表录入',
+  'ipd:kpi:config:query': '功能指标量表查询',
+  // 奖金池
+  'ipd:bonus-pool:query': '查看奖金池',
+  'ipd:bonus-pool:compute': '核算奖金池',
+  'ipd:bonus-pool:freeze': '冻结奖金池',
+  'ipd:bonus-pool:distribute': '分配奖金池',
+  // 上市后复盘
+  'ipd:post-launch-review:create': '创建上市后复盘',
+  'ipd:post-launch-review:complete': '完成上市后复盘',
+  'ipd:post-launch-review:query': '查看上市后复盘',
+  // 贡献度评定
+  'ipd:contribution:query': '查看贡献度评定',
+  'ipd:contribution:save': '保存贡献度评定',
+  'ipd:contribution:confirm': '确认贡献度评定',
+  // 负反馈
+  'ipd:negative-feedback:query': '查看负反馈',
+  'ipd:negative-feedback:create': '录入负反馈',
+  'ipd:negative-feedback:decide': '认定/解除负反馈',
+  // 切换验收
+  'ipd:switching-acceptance:query': '查看切换验收',
+  'ipd:switching-acceptance:admin': '切换验收管理（历史别名）',
+  'ipd:switching-acceptance:lock': '锁定切换验收月结',
+  'ipd:switching-acceptance:unlock': '解锁切换验收月结',
+  // 审计日志
+  'ipd:audit-log:list': '查看审计日志',
+  'ipd:audit-log:verify': '校验审计日志',
+  'ipd:audit-log:export': '导出审计日志',
+  // 合规
+  'ipd:compliance:read': '查看合规数据',
+  'ipd:compliance:write': '修改合规数据',
+  // 系统参数
+  'ipd:system-config:list': '查看系统参数',
+  'ipd:system-config:read': '读取系统参数',
+  'ipd:system-config:update': '修改系统参数',
+  // 招标
+  'ipd:bid-invitation:create': '创建招标单',
+  'ipd:bid-invitation:admin-assign': '指派招标超管',
+  // 项目移交
+  'ipd:handover:cancel': '撤销项目移交',
+  // 90 日回款预警
+  'ipd:recovery:check-90d': '触发回款预警扫描',
+  'ipd:recovery:warnings:query': '查看回款预警',
+  // 需求变更单
+  'ipd:requirement-change:submit': '提交需求变更单',
+  'ipd:requirement-change:sign': '签收需求变更单',
+  // 落地场景
+  'ipd:scenario:landed:create': '登记落地场景',
+  'ipd:scenario:landed:query': '查看落地场景',
+  // 业务参数
+  'ipd:business-config:read': '查看业务参数',
+  'ipd:business-config:write': '修改业务参数',
+  // 数据治理
+  'ipd:permanent-delete:execute': '永久清除数据',
+  // P0 升级链
+  'ipd:p0-escalation:read': '查看 P0 升级链',
+  // 角色权限配置（元权限，固定仅超管）
+  'ipd:role-permission:query': '查看角色权限配置',
+  'ipd:role-permission:edit': '修改角色权限配置',
+};
+
+/** 权限码中文名（未收录的码回显原码；空值返回 fallback 或空串）。 */
+export function permissionText(code: null | string | undefined, fallback?: string): string {
+  if (!code) return fallback ?? '';
+  return IPD_PERMISSION_TEXT[code] ?? fallback ?? code;
+}
+
 /** 六阶段 UI 配色。 */
 export const STAGE_TONE: Record<string, string> = {
   CONCEPT: 'default',

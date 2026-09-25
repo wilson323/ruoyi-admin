@@ -29,6 +29,7 @@ import {
   Spin,
   Table,
   Tag,
+  Tooltip,
   message as antMessage,
 } from 'ant-design-vue';
 
@@ -46,6 +47,7 @@ import {
 } from '../../../api/ipd/role-permission';
 import { IpdRequestError } from '../../../api/ipd/auth';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
+import { permissionText, roleText } from '../_shared/ipd-enums';
 import { PENDING_TEXT } from '../_shared/format';
 
 type Phase = 'forbidden' | 'loading' | 'ready';
@@ -107,7 +109,7 @@ const form = reactive({
 });
 const submitting = ref(false);
 
-const roleOptions = ROLES.map((r) => ({ label: r, value: r }));
+const roleOptions = ROLES.map((r) => ({ label: `${roleText(r)}（${r}）`, value: r }));
 
 /** 权限码下拉：全部角色快照中出现过的 ipd: 码并集（排除元权限码，后端本就不允许）。 */
 const codeOptions = computed(() => {
@@ -117,12 +119,12 @@ const codeOptions = computed(() => {
       if (!code.startsWith('ipd:role-permission:')) set.add(code);
     }
   }
-  return [...set].sort().map((c) => ({ label: c, value: c }));
+  return [...set].sort().map((c) => ({ label: `${permissionText(c)}（${c}）`, value: c }));
 });
 
 async function submit(): Promise<void> {
   if (!form.personType || !form.permissionCode || !form.remark.trim()) {
-    antMessage.warning('角色、权限码、变更依据均必填');
+    antMessage.warning('请选择角色和权限，并填写调整原因');
     return;
   }
   submitting.value = true;
@@ -133,7 +135,7 @@ async function submit(): Promise<void> {
       personType: form.personType,
       remark: form.remark.trim(),
     });
-    antMessage.success('覆盖行已创建并即时生效');
+    antMessage.success('已保存，立即生效');
     form.permissionCode = '';
     form.remark = '';
     await loadAll();
@@ -147,7 +149,7 @@ async function submit(): Promise<void> {
 async function removeRow(row: RolePermissionRow): Promise<void> {
   try {
     await deleteRolePermission(row.id);
-    antMessage.success('覆盖行已删除，该权限码回退 Java 默认集');
+    antMessage.success('已删除，该角色恢复系统默认权限');
     await loadAll();
   } catch (cause) {
     antMessage.error(rejectText(cause));
@@ -159,7 +161,7 @@ async function reloadLayer(): Promise<void> {
   reloading.value = true;
   try {
     const r = await reloadRolePermissions();
-    antMessage.success(`覆盖层已重建：GRANT 角色 ${r.grantRoles} 个 / REVOKE 角色 ${r.revokeRoles} 个`);
+    antMessage.success(`重新加载完成：${r.grantRoles} 个角色有额外开通，${r.revokeRoles} 个角色有额外禁止`);
     await loadAll();
   } catch (cause) {
     antMessage.error(rejectText(cause));
@@ -169,10 +171,10 @@ async function reloadLayer(): Promise<void> {
 }
 
 const columns = [
-  { dataIndex: 'personType', key: 'personType', title: '角色', width: 140 },
-  { dataIndex: 'permissionCode', key: 'permissionCode', title: '权限码' },
-  { key: 'effect', title: '语义', width: 110 },
-  { dataIndex: 'remark', key: 'remark', title: '变更依据', width: 220 },
+  { dataIndex: 'personType', key: 'personType', title: '角色', width: 200 },
+  { dataIndex: 'permissionCode', key: 'permissionCode', title: '权限' },
+  { key: 'effect', title: '调整方式', width: 110 },
+  { dataIndex: 'remark', key: 'remark', title: '调整原因', width: 200 },
   { dataIndex: 'createTime', key: 'createTime', title: '创建时间', width: 170 },
   { key: 'action', title: '操作', width: 80 },
 ];
@@ -195,15 +197,15 @@ function toggle(role: string): void {
       </template>
       <template v-else>
         <Alert
-          message="角色 → 权限码 DB 覆盖层：有效权限 = Java 默认 ∪ GRANT − REVOKE；覆盖行清空即回默认。变更即时生效（影响之后建立的新会话）；元权限（本功能自身）固定仅超管，不可配置。方法内 require* 兜底为第二层角色闸，不受本页影响。"
+          message="这里为各角色单独调整权限：实际可用权限 = 系统默认 + 额外开通 − 额外禁止；没有调整记录时按系统默认执行。保存后立即生效，对新登录的会话起作用。本页面自身的访问权限固定归超级管理员，不在这里调整；部分关键操作另有独立安全校验，也不受本页影响。"
           show-icon
           type="info"
         />
 
-        <Card class="mt-3" title="当前 DB 覆盖行">
+        <Card class="mt-3" title="权限调整记录">
           <template #extra>
             <Space>
-              <Button :loading="reloading" @click="reloadLayer">重建覆盖层</Button>
+              <Button :loading="reloading" @click="reloadLayer">重新加载权限</Button>
               <Button type="primary" @click="loadAll">刷新</Button>
             </Space>
           </template>
@@ -223,9 +225,17 @@ function toggle(role: string): void {
             size="small"
           >
             <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'effect'">
+              <template v-if="column.key === 'personType'">
+                {{ roleText(record.personType) }}
+                <span class="ml-1 text-xs text-gray-400">{{ record.personType }}</span>
+              </template>
+              <template v-else-if="column.key === 'permissionCode'">
+                {{ permissionText(record.permissionCode) }}
+                <span class="ml-1 text-xs text-gray-400">{{ record.permissionCode }}</span>
+              </template>
+              <template v-else-if="column.key === 'effect'">
                 <Tag :color="record.effect === 'GRANT' ? 'green' : 'red'">
-                  {{ record.effect === 'GRANT' ? '增授' : '收回' }}
+                  {{ record.effect === 'GRANT' ? '额外开通' : '额外禁止' }}
                 </Tag>
               </template>
               <template v-else-if="column.key === 'remark'">
@@ -237,7 +247,7 @@ function toggle(role: string): void {
               <template v-else-if="column.key === 'action'">
                 <Popconfirm
                   placement="left"
-                  title="删除后该权限码回退 Java 默认集，确认？"
+                  title="删除后该角色恢复系统默认权限，确认？"
                   @confirm="removeRow(record as RolePermissionRow)"
                 >
                   <Button danger size="small">删除</Button>
@@ -245,58 +255,60 @@ function toggle(role: string): void {
               </template>
             </template>
           </Table>
-          <Empty v-else-if="!offline" description="暂无覆盖行 —— 当前行为 = 纯 Java 默认矩阵" />
+          <Empty v-else-if="!offline" description="暂无调整记录 —— 所有角色都按系统默认权限执行" />
 
           <Form class="mt-4" layout="inline">
             <FormItem label="角色">
-              <Select v-model:value="form.personType" :options="roleOptions" placeholder="选择角色" style="width: 160px" />
+              <Select v-model:value="form.personType" :options="roleOptions" placeholder="选择角色" style="width: 200px" />
             </FormItem>
-            <FormItem label="权限码">
+            <FormItem label="权限">
               <Select
                 v-model:value="form.permissionCode"
                 :options="codeOptions"
                 option-filter-prop="label"
-                placeholder="搜索并选择"
+                placeholder="输入中文或编码搜索"
                 show-search
-                style="width: 280px"
+                style="width: 360px"
               />
             </FormItem>
-            <FormItem label="语义">
+            <FormItem label="调整方式">
               <RadioGroup v-model:value="form.effect">
-                <Radio value="GRANT">增授</Radio>
-                <Radio value="REVOKE">收回</Radio>
+                <Radio value="GRANT">额外开通</Radio>
+                <Radio value="REVOKE">额外禁止</Radio>
               </RadioGroup>
             </FormItem>
-            <FormItem label="变更依据">
-              <Input v-model:value="form.remark" placeholder="卡号 / 拍板记录（必填留痕）" style="width: 220px" />
+            <FormItem label="调整原因">
+              <Input v-model:value="form.remark" placeholder="必填，写清为什么调整" style="width: 220px" />
             </FormItem>
             <FormItem>
-              <Button :loading="submitting" type="primary" @click="submit">新增覆盖行</Button>
+              <Button :loading="submitting" type="primary" @click="submit">保存调整</Button>
             </FormItem>
           </Form>
         </Card>
 
-        <Card class="mt-3" title="各角色有效快照（Java 默认 / DB GRANT / DB REVOKE / 最终生效）">
+        <Card class="mt-3" title="各角色权限总览（系统默认 / 额外开通 / 额外禁止 / 实际可用）">
           <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Card v-for="role in ROLES" :key="role" size="small" :title="role">
+            <Card v-for="role in ROLES" :key="role" size="small" :title="`${roleText(role)}（${role}）`">
               <template v-if="layers(role)">
                 <Space>
-                  <Tag>默认 {{ layers(role)!.javaDefault.length }}</Tag>
-                  <Tag color="green">GRANT {{ layers(role)!.dbGrant.length }}</Tag>
-                  <Tag color="red">REVOKE {{ layers(role)!.dbRevoke.length }}</Tag>
-                  <Tag color="blue">生效 {{ layers(role)!.effective.length }}</Tag>
+                  <Tag>系统默认 {{ layers(role)!.javaDefault.length }}</Tag>
+                  <Tag color="green">额外开通 {{ layers(role)!.dbGrant.length }}</Tag>
+                  <Tag color="red">额外禁止 {{ layers(role)!.dbRevoke.length }}</Tag>
+                  <Tag color="blue">实际可用 {{ layers(role)!.effective.length }}</Tag>
                   <Button size="small" @click="toggle(role)">
-                    {{ expanded[role] ? '收起码表' : '展开码表' }}
+                    {{ expanded[role] ? '收起明细' : '查看权限明细' }}
                   </Button>
                 </Space>
                 <div v-if="expanded[role]" class="mt-2" style="max-height: 260px; overflow-y: auto">
-                  <Tag v-for="code in [...layers(role)!.dbGrant].sort()" :key="`g-${code}`" class="mb-1" color="green">
-                    +{{ code }}
-                  </Tag>
-                  <Tag v-for="code in [...layers(role)!.dbRevoke].sort()" :key="`r-${code}`" class="mb-1" color="red">
-                    −{{ code }}
-                  </Tag>
-                  <Tag v-for="code in layers(role)!.effective" :key="`e-${code}`" class="mb-1">{{ code }}</Tag>
+                  <Tooltip v-for="code in [...layers(role)!.dbGrant].sort()" :key="`g-${code}`" :title="code">
+                    <Tag class="mb-1 cursor-help" color="green">+ {{ permissionText(code) }}</Tag>
+                  </Tooltip>
+                  <Tooltip v-for="code in [...layers(role)!.dbRevoke].sort()" :key="`r-${code}`" :title="code">
+                    <Tag class="mb-1 cursor-help" color="red">− {{ permissionText(code) }}</Tag>
+                  </Tooltip>
+                  <Tooltip v-for="code in layers(role)!.effective" :key="`e-${code}`" :title="code">
+                    <Tag class="mb-1 cursor-help">{{ permissionText(code) }}</Tag>
+                  </Tooltip>
                 </div>
               </template>
               <Empty v-else :image="Empty.PRESENTED_IMAGE_SIMPLE" description="快照未加载" />

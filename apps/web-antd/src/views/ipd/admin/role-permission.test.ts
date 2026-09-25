@@ -1,9 +1,10 @@
 /**
- * 角色权限配置页（R215 权限可配置化，owner 指令 2026-09-24「确保权限可配置化」）：
+ * 角色权限配置页（R215 权限可配置化，owner 指令 2026-09-24「确保权限可配置化」；
+ *   2026-09-25 UX 汉化：界面不裸露角色/权限码英文，中文名为主 + 灰色代码辅助追溯）：
  *   - 非超管角色闸（GROUP_LEADER → forbidden，不发请求）
  *   - 超管首屏：并行 GET /role-permissions + /role-permissions/effective，
- *     覆盖行空态 Empty + 四角色快照卡片计数
- *   - 有覆盖行：表格渲染 GRANT「增授」/REVOKE「收回」Tag + 删除按钮
+ *     空态 Empty + 四角色快照卡片计数（中文标题）
+ *   - 有覆盖行：表格渲染「额外开通」/「额外禁止」Tag + 删除按钮
  *   - 新增必填校验（remark 留痕必填，未填不发 POST）
  *   - 后端 403 → forbidden；断网 transport → offline 提示不崩
  *
@@ -96,50 +97,56 @@ describe('角色权限配置页 (R215)', () => {
     setIdentity('SUPER_ADMIN');
     const wrapper = mount(RolePermission);
     // 注意：loading 首帧也会渲染 Empty（Spin 只是遮罩），必须等 ready 态独有文本：
-    // 快照卡片计数（GROUP_LEADER dbGrant=1 → 「GRANT 1」）只在两端点都返回后出现
+    // 快照卡片计数（GROUP_LEADER dbGrant=1 → 「额外开通 1」）只在两端点都返回后出现
     await vi.waitFor(() => {
-      expect(wrapper.text()).toContain('GRANT 1');
+      expect(wrapper.text()).toContain('额外开通 1');
     }, { timeout: 3000 });
     // 首屏并行两端点
     expect(calls.some((c) => c.url.includes('/role-permissions') && c.method === 'GET' && !c.url.includes('effective'))).toBe(true);
     expect(calls.some((c) => c.url.includes('/role-permissions/effective') && c.method === 'GET')).toBe(true);
-    // 覆盖行空态 + 快照卡片：四角色 + 计数
+    // 覆盖行空态 + 快照卡片：四角色（中文名为主，英文码随行辅助）+ 计数
     const text = wrapper.text();
-    expect(text).toContain('暂无覆盖行');
+    expect(text).toContain('暂无调整记录');
+    expect(text).toContain('超级管理员');
+    expect(text).toContain('产品组长');
+    expect(text).toContain('市场PM');
+    expect(text).toContain('研发PM');
+    // 英文码保留在卡片标题括号内，可追溯
     expect(text).toContain('SUPER_ADMIN');
     expect(text).toContain('GROUP_LEADER');
-    expect(text).toContain('MARKET_PM');
-    expect(text).toContain('RD_PM');
-    expect(text).toContain('生效 2');
-    // 语义说明 Alert 披露覆盖层公式与边界
-    expect(text).toContain('Java 默认 ∪ GRANT − REVOKE');
+    expect(text).toContain('实际可用 2');
+    // Alert 披露口径（中文公式）
+    expect(text).toContain('系统默认 + 额外开通 − 额外禁止');
     wrapper.unmount();
   });
 
-  it('覆盖行表格：GRANT「增授」/REVOKE「收回」Tag + 删除入口渲染', async () => {
+  it('覆盖行表格：「额外开通」/「额外禁止」Tag + 中文权限名 + 删除入口渲染', async () => {
     stubApi({ rows: [grantRow, revokeRow] });
     setIdentity('SUPER_ADMIN');
     const wrapper = mount(RolePermission);
     await vi.waitFor(() => {
-      expect(wrapper.text()).toContain('ipd:bonus-pool:compute');
+      expect(wrapper.text()).toContain('核算奖金池');
     }, { timeout: 3000 });
     const text = wrapper.text();
+    expect(text).toContain('冻结奖金池');
+    // 中文名在前、英文码随行保留可追溯
+    expect(text).toContain('ipd:bonus-pool:compute');
     expect(text).toContain('ipd:bonus-pool:freeze');
-    expect(text).toContain('增授');
-    expect(text).toContain('收回');
+    expect(text).toContain('额外开通');
+    expect(text).toContain('额外禁止');
     expect(text).toContain('N1 拍板 2026-09-24');
     expect(wrapper.html()).toMatch(/删\s*除/);
     wrapper.unmount();
   });
 
-  it('新增必填校验：角色/权限码/依据未填时点提交不发 POST', async () => {
+  it('新增必填校验：角色/权限/原因未填时点提交不发 POST', async () => {
     const calls = stubApi();
     setIdentity('SUPER_ADMIN');
     const wrapper = mount(RolePermission);
     await vi.waitFor(() => {
-      expect(wrapper.text()).toContain('GRANT 1');
+      expect(wrapper.text()).toContain('额外开通 1');
     }, { timeout: 3000 });
-    const submit = wrapper.findAll('button').find((b) => b.text().replace(/\s/g, '').includes('新增覆盖行'));
+    const submit = wrapper.findAll('button').find((b) => b.text().replace(/\s/g, '').includes('保存调整'));
     expect(submit).toBeTruthy();
     await submit!.trigger('click');
     await wrapper.vm.$nextTick();
@@ -147,14 +154,14 @@ describe('角色权限配置页 (R215)', () => {
     wrapper.unmount();
   });
 
-  it('重建覆盖层：POST /role-permissions/reload 点击可达', async () => {
+  it('重新加载权限：POST /role-permissions/reload 点击可达', async () => {
     const calls = stubApi();
     setIdentity('SUPER_ADMIN');
     const wrapper = mount(RolePermission);
     await vi.waitFor(() => {
-      expect(wrapper.text()).toContain('GRANT 1');
+      expect(wrapper.text()).toContain('额外开通 1');
     }, { timeout: 3000 });
-    const btn = wrapper.findAll('button').find((b) => b.text().includes('重建覆盖层'));
+    const btn = wrapper.findAll('button').find((b) => b.text().includes('重新加载权限'));
     expect(btn).toBeTruthy();
     await btn!.trigger('click');
     await vi.waitFor(() => {
