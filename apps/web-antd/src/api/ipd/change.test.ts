@@ -8,6 +8,7 @@ import {
   getLaunchDateChange,
   listCoefficientChanges,
   listLaunchDateChanges,
+  listOpenRequirementChanges,
   parseCoefficientChangeRequest,
   parseLaunchDateChangeRequest,
   proposeCoefficientChange,
@@ -193,5 +194,55 @@ describe('P1-2 上市日期变更列表与详情 GET', () => {
     expect(row.id).toBe('8002');
     expect(row.status).toBe('REJECTED');
     expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/launch-date-change-requests/8002');
+  });
+});
+
+// ---------- R215 A13：项目未闭环需求变更单 GET /requirement-changes/open 契约测试 ----------
+
+const requirementFixture = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id: '6001',
+  projectId: '100',
+  requirementId: '3001',
+  changeType: 'SCOPE',
+  status: 'PENDING_SIGN',
+  reason: '范围调整',
+  beforeSnapshot: null,
+  afterSnapshot: null,
+  signatures: null,
+  createTime: '2026-09-20 10:00:00',
+  ...overrides,
+});
+
+describe('R215 A13：listOpenRequirementChanges', () => {
+  it('projectId=100 → GET /api/v1/requirement-changes/open?projectId=100，解析数组返回实体', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      response([requirementFixture(), requirementFixture({ id: '6002', status: 'DRAFT' })]),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const rows = await listOpenRequirementChanges('100');
+    expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/requirement-changes/open?projectId=100');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.id).toBe('6001');
+    expect(rows[0]!.status).toBe('PENDING_SIGN');
+    expect(rows[1]!.status).toBe('DRAFT');
+  });
+
+  it('后端返回空数组 → 前端空列表（P2-6.2 门禁 Alert 隐藏）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response([]));
+    vi.stubGlobal('fetch', fetcher);
+    const rows = await listOpenRequirementChanges('100');
+    expect(rows).toEqual([]);
+  });
+
+  it('后端非数组载荷（null/对象）→ 兑底空列表，不拖拽页面', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response(null));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(listOpenRequirementChanges('100')).resolves.toEqual([]);
+  });
+
+  it('行数据缺 id → 抛 IpdRequestError（调用方 onMounted catch 静默降级）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response([{ status: 'DRAFT' }]));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(listOpenRequirementChanges('100')).rejects.toBeInstanceOf(IpdRequestError);
   });
 });

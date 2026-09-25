@@ -68,3 +68,37 @@ export function fetchWorkbenchSummary(projectId?: string): Promise<WorkbenchSumm
     projectId ? { projectId } : undefined,
   );
 }
+
+/**
+ * 我发起 / 待我审批聚合任务卡（R27 P0-6；后端 MyInitiatedTask 投影，R215 A10 接线）。
+ * 三张审批单据（deletion_requests / coefficient_change_requests / launch_date_change_requests）
+ * + 阶段动作（stage_actions）的统一视图；personId 缺省 = 当前登录人（SEC-API-01 会话推导）。
+ */
+export interface MyInitiatedTaskView {
+  id: string;
+  /** 实测短形式：DELETION / COEFFICIENT / LAUNCH_DATE / STAGE_ACTION（后端常量名长形式但值为短，以响应为准） */
+  taskType: string;
+  sourceId: string;
+  sourceTable: string;
+  title: null | string;
+  status: string;
+  initiatorId: string;
+  approverId: null | string;
+  createdAt: number | string;
+}
+
+/** 我发起的（GET /workbench/my-initiated）。 */
+export function fetchMyInitiated(personId?: string): Promise<MyInitiatedTaskView[]> {
+  return ipdGet<MyInitiatedTaskView[]>(
+    '/workbench/my-initiated',
+    personId ? { personId } : undefined,
+  );
+}
+
+/** 待我审批的（GET /workbench/my-pending-approvals；审批态单据聚合）。 */
+export function fetchMyPendingApprovals(personId?: string): Promise<MyInitiatedTaskView[]> {
+  return ipdGet<MyInitiatedTaskView[]>(
+    '/workbench/my-pending-approvals',
+    personId ? { personId } : undefined,
+  );
+}

@@ -13,6 +13,11 @@ export interface IpdPerson {
   groupId: string | null;
   id: string;
   name: string;
+  /**
+   * 后端 PersonView 下发的 IPD 权限码（ipd:*；IpdRolePermissionCatalog 按角色目录）；
+   * af6d3ea 接通权限码时后端已实发，此处类型同步（R215 补记）。全局 NON_NULL 剔除空键，可选。
+   */
+  permissionCodes?: string[];
   personType: string;
   username: string;
 }

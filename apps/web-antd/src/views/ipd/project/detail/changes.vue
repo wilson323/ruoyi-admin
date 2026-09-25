@@ -62,6 +62,7 @@ import {
   createRequirementChange,
   listCoefficientChanges,
   listLaunchDateChanges,
+  listOpenRequirementChanges,
   listRequirementChanges,
   proposeCoefficientChange,
   proposeLaunchDateChange,
@@ -298,6 +299,8 @@ const reqDecisionResult = ref<null | RequirementChange>(null);
 const reqList = ref<RequirementChange[]>([]);
 const reqListLoading = ref(false);
 const reqListError = ref('');
+/** R215 A13：未闭环变更单（P2-6.2 门禁提示数据源）。 */
+const openChanges = ref<RequirementChange[]>([]);
 
 function statusToneFor(status: string): string {
   return changeStateTone(status, 'default');
@@ -476,10 +479,18 @@ const reqListColumns = [
 ];
 
 onMounted(() => {
-  // 首次进入预拉需求变更列表（Tab3）+ P1-2 新增：Tab1 系数变更 + Tab2 上市日期列表
+  // 首次进入预拉需求变更列表（Tab3）+ P1-2 新增：Tab1 系数变更 + Tab2 上市日期 列表
   void loadReqList();
   void loadCoefList();
   void loadLaunchList();
+  // R215 A13：未闭环变更单（P2-6.2 门禁提示；失败静默——门禁提示缺失不阻断工作流）
+  listOpenRequirementChanges(projectId.value.trim())
+    .then((rows) => {
+      openChanges.value = rows;
+    })
+    .catch(() => {
+      openChanges.value = [];
+    });
 });
 </script>
 
@@ -764,6 +775,23 @@ onMounted(() => {
       </TabPane>
 
       <TabPane key="requirement" tab="需求变更（双签）">
+        <!-- R215 A13：未闭环变更单门禁提示（P2-6.2：阶段推进会被拦截） -->
+        <Alert
+          v-if="openChanges.length > 0"
+          class="mb-3"
+          show-icon
+          type="warning"
+          :message="`本项目有 ${openChanges.length} 张未闭环需求变更单（P2-6.2：阶段推进门禁会拦截）`"
+        >
+          <template #description>
+            {{
+              openChanges
+                .slice(0, 5)
+                .map((c) => `#${c.id}（${changeStateLabel(c.status)}）`)
+                .join('、') + (openChanges.length > 5 ? ` 等 ${openChanges.length} 张` : '')
+            }}
+          </template>
+        </Alert>
         <Card title="发起需求变更（双签否决：BR-GATE-07）">
           <Alert
             class="mb-4"

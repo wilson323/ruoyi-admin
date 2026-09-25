@@ -135,10 +135,25 @@ export function batchImportProducts(
   })));
 }
 
-/** 绑定项目（1:1；query 传 projectId，空串表示解绑；后端返回 Void，结果以 GET /products 复查）。 */
+/**
+ * 绑定项目（1:1；query 传 projectId；后端返回 Void，结果以 GET /products 复查）。
+ * 注意：projectId 传 null/空串时 http.ts 会整体省略查询串，后端 @RequestParam 必填→400；
+ * 解绑请改走 unbindProductProject（R215 A13 接线，下方）。
+ */
 export function bindProductProject(id: string, projectId: null | string): Promise<void> {
   return ipdPost<void>(`/products/${encodeURIComponent(id)}/bind-project`, undefined, {
     projectId: projectId ?? '',
+  }).then(() => undefined);
+}
+
+/**
+ * 解绑项目（R215 A13 接线；POST /products/{id}/unbind-project?projectId=）。
+ * 与 bind 对称的显式解绑（P1-1.1）；后端同样鉴权 ipd:product:edit + requireProductWriter。
+ * bind 的「projectId 空串」兑底路径之外的正规解绑入口；结果以 GET /products 复查。
+ */
+export function unbindProductProject(id: string, projectId: string): Promise<void> {
+  return ipdPost<void>(`/products/${encodeURIComponent(id)}/unbind-project`, undefined, {
+    projectId,
   }).then(() => undefined);
 }
 

@@ -315,6 +315,15 @@ export async function listRequirementChanges(
   };
 }
 
+/**
+ * 项目未闭环变更单（GET /requirement-changes/open?projectId=；R215 A13 接线）。
+ * P2-6.2 阶段推进门禁配套：存在未闭环变更单时阶段推进会被拦截，前端用于顶部门禁提示。
+ */
+export async function listOpenRequirementChanges(projectId: string): Promise<RequirementChange[]> {
+  const raw = await ipdGet<unknown>('/requirement-changes/open', { projectId });
+  return Array.isArray(raw) ? raw.map((row) => parseRequirementChange(row)) : [];
+}
+
 /** 创建变更单草稿（市场PM/研发PM；权限 OPERATION_MODULE_PROJECT_STATUS_CHANGE）。 */
 export async function createRequirementChange(
   input: RequirementChangeCreateInput,

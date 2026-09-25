@@ -5,12 +5,13 @@
  * - fetchWorkbenchSummary：projectId 可选；不带时不发查询串，带时编码；
  * - 载荷透传 stats / tasks / deletionPending / currentAdvance；
  * - 错误传播。
+ * - R215 A10：fetchMyInitiated / fetchMyPendingApprovals（personId 可选 + 载荷透传）。
  */
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IpdRequestError } from './auth';
-import { fetchWorkbenchSummary } from './workbench';
+import { fetchMyInitiated, fetchMyPendingApprovals, fetchWorkbenchSummary } from './workbench';
 
 const envelope = (data: unknown, status = 200, code = 0): Response =>
   new Response(
@@ -107,10 +108,14 @@ describe('workbench API — fetchWorkbenchSummary', () => {
     expect(summary.currentAdvance).toBeNull();
   });
 
-  it('workbench.ts 仅导出 fetchWorkbenchSummary（动词面：GET only）', async () => {
+  it('workbench.ts 导出面锁定（动词面：GET only；R215 A10 后含 my-initiated/my-pending-approvals）', async () => {
     // 防止误加 fetchWorkbenchTasks / postWorkbenchXxx 等动词面漂移；与 http.ts 契约一致。
     const moduleExports = Object.keys(await import('./workbench')).sort();
-    expect(moduleExports).toEqual(['fetchWorkbenchSummary']);
+    expect(moduleExports).toEqual([
+      'fetchMyInitiated',
+      'fetchMyPendingApprovals',
+      'fetchWorkbenchSummary',
+    ]);
   });
 });
 
@@ -164,5 +169,60 @@ describe('workbench API — 错误传播', () => {
     const fetcher = vi.fn().mockResolvedValue(envelope(null, 401, 20001));
     vi.stubGlobal('fetch', fetcher);
     await expect(fetchWorkbenchSummary('p-1')).rejects.toBeInstanceOf(IpdRequestError);
+  });
+});
+
+// ---------- R215 A10：我发起 / 待我审批聚合卡（MyInitiatedTask 投影）契约测试 ----------
+
+const initiatedFixture = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id: '7001',
+  // 实测 16039：taskType 为短形式（后端常量名长形式但值为短）
+  taskType: 'DELETION',
+  sourceId: '6001',
+  sourceTable: 'deletion_requests',
+  title: '删除项目 P-100',
+  status: 'PENDING_REVIEW',
+  initiatorId: '9007199254740993',
+  approverId: null,
+  createdAt: 1789992000000,
+  ...overrides,
+});
+
+describe('workbench API — fetchMyInitiated / fetchMyPendingApprovals（R215 A10）', () => {
+  it('无 personId：GET /workbench/my-initiated 不带查询串（后端会话推导当前人）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope([initiatedFixture()]));
+    vi.stubGlobal('fetch', fetcher);
+    const rows = await fetchMyInitiated();
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/workbench/my-initiated');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.id).toBe('7001');
+    expect(rows[0]!.taskType).toBe('DELETION');
+    expect(rows[0]!.sourceTable).toBe('deletion_requests');
+    expect(rows[0]!.createdAt).toBe(1789992000000);
+  });
+
+  it('传 personId：编码进查询串', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope([]));
+    vi.stubGlobal('fetch', fetcher);
+    await fetchMyInitiated('9007199254740993');
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      '/api/v1/workbench/my-initiated?personId=9007199254740993',
+    );
+  });
+
+  it('fetchMyPendingApprovals：GET /workbench/my-pending-approvals，空数组正常返回', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope([]));
+    vi.stubGlobal('fetch', fetcher);
+    const rows = await fetchMyPendingApprovals('9007199254740993');
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      '/api/v1/workbench/my-pending-approvals?personId=9007199254740993',
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it('HTTP 500 抛 IpdRequestError（治理卡静默降级依赖此行为）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope(null, 500, 99999));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(fetchMyInitiated()).rejects.toBeInstanceOf(IpdRequestError);
   });
 });

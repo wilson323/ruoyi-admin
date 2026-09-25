@@ -9,8 +9,8 @@
 import { computed, onMounted, ref } from 'vue';
 import { Alert, Tag } from 'ant-design-vue';
 
-import { fetchWorkbenchSummary } from '../../../api/ipd/workbench';
-import type { WorkbenchSummary, WorkbenchTask } from '../../../api/ipd/workbench';
+import { fetchMyInitiated, fetchMyPendingApprovals, fetchWorkbenchSummary } from '../../../api/ipd/workbench';
+import type { MyInitiatedTaskView, WorkbenchSummary, WorkbenchTask } from '../../../api/ipd/workbench';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
 import '../_shared/ipd-theme.css';
 import { RULES_BY_PAGE, renderRulesDescription } from '../_shared/zk-ipd-rules';
@@ -74,9 +74,13 @@ const queueTabs = computed<QueueTab[]>(() => {
   const s = summary.value?.stats;
   return [
     { key: 'pending', label: '待我处理', count: s ? s.pending : 0 },
-    // P1-4: 「我发起的」接 stats.myInitiated（后端三表 create_by=当前人 计数）
-    // 旧后端（16039 未重启）缺 myInitiated 键时 ?? 0 兜底显示「0」徽标（不影响功能）
-    { key: 'initiated', label: '我发起的', count: s ? (s.myInitiated ?? 0) : 0 },
+    // P1-4 + R215 A10: 「我发起的」优先用 my-initiated 端点明细数（权威）；
+    // 端点未返回前回退 stats.myInitiated（后端三表 create_by=当前人计数，旧后端缺键时 ?? 0）
+    {
+      key: 'initiated',
+      label: '我发起的',
+      count: myInitiatedLoaded.value ? myInitiatedTasks.value.length : (s ? (s.myInitiated ?? 0) : 0),
+    },
     { key: 'overdue', label: '临期/超期', count: s ? s.overdue : 0 },
     { key: 'completed', label: '已完成', count: s ? s.completed : 0 },
     // P1-4: 「我的关注」无关注数据模型（用户拍板：先不做），保持 null 隐藏徽标
@@ -93,6 +97,28 @@ interface TaskGroup {
 
 const STATUS_TEXT: Record<string, string> = WORKBENCH_TASK_STATUS_TEXT;
 
+/** R215 A10：my-initiated / my-pending-approvals 聚合卡（三单据+阶段动作统一视图）。 */
+const myInitiatedTasks = ref<MyInitiatedTaskView[]>([]);
+const myInitiatedLoaded = ref(false);
+const myPendingApprovals = ref<MyInitiatedTaskView[]>([]);
+
+// 后端 WorkbenchService 常量值为短形式（TASK_TYPE_DELETION_REQUEST = "DELETION" 等，实测 16039 响应）；
+// 常量名/javadoc 的长形式是命名误导，以此处短形式为准。
+const MY_INITIATED_SOURCE_TEXT: Record<string, string> = {
+  DELETION: '删除申请',
+  COEFFICIENT: '系数变更',
+  LAUNCH_DATE: '上市日期变更',
+  STAGE_ACTION: '阶段动作',
+};
+
+/** 待我审批摘要（治理卡用，最多列 3 条）。 */
+const pendingApprovalsDigest = computed(() => {
+  const list = myPendingApprovals.value;
+  if (list.length === 0) return '';
+  const head = list.slice(0, 3).map((t) => t.title ?? `#${t.id}`).join('；');
+  return list.length > 3 ? `${head} 等 ${list.length} 项` : head;
+});
+
 function formatDue(iso: null | number | string | undefined): string {
   if (!iso) return '无截止';
   const d = new Date(iso);
@@ -102,6 +128,19 @@ function formatDue(iso: null | number | string | undefined): string {
 }
 
 const taskGroups = computed<TaskGroup[]>(() => {
+  // R215 A10：「我发起的」tab 用 my-initiated 端点真数据（不再复用 stage_action 队列）
+  if (activeTab.value === 'initiated') {
+    const items = myInitiatedTasks.value.map((t) => ({
+      kind: STATUS_TEXT[t.status] ?? t.status,
+      title: t.title ?? `单据 #${t.id}`,
+      desc: `${MY_INITIATED_SOURCE_TEXT[t.taskType] ?? t.taskType} · ${t.sourceTable}`,
+      code: '',
+      initiator: '',
+      time: t.createdAt ? formatDue(t.createdAt) : '—',
+      overdue: false,
+    }));
+    return items.length > 0 ? [{ projectName: '我发起的', count: items.length, items }] : [];
+  }
   const tasks = summary.value?.tasks ?? [];
   const visible = activeTab.value === 'overdue'
     ? tasks.filter((t) => t.priority === 'high')
@@ -140,6 +179,18 @@ onMounted(async () => {
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : '聚合接口加载失败';
   }
+  // R215 A10：我发起的/待我审批（失败静默降级——不阻塞主面板，计数回退 stats.myInitiated）
+  fetchMyInitiated()
+    .then((rows) => {
+      myInitiatedTasks.value = rows;
+      myInitiatedLoaded.value = true;
+    })
+    .catch(() => {});
+  fetchMyPendingApprovals()
+    .then((rows) => {
+      myPendingApprovals.value = rows;
+    })
+    .catch(() => {});
 });
 </script>
 
@@ -303,6 +354,20 @@ onMounted(async () => {
           </header>
           <div class="ipd-wb-empty ipd-wb-empty-tight">
             {{ deletionPending > 0 ? `有 ${deletionPending} 项删除申请待处理；从对应业务对象进入办理。` : '暂无待处理删除审批。' }}
+          </div>
+        </section>
+
+        <section class="ipd-wb-side-card">
+          <header class="ipd-wb-section-header">
+            <h3 class="ipd-wb-section-title">待我审批</h3>
+            <span class="ipd-wb-section-meta">{{ myPendingApprovals.length }}项待处理</span>
+          </header>
+          <div class="ipd-wb-empty ipd-wb-empty-tight">
+            {{
+              myPendingApprovals.length > 0
+                ? `${pendingApprovalsDigest}；从对应单据进入办理。`
+                : '暂无待我审批的变更/删除单据。'
+            }}
           </div>
         </section>
 
