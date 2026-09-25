@@ -151,7 +151,9 @@ describe('页44 人员同步（P0-10.44；超管专区）', () => {
       if (url === '/api/v1/pm-directory') {
         dirCalls += 1;
         return dirCalls === 1
-          ? envelope(null, 400, 10001)
+          // R217-E2E-B2：403+30001 后端原文「无权访问该项目」直显（rejectText 读 err.message），
+          // 旧断言的查表文案「输入信息不符合要求」系盲区遮蔽形态，本卡裁决覆盖。
+          ? new Response(JSON.stringify({ code: 30001, message: '无权访问该项目', data: null, timestamp: '2026-09-25T00:00:00Z', traceId: 'fixture' }), { status: 403, headers: { 'Content-Type': 'application/json' } })
           : envelope({ directory, total: directory.length });
       }
       if (url === '/api/v1/hr-sync/pending-handovers') return envelope([]);
@@ -159,7 +161,7 @@ describe('页44 人员同步（P0-10.44；超管专区）', () => {
     });
     vi.stubGlobal('fetch', fetcher);
     const wrapper = mount(IdentitySyncPage);
-    await vi.waitFor(() => expect(wrapper.text()).toContain('输入信息不符合要求'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('无权访问该项目'));
     expect(wrapper.text()).toContain('加载失败');
     expect(wrapper.text()).not.toContain('网络异常');
     // 真实 UI：Alert 同时传了 :description prop 与 #description 插槽（index.vue 现状），

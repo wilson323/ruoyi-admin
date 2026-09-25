@@ -491,28 +491,29 @@ describe('BUSINESS_CODE_MESSAGES coverage via requestIpd', () => {
 
   it('unknown code 99999 falls through messageFromCode → HTTP-status fallback (status 500)', async () => {
     // 验证私有 messageFromCode 对未注册 code 返回 null → requestIpd 走状态码兜底「服务暂时不可用」。
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, 'mock', 500)));
+    // R217-E2E-B2：message 置空 = 后端无原文（非 2xx 有原文时透传优先，见下方新契约组；同 change.test.ts 手法）。
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, '', 500)));
     await expect(requestIpd('/probe', { method: 'GET' })).rejects.toThrow(/服务暂时不可用/);
   });
 
   it('unknown code 99999 with status 401 falls through to "登录已失效"', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, 'mock', 401)));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, '', 401)));
     await expect(requestIpd('/probe', { method: 'GET' })).rejects.toThrow(/登录已失效/);
   });
 
   it('unknown code 99999 with status 403 falls through to 403 兜底文案（R23 与 30001 同源）', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, 'mock', 403)));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, '', 403)));
     await expect(requestIpd('/probe', { method: 'GET' })).rejects.toThrow(/您没有执行此操作的权限/);
   });
 
   // 2026-09-09 契约轮 R23：409/429 状态特化——业务冲突/限流不再误报「服务暂时不可用」
   it('unknown code 99999 with status 409 falls through to 409 兜底文案', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, 'mock', 409)));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, '', 409)));
     await expect(requestIpd('/probe', { method: 'GET' })).rejects.toThrow(/数据状态已变更/);
   });
 
   it('unknown code 99999 with status 429 falls through to 429 兜底文案', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, 'mock', 429)));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(99999, '', 429)));
     await expect(requestIpd('/probe', { method: 'GET' })).rejects.toThrow(/请求过于频繁/);
   });
 
@@ -597,6 +598,52 @@ describe('BUSINESS_CODE_MESSAGES coverage via requestIpd', () => {
       /输入信息不符合要求/,
     );
     expect(loginFetcher).toHaveBeenCalledTimes(2);
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // R217-E2E-B2（P1，2026-09-25）方案A「一处修全局」新契约钉死：
+  // 非 2xx 时后端 envelope.message 原文优先作为 Error message（盲区页 rejectText 直读 err.message 即得后端原文），
+  // 查表/状态特化仅作无后端原文（空/空白）时兜底；2xx+code≠0 维持查表优先；cause(envelopeMessage) 结构不破坏。
+  // ──────────────────────────────────────────────────────────────────────────
+  it('R217-E2E-B2：403+30001 后端原文「无权访问该项目」透传为 Error message，不再被查表文案遮蔽', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(30001, '无权访问该项目', 403)));
+    const cause = await requestIpd('/probe').then(
+      () => { throw new Error('should have rejected'); },
+      (e: unknown) => e as IpdRequestError,
+    );
+    expect(cause).toBeInstanceOf(IpdRequestError);
+    expect(cause.message).toBe('无权访问该项目');
+    expect(cause.message).not.toBe('权限不足，请联系管理员');
+    // cause 结构保留：envelopeMessage 第 5 参原样携带，ipdErrorText http 分支读同字段 → 两链路同值
+    expect(cause.envelopeMessage).toBe('无权访问该项目');
+    expect(cause.status).toBe(403);
+    expect(cause.code).toBe(30001);
+    expect(cause.kind).toBe('http');
+  });
+
+  it('R217-E2E-B2：4xx 后端无原文（message 空串）→ 兜底查表文案 30001', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(30001, '', 403)));
+    await expect(requestIpd('/probe')).rejects.toThrow('权限不足，请联系管理员');
+  });
+
+  it('R217-E2E-B2：4xx 后端原文为空白串 → trim 判空后同样兜底查表，不透传空白', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(30001, '   ', 403)));
+    await expect(requestIpd('/probe')).rejects.toThrow('权限不足，请联系管理员');
+  });
+
+  it('R217-E2E-B2：2xx+code≠0 维持查表优先（Bucket A BUSINESS_CODE_MESSAGES 契约不受影响）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(30001, '后端原文不该在2xx胜出', 200)));
+    await expect(requestIpd('/probe')).rejects.toThrow('权限不足，请联系管理员');
+  });
+
+  it('R217-E2E-B2：成功响应 19 位雪花 ID 字符串透传不受影响（data 原样返回，无 Number 化/截断）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ code: 0, message: 'ok', data: { id: '1234567890123456789', projectId: '9007199254740993' }, timestamp: '2026-09-25T00:00:00Z', traceId: 'fixture' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )));
+    const data = await requestIpd('/probe');
+    expect(data).toEqual({ id: '1234567890123456789', projectId: '9007199254740993' });
+    expect(typeof (data as { id: unknown }).id).toBe('string');
   });
 
   it('fetch 以 AbortError 拒绝（15s 定时器中止）→ kind="timeout"，文案「请求超时」而非误报断网', async () => {

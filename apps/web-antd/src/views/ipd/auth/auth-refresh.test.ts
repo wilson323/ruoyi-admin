@@ -41,8 +41,11 @@ describe('rotating IPD session', () => {
     await expect(loginIpd('fixture', 'wrong')).rejects.toThrow('用户名或密码错误，请重新输入');
   });
   it('never reports wrong-password for 401 login rejections carrying non-credential codes', async () => {
+    // R217-E2E-B2：非 2xx 后端原文优先透传（本例 401+20002 message=「账号待移交冻结中」直达 Error message），
+    // 用例意图不变——不得误报成「用户名或密码错误」；旧查表文案「…仅保留移交相关权限」仅在 message 为空时兜底。
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(null, 401, 20002, '账号待移交冻结中')));
-    await expect(loginIpd('fixture', 'wrong')).rejects.toThrow('账号待移交冻结中，仅保留移交相关权限');
+    await expect(loginIpd('fixture', 'wrong')).rejects.toThrow('账号待移交冻结中');
+    await expect(loginIpd('fixture', 'wrong')).rejects.not.toThrow('用户名或密码错误');
   });
   it('rotates once for concurrent expired requests and atomically stores the new pair', async () => {
     let expired = false; let refreshCalls = 0; let release!: () => void;

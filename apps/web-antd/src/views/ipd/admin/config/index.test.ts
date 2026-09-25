@@ -84,11 +84,14 @@ describe('页45 参数配置', () => {
     wrapper.unmount();
   });
 
-  it('业务拒绝展示统一中文文案', async () => {
+  it('业务拒绝直显后端 envelope.message 原文（R217-E2E-B2 盲区页透传修复）', async () => {
     setupIdentity('SUPER_ADMIN');
-    vi.stubGlobal('fetch', vi.fn(async () => envelope(null, 400, 10001)));
+    // 卡面金标准场景：403+30001 后端原文「无权访问该项目」必须直达 rejectText（直读 err.message），
+    // 不再被 auth.ts 查表文案「权限不足，请联系管理员」遮蔽。
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code: 30001, message: '无权访问该项目', data: null, timestamp: '2026-09-25T00:00:00Z', traceId: 'fixture' }), { status: 403, headers: { 'Content-Type': 'application/json' } })));
     const wrapper = mount(Index);
-    await vi.waitFor(() => expect(wrapper.text()).toContain('输入信息不符合要求'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('无权访问该项目'));
+    expect(wrapper.text()).not.toContain('权限不足，请联系管理员');
     wrapper.unmount();
   });
 

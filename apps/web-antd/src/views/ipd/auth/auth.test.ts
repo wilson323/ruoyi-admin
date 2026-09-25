@@ -54,9 +54,12 @@ describe('IPD API and session contract', () => {
     await expect(requestIpd('/auth/me')).rejects.toThrow();
     await expect(requestIpd('/auth/me')).rejects.toThrow('服务暂时不可用');
   });
-  it('does not display arbitrary server exception details in validation errors', async () => {
+  it('R217-E2E-B2：validation errors 透传后端 envelope.message 原文（旧「不透传任意服务端调试串」契约被方案A裁决覆盖）', async () => {
+    // 旧契约（本用例原型）：400+10001 被 messageFromCode catch-all 遮蔽，用户只见「输入信息不符合要求」。
+    // R217-E2E-B2 一处修全局：非 2xx 后端原文优先作 Error message——盲区页直读 err.message 即得真实语义；
+    // 残余风险（异常网关改写 body 时 raw 串照显示）登记 R217 证据，后端 ApiV1Response.message 为受控枚举为既成前提。
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 10001, message: 'SQL secret-field debug details', data: null }), { status: 400, headers: { 'Content-Type': 'application/json' } })));
-    await expect(requestIpd('/auth/change-password')).rejects.toThrow('输入信息不符合要求');
+    await expect(requestIpd('/auth/change-password')).rejects.toThrow('SQL secret-field debug details');
   });
   it('clears the session when a live me request returns401', async () => {
     const auth = useIpdAuthStore(); auth.token = 'test-session'; auth.identity = identity;

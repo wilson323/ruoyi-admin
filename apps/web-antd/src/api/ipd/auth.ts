@@ -197,9 +197,19 @@ export async function requestIpd(
       // 修复：409（业务冲突）/429（限流）曾落到「服务暂时不可用」通用兜底，把冲突/限流误报成服务故障；
       // 403 特化仅在 code 表未命中时触达（已知码先走 fromCode），文案原「权限不足，请联系管理员」
       // 对 20002/20003/50011 等被 code 表遮蔽的场景语义不贴切，统一为 30001 同源文案。
+      // R217-E2E-B2（方案A「一处修全局」，2026-09-25）：非 2xx 时后端 envelope.message 原文
+      // 优先作为 Error message——rejectText 直读 err.message 的 ~28 个盲区页面（如 kpi/shared）
+      // 此前 HTTP 403 只会看到查表文案「权限不足，请联系管理员」而看不到后端原文「无权访问该项目」。
+      // fromCode/状态特化降级为「后端无原文」时的兜底；2xx+code≠0 维持查表优先
+      // （auth.test.ts Bucket A BUSINESS_CODE_MESSAGES coverage 契约不动）。
+      // envelopeMessage 仍按第 5 参原样携带 → ipdErrorText http 分支读同一字段，两条链路同值不冲突。
+      // 旧契约「不透传服务端任意调试串」（portal.test.ts / views auth.test.ts 用例）被本卡裁决覆盖，
+      // 残余风险（异常网关改写 body 时原文照显示）登记在 R217 证据文件。
+      const backendMessage = !response.ok && envelope.message.trim() ? envelope.message : null;
       const message =
         loginCredential
           ?? loginSpecific10001Message
+          ?? backendMessage
           ?? fromCode
           ?? (response.status === 401 ? '登录已失效，请重新登录'
             : response.status === 403 ? '您没有执行此操作的权限'
