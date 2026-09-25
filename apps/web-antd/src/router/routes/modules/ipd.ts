@@ -157,6 +157,14 @@ const ipdLayoutRoute: RouteRecordRaw = {
       name: 'IpdRequirements',
       path: 'requirements',
     },
+    // 需求详情（R215-E2E-C 2026-09-25 补 :id 路由缺口：此前列表下钻无路由→前端 404；
+    // hideInMenu + activePath 保持「需求管理」菜单高亮；字段 1:1 对齐后端 GET /demands/{id} VO）
+    {
+      component: () => import('#/views/ipd/demand/detail/index.vue'),
+      meta: { activePath: '/ipd/requirements', hideInMenu: true, title: '需求详情' },
+      name: 'IpdRequirementDetail',
+      path: 'requirements/:id',
+    },
     // ④ 产品空间（原型 /product-space，页16-17；2026-09-06 换挂一比一工作台，接 ProductWorkspaceController）
     {
       component: () => import('#/views/ipd/product/workspace/index.vue'),
@@ -530,6 +538,22 @@ const ipdLayoutRoute: RouteRecordRaw = {
           name: 'IpdAdminPersonSync',
           path: 'person-sync',
         },
+        // R215 GAP-F4 P0 升级链处置台（P0EscalationController 3 端点；AC-C4 双组长升级链）。
+        //   后端 @SaCheckPermission(ipd:p0-escalation:read) 三端点同码 + 代码级二道门
+        //   （list/resolve=requireLeaderOrAdmin :50/:72、check=requireAdmin :60 仅超管）；
+        //   meta.access 挂 READ 码 + authority 显式覆写双角色——父级 IpdAdmin=SUPER_ADMIN 会经
+        //   vue-router to.meta 合并被子路由继承，组长可达必须覆写（person-sync :529 先例）；
+        //   触发扫描按钮页内 isSuperAdmin 收敛（requireAdmin 语义非权限码可表达）。
+        {
+          component: () => import('#/views/ipd/admin/p0-escalation/index.vue'),
+          meta: {
+            access: [...(PAGE_PERMISSIONS['/ipd/admin/p0-escalation'] ?? [])],
+            authority: ['SUPER_ADMIN', 'GROUP_LEADER'],
+            title: 'P0 升级链',
+          },
+          name: 'IpdAdminP0Escalation',
+          path: 'p0-escalation',
+        },
       ],
     },
     // R149 录入/展示：运营管理（顶层超管入口，含回款预警）。纯分组/重定向父路由：
@@ -552,6 +576,20 @@ const ipdLayoutRoute: RouteRecordRaw = {
           },
           name: 'IpdOperationRecoveryWarnings',
           path: 'recovery-warnings',
+        },
+        // R215 GAP-F5 月度切换验收（SwitchingAcceptanceController P3-7.1 五端点；BR-INC-12/AC-INC-50/51，
+        //   A23 预留码兑现）。run/lock/unlock 写口挂 LOCK/UNLOCK 码（ADMIN_WRITE 仅超管，控制器
+        //   2026-09-09 收紧注 :36-39）；get/list 读口 QUERY 码——meta.access 三码齐挂（recovery-warnings
+        //   多码先例），写按钮页内 v-access 分码双闸；admin 别名 ipd:switching-acceptance:admin 是
+        //   死码（注解侧已弃用），禁做前端门禁。
+        {
+          component: () => import('#/views/ipd/operation/switching-acceptance.vue'),
+          meta: {
+            access: [...(PAGE_PERMISSIONS['/ipd/operation/switching-acceptance'] ?? [])],
+            title: '切换验收',
+          },
+          name: 'IpdOperationSwitchingAcceptance',
+          path: 'switching-acceptance',
         },
       ],
     },

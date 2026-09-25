@@ -12,21 +12,23 @@ import {
 } from './ipd-permission-codes';
 
 describe('IPD 权限码常量与后端一一对应', () => {
-  it('导出 70 个 distinct 码（与后端 IpdPermissionCode 字面值一一镜像，1 组同码双名；R215 新增 ROLE_PERMISSION_QUERY/EDIT）', () => {
+  it('导出 73 个 distinct 码（与后端 IpdPermissionCode 字面值一一镜像，1 组同码双名；R215 新增 ROLE_PERMISSION_QUERY/EDIT；R215 GAP-F4/F5 新增 3 码）', () => {
     // 后端 71 个常量声明，其中 STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE
     // 共享字面值 'ipd:stage-action:add'，故 distinct 码为 70
     // R215 权限可配置化新增 ROLE_PERMISSION_QUERY / ROLE_PERMISSION_EDIT 2 distinct 码（commit 3764830）
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(71);
-    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(70);
+    // R215 GAP-F4 登记 P0_ESCALATION_READ + GAP-F5 登记 SWITCHING_ACCEPTANCE_LOCK/UNLOCK 3 distinct 码（keys 71→74、distinct 70→73）
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(74);
+    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(73);
   });
 
-  it('所有 distinct 码唯一（70 个）', () => {
+  it('所有 distinct 码唯一（73 个）', () => {
     const set = new Set(ALL_IPD_PERMISSION_CODES);
-    expect(set.size).toBe(70);
-    // 数组长度 71（多 1 项是 STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 同码；
+    expect(set.size).toBe(73);
+    // 数组长度 74（多 1 项是 STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 同码；
     //   R175-A 新增 GATE_ELEMENT_RESTORE 1 distinct 码；R149 RECOVERY_* 2 distinct 码仍计入；
-    //   R215 权限可配置化新增 ROLE_PERMISSION_QUERY / ROLE_PERMISSION_EDIT 2 distinct 码（commit 3764830））
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(71);
+    //   R215 权限可配置化新增 ROLE_PERMISSION_QUERY / ROLE_PERMISSION_EDIT 2 distinct 码（commit 3764830）；
+    //   R215 GAP-F4/F5 新增 P0_ESCALATION_READ + SWITCHING_ACCEPTANCE_LOCK/UNLOCK 3 distinct 码）
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(74);
   });
 
   it('全部码遵循 ipd:资源:动作 命名规范', () => {
@@ -36,6 +38,10 @@ describe('IPD 权限码常量与后端一一对应', () => {
   });
 
   it('关键码存在（用于回归保护）', () => {
+    // R215 GAP-F4/F5 新登记码值锁定（镜像后端 IpdPermissionCode.java:223/:174/:176）
+    expect(IPD_PERMISSION_CODES.P0_ESCALATION_READ).toBe('ipd:p0-escalation:read');
+    expect(IPD_PERMISSION_CODES.SWITCHING_ACCEPTANCE_LOCK).toBe('ipd:switching-acceptance:lock');
+    expect(IPD_PERMISSION_CODES.SWITCHING_ACCEPTANCE_UNLOCK).toBe('ipd:switching-acceptance:unlock');
     expect(IPD_PERMISSION_CODES.BONUS_POOL_COMPUTE).toBe('ipd:bonus-pool:compute');
     expect(IPD_PERMISSION_CODES.BONUS_POOL_FREEZE).toBe('ipd:bonus-pool:freeze');
     expect(IPD_PERMISSION_CODES.BONUS_POOL_DISTRIBUTE).toBe('ipd:bonus-pool:distribute');
@@ -196,8 +202,10 @@ describe('A13 19 个零引用权限码已接入（v-access:code 或 meta.access�
  *   4. STAGE_ACTION_INSTANTIATE 与 DELIVERABLE 同字面值（已在 9fde989 之前记录），
  *      本次仅在 INSTANTIATE 行加碰撞 doc 注释，不重复加 v-access 指令
  */
-describe('A23 11 个零引用权限码已处置（reserved 注释 10 + 碰撞 doc 1；R215-F6 摘除 COMPLIANCE_* 2 项）', () => {
-  // 11 目标常量 key（R175-A 后 13；R215 GAP-F6 合规视图交付摘除 COMPLIANCE_READ/WRITE → 11）
+describe('A23 9 个零引用权限码已处置（reserved 注释 8 + 碰撞 doc 1；R215-F6 摘 COMPLIANCE_* 2 项、R215-F5 摘 SWITCHING_ACCEPTANCE_QUERY/ADMIN 2 项）', () => {
+  // 9 目标常量 key（R175-A 后 13；R215 GAP-F6 合规视图交付摘除 COMPLIANCE_READ/WRITE → 11；
+  //   R215 GAP-F5 切换验收视图交付摘除 SWITCHING_ACCEPTANCE_QUERY（已接 get/list 读口）与
+  //   SWITCHING_ACCEPTANCE_ADMIN（死别名，镜像保留去 reserved）→ 9）
   const reservedCodes: readonly string[] = [
     // 优先级 1：与现有视图弱关联
     IPD_PERMISSION_CODES.PROJECT_QUERY,
@@ -209,8 +217,9 @@ describe('A23 11 个零引用权限码已处置（reserved 注释 10 + 碰撞 do
     IPD_PERMISSION_CODES.NOTIFICATION_DISPATCH,
     IPD_PERMISSION_CODES.COEFFICIENT_PROPOSE,
     IPD_PERMISSION_CODES.COEFFICIENT_CONFIRM,
-    IPD_PERMISSION_CODES.SWITCHING_ACCEPTANCE_QUERY,
-    IPD_PERMISSION_CODES.SWITCHING_ACCEPTANCE_ADMIN,
+    // R215 GAP-F5：SWITCHING_ACCEPTANCE_QUERY 已接 /ipd/operation/switching-acceptance（get/list 读口
+    //   路由 meta.access）；SWITCHING_ACCEPTANCE_ADMIN 为死别名（后端注解已迁 _LOCK/_UNLOCK，
+    //   常量残留镜像保留、去 reserved 注释）——双双摘除（11 → 9）
     // R215 GAP-F6：COMPLIANCE_READ/WRITE 已接 /ipd/admin/compliance（路由 meta.access + 按钮 v-access），
     //   从 reserved 处置名单摘除（13 → 11）；keys/distinct 计数不变（71/70）。
     IPD_PERMISSION_CODES.STAGE_ACTION_LIST,
@@ -219,16 +228,17 @@ describe('A23 11 个零引用权限码已处置（reserved 注释 10 + 碰撞 do
     IPD_PERMISSION_CODES.STAGE_ACTION_INSTANTIATE,
   ];
 
-  it('A23 目标码数量 = 11（R175-A 后 13，R215-F6 摘除 COMPLIANCE_* 2 项）', () => {
-    expect(reservedCodes.length).toBe(11);
+  it('A23 目标码数量 = 9（R175-A 后 13，R215-F6 摘 COMPLIANCE_* 2 项，R215-F5 摘 SWITCHING_* 2 项）', () => {
+    expect(reservedCodes.length).toBe(9);
   });
 
-  it('A23 不新增码：distinct count = 70（R175-A 镜像基线；R215 新增 ROLE_PERMISSION_QUERY/EDIT）', () => {
+  it('R215 GAP-F4/F5 新增 3 码：distinct count = 73、数组长度 74', () => {
     // A13 增补 5 项（4 转 + 1 新），A23 移除 4 项，ALL_IPD_PERMISSION_CODES 净增 1；
     //   distinct count 由 67（R149 后）提升到 68（R175-A）。
     // R215 权限可配置化新增 ROLE_PERMISSION_QUERY / ROLE_PERMISSION_EDIT：distinct 68 → 70、数组长度 69 → 71（commit 3764830）
-    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(70);
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(71);
+    // R215 GAP-F4/F5 登记 P0_ESCALATION_READ + SWITCHING_ACCEPTANCE_LOCK/UNLOCK：distinct 70 → 73、数组长度 71 → 74
+    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(73);
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(74);
   });
 
   for (const code of reservedCodes) {

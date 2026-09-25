@@ -1,7 +1,7 @@
 /**
  * IPD 模块权限码集中常量（前端单一权威源）。
  *
- * 镜像后端 `org.ruoyi.ipd.security.IpdPermissionCode`（66 个 key，65 distinct；STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 共享 'ipd:stage-action:add'）。
+ * 镜像后端 `org.ruoyi.ipd.security.IpdPermissionCode`（69 个 key，68 distinct；STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 共享 'ipd:stage-action:add'）。
  * 路由表与按钮 v-access:code 引用本文件常量，禁止直接书写字面量。
  *
  * <p>使用方式：
@@ -107,9 +107,14 @@ export const IPD_PERMISSION_CODES = {
   NEGATIVE_FEEDBACK_CREATE: 'ipd:negative-feedback:create',
   NEGATIVE_FEEDBACK_DECIDE: 'ipd:negative-feedback:decide',
 
-  // 切换验收（P3-7.1）
-  SWITCHING_ACCEPTANCE_QUERY: 'ipd:switching-acceptance:query', /* reserved (A23): 切换验收查询无对应视图 */
-  SWITCHING_ACCEPTANCE_ADMIN: 'ipd:switching-acceptance:admin', /* reserved (A23): 切换验收管理端无对应视图 */
+  // 切换验收（P3-7.1；R215 GAP-F5 视图 /ipd/operation/switching-acceptance 交付）
+  SWITCHING_ACCEPTANCE_QUERY: 'ipd:switching-acceptance:query', // R215 GAP-F5 已接视图：切换验收 get/list 读口（路由 meta.access）
+  SWITCHING_ACCEPTANCE_ADMIN: 'ipd:switching-acceptance:admin', // 死别名：后端注解 2026-09-09 已迁 _LOCK/_UNLOCK（控制器注 :36-39），常量残留 IpdPermissionCode.java:125，镜像保留防漂移、禁做前端门禁
+  SWITCHING_ACCEPTANCE_LOCK: 'ipd:switching-acceptance:lock', // R215 GAP-F5 已接按钮：run/lock 写口（ADMIN_WRITE 仅超管，v-access）
+  SWITCHING_ACCEPTANCE_UNLOCK: 'ipd:switching-acceptance:unlock', // R215 GAP-F5 已接按钮：unlock 写口（reason 5~500 审计，v-access）
+
+  // P0 升级链（R215 GAP-F4；三端点同码，list/resolve=requireLeaderOrAdmin、check=requireAdmin 代码级二道门）
+  P0_ESCALATION_READ: 'ipd:p0-escalation:read', // R215 GAP-F4 已接视图：/ipd/admin/p0-escalation（路由 meta.access）
 
   // 审计日志（SEC-02）
   AUDIT_LOG_LIST: 'ipd:audit-log:list',
@@ -139,7 +144,7 @@ export const IPD_PERMISSION_CODES = {
 
 export type IpdPermissionCode = (typeof IPD_PERMISSION_CODES)[keyof typeof IPD_PERMISSION_CODES];
 
-/** 全部 66 个 key（65 distinct；用于测试断言、批量校验、初始化菜单树）。 */
+/** 全部 69 个 key（68 distinct；用于测试断言、批量校验、初始化菜单树）。 */
 export const ALL_IPD_PERMISSION_CODES: readonly IpdPermissionCode[] = Object.freeze(
   Object.values(IPD_PERMISSION_CODES),
 );
@@ -218,6 +223,14 @@ export const PAGE_PERMISSIONS: Record<string, readonly IpdPermissionCode[]> = {
     IPD_PERMISSION_CODES.RECOVERY_CHECK_90D,
     IPD_PERMISSION_CODES.RECOVERY_WARNINGS_QUERY,
   ],
+  // R215 GAP-F5 月度切换验收（run/lock/unlock 写口 ADMIN_WRITE 仅超管 + get/list 读口 QUERY）
+  '/ipd/operation/switching-acceptance': [
+    IPD_PERMISSION_CODES.SWITCHING_ACCEPTANCE_QUERY,
+    IPD_PERMISSION_CODES.SWITCHING_ACCEPTANCE_LOCK,
+    IPD_PERMISSION_CODES.SWITCHING_ACCEPTANCE_UNLOCK,
+  ],
+  // R215 GAP-F4 P0 升级链处置台（三端点同码；组长/超管读，check/resolve 页内角色收敛）
+  '/ipd/admin/p0-escalation': [IPD_PERMISSION_CODES.P0_ESCALATION_READ],
 };
 
 /** 给定路径返回该页所需的权限码（无映射返回空数组 = 内部全员可访问）。 */
