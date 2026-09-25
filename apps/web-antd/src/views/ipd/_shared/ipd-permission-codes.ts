@@ -1,7 +1,7 @@
 /**
  * IPD 模块权限码集中常量（前端单一权威源）。
  *
- * 镜像后端 `org.ruoyi.ipd.security.IpdPermissionCode`（69 个 key，68 distinct；STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 共享 'ipd:stage-action:add'）。
+ * 镜像后端 `org.ruoyi.ipd.security.IpdPermissionCode`（75 个 key，74 distinct；STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 共享 'ipd:stage-action:add'；R215 权限可配置化 +2、GAP-F4/F5 +3、GAP-F10 +1）。
  * 路由表与按钮 v-access:code 引用本文件常量，禁止直接书写字面量。
  *
  * <p>使用方式：
@@ -125,6 +125,9 @@ export const IPD_PERMISSION_CODES = {
   COMPLIANCE_READ: 'ipd:compliance:read', // R215 GAP-F6 已接视图：/ipd/admin/compliance（路由 meta.access）
   COMPLIANCE_WRITE: 'ipd:compliance:write', // R215 GAP-F6 已接按钮：合规中心-删除请求登记（v-access）
 
+  // 永久清除（R149 batch2b C3 数据治理底座；仅超管，二次确认 + 审计永久保留）
+  PERMANENT_DELETE_EXECUTE: 'ipd:permanent-delete:execute', // R215 GAP-F10 已接视图：/ipd/admin/permanent-delete（路由 meta.access；execute/audit 双端点同码）
+
   // 系统参数
   SYSTEM_CONFIG_LIST: 'ipd:system-config:list',
   SYSTEM_CONFIG_READ: 'ipd:system-config:read',
@@ -144,7 +147,7 @@ export const IPD_PERMISSION_CODES = {
 
 export type IpdPermissionCode = (typeof IPD_PERMISSION_CODES)[keyof typeof IPD_PERMISSION_CODES];
 
-/** 全部 69 个 key（68 distinct；用于测试断言、批量校验、初始化菜单树）。 */
+/** 全部 75 个 key（74 distinct；用于测试断言、批量校验、初始化菜单树）。 */
 export const ALL_IPD_PERMISSION_CODES: readonly IpdPermissionCode[] = Object.freeze(
   Object.values(IPD_PERMISSION_CODES),
 );
@@ -231,6 +234,9 @@ export const PAGE_PERMISSIONS: Record<string, readonly IpdPermissionCode[]> = {
   ],
   // R215 GAP-F4 P0 升级链处置台（三端点同码；组长/超管读，check/resolve 页内角色收敛）
   '/ipd/admin/p0-escalation': [IPD_PERMISSION_CODES.P0_ESCALATION_READ],
+  // R215 GAP-F10 超管永久清除工作台（execute/audit 双端点同码；requireAdmin 仅超管，
+  //   父级 IpdAdmin=SUPER_ADMIN authority 继承 + 本码 meta.access 双闸）
+  '/ipd/admin/permanent-delete': [IPD_PERMISSION_CODES.PERMANENT_DELETE_EXECUTE],
 };
 
 /** 给定路径返回该页所需的权限码（无映射返回空数组 = 内部全员可访问）。 */

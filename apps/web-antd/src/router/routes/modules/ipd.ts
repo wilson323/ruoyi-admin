@@ -554,6 +554,20 @@ const ipdLayoutRoute: RouteRecordRaw = {
           name: 'IpdAdminP0Escalation',
           path: 'p0-escalation',
         },
+        // R215 GAP-F10 超管永久清除工作台（AdminPermanentDeleteController 2 端点；R149 batch2b C3，
+        //   owner 拍板方案 A 做前端界面）。execute/audit 双端点同码 ipd:permanent-delete:execute
+        //   （@SaCheckPermission :56/:75）+ 代码级 requireAdmin 仅超管（:61/:79，service :95 二次兜底）
+        //   → 父级 IpdAdmin=SUPER_ADMIN authority 继承 + meta.access 挂 PAGE_PERMISSIONS 双闸；
+        //   页内高危门槛：confirmCode 手工敲入字面量 + Modal 复述三元组（物理删除不可逆）。
+        {
+          component: () => import('#/views/ipd/admin/permanent-delete/index.vue'),
+          meta: {
+            access: [...(PAGE_PERMISSIONS['/ipd/admin/permanent-delete'] ?? [])],
+            title: '永久清除',
+          },
+          name: 'IpdAdminPermanentDelete',
+          path: 'permanent-delete',
+        },
       ],
     },
     // R149 录入/展示：运营管理（顶层超管入口，含回款预警）。纯分组/重定向父路由：
