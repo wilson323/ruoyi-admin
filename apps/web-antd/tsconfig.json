@@ -3,6 +3,7 @@
   "extends": "@vben/tsconfig/web-app.json",
   "compilerOptions": {
     "baseUrl": ".",
+    "plugins": [{ "name": "@vue/typescript-plugin" }],
     "paths": {
       "#/*": ["./src/*", "../../../packages/*"]
     }
