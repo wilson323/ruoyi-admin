@@ -54,6 +54,11 @@ import {
   type GateElementResult,
   type IpdGateElementView,
 } from '../../../api/ipd/gate-element-result';
+import {
+  runGatePrecheck,
+  type GatePrecheckItemStatus,
+  type GatePrecheckView,
+} from '../../../api/ipd/gate-precheck';
 import { IPD_PERMISSION_CODES } from '../_shared/ipd-permission-codes';
 
 const auth = useIpdAuthStore();
@@ -180,6 +185,31 @@ async function submitReview(): Promise<void> {
     submitError.value = ipdErrorText(cause, { fallback: '评审提交失败' });
   } finally {
     submitBusy.value = false;
+  }
+}
+
+/** AI-P2-1：材料 AI 预审（POST /gates/{gateId}/precheck；只读参考，不写 Gate 决策、不阻塞评审）。 */
+const precheckBusy = ref(false);
+const precheckError = ref('');
+const precheckResult = ref<null | GatePrecheckView>(null);
+
+const precheckStatusText: Record<GatePrecheckItemStatus, string> = {
+  COVERED: '已覆盖',
+  MISSING: '缺失',
+  PARTIAL: '部分',
+};
+
+async function runPrecheck(): Promise<void> {
+  if (!view.value || precheckBusy.value) return;
+  precheckBusy.value = true;
+  precheckError.value = '';
+  try {
+    precheckResult.value = await runGatePrecheck(view.value.gateId);
+  } catch (cause) {
+    precheckResult.value = null;
+    precheckError.value = ipdErrorText(cause, { fallback: 'AI 预审失败，请稍后重试' });
+  } finally {
+    precheckBusy.value = false;
   }
 }
 
@@ -386,7 +416,45 @@ function finalRuling(decision: GateDecision): void {
           label="AI 结论草稿"
           data-testid="gate-ai-conclusion"
         />
+        <button
+          v-access:code="IPD_PERMISSION_CODES.GATE_REVIEW_LIST"
+          class="panel-action"
+          type="button"
+          data-testid="gate-precheck-run"
+          :disabled="precheckBusy"
+          @click="runPrecheck"
+        >
+          {{ precheckBusy ? 'AI 预审中…' : 'AI 预审（材料覆盖检查）' }}
+        </button>
       </div>
+      <!-- AI-P2-1 预审结果面板：覆盖统计 + 证据定位 + AI 参考清单（blocking/decisionWritten 恒 false 自证） -->
+      <article v-if="precheckResult" class="gate-elements-card" data-testid="gate-precheck-panel">
+        <header class="elements-header">
+          <strong>AI 预审结果（{{ precheckResult.gateCode ?? 'Gate' }}）</strong>
+          <span class="elements-ok">只读参考 · 不写决策 · 不阻塞评审</span>
+        </header>
+        <p class="gate-opinion" data-testid="gate-precheck-summary">
+          覆盖统计：共 {{ precheckResult.summary.total }} 项 — 已覆盖 {{ precheckResult.summary.covered }} / 部分 {{ precheckResult.summary.partial }} / 缺失 {{ precheckResult.summary.missing }}；材料归档 {{ precheckResult.materials.uploaded }}/{{ precheckResult.materials.total }}（{{ precheckResult.materials.isReady ? '齐套' : '缺 ' + precheckResult.materials.missing + ' 项' }}）。
+        </p>
+        <ul v-if="precheckResult.items.length" class="gate-precheck-list">
+          <li v-for="item in precheckResult.items" :key="item.elementId" :data-status="item.status">
+            <strong>{{ precheckStatusText[item.status] ?? item.status }}</strong>
+            <span>要素 #{{ item.elementId }}（判定：{{ item.result ?? '未判定' }}）</span>
+            <small v-if="item.evidenceRef">证据：{{ item.evidenceRef }}</small>
+            <small v-if="item.conditionNote">条件：{{ item.conditionNote }}</small>
+            <small v-if="item.leftoverStatus">遗留：{{ item.leftoverStatus }}</small>
+          </li>
+        </ul>
+        <div
+          v-if="precheckResult.aiChecklist.degraded"
+          class="elements-stale"
+          data-testid="gate-precheck-degraded"
+        >
+          {{ precheckResult.aiChecklist.markdown || 'AI 预审清单暂不可用，以上为结构化覆盖统计。' }}
+        </div>
+        <pre v-else class="gate-precheck-ai" data-testid="gate-precheck-ai">{{ precheckResult.aiChecklist.markdown }}</pre>
+      </article>
+      <div v-if="precheckError" class="gate-error" data-testid="gate-precheck-error">{{ precheckError }}</div>
       <article class="gate-card">
         <header>
           <span>
@@ -1136,5 +1204,52 @@ function finalRuling(decision: GateDecision): void {
   background: white;
   border-top: 1px solid var(--ipd-line);
   border-radius: 0 0 8px 8px;
+}
+
+/* AI-P2-1 预审面板（复用 gate-elements-card 容器，仅补列表/代码块两处排版） */
+.gate-precheck-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.gate-precheck-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: baseline;
+  padding: 8px 16px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--ipd-line);
+}
+
+.gate-precheck-list li strong {
+  font-size: 11px;
+}
+
+.gate-precheck-list li[data-status='COVERED'] strong {
+  color: var(--ipd-green);
+}
+
+.gate-precheck-list li[data-status='PARTIAL'] strong {
+  color: #9a6509;
+}
+
+.gate-precheck-list li[data-status='MISSING'] strong {
+  color: #b42318;
+}
+
+.gate-precheck-list li small {
+  color: var(--ipd-muted);
+}
+
+.gate-precheck-ai {
+  padding: 12px 16px;
+  margin: 0;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

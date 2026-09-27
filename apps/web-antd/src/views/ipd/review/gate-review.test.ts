@@ -218,3 +218,88 @@ describe('IPD gate review panel (prototype KeyGatePanel adaptation)', () => {
     });
   });
 });
+
+// AI-P2-1：材料 AI 预审接线（POST /gates/{gateId}/precheck；无请求体、只读参考）
+describe('AI-P2-1 · gate material precheck', () => {
+  const precheckFixture = {
+    aiChecklist: { aiModel: 'intent_match', degraded: false, markdown: '- 逐项核对交付物归档' },
+    blocking: false,
+    decisionWritten: false,
+    gateCode: 'GATE-CONCEPT',
+    gateId: '5',
+    items: [
+      { conditionNote: null, evidenceRef: 'oss://evi/1', elementId: 'e-1', leftoverStatus: null, result: 'PASS', status: 'COVERED' },
+      { conditionNote: '需补充纪要', evidenceRef: null, elementId: 'e-2', leftoverStatus: '待关闭', result: 'PASS_WITH_CONDITION', status: 'PARTIAL' },
+    ],
+    latencyMs: 15,
+    materials: {
+      gateId: '5', isReady: true,
+      items: [{ actionCode: 'ACT-1', actionId: 'a-1', actionName: '市场需求评审', isReady: true, required: 1, uploaded: 1 }],
+      missing: 0, projectId: '101', total: 1, uploaded: 1,
+    },
+    projectId: '101',
+    summary: { covered: 1, missing: 0, partial: 1, total: 2 },
+  };
+
+  function stubPrecheckApi(precheck: unknown, status = 200, code = 0) {
+    const calls: { body: unknown; method: string; url: string }[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      calls.push({ body: init?.body, method, url });
+      if (method === 'GET' && url === '/api/v1/gates/5/review') return response(viewFixture());
+      if (method === 'GET' && url === '/api/v1/gates/5/elements') return response([]);
+      if (method === 'POST' && url === '/api/v1/gates/5/precheck') return response(precheck, status, code);
+      return response(null, 404, 40400);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    return { calls };
+  }
+
+  async function mountPrecheckGate() {
+    const wrapper = mount(GatePanel);
+    await wrapper.get('.gate-locate input').setValue('5');
+    await wrapper.get('.gate-locate .primary-button').trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('GATE-CONCEPT'));
+    return wrapper;
+  }
+
+  it('点击「AI 预审」发无请求体 POST，渲染覆盖统计 + 证据定位 + 只读旗标', async () => {
+    const { calls } = stubPrecheckApi(precheckFixture);
+    const wrapper = await mountPrecheckGate();
+    await wrapper.get('[data-testid="gate-precheck-run"]').trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('AI 预审结果（GATE-CONCEPT）'));
+    const precheck = calls.find((c) => c.method === 'POST' && c.url === '/api/v1/gates/5/precheck');
+    expect(precheck).toBeTruthy();
+    // 卡面硬约束：无请求体（后端不收 body、无状态变更）
+    expect(precheck?.body).toBeUndefined();
+    expect(wrapper.text()).toContain('覆盖统计：共 2 项 — 已覆盖 1 / 部分 1 / 缺失 0');
+    expect(wrapper.text()).toContain('只读参考 · 不写决策 · 不阻塞评审');
+    expect(wrapper.text()).toContain('证据：oss://evi/1');
+    expect(wrapper.text()).toContain('条件：需补充纪要');
+    expect(wrapper.text()).toContain('- 逐项核对交付物归档');
+    wrapper.unmount();
+  });
+
+  it('AI 降级：degraded=true 显示降级提示而非 markdown 面板', async () => {
+    stubPrecheckApi({
+      ...precheckFixture,
+      aiChecklist: { aiModel: null, degraded: true, markdown: 'AI 预审清单暂不可用（INTERNAL_ERROR）' },
+    });
+    const wrapper = await mountPrecheckGate();
+    await wrapper.get('[data-testid="gate-precheck-run"]').trigger('click');
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="gate-precheck-degraded"]').exists()).toBe(true));
+    expect(wrapper.text()).toContain('AI 预审清单暂不可用');
+    expect(wrapper.find('[data-testid="gate-precheck-ai"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('预审失败（材料为空 400）：错误文案透出且不渲染结果面板', async () => {
+    stubPrecheckApi(null, 400, 10001);
+    const wrapper = await mountPrecheckGate();
+    await wrapper.get('[data-testid="gate-precheck-run"]').trigger('click');
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="gate-precheck-error"]').exists()).toBe(true));
+    expect(wrapper.find('[data-testid="gate-precheck-panel"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+});
