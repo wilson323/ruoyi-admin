@@ -10,6 +10,7 @@ import { useRoute } from 'vue-router';
 import { Alert, Button, Card, Spin } from 'ant-design-vue';
 
 import { PENDING_TEXT, formatDate } from '../../_shared/format';
+import AiSuggest from '../../_shared/ai-suggest.vue';
 import { ipdApiErrorText } from '../../../../api/ipd/ai-document';
 import { IpdRequestError } from '../../../../api/ipd/auth';
 import { getProject, type Project } from '../../../../api/ipd/project';
@@ -138,6 +139,10 @@ onMounted(() => {
           </span>
           <span class="text-muted-foreground text-sm">等级：{{ project.level || PENDING_TEXT }}</span>
           <span class="text-muted-foreground text-sm">上市日期：{{ formatDate(project.launchDate) }}</span>
+        </div>
+        <!-- R227-C1 AI-FUSION L2：项目状态 AI 总结（后端拉项目上下文，输出仅展示不写库） -->
+        <div class="mt-3">
+          <AiSuggest scene="project.summary.refresh" :project-id="projectId" label="AI 总结项目状态" data-testid="pd-ai-summary" />
         </div>
       </Card>
 

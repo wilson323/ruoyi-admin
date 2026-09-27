@@ -32,6 +32,7 @@ import { SafetyOutlined } from '@ant-design/icons-vue';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
 import { formatDateTime } from '../_shared/format';
 import { ipdErrorText } from '../_shared/ipd-error-text';
+import AiSuggest from '../_shared/ai-suggest.vue';
 import {
   arbitrateGate,
   extendGateDeadline,
@@ -370,6 +371,22 @@ function finalRuling(decision: GateDecision): void {
     <div v-if="loading" class="gate-loading">正在加载 Gate 评审视图…</div>
 
     <template v-if="view">
+      <!-- R227-C1 AI-FUSION L2：评审前检查清单 + 结论草稿（后端按 gateId 拉评审链/要素结果；
+           盲签互盲红线：AI 上下文只含已提交的 decision/opinion，在途互盲期后端自然拿不到对方在途值） -->
+      <div class="gate-ai-row" style="display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap">
+        <AiSuggest
+          scene="gate.precheck-checklist"
+          :entity-id="view.gateId"
+          label="AI 评审前检查清单"
+          data-testid="gate-ai-precheck"
+        />
+        <AiSuggest
+          scene="gate.conclusion-draft"
+          :entity-id="view.gateId"
+          label="AI 结论草稿"
+          data-testid="gate-ai-conclusion"
+        />
+      </div>
       <article class="gate-card">
         <header>
           <span>

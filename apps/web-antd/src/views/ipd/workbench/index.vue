@@ -12,6 +12,7 @@ import { Alert, Tag } from 'ant-design-vue';
 import { fetchMyInitiated, fetchMyPendingApprovals, fetchWorkbenchSummary } from '../../../api/ipd/workbench';
 import type { MyInitiatedTaskView, WorkbenchSummary, WorkbenchTask } from '../../../api/ipd/workbench';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
+import AiSuggest from '../_shared/ai-suggest.vue';
 import '../_shared/ipd-theme.css';
 import { RULES_BY_PAGE, renderRulesDescription } from '../_shared/zk-ipd-rules';
 import { WORKBENCH_TASK_STATUS_TEXT, taskTypeText } from '../_shared/ipd-enums';
@@ -333,6 +334,15 @@ onMounted(async () => {
             <p class="ipd-wb-handoff-desc">
               每次状态变化会同时完成当前任务、投递下一责任人、生成通知并写入审计。
             </p>
+          </section>
+
+          <!-- R227-C1 AI-FUSION L2：场景化 AI 入口（建议下一步 / 风险预警，后端拉上下文前端不拼数据） -->
+          <section class="ipd-wb-side-card">
+            <header class="ipd-wb-section-header">
+              <h2 class="ipd-wb-section-title">AI 帮忙</h2>
+            </header>
+            <AiSuggest scene="workbench.next-step" label="AI 建议下一步" data-testid="wb-ai-next-step" />
+            <AiSuggest scene="workbench.risk-warning" label="AI 风险预警" data-testid="wb-ai-risk" />
           </section>
         </aside>
       </div>

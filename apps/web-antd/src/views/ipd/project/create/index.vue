@@ -39,6 +39,7 @@ import { createProject } from '../../../../api/ipd/project';
 import type { ProductGroup } from '../../../../api/ipd/product';
 import { listProductGroups } from '../../../../api/ipd/product';
 import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
+import AiSuggest from '../../_shared/ai-suggest.vue';
 import { RULES_BY_PAGE, renderRulesDescription } from '../../_shared/zk-ipd-rules';
 import '../../_shared/ipd-theme.css';
 
@@ -235,6 +236,16 @@ function cancel(): void {
         type="error"
         show-icon
       />
+
+      <!-- R227-C1 AI-FUSION L2：原始想法→章程要点起草（输出仅供人工采纳，不自动写表单/业务表） -->
+      <div class="mb-4">
+        <AiSuggest
+          scene="project.create.suggest"
+          needs-prompt
+          label="AI 帮写立项建议"
+          data-testid="pc-ai-suggest"
+        />
+      </div>
 
       <Form
         :model="formState"

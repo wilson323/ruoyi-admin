@@ -25,6 +25,7 @@ import { listProducts } from '../../../api/ipd/product';
 import type { Product } from '../../../api/ipd/product';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
 import { RULES_BY_PAGE, renderRulesDescription } from '../_shared/zk-ipd-rules';
+import AiSuggest from '../_shared/ai-suggest.vue';
 import { DEMAND_STATUS_TONE, demandStateLabel } from '../_shared/ipd-enums';
 import '../_shared/ipd-theme.css';
 
@@ -266,6 +267,17 @@ onMounted(() => {
       message="ZK-IPD 需求池规则"
       :description="demandRules"
     />
+
+    <!-- R227-C1 AI-FUSION L2：原始需求→规范需求单草稿（内网无建单表单，门户为免登录页，
+         本入口承接 PM 粘贴原始素材整理；采纳由人工复制进 triage，不自动写库） -->
+    <div class="ipd-req-ai" style="margin-bottom: 16px">
+      <AiSuggest
+        scene="demand.create.from-requirement"
+        needs-prompt
+        label="AI 整理规范需求单"
+        data-testid="demand-ai-suggest"
+      />
+    </div>
 
     <!-- 双 tab（原型 section-switch，max-width 360px） -->
     <div class="ipd-req-switch" role="tablist">
