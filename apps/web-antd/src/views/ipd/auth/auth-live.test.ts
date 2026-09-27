@@ -68,6 +68,7 @@ describe.skipIf(!live)('real Vue components with local Java authentication', () 
       expect(auth.identity?.person.id).toBe('900103');
       expect(auth.identity?.scope).toBe('FULL');
       expect(auth.identity?.mustChangePwd).toBe(false);
+      await router.push(IPD_ACCOUNT); await router.isReady();
       expect(wrapper.text()).toContain('市场产品经理');
       expect(wrapper.text()).toContain('您的账户已通过身份验证。');
       if (naturalExpiry) {
