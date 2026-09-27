@@ -11,7 +11,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IpdRequestError } from './auth';
-import { fetchMyInitiated, fetchMyPendingApprovals, fetchWorkbenchSummary } from './workbench';
+import { fetchMyInitiated, fetchMyPendingApprovals, fetchWorkbenchSummary, fetchWorkbenchTasks } from './workbench';
 
 const envelope = (data: unknown, status = 200, code = 0): Response =>
   new Response(
@@ -108,13 +108,15 @@ describe('workbench API — fetchWorkbenchSummary', () => {
     expect(summary.currentAdvance).toBeNull();
   });
 
-  it('workbench.ts 导出面锁定（动词面：GET only；R215 A10 后含 my-initiated/my-pending-approvals）', async () => {
-    // 防止误加 fetchWorkbenchTasks / postWorkbenchXxx 等动词面漂移；与 http.ts 契约一致。
+  it('workbench.ts 导出面锁定（动词面：GET only；R215 A10 后含 my-initiated/my-pending-approvals；WB-17-1 S0 追加 tasks）', async () => {
+    // 防止误加 postWorkbenchXxx 等动词面漂移；与 http.ts 契约一致。
+    // fetchWorkbenchTasks 为 WB-17-1 S0（GET /workbench/tasks 过滤视图）有意追加的第 4 个动词。
     const moduleExports = Object.keys(await import('./workbench')).sort();
     expect(moduleExports).toEqual([
       'fetchMyInitiated',
       'fetchMyPendingApprovals',
       'fetchWorkbenchSummary',
+      'fetchWorkbenchTasks',
     ]);
   });
 });
@@ -224,5 +226,60 @@ describe('workbench API — fetchMyInitiated / fetchMyPendingApprovals（R215 A1
     const fetcher = vi.fn().mockResolvedValue(envelope(null, 500, 99999));
     vi.stubGlobal('fetch', fetcher);
     await expect(fetchMyInitiated()).rejects.toBeInstanceOf(IpdRequestError);
+  });
+});
+// ---------- WB-17-1 S0：任务队列过滤视图（GET /workbench/tasks）契约测试 ----------
+
+const tasksFixture = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  bucket: 'pending',
+  type: null,
+  projectId: null,
+  limit: 50,
+  total: 1,
+  returned: 1,
+  tasks: [
+    {
+      id: 't-1', projectId: '10', projectName: 'Alpha', projectCode: 'P-001',
+      actionCode: 'A-1', title: '需求评审', taskType: 'stage_sign',
+      status: 'IN_PROGRESS', priority: 'normal', ownerRole: 'MARKET_PM',
+      dueDate: 1700000000000, isBlocking: '1', deepLink: '/ipd/projects/10/actions/1',
+    },
+  ],
+  ...overrides,
+});
+
+describe('workbench API — fetchWorkbenchTasks（WB-17-1 S0）', () => {
+  it('无参数：GET /workbench/tasks 不带查询串（后端缺省 bucket=pending / limit=50）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope(tasksFixture()));
+    vi.stubGlobal('fetch', fetcher);
+    const view = await fetchWorkbenchTasks();
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/workbench/tasks');
+    expect(view.bucket).toBe('pending');
+    expect(view.total).toBe(1);
+    expect(view.tasks[0]).toMatchObject({ id: 't-1', title: '需求评审' });
+  });
+
+  it('bucket/type/limit/projectId 全参编码进查询串', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope(tasksFixture({ bucket: 'overdue' })));
+    vi.stubGlobal('fetch', fetcher);
+    await fetchWorkbenchTasks({ bucket: 'overdue', limit: 20, projectId: '10', type: 'stage_sign' });
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      '/api/v1/workbench/tasks?bucket=overdue&limit=20&projectId=10&type=stage_sign',
+    );
+  });
+
+  it('空态：tasks 为空数组 + total=0（不造假数据）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope(tasksFixture({ tasks: [], total: 0, returned: 0 })));
+    vi.stubGlobal('fetch', fetcher);
+    const view = await fetchWorkbenchTasks({ bucket: 'overdue' });
+    expect(view.tasks).toEqual([]);
+    expect(view.total).toBe(0);
+    expect(view.returned).toBe(0);
+  });
+
+  it('错误传播：bucket=completed 后端 fail-closed 400 抛 IpdRequestError', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope(null, 400, 10001));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(fetchWorkbenchTasks({ bucket: 'pending' })).rejects.toBeInstanceOf(IpdRequestError);
   });
 });

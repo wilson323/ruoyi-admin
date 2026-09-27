@@ -6,11 +6,21 @@
  * 形态：身份问候（按时辰）+ 4 metric 卡 + 责任任务队列 + 我的当前推进 + 删除审批数 + 无实质产出提醒。
  * 无实质产出名单依赖绩效域月度资格规则（P1 substantive-output），当前展示真实空态。
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { Alert, Tag } from 'ant-design-vue';
 
-import { fetchMyInitiated, fetchMyPendingApprovals, fetchWorkbenchSummary } from '../../../api/ipd/workbench';
-import type { MyInitiatedTaskView, WorkbenchSummary, WorkbenchTask } from '../../../api/ipd/workbench';
+import {
+  fetchMyInitiated,
+  fetchMyPendingApprovals,
+  fetchWorkbenchSummary,
+  fetchWorkbenchTasks,
+} from '../../../api/ipd/workbench';
+import type {
+  MyInitiatedTaskView,
+  WorkbenchSummary,
+  WorkbenchTask,
+  WorkbenchTaskBucket,
+} from '../../../api/ipd/workbench';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
 import AiSuggest from '../_shared/ai-suggest.vue';
 import '../_shared/ipd-theme.css';
@@ -128,6 +138,22 @@ function formatDue(iso: null | number | string | undefined): string {
   return `${mm}/${dd} 截止`;
 }
 
+/** WB-17-1 S0：任务队列过滤视图（GET /workbench/tasks?bucket=pending|overdue）。
+ *  端点失败/旧后端缺路由时回退 /summary tasks 平铺（overdue 仍走 priority=high 旧口径），不造假数据。 */
+const queueTasks = ref<WorkbenchTask[]>([]);
+const queueFromTasks = ref(false);
+
+async function loadQueueTasks(bucket: WorkbenchTaskBucket): Promise<void> {
+  try {
+    const page = await fetchWorkbenchTasks({ bucket });
+    queueTasks.value = page.tasks ?? [];
+    queueFromTasks.value = true;
+  } catch {
+    queueTasks.value = [];
+    queueFromTasks.value = false;
+  }
+}
+
 const taskGroups = computed<TaskGroup[]>(() => {
   // R215 A10：「我发起的」tab 用 my-initiated 端点真数据（不再复用 stage_action 队列）
   if (activeTab.value === 'initiated') {
@@ -142,8 +168,9 @@ const taskGroups = computed<TaskGroup[]>(() => {
     }));
     return items.length > 0 ? [{ projectName: '我发起的', count: items.length, items }] : [];
   }
-  const tasks = summary.value?.tasks ?? [];
-  const visible = activeTab.value === 'overdue'
+  // WB-17-1 S0：优先消费 GET /workbench/tasks（bucket 已由后端过滤）；失败回退 summary.tasks
+  const tasks = queueFromTasks.value ? queueTasks.value : (summary.value?.tasks ?? []);
+  const visible = activeTab.value === 'overdue' && !queueFromTasks.value
     ? tasks.filter((t) => t.priority === 'high')
     : tasks;
   const byProject = new Map<string, WorkbenchTask[]>();
@@ -192,6 +219,13 @@ onMounted(async () => {
       myPendingApprovals.value = rows;
     })
     .catch(() => {});
+  // WB-17-1 S0：责任任务队列改从 /workbench/tasks 拉过滤视图（缺省 bucket=pending）
+  void loadQueueTasks('pending');
+});
+
+// 队列 tab 切换（pending / overdue）联动重拉 /workbench/tasks 过滤视图
+watch(activeTab, (tab) => {
+  if (tab === 'pending' || tab === 'overdue') void loadQueueTasks(tab);
 });
 </script>
 

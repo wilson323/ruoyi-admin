@@ -102,3 +102,40 @@ export function fetchMyPendingApprovals(personId?: string): Promise<MyInitiatedT
     personId ? { personId } : undefined,
   );
 }
+
+/* ---------- WB-17-1 S0：任务队列过滤视图（GET /workbench/tasks，2026-09-27 后端已交付） ---------- */
+
+/** bucket 值域（后端 fail-closed：completed 仅有计数走 /summary、initiated 走 /my-initiated，均 400）。 */
+export type WorkbenchTaskBucket = 'overdue' | 'pending';
+
+/** GET /workbench/tasks 查询参数（全可选；后端 WorkbenchController#tasks @RequestParam）。 */
+export interface WorkbenchTasksParams {
+  /** 缺省 pending=全部在途卡；overdue=dueDate 早于当前（与 summary stats.overdue 同规则）。 */
+  bucket?: WorkbenchTaskBucket;
+  /** 1~200，缺省 50（后端 fail-closed 校验）。 */
+  limit?: number;
+  /** 可选：卡面 projectId 精确匹配。 */
+  projectId?: string;
+  /** 可选：17 类权威 taskType 之一（非法值后端 400），空=不过滤。 */
+  type?: string;
+}
+
+/** GET /workbench/tasks 响应（后端 result Map 键集；total=截断前命中数，returned=本次返回数）。 */
+export interface WorkbenchTasksView {
+  bucket: string;
+  limit: number;
+  projectId: null | string;
+  returned: number;
+  /** 与 /summary tasks 同一聚合器卡面（WorkbenchTask），按 priority urgent>high>normal、dueDate 升序排序。 */
+  tasks: WorkbenchTask[];
+  total: number;
+  type: null | string;
+}
+
+/**
+ * 任务队列过滤视图（WB-17-1 S0；GET /api/v1/workbench/tasks?bucket=&type=&limit=&projectId=）。
+ * 与 /summary 共用聚合器链（真数据源零 mock），在卡面上过滤；老 /summary 契约保留兼容。
+ */
+export function fetchWorkbenchTasks(params: WorkbenchTasksParams = {}): Promise<WorkbenchTasksView> {
+  return ipdGet<WorkbenchTasksView>('/workbench/tasks', { ...params });
+}

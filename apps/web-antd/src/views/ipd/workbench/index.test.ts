@@ -273,3 +273,86 @@ describe('页03 我的工作台', () => {
     wrapper.unmount();
   });
 });
+
+// WB-17-1 S0：责任任务队列消费 GET /workbench/tasks 过滤视图（失败回退 /summary tasks）
+describe('页03 责任任务队列 · GET /workbench/tasks（WB-17-1 S0）', () => {
+  const tasksView = (tasks: WorkbenchSummary['tasks'], bucket: string) => ({
+    bucket, type: null, projectId: null, limit: 50,
+    total: tasks.length, returned: tasks.length, tasks,
+  });
+
+  function stubTasks(summary: WorkbenchSummary, tasksByBucket: Record<string, WorkbenchSummary['tasks']>) {
+    const urls: string[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      urls.push(path);
+      if (path.includes('/workbench/summary')) return envelope(summary);
+      if (path.includes('/workbench/tasks')) {
+        const bucket = path.includes('bucket=overdue') ? 'overdue' : 'pending';
+        return envelope(tasksView(tasksByBucket[bucket] ?? [], bucket));
+      }
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    return urls;
+  }
+
+  it('初始挂载即拉 /workbench/tasks?bucket=pending 并以过滤视图渲染队列', async () => {
+    loginAs('MARKET_PM', '测试人员');
+    const urls = stubTasks(fullSummary, {
+      pending: [
+        {
+          id: 'T-1', projectId: '20', projectName: 'Beta 项目', projectCode: 'P-002',
+          actionCode: 'A-9', title: '来自 tasks 端点的卡', taskType: 'stage_sign',
+          status: 'IN_PROGRESS', priority: 'normal', ownerRole: 'RD_PM',
+          dueDate: Date.now() + 86_400_000, isBlocking: '1', deepLink: '/ipd/projects/20/actions/9',
+        },
+      ],
+      overdue: [],
+    });
+    const wrapper = mount(Workbench);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('来自 tasks 端点的卡'));
+    // 队列取自过滤视图而非 summary.tasks（summary 卡不再渲染）
+    expect(wrapper.text()).not.toContain('需求评审');
+    expect(urls.some((u) => u === '/api/v1/workbench/tasks?bucket=pending')).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('切到「临期/超期」tab 以 bucket=overdue 重拉，渲染后端过滤结果', async () => {
+    loginAs('MARKET_PM', '测试人员');
+    const urls = stubTasks(fullSummary, {
+      pending: [],
+      overdue: [
+        {
+          id: 'T-2', projectId: '20', projectName: 'Beta 项目', projectCode: 'P-002',
+          actionCode: 'A-8', title: '已超期的卡', taskType: 'stage_sign',
+          status: 'DELAYED', priority: 'high', ownerRole: 'RD_PM',
+          dueDate: Date.now() - 86_400_000, isBlocking: '1', deepLink: '/ipd/projects/20/actions/8',
+        },
+      ],
+    });
+    const wrapper = mount(Workbench);
+    await vi.waitFor(() => expect(urls).toContain('/api/v1/workbench/tasks?bucket=pending'));
+    const overdueTab = wrapper.findAll('button[role="tab"]').find((b) => b.text().includes('临期/超期'));
+    expect(overdueTab).toBeDefined();
+    await overdueTab!.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已超期的卡'));
+    expect(urls).toContain('/api/v1/workbench/tasks?bucket=overdue');
+    wrapper.unmount();
+  });
+
+  it('/workbench/tasks 失败：回退 summary.tasks 平铺（诚实降级，不空屏）', async () => {
+    loginAs('MARKET_PM', '测试人员');
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes('/workbench/summary')) return envelope(fullSummary);
+      if (path.includes('/workbench/tasks')) throw new TypeError('network unavailable');
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mount(Workbench);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('需求评审'));
+    expect(wrapper.text()).toContain('代码评审');
+    wrapper.unmount();
+  });
+});
