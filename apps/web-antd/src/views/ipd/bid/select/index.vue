@@ -119,6 +119,67 @@
             </Table>
           </Card>
 
+          <!-- AI-P2-2：遴选 AI 对比（四维对照 + 差异高亮；仅展示不落库，不构成遴选结论） -->
+          <Card class="mb-4" data-testid="bid-ai-compare-card" title="AI 遴选对比（参考）">
+            <p class="mb-2 text-muted-foreground text-xs">
+              勾选 2~5 份应标做四维对照（工期 / 资源 / 风险承诺 / 方案匹配度）与差异高亮；仅供人工遴选参考，不构成遴选结论，结果不落库，遴选决策仍以「确认遴选」为准。
+            </p>
+            <Alert
+              v-if="!canAiCompare"
+              class="mb-2"
+              message="遴选对比需产品组长或超级管理员权限（后端组长/超管闸）。"
+              type="info"
+              show-icon
+            />
+            <CheckboxGroup
+              :value="compareIds"
+              :options="compareOptions"
+              :disabled="compareBusy"
+              class="mb-3 block"
+              data-testid="bid-ai-compare-picker"
+              @change="onCompareChange"
+            />
+            <Button
+              type="primary"
+              data-testid="bid-ai-compare-run"
+              :disabled="!canRunCompare"
+              :loading="compareBusy"
+              @click="runCompare"
+            >
+              {{ compareBusy ? 'AI 对比中…' : 'AI 对比' }}
+            </Button>
+            <span class="text-muted-foreground ml-2 text-xs">已选 {{ compareIds.length }}/5（至少 2 份）</span>
+            <Alert
+              v-if="compareError"
+              class="mt-3"
+              :message="compareError"
+              type="error"
+              show-icon
+              role="alert"
+            />
+            <template v-if="compareResult">
+              <p class="mt-3 text-sm">
+                {{ compareResult.invitationTitle || '本招标单' }} · 模型 {{ compareResult.model }} ·
+                tokens {{ compareResult.promptTokens }}+{{ compareResult.completionTokens }} ·
+                {{ compareResult.latencyMs }}ms
+              </p>
+              <Table
+                class="mt-2"
+                :columns="compareColumns"
+                :data-source="compareRows"
+                :pagination="false"
+                row-key="key"
+                size="small"
+              />
+              <template v-if="compareResult.differences.length > 0">
+                <h4 class="mt-3 mb-1 font-medium">差异高亮</h4>
+                <ul class="list-disc pl-5 text-sm">
+                  <li v-for="(diff, idx) in compareResult.differences" :key="idx">{{ diff }}</li>
+                </ul>
+              </template>
+            </template>
+          </Card>
+
           <!-- 确认区：3 选 1 原子遴选（服务端单事务 + 行锁防双中标） -->
           <Card v-if="invitation.status === 'OPEN'" title="确认遴选">
             <p class="mb-3 text-sm">
@@ -152,6 +213,7 @@ import {
   Alert,
   Button,
   Card,
+  CheckboxGroup,
   Descriptions,
   Empty,
   message,
@@ -163,6 +225,7 @@ import {
 } from 'ant-design-vue';
 import { getBidInvitation, listBidResponses, preSelectBidInvitationToken, selectBidInvitation } from '../../../../api/ipd/bid';
 import type { BidInvitation, BidResponse } from '../../../../api/ipd/bid';
+import { runBidAiCompare, type BidAiCompareView } from '../../../../api/ipd/bid-ai-compare';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
 import {
@@ -228,6 +291,77 @@ function goBack(): void {
   });
 }
 
+/** AI-P2-2：遴选 AI 对比（只读参考，2~5 份应标；仅展示不落库，遴选决策恒人工）。 */
+const compareIds = ref<string[]>([]);
+const compareBusy = ref(false);
+const compareError = ref('');
+const compareResult = ref<BidAiCompareView | null>(null);
+
+// 后端 requireLeaderOrAdmin：仅产品组长/超管可调（MARKET_PM/RD_PM 调用即 403），前端先给可见提示
+const personType = computed(() => auth.identity?.person.personType ?? '');
+const canAiCompare = computed(
+  () => personType.value === 'GROUP_LEADER' || personType.value === 'SUPER_ADMIN',
+);
+const canRunCompare = computed(
+  () =>
+    canAiCompare.value &&
+    !compareBusy.value &&
+    compareIds.value.length >= 2 &&
+    compareIds.value.length <= 5,
+);
+
+const compareOptions = computed(() =>
+  responses.value.map((row) => ({ label: rdPmLabel(row), value: row.id })),
+);
+
+/** CheckboxGroup change 事件统一收窄成 string[]（禁 Number()，19 位雪花 ID 精度红线）。 */
+function onCompareChange(values: unknown): void {
+  compareIds.value = (Array.isArray(values) ? values : []).map((value) => String(value));
+}
+
+const compareColumns = computed(() => {
+  const columns: Array<{ dataIndex: string; key: string; title: string }> = [
+    { dataIndex: 'dimension', key: 'dimension', title: '维度' },
+  ];
+  for (const id of compareResult.value?.responseIds ?? []) {
+    const row = responses.value.find((r) => r.id === id);
+    columns.push({ dataIndex: `cell-${id}`, key: `cell-${id}`, title: row ? rdPmLabel(row) : `应标 #${id}` });
+  }
+  columns.push({ dataIndex: 'difference', key: 'difference', title: '维度差异' });
+  return columns;
+});
+
+const compareRows = computed(() =>
+  (compareResult.value?.dimensions ?? []).map((row) => ({
+    key: row.dimension,
+    dimension: row.dimension,
+    difference: row.difference,
+    ...Object.fromEntries(Object.entries(row.cells).map(([id, cell]) => [`cell-${id}`, cell])),
+  })),
+);
+
+async function runCompare(): Promise<void> {
+  if (!canRunCompare.value) return;
+  compareBusy.value = true;
+  compareError.value = '';
+  try {
+    compareResult.value = await runBidAiCompare(bidId.value, compareIds.value);
+  } catch (cause) {
+    compareResult.value = null;
+    compareError.value = ipdErrorText(cause, {
+      fallback: 'AI 对比失败，请稍后重试',
+      codeTexts: {
+        10001: '对比需勾选 2~5 份不同的应标（同一招标单内）',
+        30001: '遴选对比需产品组长或超级管理员权限',
+        50001: '应标不存在或不属于本招标单，请刷新后重试',
+        90001: 'AI 对比暂不可用（模型未配置或输出解析失败），请稍后重试',
+      },
+    });
+  } finally {
+    compareBusy.value = false;
+  }
+}
+
 async function load(): Promise<void> {
   if (!bidId.value) return;
   loading.value = true;
@@ -241,6 +375,8 @@ async function load(): Promise<void> {
     // 发起人视角返回全量应标（隐私过滤见 BidInvitationService#listResponses）。
     responses.value = responseData ?? [];
     selectedResponseId.value = '';
+    compareIds.value = [];
+    compareResult.value = null;
   } catch (cause) {
     loadError.value = cause;
   } finally {

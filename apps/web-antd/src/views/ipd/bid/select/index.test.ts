@@ -2,7 +2,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Popconfirm, Radio } from 'ant-design-vue';
+import { CheckboxGroup, Popconfirm, Radio } from 'ant-design-vue';
 
 import { IpdRequestError, type IpdIdentity, type IpdPersonType } from '../../../../api/ipd/auth';
 import type { BidInvitation, BidResponse } from '../../../../api/ipd/bid';
@@ -16,6 +16,9 @@ const api = vi.hoisted(() => ({
   selectBidInvitation: vi.fn(),
 }));
 vi.mock('../../../../api/ipd/bid', () => api);
+
+const compareApi = vi.hoisted(() => ({ runBidAiCompare: vi.fn() }));
+vi.mock('../../../../api/ipd/bid-ai-compare', () => compareApi);
 
 const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock('vue-router', () => ({
@@ -55,6 +58,7 @@ beforeEach(() => {
   api.listBidResponses.mockReset();
   api.preSelectBidInvitationToken.mockReset();
   api.selectBidInvitation.mockReset();
+  compareApi.runBidAiCompare.mockReset();
   api.preSelectBidInvitationToken.mockResolvedValue({ token: 'TOK123', expiresAt: '2026-09-10 23:59:59' });
   routerMock.push.mockReset();
 });
@@ -207,5 +211,79 @@ describe('页22 遴选 - 3 选 1、原子性、只读分支', () => {
     await popconfirms[0]!.vm.$emit('confirm');
     await flushPromises();
     expect(wrapper.html()).toContain('无法连接服务');
+  });
+});
+
+// AI-P2-2：遴选 AI 对比（POST /bid-invitations/{id}/ai-compare；2~5 份应标、只读参考）
+describe('页22 遴选 - AI 对比（AI-P2-2）', () => {
+  it('组长勾选 2 份应标 → 调 runBidAiCompare 并渲染四维对照表 + 差异高亮', async () => {
+    useIpdAuthStore().identity = identity('GROUP_LEADER', '9007199254740993');
+    api.getBidInvitation.mockResolvedValueOnce(invitation());
+    api.listBidResponses.mockResolvedValueOnce([
+      bidResponse({ id: 'A', rdPmId: '111' }),
+      bidResponse({ id: 'B', rdPmId: '222' }),
+    ]);
+    compareApi.runBidAiCompare.mockResolvedValueOnce({
+      dimensions: [
+        { dimension: '工期', cells: { A: '6 个月', B: '8 个月' }, difference: 'A 工期更短' },
+        { dimension: '资源', cells: { A: '5 人', B: '3 人' }, difference: 'A 投入更多' },
+      ],
+      differences: ['A 在工期与资源上占优'],
+      invitationId: 'INV-3003',
+      invitationTitle: '智慧园区视频分析算法研发',
+      latencyMs: 830,
+      model: 'test-model',
+      promptTokens: 700,
+      completionTokens: 420,
+      responseIds: ['A', 'B'],
+    });
+    const wrapper = await mountSelect();
+    // 未勾选时按钮禁用（数量闸 2~5）
+    const runBtn = () => wrapper.findAll('button').find((b) => b.text().includes('AI 对比'))!;
+    expect(runBtn().attributes('disabled')).toBeDefined();
+    const group = wrapper.findAllComponents(CheckboxGroup)[0]!;
+    await group.vm.$emit('change', ['A', 'B']);
+    await wrapper.vm.$nextTick();
+    expect(runBtn().attributes('disabled')).toBeUndefined();
+    await runBtn().trigger('click');
+    await flushPromises();
+    expect(compareApi.runBidAiCompare).toHaveBeenCalledWith('INV-3003', ['A', 'B']);
+    expect(wrapper.text()).toContain('工期');
+    expect(wrapper.text()).toContain('A 工期更短');
+    expect(wrapper.text()).toContain('差异高亮');
+    expect(wrapper.text()).toContain('A 在工期与资源上占优');
+    expect(wrapper.text()).toContain('test-model');
+  });
+
+  it('MARKET_PM 非组长/超管：按钮禁用 + 权限提示（后端 requireLeaderOrAdmin 闸）', async () => {
+    useIpdAuthStore().identity = identity('MARKET_PM', '9007199254740993');
+    api.getBidInvitation.mockResolvedValueOnce(invitation());
+    api.listBidResponses.mockResolvedValueOnce([
+      bidResponse({ id: 'A', rdPmId: '111' }),
+      bidResponse({ id: 'B', rdPmId: '222' }),
+    ]);
+    const wrapper = await mountSelect();
+    expect(wrapper.text()).toContain('遴选对比需产品组长或超级管理员权限');
+    const runBtn = wrapper.findAll('button').find((b) => b.text().includes('AI 对比'))!;
+    expect(runBtn.attributes('disabled')).toBeDefined();
+    expect(compareApi.runBidAiCompare).not.toHaveBeenCalled();
+  });
+
+  it('AI 对比失败（30001/90001）：错误文案透出且不渲染对照表', async () => {
+    useIpdAuthStore().identity = identity('GROUP_LEADER', '9007199254740993');
+    api.getBidInvitation.mockResolvedValueOnce(invitation());
+    api.listBidResponses.mockResolvedValueOnce([
+      bidResponse({ id: 'A', rdPmId: '111' }),
+      bidResponse({ id: 'B', rdPmId: '222' }),
+    ]);
+    compareApi.runBidAiCompare.mockRejectedValueOnce(new IpdRequestError('x', 500, 90001, 'http'));
+    const wrapper = await mountSelect();
+    await wrapper.findAllComponents(CheckboxGroup)[0]!.vm.$emit('change', ['A', 'B']);
+    await wrapper.vm.$nextTick();
+    await wrapper.findAll('button').find((b) => b.text().includes('AI 对比'))!.trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('AI 对比暂不可用');
+    // 结果表不渲染（「维度差异」列头仅在对照表出现；「差异高亮」字样在卡片说明里常驻，不可作负向断言）
+    expect(wrapper.text()).not.toContain('维度差异');
   });
 });
