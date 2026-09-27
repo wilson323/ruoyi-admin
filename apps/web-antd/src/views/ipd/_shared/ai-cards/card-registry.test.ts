@@ -50,9 +50,9 @@ describe('ai-cards/card-registry（P1-05 骨架）', () => {
     expect(isCardType('nope')).toBe(false);
   });
 
-  it('骨架阶段组件槽位为空（P1-06 静态 import 注册后才可渲染）', () => {
+  it('P1-06 静态 import 注册后 4 组件槽位均已就位', () => {
     for (const entry of listCardTypes()) {
-      expect(entry.component).toBeUndefined();
+      expect(entry.component).toBeDefined();
     }
     expect(Object.keys(CARD_REGISTRY).length).toBe(4);
   });

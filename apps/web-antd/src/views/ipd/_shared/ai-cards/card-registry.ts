@@ -18,6 +18,11 @@ import type { Component } from 'vue';
 
 import type { AiCardScene, AiCardType } from './types';
 
+import DemandDraftCard from './demand-draft-card.vue';
+import GateConclusionCard from './gate-conclusion-card.vue';
+import GatePrecheckCard from './gate-precheck-card.vue';
+import ProjectCharterCard from './project-charter-card.vue';
+
 /** 卡片形状（= Catalog cards[].shape；与 P1-06 四组件一一对应）。 */
 export type CardShape = 'checklist' | 'compare' | 'decision' | 'draft';
 
@@ -45,24 +50,28 @@ export const CARD_REGISTRY: Readonly<Record<AiCardType, CardTypeEntry>> = {
     version: 1,
     scene: 'demand.create.from-requirement',
     shape: 'draft',
+    component: DemandDraftCard,
   },
   'gate.conclusion': {
     type: 'gate.conclusion',
     version: 1,
     scene: 'gate.conclusion-draft',
     shape: 'decision',
+    component: GateConclusionCard,
   },
   'gate.precheck': {
     type: 'gate.precheck',
     version: 1,
     scene: 'gate.precheck-checklist',
     shape: 'checklist',
+    component: GatePrecheckCard,
   },
   'project.charter': {
     type: 'project.charter',
     version: 1,
     scene: 'project.create.suggest',
     shape: 'compare',
+    component: ProjectCharterCard,
   },
 };
 
