@@ -39,9 +39,13 @@ import {
   type DeletionEntityType,
   type DeletionRequest,
 } from '../../../../api/ipd/deletion';
+import BackendPending from '../../_shared/backend-pending.vue';
 import { formatDateTime } from '../../_shared/format';
 import { DELETION_STATUS_TEXT } from '../../_shared/ipd-enums';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
+
+/* ipdCard 待 owner 裁决 */
+defineOptions({ name: 'IpdDeletionMy', meta: { ipdBackend: 'DeletionRequestController 已交付（P1-1）：POST /deletion-requests、GET /deletion-requests/my-requests、POST /deletion-requests/{id}/withdraw（BR-DEL-04 24h 窗口）；摸底（0907）登记的「列表查询」缺口已闭环，2026-09-27 复核无剩余端点缺口。' } });
 
 const route = useRoute() as unknown as { query?: Record<string, unknown> } | undefined;
 
@@ -273,5 +277,7 @@ const myRequestColumns = [
         </Card>
       </div>
     </div>
+
+    <BackendPending class="mt-4" />
   </div>
 </template>

@@ -8,6 +8,8 @@
  * - badgeKind 映射：WITHDRAWN→warning；CLOSED/ARCHIVED→default；
  *   SUBMITTED/ACCEPTED/EVALUATING/SCHEDULED/PROCESSING→processing
  * - 五态：成功 / 拒绝(码错误/限流) / 未查询引导 / 加载 / 断网
+ * - R3 补登/撤回：入口可见性(canSupplement/canWithdraw) / 补登载荷逐字段 /
+ *   撤回二次确认载荷 / 成功后刷新 trace / 业务码错误文案 / ≤4000/≤128 长度校验边界
  *
  * Mock 策略：用 vi.mock 在模块层替换 fetchPortalDemandByCode → 直接控制返回值/拒绝，
  * 不走 fetch 网络层（API 契约路径由 portal.test.ts 已覆盖）。保留 PORTAL_CODE_PATTERN
@@ -18,7 +20,11 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 
-import { fetchPortalDemandByCode } from '../../../../api/ipd/portal';
+import {
+  fetchPortalDemandByCode,
+  supplementDemand,
+  withdrawDemand,
+} from '../../../../api/ipd/portal';
 import StatusPage from './index.vue';
 
 // vi.mock 工厂：保留 PORTAL_CODE_PATTERN（onMounted 自动查询 + queryTrace 校验依赖），
@@ -26,9 +32,13 @@ import StatusPage from './index.vue';
 vi.mock('../../../../api/ipd/portal', () => ({
   PORTAL_CODE_PATTERN: /^[A-Z0-9]{8}$/,
   fetchPortalDemandByCode: vi.fn(),
+  supplementDemand: vi.fn(),
+  withdrawDemand: vi.fn(),
 }));
 
 const fetchTrace = vi.mocked(fetchPortalDemandByCode);
+const supplementApi = vi.mocked(supplementDemand);
+const withdrawApi = vi.mocked(withdrawDemand);
 
 interface FixtureTimelineEntry {
   memo?: string;
@@ -85,6 +95,8 @@ async function mountStatus(routePath = '/portal/track?code=AB12CD34') {
 
 beforeEach(() => {
   fetchTrace.mockReset();
+  supplementApi.mockReset();
+  withdrawApi.mockReset();
 });
 
 afterEach(() => {
@@ -244,6 +256,250 @@ describe('五态覆盖', () => {
       );
     });
     expect(wrapper.find('[data-testid="portal-track-result"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+});
+
+describe('R3 补登/撤回入口可见性（canSupplement / canWithdraw 控制）', () => {
+  const cases: Array<[boolean, boolean]> = [
+    [true, true],
+    [true, false],
+    [false, true],
+    [false, false],
+  ];
+
+  for (const [canSupplement, canWithdraw] of cases) {
+    it(`canSupplement=${canSupplement} / canWithdraw=${canWithdraw} -> 补登入口 ${canSupplement} / 撤回入口 ${canWithdraw}`, async () => {
+      fetchTrace.mockResolvedValue(baseTrace({ canSupplement, canWithdraw, status: 'SUBMITTED' }));
+      const wrapper = await mountStatus();
+      await vi.waitFor(() =>
+        expect(wrapper.find('[data-testid="portal-track-result"]').exists()).toBe(true),
+      );
+      expect(wrapper.find('[data-testid="portal-supplement-button"]').exists()).toBe(canSupplement);
+      expect(wrapper.find('[data-testid="portal-withdraw-button"]').exists()).toBe(canWithdraw);
+      if (!canSupplement && !canWithdraw) {
+        expect(wrapper.find('[data-testid="portal-trace-actions"]').exists()).toBe(false);
+      }
+      wrapper.unmount();
+    });
+  }
+});
+
+describe('R3 补登交互（Modal 表单 → supplementDemand 载荷）', () => {
+  it('补登提交载荷逐字段断言 + 成功后重新拉取 trace 刷新视图', async () => {
+    supplementApi.mockResolvedValue(baseTrace({ status: 'SUBMITTED', canSupplement: true, canWithdraw: true }));
+    fetchTrace
+      .mockResolvedValueOnce(baseTrace({ status: 'SUBMITTED', canSupplement: true, canWithdraw: true }))
+      .mockResolvedValueOnce(baseTrace({ status: 'ACCEPTED', canSupplement: false, canWithdraw: false }));
+    const wrapper = await mountStatus();
+    await wrapper.find('[data-testid="portal-supplement-button"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(document.body.querySelector('.ant-modal')).toBeTruthy();
+    });
+    const modal = document.body.querySelector('.ant-modal')!;
+    const textarea = modal.querySelector('textarea.ant-input') as HTMLTextAreaElement;
+    expect(textarea, '补登 Modal 必须有补登内容多行输入').toBeTruthy();
+    textarea.value = '希望增加批量导出报表功能，支持按月筛选';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    const contactInput = modal.querySelector('input.ant-input') as HTMLInputElement;
+    expect(contactInput, '补登 Modal 必须有联系方式单行输入').toBeTruthy();
+    contactInput.value = '13800000000';
+    contactInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await flushPromises();
+    const okButton = [...modal.querySelectorAll('.ant-modal-footer button')]
+      .find((b) => b.textContent?.includes('提交补登')) as HTMLButtonElement | undefined;
+    expect(okButton, 'Modal footer 应有「提交补登」按钮').toBeDefined();
+    okButton!.click();
+    await vi.waitFor(() => {
+      expect(supplementApi).toHaveBeenCalledTimes(1);
+    });
+    // 逐字段断言：第一参=trace.code，第二参仅 functionalRequirement/contact（禁自造字段）
+    expect(supplementApi).toHaveBeenCalledWith('AB12CD34', {
+      contact: '13800000000',
+      functionalRequirement: '希望增加批量导出报表功能，支持按月筛选',
+    });
+    expect(Object.keys(supplementApi.mock.calls[0]![1]).sort()).toEqual([
+      'contact',
+      'functionalRequirement',
+    ]);
+    // 成功后重新拉取 trace 刷新视图（第 2 次 fetchTrace + 徽章/入口随新视图更新）
+    await vi.waitFor(() => {
+      expect(fetchTrace).toHaveBeenCalledTimes(2);
+    });
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="portal-status-badge"]').text()).toContain('已受理');
+    });
+    expect(wrapper.find('[data-testid="portal-supplement-button"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('补登内容长度校验边界：4001 字被 ≤4000 规则拦截不发请求，4000 字放行', async () => {
+    supplementApi.mockResolvedValue(baseTrace({ status: 'SUBMITTED', canSupplement: true }));
+    fetchTrace.mockResolvedValue(baseTrace({ status: 'SUBMITTED', canSupplement: true }));
+    const wrapper = await mountStatus();
+    await wrapper.find('[data-testid="portal-supplement-button"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(document.body.querySelector('.ant-modal')).toBeTruthy();
+    });
+    const modal = document.body.querySelector('.ant-modal')!;
+    const textarea = modal.querySelector('textarea.ant-input') as HTMLTextAreaElement;
+    textarea.value = 'x'.repeat(4001);
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    await flushPromises();
+    const okButton = [...modal.querySelectorAll('.ant-modal-footer button')]
+      .find((b) => b.textContent?.includes('提交补登')) as HTMLButtonElement;
+    okButton.click();
+    await flushPromises();
+    expect(supplementApi, '4001 字必须被 ≤4000 校验拦截').not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      const explains = [...modal.querySelectorAll('.ant-form-item-explain')].map((el) => el.textContent ?? '');
+      expect(explains, '必须展示 ≤4000 中文校验文案').toContain('补登内容不能超过 4000 字');
+    });
+    // 边界另一侧：恰好 4000 字放行
+    textarea.value = 'x'.repeat(4000);
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    await flushPromises();
+    okButton.click();
+    await vi.waitFor(() => {
+      expect(supplementApi).toHaveBeenCalledTimes(1);
+    });
+    expect(supplementApi.mock.calls[0]![1].functionalRequirement).toHaveLength(4000);
+    wrapper.unmount();
+  });
+
+  it('联系方式长度校验边界：129 字被 ≤128 规则拦截，128 字放行', async () => {
+    supplementApi.mockResolvedValue(baseTrace({ status: 'SUBMITTED', canSupplement: true }));
+    fetchTrace.mockResolvedValue(baseTrace({ status: 'SUBMITTED', canSupplement: true }));
+    const wrapper = await mountStatus();
+    await wrapper.find('[data-testid="portal-supplement-button"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(document.body.querySelector('.ant-modal')).toBeTruthy();
+    });
+    const modal = document.body.querySelector('.ant-modal')!;
+    const textarea = modal.querySelector('textarea.ant-input') as HTMLTextAreaElement;
+    textarea.value = '补充需求描述';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    const contactInput = modal.querySelector('input.ant-input') as HTMLInputElement;
+    contactInput.value = '1'.repeat(129);
+    contactInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await flushPromises();
+    const okButton = [...modal.querySelectorAll('.ant-modal-footer button')]
+      .find((b) => b.textContent?.includes('提交补登')) as HTMLButtonElement;
+    okButton.click();
+    await flushPromises();
+    expect(supplementApi, '129 字必须被 ≤128 校验拦截').not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      const explains = [...modal.querySelectorAll('.ant-form-item-explain')].map((el) => el.textContent ?? '');
+      expect(explains, '必须展示 ≤128 中文校验文案').toContain('联系方式不能超过 128 字');
+    });
+    // 边界另一侧：恰好 128 字放行
+    contactInput.value = '1'.repeat(128);
+    contactInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await flushPromises();
+    okButton.click();
+    await vi.waitFor(() => {
+      expect(supplementApi).toHaveBeenCalledTimes(1);
+    });
+    expect(supplementApi.mock.calls[0]![1].contact).toHaveLength(128);
+    wrapper.unmount();
+  });
+
+  it('补登失败：50002 业务码文案展示，失败不刷新 trace', async () => {
+    supplementApi.mockRejectedValue(new Error('当前状态不支持该操作，请稍后重试'));
+    fetchTrace.mockResolvedValue(baseTrace({ status: 'SUBMITTED', canSupplement: true }));
+    const wrapper = await mountStatus();
+    await wrapper.find('[data-testid="portal-supplement-button"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(document.body.querySelector('.ant-modal')).toBeTruthy();
+    });
+    const modal = document.body.querySelector('.ant-modal')!;
+    const textarea = modal.querySelector('textarea.ant-input') as HTMLTextAreaElement;
+    textarea.value = '希望增加批量导出报表功能';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    await flushPromises();
+    const okButton = [...modal.querySelectorAll('.ant-modal-footer button')]
+      .find((b) => b.textContent?.includes('提交补登')) as HTMLButtonElement;
+    okButton.click();
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="portal-action-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="portal-action-error"]').text()).toContain(
+      '当前状态不支持该操作，请稍后重试',
+    );
+    expect(fetchTrace, '操作失败不得刷新 trace').toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it('补登内容为空时「提交补登」按钮 disabled（双重保护）', async () => {
+    fetchTrace.mockResolvedValue(baseTrace({ status: 'SUBMITTED', canSupplement: true }));
+    const wrapper = await mountStatus();
+    await wrapper.find('[data-testid="portal-supplement-button"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(document.body.querySelector('.ant-modal')).toBeTruthy();
+    });
+    const modal = document.body.querySelector('.ant-modal')!;
+    const okButton = [...modal.querySelectorAll('.ant-modal-footer button')]
+      .find((b) => b.textContent?.includes('提交补登')) as HTMLButtonElement;
+    expect(okButton).toBeDefined();
+    // AntDV Modal 的 disabled 通过原生 disabled 属性表达
+    expect(okButton!.hasAttribute('disabled'), '内容为空时按钮必须 disabled').toBe(true);
+    expect(supplementApi).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+});
+
+describe('R3 撤回交互（二次确认 → withdrawDemand 载荷）', () => {
+  it('撤回需二次确认，确认后以 trace.code 提交，成功后刷新 trace 并隐藏入口', async () => {
+    withdrawApi.mockResolvedValue(baseTrace({ status: 'WITHDRAWN', canSupplement: false, canWithdraw: false }));
+    fetchTrace
+      .mockResolvedValueOnce(baseTrace({ status: 'SUBMITTED', canSupplement: true, canWithdraw: true }))
+      .mockResolvedValueOnce(baseTrace({ status: 'WITHDRAWN', canSupplement: false, canWithdraw: false }));
+    const wrapper = await mountStatus();
+    await wrapper.find('[data-testid="portal-withdraw-button"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(document.body.querySelector('.ant-modal')).toBeTruthy();
+    });
+    const modal = document.body.querySelector('.ant-modal')!;
+    expect(modal.textContent ?? '').toContain('撤回后该需求将关闭且不可恢复');
+    expect(withdrawApi, '二次确认前不得提交').not.toHaveBeenCalled();
+    const okButton = [...modal.querySelectorAll('.ant-modal-footer button')]
+      .find((b) => b.textContent?.includes('确认撤回')) as HTMLButtonElement | undefined;
+    expect(okButton, 'Modal footer 应有「确认撤回」按钮').toBeDefined();
+    okButton!.click();
+    await vi.waitFor(() => {
+      expect(withdrawApi).toHaveBeenCalledTimes(1);
+    });
+    expect(withdrawApi).toHaveBeenCalledWith('AB12CD34');
+    // 成功后重新拉取 trace 刷新视图
+    await vi.waitFor(() => {
+      expect(fetchTrace).toHaveBeenCalledTimes(2);
+    });
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="portal-status-badge"]').text()).toContain('已撤回');
+    });
+    expect(wrapper.find('[data-testid="portal-withdraw-button"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('撤回失败：50001 业务码文案展示，失败不刷新 trace', async () => {
+    withdrawApi.mockRejectedValue(new Error('未查询到对应的需求，请核对查询码'));
+    fetchTrace.mockResolvedValue(baseTrace({ status: 'SUBMITTED', canWithdraw: true }));
+    const wrapper = await mountStatus();
+    await wrapper.find('[data-testid="portal-withdraw-button"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(document.body.querySelector('.ant-modal')).toBeTruthy();
+    });
+    const modal = document.body.querySelector('.ant-modal')!;
+    const okButton = [...modal.querySelectorAll('.ant-modal-footer button')]
+      .find((b) => b.textContent?.includes('确认撤回')) as HTMLButtonElement;
+    okButton.click();
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-testid="portal-action-error"]').exists()).toBe(true);
+    });
+    expect(wrapper.find('[data-testid="portal-action-error"]').text()).toContain(
+      '未查询到对应的需求，请核对查询码',
+    );
+    expect(fetchTrace, '操作失败不得刷新 trace').toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });
 });

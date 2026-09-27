@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
+import type { AiDocumentGenerateInput, AiDocumentPromptType } from './ai-document';
+
 import {
+  AI_DOCUMENT_PROMPT_TYPES,
   archiveAiDocumentVersion,
   generateAiDocument,
   getAiDocumentDiff,
@@ -135,6 +138,50 @@ describe('AI 文档版本链接口', () => {
       prompt: '资料',
       title: '标题',
     });
+  });
+
+  it('AI-P1-1 promptType：传值按后端字段名 promptType 逐值上送，不传/undefined/null 不带该键（旧调用零破坏）', async () => {
+    const fetcher = vi.fn().mockImplementation(() => Promise.resolve(response(docFixture())));
+    vi.stubGlobal('fetch', fetcher);
+
+    // 传值：每个后端枚举值原样透传，字段名恰为 promptType（不复用 docType、不做下划线化）
+    for (const promptType of AI_DOCUMENT_PROMPT_TYPES) {
+      await generateAiDocument({ projectId: '100', prompt: '资料', promptType, title: '标题' });
+      const sent = JSON.parse(fetcher.mock.calls.at(-1)?.[1].body);
+      expect(Object.keys(sent)).toContain('promptType');
+      expect(sent.promptType).toBe(promptType);
+    }
+
+    // 不传：旧调用签名（4 字段）序列化后连键都不存在（与后端「无该字段 → null → 裸 prompt」对齐）
+    const legacyInput: AiDocumentGenerateInput = { projectId: '100', prompt: '资料', title: '标题' };
+    await generateAiDocument(legacyInput);
+    const legacyRaw = fetcher.mock.calls.at(-1)?.[1].body as string;
+    expect(legacyRaw).not.toContain('promptType');
+    expect(Object.hasOwn(JSON.parse(legacyRaw), 'promptType')).toBe(false);
+
+    // 显式 undefined / null 同样不带该键（与 docType 空值不进请求体同口径）
+    await generateAiDocument({ projectId: '100', prompt: '资料', promptType: undefined, title: '标题' });
+    expect(Object.hasOwn(JSON.parse(fetcher.mock.calls.at(-1)?.[1].body), 'promptType')).toBe(false);
+    await generateAiDocument({ projectId: '100', prompt: '资料', promptType: null, title: '标题' });
+    expect(Object.hasOwn(JSON.parse(fetcher.mock.calls.at(-1)?.[1].body), 'promptType')).toBe(false);
+  });
+
+  it('promptType 枚举与后端 org.ruoyi.ipd.domain.PromptType 逐值一致（卡面 7 值 + AI-P3 RETROSPECTIVE，禁自造）', () => {
+    // 后端真值锚定：PromptTypeTemplateTest.allTemplatesAreDistinctAndCoverCardList 的 containsExactly 同口径
+    expect([...AI_DOCUMENT_PROMPT_TYPES]).toEqual([
+      'PRD',
+      'MRD',
+      'BRD',
+      'CHARTER',
+      'TEST_REPORT',
+      'RELEASE_NOTE',
+      'REVIEW',
+      'RETROSPECTIVE',
+    ]);
+    // 无重复、无空值；且编译期联合类型仅由该常量推导（as const 派生，杜绝类型/常量双源漂移）
+    expect(new Set(AI_DOCUMENT_PROMPT_TYPES).size).toBe(AI_DOCUMENT_PROMPT_TYPES.length);
+    const typeProbe: AiDocumentPromptType = 'RETROSPECTIVE';
+    expect(AI_DOCUMENT_PROMPT_TYPES).toContain(typeProbe);
   });
 
   it('parse 拒绝数字 ID、缺失字段与非对象数据，不做静默修补', () => {

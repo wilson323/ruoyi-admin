@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchPortalDemandByCode, fetchPortalProducts, submitPortalDemand } from './portal';
+import {
+  fetchPortalDemandByCode,
+  fetchPortalProducts,
+  submitPortalDemand,
+  supplementDemand,
+  withdrawDemand,
+} from './portal';
 
 const jsonResponse = (data: unknown, status = 200, code = 0) =>
   new Response(
@@ -197,5 +203,106 @@ describe('portal api（双兼容字段命名 queryCode/initialStatus vs code/sta
       customerName: '某某公司', feedbackPerson: '张三', functionalRequirement: '希望支持批量导出报表功能',
       productId: null, rawModel: null,
     })).rejects.toThrow('服务响应格式异常');
+  });
+});
+
+describe('portal api（R3 补登契约 GuestDemandUpdateReq/SUPPLEMENT）', () => {
+  it('补登：POST /api/v1/public/demands/:code/supplement，body 逐字段 = action=SUPPLEMENT/functionalRequirement/contact', async () => {
+    const fetcher = vi.fn().mockResolvedValue(jsonResponse({
+      code: 'AB12CD34',
+      status: 'SUBMITTED',
+      customerName: '某某**公司',
+      timeline: [{ stage: 'SUBMITTED', occurredAt: '2026-09-05T02:00:00Z' }],
+      attachments: [],
+      canSupplement: true,
+      canWithdraw: true,
+      withdrawDeadlineAt: null,
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    const trace = await supplementDemand('AB12CD34', {
+      contact: '13800000000',
+      functionalRequirement: '希望增加批量导出报表功能',
+    });
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/public/demands/AB12CD34/supplement');
+    const init = fetcher.mock.calls[0]?.[1] as RequestInit;
+    expect(init.method).toBe('POST');
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+    const body = JSON.parse(init.body as string);
+    expect(body.action).toBe('SUPPLEMENT');
+    expect(body.functionalRequirement).toBe('希望增加批量导出报表功能');
+    expect(body.contact).toBe('13800000000');
+    // 字段名白名单：仅 action/functionalRequirement/contact，禁自造字段
+    expect(Object.keys(body).sort()).toEqual(['action', 'contact', 'functionalRequirement']);
+    // 返回包络 {code:0,message,data:GuestDemandView} 解析为脱敏进度视图
+    expect(trace).toEqual({
+      attachments: [],
+      canSupplement: true,
+      canWithdraw: true,
+      code: 'AB12CD34',
+      customerName: '某某**公司',
+      status: 'SUBMITTED',
+      timeline: [{ memo: undefined, occurredAt: '2026-09-05T02:00:00Z', stage: 'SUBMITTED' }],
+      withdrawDeadlineAt: null,
+    });
+  });
+
+  it('补登失败：50002 受理后锁定（HTTP 409）→ portal 域中文文案', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(null, 409, 50002)));
+    await expect(supplementDemand('AB12CD34', {
+      contact: '13800000000',
+      functionalRequirement: '希望增加批量导出报表功能',
+    })).rejects.toThrow('当前状态不支持该操作，请稍后重试');
+  });
+});
+
+describe('portal api（R3 撤回契约 GuestDemandUpdateReq/WITHDRAW）', () => {
+  it('撤回：POST /api/v1/public/demands/:code/withdraw，body 必带 action=WITHDRAW（非空对象、无多余字段）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(jsonResponse({
+      code: 'AB12CD34',
+      status: 'WITHDRAWN',
+      customerName: '某某**公司',
+      timeline: [{ stage: 'WITHDRAWN', occurredAt: '2026-09-05T04:00:00Z' }],
+      attachments: [],
+      canSupplement: false,
+      canWithdraw: false,
+      withdrawDeadlineAt: null,
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    const trace = await withdrawDemand('AB12CD34');
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/public/demands/AB12CD34/withdraw');
+    const init = fetcher.mock.calls[0]?.[1] as RequestInit;
+    expect(init.method).toBe('POST');
+    // 后端 GuestDemandUpdateReq 校验：缺 body/空对象/错配 action 统一 10001，body 必须带 action=WITHDRAW
+    expect(typeof init.body).toBe('string');
+    const body = JSON.parse(init.body as string);
+    expect(body).toEqual({ action: 'WITHDRAW' });
+    expect(Object.keys(body)).toEqual(['action']);
+    // 返回包络 data=GuestDemandView 解析为脱敏进度视图（撤回后入口锁定）
+    expect(trace).toEqual({
+      attachments: [],
+      canSupplement: false,
+      canWithdraw: false,
+      code: 'AB12CD34',
+      customerName: '某某**公司',
+      status: 'WITHDRAWN',
+      timeline: [{ memo: undefined, occurredAt: '2026-09-05T04:00:00Z', stage: 'WITHDRAWN' }],
+      withdrawDeadlineAt: null,
+    });
+  });
+
+  it('撤回失败：50001 查询码不存在（HTTP 404）→ portal 域中文文案', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(null, 404, 50001)));
+    await expect(withdrawDemand('ZZZZZZZZ')).rejects.toThrow('未查询到对应的需求，请核对查询码');
+  });
+
+  it('补登/撤回同源业务码：10001 参数非法 → 通用文案；40011 限流 → 限流文案', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(jsonResponse(null, 400, 10001))
+      .mockResolvedValueOnce(jsonResponse(null, 429, 40011)));
+    await expect(supplementDemand('AB12CD34', {
+      contact: '13800000000',
+      functionalRequirement: 'x'.repeat(4001),
+    })).rejects.toThrow('输入信息不符合要求，请检查后重试');
+    await expect(withdrawDemand('AB12CD34')).rejects.toThrow('请求过于频繁，请稍后再试');
   });
 });

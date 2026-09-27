@@ -18,6 +18,7 @@ import { computed, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { FundOutlined, LineChartOutlined, ProfileOutlined, RiseOutlined, TableOutlined } from '@ant-design/icons-vue';
 
+import BackendPending from '../_shared/backend-pending.vue';
 import { formatMoney } from '../_shared/format';
 import { ipdErrorText } from '../_shared/ipd-error-text';
 import {
@@ -30,6 +31,8 @@ import {
   type KpiSourceItem,
   type KpiTrendPoint,
 } from '../../../api/ipd/kpi';
+
+defineOptions({ name: 'IpdKpiFunctional', meta: { ipdBackend: 'KpiRecordController 已交付：GET /kpi/performance、GET /kpi/functional、GET /kpi/trend；KpiRulesController 已交付：GET /kpi/rules（规则快照）；原型 12 项项目 KPI 表格写链（PUT /performance/kpis/{projectId}/{metricCode}）与 KpiDrawer 填报/证据上传/编辑均未交付。', ipdCard: 'P0-10.29' } });
 
 function currentMonth(): string {
   const now = new Date();
@@ -302,6 +305,8 @@ onMounted(() => { void load(); });
         </li>
       </ul>
     </section>
+
+    <BackendPending class="mt-4" />
   </div>
 </template>
 

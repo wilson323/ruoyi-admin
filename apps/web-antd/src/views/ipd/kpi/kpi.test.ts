@@ -222,3 +222,17 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
     wrapper.unmount();
   });
 });
+
+describe('BackendPending 占位（W11 收口）', () => {
+  it('底部渲染占位横幅：看板卡 + 后端依赖（P0-10.29）', async () => {
+    stubApi();
+    const wrapper = mount(KpiPage);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('待后端补齐的能力'));
+    const text = wrapper.text();
+    // 占位横幅（route.meta 缺省时卡号/依赖回落「待补充」，渲染点本身为验收对象）
+    expect(text).toContain('该页面已登记，后端接口尚未交付');
+    expect(text).toContain('看板卡');
+    expect(text).toContain('后端依赖');
+    wrapper.unmount();
+  });
+});

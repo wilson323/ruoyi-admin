@@ -40,9 +40,13 @@ import {
   type DeletionRequest,
 } from '../../../../api/ipd/deletion';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
+import BackendPending from '../../_shared/backend-pending.vue';
 import { formatDateTime } from '../../_shared/format';
 import { DELETION_STATUS_TEXT } from '../../_shared/ipd-enums';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
+
+/* ipdCard 待 owner 裁决 */
+defineOptions({ name: 'IpdDeletionReview', meta: { ipdBackend: 'DeletionRequestController 已交付（P1-1）：GET /deletion-requests/review-queue、POST /deletion-requests/{id}/leader-decision、POST /deletion-requests/{id}/admin-decision、POST /deletion-requests/escalate-overdue、GET /deletion-requests/overdue-admin-review（AC-DEL-07 超期工具）；摸底（0907）登记的「列表查询」缺口已闭环，2026-09-27 复核无剩余端点缺口。' } });
 
 const auth = useIpdAuthStore();
 const personType = computed(() => auth.identity?.person.personType ?? '');
@@ -308,6 +312,8 @@ const reviewColumns = [
         </Card>
       </div>
     </div>
+
+    <BackendPending class="mt-4" />
   </div>
 </template>
 

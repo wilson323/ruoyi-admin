@@ -4,11 +4,16 @@
 // 五态：成功（徽章+时间线）/ 拒绝（码错误→明确文案、限流等）/ 空态（未查询引导、空时间线）/ 加载 / 断网。
 import type { PortalDemandTrace } from '../../../../api/ipd/portal';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { Alert, Badge, Button, Descriptions, Empty, Form, Input, Spin, Timeline } from 'ant-design-vue';
+import { Alert, Badge, Button, Descriptions, Empty, Form, Input, message, Modal, Spin, Timeline } from 'ant-design-vue';
 
-import { fetchPortalDemandByCode, PORTAL_CODE_PATTERN } from '../../../../api/ipd/portal';
+import {
+  fetchPortalDemandByCode,
+  PORTAL_CODE_PATTERN,
+  supplementDemand,
+  withdrawDemand,
+} from '../../../../api/ipd/portal';
 import { formatDateTime } from '../../_shared/format';
 import PortalShell from '../portal-shell.vue';
 
@@ -78,6 +83,83 @@ async function queryTrace() {
     querying.value = false;
   }
 }
+
+// ---------- R3 补登/撤回（仅 SUBMITTED 可用；入口可见性受 trace.canSupplement / canWithdraw 控制） ----------
+const supplementModalOpen = ref(false);
+const supplementSubmitting = ref(false);
+const supplementFormRef = ref();
+const supplementForm = reactive({ contact: '', functionalRequirement: '' });
+const withdrawModalOpen = ref(false);
+const withdrawing = ref(false);
+/** 操作失败文案（api 层已按业务码映射中文，此处直接展示 cause.message，与查询失败同源机制）。 */
+const actionError = ref('');
+/** 补登内容非空才允许提交（双重保护：Form rule 报错 + 按钮 disabled 防绕过）。 */
+const supplementReady = computed(() => supplementForm.functionalRequirement.trim().length > 0);
+/** OK 按钮 disabled 计算属性：响应式传递给 Modal（inline 字面量不会被 Modal 反应式追踪）。 */
+const supplementOkButtonProps = computed(() => ({ disabled: !supplementReady.value }));
+
+function openSupplementModal() {
+  actionError.value = '';
+  supplementForm.contact = '';
+  supplementForm.functionalRequirement = '';
+  supplementModalOpen.value = true;
+}
+
+function openWithdrawModal() {
+  actionError.value = '';
+  withdrawModalOpen.value = true;
+}
+
+/** 操作成功后重新拉取 trace 刷新视图（面板保留不置空，避免刷新闪烁）。 */
+async function reloadTrace() {
+  if (!trace.value) return;
+  try {
+    trace.value = await fetchPortalDemandByCode(trace.value.code);
+    errorText.value = '';
+  } catch (cause) {
+    errorText.value = cause instanceof Error ? cause.message : '查询失败，请稍后重试';
+  }
+}
+
+async function submitSupplement() {
+  if (supplementSubmitting.value || !trace.value || !supplementReady.value) return;
+  try {
+    await supplementFormRef.value?.validate();
+  } catch {
+    return; // AntDV validate 抛错（errorFields），字段级错误由 Form.Item 展示
+  }
+  supplementSubmitting.value = true;
+  actionError.value = '';
+  try {
+    await supplementDemand(trace.value.code, {
+      contact: supplementForm.contact,
+      functionalRequirement: supplementForm.functionalRequirement,
+    });
+    supplementModalOpen.value = false;
+    message.success('补登成功');
+    await reloadTrace();
+  } catch (cause) {
+    actionError.value = cause instanceof Error ? cause.message : '补登失败，请稍后重试';
+  } finally {
+    supplementSubmitting.value = false;
+  }
+}
+
+async function submitWithdraw() {
+  if (withdrawing.value || !trace.value) return;
+  withdrawing.value = true;
+  actionError.value = '';
+  try {
+    await withdrawDemand(trace.value.code);
+    withdrawModalOpen.value = false;
+    message.success('撤回成功');
+    await reloadTrace();
+  } catch (cause) {
+    actionError.value = cause instanceof Error ? cause.message : '撤回失败，请稍后重试';
+  } finally {
+    withdrawing.value = false;
+  }
+}
 </script>
 
 <template>
@@ -118,6 +200,20 @@ async function queryTrace() {
         </Descriptions.Item>
       </Descriptions>
 
+      <!-- R3 操作入口：可见性严格由 canSupplement / canWithdraw 控制（受理后锁定即隐藏） -->
+      <div v-if="trace.canSupplement || trace.canWithdraw" class="mb-4 flex gap-2" data-testid="portal-trace-actions">
+        <Button v-if="trace.canSupplement" data-testid="portal-supplement-button" @click="openSupplementModal">
+          补登
+        </Button>
+        <Button v-if="trace.canWithdraw" danger data-testid="portal-withdraw-button" @click="openWithdrawModal">
+          撤回
+        </Button>
+      </div>
+
+      <!-- 操作失败：业务码中文文案（api 层已映射，如 50002 受理后锁定） -->
+      <Alert v-if="actionError" class="mb-4" type="error" show-icon :message="actionError"
+        role="alert" data-testid="portal-action-error" />
+
       <h2 class="mb-3 text-base font-medium">处理时间线</h2>
       <Timeline v-if="trace.timeline.length > 0" data-testid="portal-timeline">
         <Timeline.Item v-for="(entry, index) in trace.timeline" :key="`${entry.stage}-${index}`">
@@ -148,6 +244,36 @@ async function queryTrace() {
     <div v-else-if="querying" class="flex justify-center py-6">
       <Spin size="large" data-testid="portal-track-loading" />
     </div>
+
+    <!-- R3 补登 Modal：functionalRequirement ≤4000 / contact ≤128（与 GuestDemandUpdateReq @Size 红线一致） -->
+    <Modal v-model:open="supplementModalOpen" :confirm-loading="supplementSubmitting"
+      :mask-closable="false" :ok-button-props="supplementOkButtonProps"
+      cancel-text="取消" ok-text="提交补登" title="补登需求信息" @ok="submitSupplement">
+      <Form ref="supplementFormRef" :model="supplementForm" layout="vertical">
+        <Form.Item label="补登内容" name="functionalRequirement" required
+          :rules="[
+            { required: true, message: '请填写补登内容' },
+            { max: 4000, message: '补登内容不能超过 4000 字' },
+          ]">
+          <!-- 长度红线以 Form 规则为权威校验层（可见报错，不静默截断丢字）；show-count 仅做实时计数提示 -->
+          <Input.TextArea v-model:value="supplementForm.functionalRequirement" :rows="4"
+            data-testid="portal-supplement-content" placeholder="补充说明功能需求，例如使用场景、期望效果"
+            show-count />
+        </Form.Item>
+        <Form.Item label="联系方式" name="contact"
+          :rules="[{ max: 128, message: '联系方式不能超过 128 字' }]">
+          <Input v-model:value="supplementForm.contact"
+            data-testid="portal-supplement-contact" placeholder="手机号或邮箱，便于我们回访（可留空）" />
+        </Form.Item>
+      </Form>
+    </Modal>
+
+    <!-- R3 撤回 Modal：二次确认（撤回后需求关闭，不可恢复） -->
+    <Modal v-model:open="withdrawModalOpen" :confirm-loading="withdrawing" :mask-closable="false"
+      cancel-text="取消" ok-text="确认撤回" title="确认撤回需求？" @ok="submitWithdraw">
+      <Alert type="warning" show-icon
+        message="撤回后该需求将关闭且不可恢复，请确认不再需要处理该需求。" />
+    </Modal>
   </PortalShell>
 </template>
 

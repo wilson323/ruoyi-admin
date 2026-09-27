@@ -300,7 +300,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
           //    端点已交付为主区；原型 12 项 KPI 表格 + KpiDrawer 填报/共担 KPI 确认链未交付
           //    在页内登记真缺口（路由 IpdKpiShared 维持真缺口，IpdKpiScore 真组件挂在下条）
           component: () => import('#/views/ipd/kpi/index.vue'),
-          meta: { access: [...(PAGE_PERMISSIONS['/ipd/kpi/functional'] ?? [])], activePath: '/ipd/performance', ipdBackend: 'KpiRecordController GET /kpi/functional 已交付；FunctionalMetricController（A2 P1 + ORPHAN-A6）GET/PUT/DELETE /kpi/functional-metrics、GET /kpi/functional-metrics/codes 已交付。', title: '功能 KPI' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/kpi/functional'] ?? [])], activePath: '/ipd/performance', ipdBackend: 'KpiRecordController 已交付：GET /kpi/performance、GET /kpi/functional、GET /kpi/trend；KpiRulesController 已交付：GET /kpi/rules（规则快照）；原型 12 项项目 KPI 表格写链（PUT /performance/kpis/{projectId}/{metricCode}）与 KpiDrawer 填报/证据上传/编辑均未交付。', ipdCard: 'P0-10.29', title: '功能 KPI' },
           name: 'IpdKpiFunctional',
           path: 'functional',
         },
@@ -391,13 +391,13 @@ const ipdLayoutRoute: RouteRecordRaw = {
       children: [
         {
           component: () => import('#/views/ipd/deletion/my-requests/index.vue'),
-          meta: { title: '我的申请' },
+          meta: { /* ipdCard 待 owner 裁决 */ ipdBackend: 'DeletionRequestController 已交付（P1-1）：POST /deletion-requests、GET /deletion-requests/my-requests、POST /deletion-requests/{id}/withdraw（BR-DEL-04 24h 窗口）；摸底（0907）登记的「列表查询」缺口已闭环，2026-09-27 复核无剩余端点缺口。', title: '我的申请' },
           name: 'IpdDeletionMy',
           path: 'my-requests',
         },
         {
           component: () => import('#/views/ipd/deletion/review/index.vue'),
-          meta: { title: '待我审核' },
+          meta: { /* ipdCard 待 owner 裁决 */ ipdBackend: 'DeletionRequestController 已交付（P1-1）：GET /deletion-requests/review-queue、POST /deletion-requests/{id}/leader-decision、POST /deletion-requests/{id}/admin-decision、POST /deletion-requests/escalate-overdue、GET /deletion-requests/overdue-admin-review（AC-DEL-07 超期工具）；摸底（0907）登记的「列表查询」缺口已闭环，2026-09-27 复核无剩余端点缺口。', title: '待我审核' },
           name: 'IpdDeletionReview',
           path: 'review',
         },

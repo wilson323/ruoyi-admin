@@ -41,11 +41,33 @@ export interface AiDocument {
   versionNo: number;
 }
 
+/**
+ * AI-P1-1：promptType 模板枚举（真值：后端 org.ruoyi.ipd.domain.PromptType，逐值照抄禁止自造）。
+ * 口径 = 卡面 7 值（PRD/MRD/BRD/CHARTER/TEST_REPORT/RELEASE_NOTE/REVIEW）
+ * + AI-P3 场景包·复盘起草（US-L1-09）：RETROSPECTIVE。
+ * 后端语义：非空但非法 → PARAM_INVALID 拒绝（不降级）；null/空/缺省 → 裸 prompt 直传老逻辑。
+ * 与审计 aiRole 白名单（draft/precheck/summarize…）正交，不可混用。
+ */
+export const AI_DOCUMENT_PROMPT_TYPES = [
+  'PRD',
+  'MRD',
+  'BRD',
+  'CHARTER',
+  'TEST_REPORT',
+  'RELEASE_NOTE',
+  'REVIEW',
+  'RETROSPECTIVE',
+] as const;
+
+export type AiDocumentPromptType = (typeof AI_DOCUMENT_PROMPT_TYPES)[number];
+
 /** AI 生成入参（P4-2.2 AiGenerateReq）：prompt = PM 录入的原始资料/生成指令（≤ 30000 字符）。 */
 export interface AiDocumentGenerateInput {
   docType?: null | string;
   projectId: string;
   prompt: string;
+  /** AI-P1-1 模板类型：不传/null/undefined → 不带该键（裸 prompt 老逻辑，旧调用零破坏）。 */
+  promptType?: AiDocumentPromptType | null;
   title: string;
 }
 
@@ -175,6 +197,8 @@ function parseDiffField(record: Record<string, unknown>): AiDocumentDiffField {
 
 /**
  * AI 生成（P4-2.2，AC-AI-02）：PM 录入原始资料 → 模型润色/补齐/标准化 → 登记 v1 待审核（BR-AI-02）。
+ * AI-P1-1：可选 promptType（AiDocumentPromptType）按后端字段名上送，后端套内置模板；
+ * 不传/undefined/null 时请求体不带该键（旧调用向后兼容，零破坏）。
  * 护栏在服务端：60s 超时 / 并发限流（40011）/ 月度 token 预算（40013）；
  * 输出透传不过滤（BR-AI-04），风险把控在人工审核 + UI 风险提示。
  */
@@ -183,6 +207,9 @@ export async function generateAiDocument(input: AiDocumentGenerateInput): Promis
     docType: input.docType ?? undefined,
     projectId: input.projectId,
     prompt: input.prompt,
+    // AI-P1-1：按后端字段名 promptType 上送；不传/undefined/null → undefined，
+    // JSON.stringify 丢弃该键（老 payload 形态，后端 null → 裸 prompt 直传）。
+    promptType: input.promptType ?? undefined,
     title: input.title,
   }));
 }

@@ -68,6 +68,21 @@ export interface PortalDemandTrace {
   withdrawDeadlineAt: null | string;
 }
 
+/** 页39 补登/撤回请求体（后端 GuestDemandUpdateReq 白名单字段：action/functionalRequirement/contact，
+ *  字段名与 @Size 红线严格对齐，禁自造字段）。action 判别动作，缺 body/空对象/错配 action 后端统一 10001。 */
+export interface PortalDemandUpdateReq {
+  action: 'SUPPLEMENT' | 'WITHDRAW';
+  contact?: string;
+  functionalRequirement?: string;
+}
+
+/** 页39 补登载荷（action 由 supplementDemand 固定上送 SUPPLEMENT）。
+ *  长度红线与后端 @Size 一致：functionalRequirement ≤4000 字符、contact ≤128 字符（视图层校验）。 */
+export interface PortalSupplementInput {
+  contact: string;
+  functionalRequirement: string;
+}
+
 /** BR-REQ-03：8 位大写字母+数字查询码（与后端 QUERY_CODE_PATTERN 一致）。 */
 export const PORTAL_CODE_PATTERN = /^[A-Z0-9]{8}$/;
 
@@ -230,4 +245,28 @@ export function submitPortalDemand(input: PortalSubmitInput): Promise<PortalDema
  */
 export function fetchPortalDemandByCode(code: string): Promise<PortalDemandTrace> {
   return requestPortal<unknown>(`/demands/${encodeURIComponent(code)}`).then(parseTrace);
+}
+
+/**
+ * 页39：POST /api/v1/public/demands/:code/supplement——游客补登功能需求与联系方式。
+ * 仅 SUBMITTED 状态可用（受理后 functionalRequirement/contact 原文锁定，50002 拒绝）。
+ * body 为 GuestDemandUpdateReq 白名单字段，action 固定 SUPPLEMENT；返回包络 data=GuestDemandView。
+ */
+export function supplementDemand(code: string, payload: PortalSupplementInput): Promise<PortalDemandTrace> {
+  const body: PortalDemandUpdateReq = {
+    action: 'SUPPLEMENT',
+    contact: payload.contact,
+    functionalRequirement: payload.functionalRequirement,
+  };
+  return requestPortal<unknown>(`/demands/${encodeURIComponent(code)}/supplement`, { body, method: 'POST' }).then(parseTrace);
+}
+
+/**
+ * 页39：POST /api/v1/public/demands/:code/withdraw——游客撤回需求（仅 SUBMITTED 状态可用）。
+ * ⚠️ body 必带 action=WITHDRAW：缺 body/空对象/错配 action 后端统一 10001 PARAM_INVALID。
+ * 返回包络 data=GuestDemandView（status=WITHDRAWN）。
+ */
+export function withdrawDemand(code: string): Promise<PortalDemandTrace> {
+  const body: PortalDemandUpdateReq = { action: 'WITHDRAW' };
+  return requestPortal<unknown>(`/demands/${encodeURIComponent(code)}/withdraw`, { body, method: 'POST' }).then(parseTrace);
 }
