@@ -55,11 +55,11 @@ describe('页48 AI 模型配置', () => {
 
   it('业务拒绝直显后端 envelope.message 原文（R217-E2E-B2 盲区页透传修复）', async () => {
     // 卡面金标准场景：403+30001 后端原文「无权访问该项目」必须直达 rejectText（直读 err.message），
-    // 不再被 auth.ts 查表文案「权限不足，请联系管理员」遮蔽。
+    // 不再被 auth.ts 查表文案（R234 统一后 30001 =「您没有执行此操作的权限」）遮蔽。
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code: 30001, message: '无权访问该项目', data: null, timestamp: '2026-09-25T00:00:00Z', traceId: 'fixture' }), { status: 403, headers: { 'Content-Type': 'application/json' } })));
     const wrapper = mount(Index);
     await vi.waitFor(() => expect(wrapper.text()).toContain('无权访问该项目'));
-    expect(wrapper.text()).not.toContain('权限不足，请联系管理员');
+    expect(wrapper.text()).not.toContain('您没有执行此操作的权限');
     wrapper.unmount();
   });
 

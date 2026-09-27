@@ -1,7 +1,8 @@
-// IPD 业务错误码 → 中文文案 单测：单一权威源 IPD_COMMON_CODE_TEXTS / 域默认表 / fallback / 工厂。
-import { describe, expect, it } from 'vitest';
+// IPD 业务错误码 → 中文文案 单测：R234 单一码表（api/ipd/code-texts.ts）派生的 IPD_COMMON_CODE_TEXTS
+// / 域默认表 / fallback / 工厂。
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { IpdRequestError } from '../../../api/ipd/auth';
+import { IpdRequestError, requestIpd } from '../../../api/ipd/auth';
 
 import {
   IPD_COMMON_CODE_TEXTS,
@@ -14,7 +15,9 @@ import {
 const httpErr = (code: number, message = 'x') =>
   new IpdRequestError(message, 400, code, 'http');
 
-describe('IPD_COMMON_CODE_TEXTS 通用码文案（前端单一权威源）', () => {
+afterEach(() => vi.unstubAllGlobals());
+
+describe('IPD_COMMON_CODE_TEXTS 通用码文案（R234 单一码表派生，键集 30 码）', () => {
   it('通用码 10001/20001/20002/30001 文案精确匹配', () => {
     expect(IPD_COMMON_CODE_TEXTS[10001]).toBe('输入信息不符合要求，请检查后重试');
     expect(IPD_COMMON_CODE_TEXTS[20001]).toBe('登录已失效，请重新登录');
@@ -288,7 +291,7 @@ describe('CJK 字符守门（防止 ASCII 漂移）', () => {
   });
 });
 
-describe('与 auth.ts 的一致性 / 矛盾点（仅观察不修）', () => {
+describe('与 auth.ts 的一致性（R234 单一事实源）', () => {
   it('10001 在通用表与 auth.ts BUSINESS_CODE_MESSAGES 文本一致', () => {
     expect(IPD_COMMON_CODE_TEXTS[10001]).toBe('输入信息不符合要求，请检查后重试');
   });
@@ -302,15 +305,41 @@ describe('与 auth.ts 的一致性 / 矛盾点（仅观察不修）', () => {
     expect(ipdErrorText(httpErr(40001))).not.toBe('用户名或密码错误');
   });
 
-  it('矛盾-2：通用表 vs auth.ts BUSINESS_CODE_MESSAGES 文本差异（仅观察不修）', () => {
-    // 20002 / 30001 / 40001 / 40002 / 40003 / 40004 / 40005 / 50001 / 50002 / 90001
-    expect(IPD_COMMON_CODE_TEXTS[30001]).not.toBe('权限不足，请联系管理员');
-    expect(IPD_COMMON_CODE_TEXTS[90001]).not.toBe('系统内部错误，请稍后重试');
-    expect(IPD_COMMON_CODE_TEXTS[50002]).not.toBe('当前状态不支持此操作');
-    expect(IPD_COMMON_CODE_TEXTS[20002]).not.toBe('账号待移交冻结中，仅保留移交相关权限');
+  it('矛盾-2（R234 改同源断言）：10 个历史冲突码经 auth.ts requestIpd 查表链与本表返回同一文案', async () => {
+    // owner 2026-09-27 拍板 B（以 UX 层文案为准）：原「仅观察不修」的 10 码文本差异已由
+    // api/ipd/code-texts.ts 单一码表根除，两消费链路对同一 code 必须同文案（下方为统一后的定值断言）。
+    // auth 侧经 requestIpd 公有表面对（2xx + code≠0 → message=查表文案）间接取值：
+    // R217 后非 2xx 会优先透传 envelope.message，故必须用 2xx 信封才能触达查表链。
+    const UNIFIED: Record<number, string> = {
+      20002: '账号已冻结，仅保留移交相关权限',
+      30001: '您没有执行此操作的权限',
+      40001: '阶段门禁未通过，请完成阻断性动作后重试',
+      40002: '双签未完成，请等待签署完成后再操作',
+      40003: '超项未备案，请先完成超项备案',
+      40004: '市场PM 与研发PM 不能由同一人担任，请重新选择',
+      40005: '项目禁止直接删除，请发起删除申请并完成两级审核',
+      50001: '数据不存在或已被删除，请刷新后重试',
+      50002: '状态已变更（可能其他人已编辑），请刷新后查看',
+      90001: '数据不存在或服务暂时不可用，请稍后重试',
+    };
+    for (const [codeKey, text] of Object.entries(UNIFIED)) {
+      const code = Number(codeKey);
+      expect(IPD_COMMON_CODE_TEXTS[code], `通用表 ${code} 同源`).toBe(text);
+      expect(ipdErrorText(httpErr(code)), `ipdErrorText ${code} 同源`).toBe(text);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+        JSON.stringify({ code, data: null, message: 'mock', timestamp: '2026-09-27T00:00:00Z', traceId: 'fixture' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )));
+      const err = await requestIpd('/probe').then(
+        () => { throw new Error('requestIpd should have rejected'); },
+        (e: unknown) => e as IpdRequestError,
+      );
+      expect(err.message, `auth.ts requestIpd ${code} 同源`).toBe(text);
+    }
+    vi.unstubAllGlobals();
   });
 
-  it('矛盾-3：通用表覆盖史（2026-09-09 契约轮已补 40006 + 50003~50017）', () => {
+  it('矛盾-3：通用表覆盖史（2026-09-09 契约轮已补 40006 + 50003~50017；R234 键集维持域差异化不变）', () => {
     // auth.ts BUSINESS_CODE_MESSAGES 声明：10001,20001-20003,30001,40001-40006,40011-40013,40401,50001,50002,50003-50017,90001
     // ipd-error-text.ts 通用表现声明：以上除 20003/40012/40013/40401（由域默认或页面级 codeTexts 覆盖）外全量
     expect(IPD_COMMON_CODE_TEXTS[20003]).toBeUndefined();

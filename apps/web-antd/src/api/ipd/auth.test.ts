@@ -613,7 +613,9 @@ describe('BUSINESS_CODE_MESSAGES coverage via requestIpd', () => {
     );
     expect(cause).toBeInstanceOf(IpdRequestError);
     expect(cause.message).toBe('无权访问该项目');
-    expect(cause.message).not.toBe('权限不足，请联系管理员');
+    // R234（2026-09-27 拍板 B）：30001 查表文案统一为 UX 层「您没有执行此操作的权限」（旧协议层
+    // 「权限不足，请联系管理员」废弃），负向断言同步盯新查表文案，防退回被查表遮蔽。
+    expect(cause.message).not.toBe('您没有执行此操作的权限');
     // cause 结构保留：envelopeMessage 第 5 参原样携带，ipdErrorText http 分支读同字段 → 两链路同值
     expect(cause.envelopeMessage).toBe('无权访问该项目');
     expect(cause.status).toBe(403);
@@ -622,18 +624,20 @@ describe('BUSINESS_CODE_MESSAGES coverage via requestIpd', () => {
   });
 
   it('R217-E2E-B2：4xx 后端无原文（message 空串）→ 兜底查表文案 30001', async () => {
+    // R234：查表文案 = UX 层统一文案（api/ipd/code-texts.ts 单一码表派生）
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(30001, '', 403)));
-    await expect(requestIpd('/probe')).rejects.toThrow('权限不足，请联系管理员');
+    await expect(requestIpd('/probe')).rejects.toThrow('您没有执行此操作的权限');
   });
 
   it('R217-E2E-B2：4xx 后端原文为空白串 → trim 判空后同样兜底查表，不透传空白', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(30001, '   ', 403)));
-    await expect(requestIpd('/probe')).rejects.toThrow('权限不足，请联系管理员');
+    await expect(requestIpd('/probe')).rejects.toThrow('您没有执行此操作的权限');
   });
 
   it('R217-E2E-B2：2xx+code≠0 维持查表优先（Bucket A BUSINESS_CODE_MESSAGES 契约不受影响）', async () => {
+    // R234：查表文案随单一码表统一为 UX 层「您没有执行此操作的权限」，查表优先契约本身不变
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorEnvelope(30001, '后端原文不该在2xx胜出', 200)));
-    await expect(requestIpd('/probe')).rejects.toThrow('权限不足，请联系管理员');
+    await expect(requestIpd('/probe')).rejects.toThrow('您没有执行此操作的权限');
   });
 
   it('R217-E2E-B2：成功响应 19 位雪花 ID 字符串透传不受影响（data 原样返回，无 Number 化/截断）', async () => {

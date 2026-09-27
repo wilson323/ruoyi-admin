@@ -1,4 +1,4 @@
-// IPD 权限码集中常量单测：与后端 IpdPermissionCode 一一对应。
+// IPD 权限码集中常量单测：与后端 IpdPermissionCode 镜像对账由后端仓 scripts/check-permission-mirror-fe-be.sh 门禁承担（R234）。
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -11,26 +11,22 @@ import {
   getRequiredCodes,
 } from './ipd-permission-codes';
 
-describe('IPD 权限码常量与后端一一对应', () => {
-  it('导出 74 个 distinct 码（与后端 IpdPermissionCode 字面值一一镜像，1 组同码双名；R215 新增 ROLE_PERMISSION_QUERY/EDIT；R215 GAP-F4/F5 新增 3 码；R215 GAP-F10 新增 1 码）', () => {
-    // 后端 71 个常量声明，其中 STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE
-    // 共享字面值 'ipd:stage-action:add'，故 distinct 码为 70
-    // R215 权限可配置化新增 ROLE_PERMISSION_QUERY / ROLE_PERMISSION_EDIT 2 distinct 码（commit 3764830）
-    // R215 GAP-F4 登记 P0_ESCALATION_READ + GAP-F5 登记 SWITCHING_ACCEPTANCE_LOCK/UNLOCK 3 distinct 码（keys 71→74、distinct 70→73）
-    // R215 GAP-F10 登记 PERMANENT_DELETE_EXECUTE 1 distinct 码（keys 74→75、distinct 73→74；镜像 IpdPermissionCode.java:207）
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(75);
-    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(74);
+describe('IPD 权限码常量（与后端 IpdPermissionCode 镜像对账由后端仓 scripts/check-permission-mirror-fe-be.sh 门禁承担（R234））', () => {
+  it('导出 93 个 key / 92 distinct 码（1 组同码双名：STAGE_ACTION 双码；R234 补镜像后端孤码 +18）', () => {
+    // 与后端 IpdPermissionCode 镜像对账由后端仓 scripts/check-permission-mirror-fe-be.sh 门禁承担（R234）；
+    // 本用例只锁前端自身计数，不宣称「与后端一一镜像已验证」。
+    // 演进史：R215 权限可配置化 +2 distinct（commit 3764830）→ GAP-F4/F5 +3（keys 71→74、distinct 70→73）
+    //   → GAP-F10 +1（keys 74→75、distinct 73→74）→ R234 补镜像 18 个后端孤码（keys 75→93、distinct 74→92）
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(93);
+    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(92);
   });
 
-  it('所有 distinct 码唯一（74 个）', () => {
+  it('keys 数组长度 93、distinct 92（唯一同值双键是 STAGE_ACTION 双码，白名单见碰撞断言）', () => {
     const set = new Set(ALL_IPD_PERMISSION_CODES);
-    expect(set.size).toBe(74);
-    // 数组长度 75（多 1 项是 STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 同码；
-    //   R175-A 新增 GATE_ELEMENT_RESTORE 1 distinct 码；R149 RECOVERY_* 2 distinct 码仍计入；
-    //   R215 权限可配置化新增 ROLE_PERMISSION_QUERY / ROLE_PERMISSION_EDIT 2 distinct 码（commit 3764830）；
-    //   R215 GAP-F4/F5 新增 P0_ESCALATION_READ + SWITCHING_ACCEPTANCE_LOCK/UNLOCK 3 distinct 码；
-    //   R215 GAP-F10 新增 PERMANENT_DELETE_EXECUTE 1 distinct 码）
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(75);
+    expect(set.size).toBe(92);
+    // 数组长度 93 = 92 distinct + 1（STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 同码；
+    //   演进史：R175-A +1 GATE_ELEMENT_RESTORE、R215 权限可配置化 +2、GAP-F4/F5 +3、GAP-F10 +1、R234 补镜像后端孤码 +18）
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(93);
   });
 
   it('全部码遵循 ipd:资源:动作 命名规范', () => {
@@ -52,8 +48,43 @@ describe('IPD 权限码常量与后端一一对应', () => {
     expect(IPD_PERMISSION_CODES.HANDOVER_CANCEL).toBe('ipd:handover:cancel');
   });
 
-  it('STAGE_ACTION_DELIVERABLE 与 INSTANTIATE 共享同一码（后端设计）', () => {
+  it('STAGE_ACTION_DELIVERABLE 与 INSTANTIATE 共享同一码（owner 2026-09-27 拍板维持共用）', () => {
     expect(IPD_PERMISSION_CODES.STAGE_ACTION_DELIVERABLE).toBe(IPD_PERMISSION_CODES.STAGE_ACTION_INSTANTIATE);
+  });
+
+  it('碰撞白名单固化：STAGE_ACTION 双码共享 ipd:stage-action:add 是 owner 2026-09-27 拍板的刻意共享（非 bug）', () => {
+    // owner 2026-09-27 拍板：STAGE_ACTION 双码「维持共用字面值，等 instantiate UI 落地再拆」——
+    // 等 instantiate UI 落地时后端加独立码再拆。本断言把该碰撞固化为显式白名单，白名单外碰撞立即失败。
+    expect(IPD_PERMISSION_CODES.STAGE_ACTION_DELIVERABLE).toBe('ipd:stage-action:add');
+    expect(IPD_PERMISSION_CODES.STAGE_ACTION_INSTANTIATE).toBe('ipd:stage-action:add');
+    expect(IPD_PERMISSION_CODES.STAGE_ACTION_DELIVERABLE).toBe(IPD_PERMISSION_CODES.STAGE_ACTION_INSTANTIATE);
+
+    // 全表唯一允许的同值双键 = STAGE_ACTION 双码，其余键值两两不同
+    const keysByValue = new Map<string, string[]>();
+    for (const [key, value] of Object.entries(IPD_PERMISSION_CODES)) {
+      keysByValue.set(value, [...(keysByValue.get(value) ?? []), key]);
+    }
+    const duplicated = [...keysByValue.entries()].filter(([, keys]) => keys.length > 1);
+    expect(duplicated).toEqual([
+      ['ipd:stage-action:add', ['STAGE_ACTION_DELIVERABLE', 'STAGE_ACTION_INSTANTIATE']],
+    ]);
+  });
+
+  it('R234 补镜像 13 个后端孤码值锁定', () => {
+    // R234 镜像后端孤码：后端 IpdPermissionCode 独有、前端此前未镜像的 13 个码
+    expect(IPD_PERMISSION_CODES.AI_COPILOT_CHAT).toBe('ipd:ai-copilot:chat');
+    expect(IPD_PERMISSION_CODES.BID_INVITATION_CREATE).toBe('ipd:bid-invitation:create');
+    expect(IPD_PERMISSION_CODES.BUSINESS_CONFIG_READ).toBe('ipd:business-config:read');
+    expect(IPD_PERMISSION_CODES.BUSINESS_CONFIG_WRITE).toBe('ipd:business-config:write');
+    expect(IPD_PERMISSION_CODES.DELETION_REQUEST_WITHDRAW).toBe('ipd:deletion-request:withdraw');
+    expect(IPD_PERMISSION_CODES.KPI_SHARED_COLLECT).toBe('ipd:kpi-shared:collect');
+    expect(IPD_PERMISSION_CODES.KPI_SHARED_CONFIRM).toBe('ipd:kpi-shared:confirm');
+    expect(IPD_PERMISSION_CODES.KPI_CONFIG).toBe('ipd:kpi:config');
+    expect(IPD_PERMISSION_CODES.POST_LAUNCH_REVIEW_CREATE).toBe('ipd:post-launch-review:create');
+    expect(IPD_PERMISSION_CODES.POST_LAUNCH_REVIEW_QUERY).toBe('ipd:post-launch-review:query');
+    expect(IPD_PERMISSION_CODES.POST_LAUNCH_REVIEW_COMPLETE).toBe('ipd:post-launch-review:complete');
+    expect(IPD_PERMISSION_CODES.REQUIREMENT_CHANGE_SUBMIT).toBe('ipd:requirement-change:submit');
+    expect(IPD_PERMISSION_CODES.REQUIREMENT_CHANGE_SIGN).toBe('ipd:requirement-change:sign');
   });
 });
 
@@ -235,14 +266,16 @@ describe('A23 9 个零引用权限码已处置（reserved 注释 8 + 碰撞 doc 
     expect(reservedCodes.length).toBe(9);
   });
 
-  it('R215 GAP-F4/F5/F10 新增 4 码：distinct count = 74、数组长度 75', () => {
+  it('R234 补镜像后端孤码后：distinct count = 92、数组长度 93', () => {
     // A13 增补 5 项（4 转 + 1 新），A23 移除 4 项，ALL_IPD_PERMISSION_CODES 净增 1；
     //   distinct count 由 67（R149 后）提升到 68（R175-A）。
     // R215 权限可配置化新增 ROLE_PERMISSION_QUERY / ROLE_PERMISSION_EDIT：distinct 68 → 70、数组长度 69 → 71（commit 3764830）
     // R215 GAP-F4/F5 登记 P0_ESCALATION_READ + SWITCHING_ACCEPTANCE_LOCK/UNLOCK：distinct 70 → 73、数组长度 71 → 74
-    // R215 GAP-F10 登记 PERMANENT_DELETE_EXECUTE：distinct 73 → 74、数组长度 74 → 75（树释放后等树项落地）
-    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(74);
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(75);
+    // R215 GAP-F10 登记 PERMANENT_DELETE_EXECUTE：distinct 73 → 74、数组长度 74 → 75
+    // R234 补镜像 18 个后端孤码（13+5）：distinct 74 → 92、数组长度 75 → 93
+    //   （与后端 IpdPermissionCode 镜像对账由后端仓 scripts/check-permission-mirror-fe-be.sh 门禁承担（R234））
+    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(92);
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(93);
   });
 
   for (const code of reservedCodes) {

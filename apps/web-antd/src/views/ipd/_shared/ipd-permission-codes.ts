@@ -1,7 +1,7 @@
 /**
  * IPD 模块权限码集中常量（前端单一权威源）。
  *
- * 镜像后端 `org.ruoyi.ipd.security.IpdPermissionCode`（75 个 key，74 distinct；STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 共享 'ipd:stage-action:add'；R215 权限可配置化 +2、GAP-F4/F5 +3、GAP-F10 +1）。
+ * 镜像后端 `org.ruoyi.ipd.security.IpdPermissionCode`（93 个 key，92 distinct；STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 共享 'ipd:stage-action:add'（owner 2026-09-27 拍板维持共用，等 instantiate UI 落地后端加独立码再拆）；R215 权限可配置化 +2、GAP-F4/F5 +3、GAP-F10 +1、R234 补镜像后端孤码 +18）。
  * 路由表与按钮 v-access:code 引用本文件常量，禁止直接书写字面量。
  *
  * <p>使用方式：
@@ -31,7 +31,7 @@ export const IPD_PERMISSION_CODES = {
   STAGE_ACTION_LIST: 'ipd:stage-action:list', /* reserved (A23): 阶段动作列表无独立入口，详情页内联渲染 */
   STAGE_ACTION_EXECUTE: 'ipd:stage-action:edit',
   STAGE_ACTION_DELIVERABLE: 'ipd:stage-action:add',
-  STAGE_ACTION_INSTANTIATE: 'ipd:stage-action:add', /* reserved (A23): 与 STAGE_ACTION_DELIVERABLE 共享同字面值（owner 决议点：是否拆分为两个独立码） */
+  STAGE_ACTION_INSTANTIATE: 'ipd:stage-action:add', /* reserved (A23): 与 STAGE_ACTION_DELIVERABLE 共享同字面值（owner 2026-09-27 拍板维持共用，等 instantiate UI 落地后端加独立码再拆） */
 
   // 国别认证模板
   CERT_TEMPLATE_LIST: 'ipd:cert-template:list',
@@ -56,6 +56,7 @@ export const IPD_PERMISSION_CODES = {
   DELETION_REQUEST_SUBMIT: 'ipd:deletion-request:submit',
   DELETION_REQUEST_LEADER: 'ipd:deletion-request:leader',
   DELETION_REQUEST_ADMIN: 'ipd:deletion-request:admin',
+  DELETION_REQUEST_WITHDRAW: 'ipd:deletion-request:withdraw', // R234 镜像后端孤码
 
   // Gate 评审
   GATE_REVIEW_LIST: 'ipd:gate-review:list',
@@ -79,6 +80,7 @@ export const IPD_PERMISSION_CODES = {
   // AI 模型配置（P4-2.1）
   AI_MODEL_LIST: 'ipd:ai-model:list',
   AI_MODEL_EDIT: 'ipd:ai-model:edit',
+  AI_COPILOT_CHAT: 'ipd:ai-copilot:chat', // R234 镜像后端孤码
 
   // SOP 模板
   SOP_TEMPLATE_EDIT: 'ipd:sop-template:edit',
@@ -86,12 +88,27 @@ export const IPD_PERMISSION_CODES = {
 
   // KPI 考核
   KPI_QUERY: 'ipd:kpi:query',
+  KPI_CONFIG: 'ipd:kpi:config', // R234 镜像后端孤码
+  KPI_CONFIG_QUERY: 'ipd:kpi:config:query', // R234 镜像后端孤码
+  KPI_RAW_CREATE: 'ipd:kpi:raw:create', // R234 镜像后端孤码
+  KPI_RAW_QUERY: 'ipd:kpi:raw:query', // R234 镜像后端孤码
+  KPI_SHARED_COLLECT: 'ipd:kpi-shared:collect', // R234 镜像后端孤码
+  KPI_SHARED_CONFIRM: 'ipd:kpi-shared:confirm', // R234 镜像后端孤码
+
+  // 落地场景登记（R234 镜像后端孤码）
+  SCENARIO_LANDED_CREATE: 'ipd:scenario:landed:create', // R234 镜像后端孤码
+  SCENARIO_LANDED_QUERY: 'ipd:scenario:landed:query', // R234 镜像后端孤码
 
   // 奖金池（P3-4.4）
   BONUS_POOL_QUERY: 'ipd:bonus-pool:query',
   BONUS_POOL_COMPUTE: 'ipd:bonus-pool:compute',
   BONUS_POOL_FREEZE: 'ipd:bonus-pool:freeze',
   BONUS_POOL_DISTRIBUTE: 'ipd:bonus-pool:distribute',
+
+  // 上市后复盘（R234 镜像后端孤码）
+  POST_LAUNCH_REVIEW_CREATE: 'ipd:post-launch-review:create', // R234 镜像后端孤码
+  POST_LAUNCH_REVIEW_QUERY: 'ipd:post-launch-review:query', // R234 镜像后端孤码
+  POST_LAUNCH_REVIEW_COMPLETE: 'ipd:post-launch-review:complete', // R234 镜像后端孤码
 
   // 角色权限配置（R215 权限可配置化；元权限码固定于超管 Java 目录，不可被 DB 配置——自举保护）
   ROLE_PERMISSION_QUERY: 'ipd:role-permission:query',
@@ -106,6 +123,10 @@ export const IPD_PERMISSION_CODES = {
   NEGATIVE_FEEDBACK_QUERY: 'ipd:negative-feedback:query',
   NEGATIVE_FEEDBACK_CREATE: 'ipd:negative-feedback:create',
   NEGATIVE_FEEDBACK_DECIDE: 'ipd:negative-feedback:decide',
+
+  // 需求变更单（R234 镜像后端孤码）
+  REQUIREMENT_CHANGE_SUBMIT: 'ipd:requirement-change:submit', // R234 镜像后端孤码
+  REQUIREMENT_CHANGE_SIGN: 'ipd:requirement-change:sign', // R234 镜像后端孤码
 
   // 切换验收（P3-7.1；R215 GAP-F5 视图 /ipd/operation/switching-acceptance 交付）
   SWITCHING_ACCEPTANCE_QUERY: 'ipd:switching-acceptance:query', // R215 GAP-F5 已接视图：切换验收 get/list 读口（路由 meta.access）
@@ -133,8 +154,13 @@ export const IPD_PERMISSION_CODES = {
   SYSTEM_CONFIG_READ: 'ipd:system-config:read',
   SYSTEM_CONFIG_UPDATE: 'ipd:system-config:update',
 
-  // 招标超管指派（P2-3.3）
+  // 业务参数（R234 镜像后端孤码）
+  BUSINESS_CONFIG_READ: 'ipd:business-config:read', // R234 镜像后端孤码
+  BUSINESS_CONFIG_WRITE: 'ipd:business-config:write', // R234 镜像后端孤码
+
+  // 招标（P2-3.3 超管指派；R234 补镜像 create 孤码）
   BID_INVITATION_ADMIN_ASSIGN: 'ipd:bid-invitation:admin-assign',
+  BID_INVITATION_CREATE: 'ipd:bid-invitation:create', // R234 镜像后端孤码
 
   // 移交撤销（HIGH-3.1）
   HANDOVER_CANCEL: 'ipd:handover:cancel',
@@ -147,7 +173,7 @@ export const IPD_PERMISSION_CODES = {
 
 export type IpdPermissionCode = (typeof IPD_PERMISSION_CODES)[keyof typeof IPD_PERMISSION_CODES];
 
-/** 全部 75 个 key（74 distinct；用于测试断言、批量校验、初始化菜单树）。 */
+/** 全部 93 个 key（92 distinct；用于测试断言、批量校验、初始化菜单树）。 */
 export const ALL_IPD_PERMISSION_CODES: readonly IpdPermissionCode[] = Object.freeze(
   Object.values(IPD_PERMISSION_CODES),
 );
