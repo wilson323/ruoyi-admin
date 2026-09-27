@@ -5,13 +5,16 @@
  * - POST /ai-copilot/chat：同步问答（code=0 包络，走 ipdPost）；
  * - GET /ai-copilot/chat/stream：SSE 真流式。事件四帧：
  *   meta（AiCopilotResp，真流式时 answer 空）/ delta（answer 增量 token 字符串）/
- *   done（{status,tokenPrompt,tokenCompletion,latencyMs}）/ error（{code,message}）。
+ *   done（{status,tokenPrompt,tokenCompletion,latencyMs}，可选超集：fillPayload（R221）/
+ *   card（P2-01 四键卡片信封））/ error（{code,message}）。
  *   鉴权走 Authorization Bearer header（sa-token 上下文，URL 不收 token）——
  *   EventSource 无法带自定义 header，必须 fetch + ReadableStream 自解析（requestIpd
  *   是 JSON 包络专用同样不可复用，15s 超时也会掐断 60s 流）。
  * - history 多轮上下文只传 role+content，后端最大 8 轮，超出由前端裁剪。
  * - docType 可空：非空时 RAG 检索限定文档类型（R184 阶段 3）。
  */
+import type { AiCardEnvelope } from '../../views/ipd/_shared/ai-cards/types';
+
 import { useIpdAuthStore } from '../../store/ipd-auth';
 
 import { ipdPost } from './http';
@@ -58,8 +61,10 @@ export function chatCopilot(input: CopilotChatInput): Promise<CopilotChatView> {
   });
 }
 
-/** SSE done 帧载荷。 */
+/** SSE done 帧载荷（P2-01 起为可选超集：card 键缺席时与旧契约逐字节一致）。 */
 export interface CopilotStreamDone {
+  /** P2-01 AI 卡片信封：仅结构化场景非空（四键 AiCardEnvelope，缺席=无卡）。 */
+  card?: AiCardEnvelope | null;
   /** R221 对话即填表：仅 FILL_PAGE 意图非空（后端 done 帧携 fillPayload，否则无此键）。 */
   fillPayload?: CopilotFillPayload;
   latencyMs: number;
@@ -140,6 +145,41 @@ export function createSseFrameParser(): (chunk: string) => SseFrame[] {
   };
 }
 
+/** 运行期对象判别（不信 TS 标注；api/ipd 防御性解析同款形态）。 */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** card 信封最小结构校验（P2-01：仅验四键存在性 type/version/data/sourceRefs）。 */
+function isCardEnvelope(value: unknown): value is AiCardEnvelope {
+  return (
+    isRecord(value) &&
+    'type' in value &&
+    'version' in value &&
+    'data' in value &&
+    'sourceRefs' in value
+  );
+}
+
+/**
+ * done 帧 card 信封解析（P2-01）：最小结构校验（四键存在性），合法透传、非法置 null
+ * （防御性降级，不抛错不断流）。data 深层形态由卡片渲染层按 (type, version) 注册表适配。
+ */
+function parseCardEnvelope(raw: unknown): AiCardEnvelope | null {
+  return isCardEnvelope(raw) ? raw : null;
+}
+
+/**
+ * done 帧载荷解析（P2-01 card 可选超集）：
+ * - card 键缺席：原样透传（与既有四帧行为逐字节一致，fillPayload 兼容保留）；
+ * - card 在场：经 parseCardEnvelope 最小校验，合法透传信封、非法置 null（不断流不抛错）。
+ */
+export function parseStreamDone(raw: unknown): CopilotStreamDone {
+  const done = raw as CopilotStreamDone;
+  if (!isRecord(raw) || !('card' in raw)) return done;
+  return { ...done, card: parseCardEnvelope(raw.card) };
+}
+
 /**
  * SSE 真流式问答：fetch + ReadableStream 逐帧分发。
  * 非 2xx / 非 event-stream 响应与传输异常统一走 onError（后端契约：鉴权失败也推
@@ -185,7 +225,7 @@ export async function streamCopilot(
     for (const frame of parse(decoder.decode(value, { stream: true }))) {
       if (frame.event === 'meta') handlers.onMeta(frame.data as CopilotChatView);
       else if (frame.event === 'delta') handlers.onDelta(String(frame.data));
-      else if (frame.event === 'done') handlers.onDone(frame.data as CopilotStreamDone);
+      else if (frame.event === 'done') handlers.onDone(parseStreamDone(frame.data));
       else if (frame.event === 'error')
         handlers.onError(frame.data as CopilotStreamError);
     }

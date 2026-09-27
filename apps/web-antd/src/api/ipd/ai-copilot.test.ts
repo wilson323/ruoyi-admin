@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useIpdAuthStore } from '../../store/ipd-auth';
 import type { CopilotStreamDone } from './ai-copilot';
-import { chatCopilot, createSseFrameParser, streamCopilot } from './ai-copilot';
+import { chatCopilot, createSseFrameParser, parseStreamDone, streamCopilot } from './ai-copilot';
 
 const LF = String.fromCharCode(10);
 
@@ -144,6 +144,104 @@ describe('AI 副驾 API（R215 B3）', () => {
       mode: 'suggest',
       scene: 'stage-action-fields',
     });
+  });
+
+  it('SSE 解析器：done 帧 card（P2-01 AI 卡片信封）四键透传不丢，fillPayload 兼容共存', () => {
+    const parse = createSseFrameParser();
+    const doneData = {
+      latencyMs: 3,
+      status: 'ok',
+      tokenCompletion: 2,
+      tokenPrompt: 1,
+      fillPayload: {
+        fields: { remark: 'AI 建议值' },
+        mode: 'suggest',
+        scene: 'stage-action-fields',
+      },
+      card: {
+        type: 'gate.precheck',
+        version: 1,
+        data: { gateCode: 'G1' },
+        sourceRefs: { reviewIds: [1, 2] },
+      },
+    };
+    const frames = parse(frame('done', doneData));
+    expect(frames).toHaveLength(1);
+    const done = parseStreamDone(frames[0]!.data);
+    expect(done.card).toMatchObject({
+      type: 'gate.precheck',
+      version: 1,
+      data: { gateCode: 'G1' },
+      sourceRefs: { reviewIds: [1, 2] },
+    });
+    expect(done.fillPayload).toMatchObject({
+      fields: { remark: 'AI 建议值' },
+      mode: 'suggest',
+      scene: 'stage-action-fields',
+    });
+  });
+
+  it('done 帧 card 缺席（P2-01 可选超集兼容）→ 原样透传逐字节一致，fillPayload 不丢', () => {
+    const raw = {
+      latencyMs: 3,
+      status: 'ok',
+      tokenCompletion: 2,
+      tokenPrompt: 1,
+      fillPayload: {
+        fields: { remark: 'AI 建议值' },
+        mode: 'suggest',
+        scene: 'stage-action-fields',
+      },
+    };
+    const done = parseStreamDone(raw);
+    expect(done).toBe(raw); // 同引用：card 键缺席零改动（逐字节一致）
+    expect(done.card).toBeUndefined();
+    expect(done.fillPayload?.mode).toBe('suggest');
+  });
+
+  it('done 帧 card 非法（缺键/非对象/null/数组）→ 置 null 忽略，其余字段不丢', () => {
+    const base = { latencyMs: 3, status: 'ok', tokenCompletion: 2, tokenPrompt: 1 };
+    for (const badCard of [{ type: 'gate.precheck', version: 1 }, 'oops', null, [1, 2]]) {
+      const done = parseStreamDone({ ...base, card: badCard });
+      expect(done.card).toBeNull();
+      expect(done.status).toBe('ok');
+      expect(done.tokenPrompt).toBe(1);
+    }
+  });
+
+  it('streamCopilot done 帧携非法 card 不断流：四帧照常分发、card 置 null', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(
+        sseResponse(
+          frame('meta', metaFixture) +
+            frame('delta', '好') +
+            frame('done', {
+              status: 'ok',
+              tokenPrompt: 10,
+              tokenCompletion: 2,
+              latencyMs: 50,
+              card: { type: 'gate.precheck', version: 1 },
+            }),
+        ),
+      );
+    vi.stubGlobal('fetch', fetcher);
+    const seen: string[] = [];
+    const doneCards: unknown[] = [];
+    await streamCopilot(
+      { message: '我的待办' },
+      {
+        onDelta: (t) => seen.push(t),
+        onDone: (d) => {
+          seen.push(`done:${d.status}`);
+          doneCards.push(d.card);
+        },
+        onError: () => seen.push('error'),
+        onMeta: (m) => seen.push(`meta:${m.intent}`),
+      },
+    );
+    expect(seen).toEqual(['meta:TASKS', '好', 'done:ok']);
+    expect(doneCards).toEqual([null]);
   });
 
   it('streamCopilot → SSE URL query + Bearer 头，四帧逐段分发到 handlers', async () => {
