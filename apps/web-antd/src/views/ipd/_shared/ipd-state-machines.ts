@@ -1,7 +1,7 @@
 /**
  * IPD 业务状态机集中定义（前端单一权威源）。
  *
- * <p>覆盖 6 个核心状态机，与后端枚举字面值一一对应：
+ * <p>覆盖 9 个核心状态机，与后端枚举字面值一一对应：
  * <ul>
  *   <li>PROJECT_STATUS — 项目 5 态 DRAFT/TEAMING/ACTIVE/SUSPENDED/ARCHIVED</li>
  *   <li>DEMAND_STATUS — 需求 8 态 SUBMITTED/ACCEPTED/EVALUATING/SCHEDULED/PROCESSING/IN_DEV/CLOSED/ARCHIVED</li>
@@ -9,6 +9,9 @@
  *   <li>DELETION_STATUS — 删除申请 6 态 PENDING/WITHDRAWN/LEADER_APPROVED/REJECTED/PURGED/ARCHIVED</li>
  *   <li>GATE_STATUS — Gate 评审 4 态 PENDING/IN_PROGRESS/PASSED/FAILED</li>
  *   <li>CHANGE_STATUS — 需求变更 4 态 DRAFT/PENDING_SIGN/APPROVED/REJECTED</li>
+ *   <li>BID_STATUS — 招标单 4 态 OPEN/SELECTED/EXPIRED/CLOSED</li>
+ *   <li>BID_RESPONSE_STATUS — 应标 4 态 PENDING/ACCEPTED/REJECTED/WITHDRAWN</li>
+ *   <li>ACTION_STATUS — 阶段动作 5 态 NOT_STARTED/IN_PROGRESS/DONE/DELAYED/NA</li>
  * </ul>
  *
  * <p>使用方式：
@@ -18,6 +21,8 @@
  * const next = nextProjectStatuses('DRAFT'); // ['TEAMING']
  * </pre>
  */
+
+import { deriveTransitions, GUARD_ENTITY_TYPES } from './guard-rules';
 
 export type ProjectStatus = 'DRAFT' | 'TEAMING' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
 export type DemandStatus =
@@ -112,6 +117,8 @@ export const DEMAND_STATUS_MACHINE: StateMachine<DemandStatus> = buildMachine(
 );
 
 // ============ 奖金池状态机（3 态）============
+// transitions 由后端守卫规则表契约 JSON 派生（补遗 §5-1，见 guard-rules.ts）——
+// 禁止再手写迁移图；改后端规则未重导出契约时，后端 compare 测试必红。
 const BONUS_STATES: readonly StateNode<BonusStatus>[] = [
   { code: 'DRAFT', label: '草稿', tone: 'default' },
   { code: 'CONFIRMED', label: '已确认', tone: 'processing' },
@@ -120,7 +127,7 @@ const BONUS_STATES: readonly StateNode<BonusStatus>[] = [
 export const BONUS_STATUS_MACHINE: StateMachine<BonusStatus> = buildMachine(
   'BONUS_STATUS',
   BONUS_STATES,
-  { DRAFT: ['CONFIRMED'], CONFIRMED: ['DISTRIBUTED'], DISTRIBUTED: [] },
+  deriveTransitions(GUARD_ENTITY_TYPES.bonusPool, BONUS_STATES.map((node) => node.code)),
 );
 
 // ============ 删除申请状态机（6 态）============
@@ -164,6 +171,7 @@ export const GATE_STATUS_MACHINE: StateMachine<GateStatus> = buildMachine(
 );
 
 // ============ 需求变更状态机（4 态）============
+// transitions 同样由契约 JSON 派生（requirement_change 4 条规则，词表一致无行为变化）。
 const CHANGE_STATES: readonly StateNode<ChangeStatus>[] = [
   { code: 'DRAFT', label: '草稿', tone: 'default' },
   { code: 'PENDING_SIGN', label: '待双签', tone: 'warning' },
@@ -173,12 +181,7 @@ const CHANGE_STATES: readonly StateNode<ChangeStatus>[] = [
 export const CHANGE_STATUS_MACHINE: StateMachine<ChangeStatus> = buildMachine(
   'CHANGE_STATUS',
   CHANGE_STATES,
-  {
-    DRAFT: ['PENDING_SIGN'],
-    PENDING_SIGN: ['APPROVED', 'REJECTED'],
-    APPROVED: [],
-    REJECTED: [],
-  },
+  deriveTransitions(GUARD_ENTITY_TYPES.requirementChange, CHANGE_STATES.map((node) => node.code)),
 );
 
 // ============ 招标单状态机（4 态）============

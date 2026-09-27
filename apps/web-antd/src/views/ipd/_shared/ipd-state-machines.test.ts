@@ -40,8 +40,8 @@ describe('PROJECT_STATUS 5 态', () => {
 });
 
 describe('BONUS_STATUS 3 态', () => {
-  it('DRAFT → CONFIRMED → DISTRIBUTED 单链', () => {
-    expect(nextStates(BONUS_STATUS_MACHINE, 'DRAFT')).toEqual(['CONFIRMED']);
+  it('DRAFT → CONFIRMED/DISTRIBUTED（直分为后端契约规则，§5-1 JSON 派生补齐）', () => {
+    expect(nextStates(BONUS_STATUS_MACHINE, 'DRAFT')).toEqual(['CONFIRMED', 'DISTRIBUTED']);
     expect(nextStates(BONUS_STATUS_MACHINE, 'CONFIRMED')).toEqual(['DISTRIBUTED']);
     expect(nextStates(BONUS_STATUS_MACHINE, 'DISTRIBUTED')).toEqual([]);
   });
