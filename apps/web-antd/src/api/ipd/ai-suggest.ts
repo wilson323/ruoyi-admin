@@ -6,7 +6,11 @@
  * - 返回 markdown 正文，**仅展示由用户手动采纳，不自动写业务表**（方案 §5.1 强约束）；
  * - degraded=true 表示本轮未真调 AI（模型未配置降级），前端按引导文案展示；
  * - 权限复用 ipd:ai-copilot:chat（内部角色可调，对象级越权后端二次校验）。
+ * - P1-08 挂账②正式化：AiSuggestView.card 四键信封（P1-02 契约）在此正式声明，
+ *   类型引自 views/ipd/_shared/ai-cards/types.ts（仅 type import，零运行时依赖）。
  */
+import type { AiCardEnvelope } from '../../views/ipd/_shared/ai-cards/types';
+
 import { ipdPost } from './http';
 
 /** 场景白名单（与后端 AiSuggestionService.SCENES 对齐，改动须双端同步）。 */
@@ -30,6 +34,8 @@ export interface AiSuggestInput {
 
 export interface AiSuggestView {
   aiModel: string;
+  /** P1-02 契约：4 结构化场景增四键卡片信封；无卡场景无此字段（undefined）。 */
+  card?: AiCardEnvelope | null;
   completionTokens: number;
   degraded: boolean;
   latencyMs: number;

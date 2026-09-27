@@ -14,6 +14,8 @@
  *   card 非法/渲染异常 → 可见降级提示 + 文本回退——**文本路径永不删**（卡片层是增强不是依赖）。
  *   7 场景口径：4 结构化场景走卡片分发，3 轻场景（workbench.next-step / workbench.risk-warning /
  *   project.summary.refresh）保持纯文本不进卡（带 card 也忽略、不降级，与基线渲染完全一致）。
+ * - P1-08 提交链（C08 收口）：卡片 confirm = 恰一次既有 /api/v1 真人端点调用（gate.conclusion
+ *   → 既有签署端点）或预填复制降级；金额/评分/系数/删除/移交类值不进提交载荷（方案 §5.1）。
  */
 import type { Component } from 'vue';
 
@@ -23,8 +25,9 @@ import { PhSparkle as Sparkles } from '@phosphor-icons/vue';
 import { Alert, Button, Input, Tooltip } from 'ant-design-vue';
 
 import { aiSuggest, type AiSuggestScene, type AiSuggestView } from '../../../api/ipd/ai-suggest';
+import { signGate, type GateDecision } from '../../../api/ipd/gate-review';
 import { getCardType, listCardTypes } from './ai-cards/card-registry';
-import type { AiCardData, AiCardEnvelope } from './ai-cards/types';
+import type { AiCardData, AiCardType, GateConclusionCardData } from './ai-cards/types';
 import { ipdErrorText } from './ipd-error-text';
 
 /**
@@ -61,27 +64,28 @@ const emit = defineEmits<{ adopt: [payload: { markdown: string; scene: string }]
 const CURRENT_PROJECT_KEY = 'ipd:current-project';
 
 /**
- * 响应体本地收窄（P1-07）：P1-02 契约在 AiSuggestView 之上增 card 字段（四键信封）。
- * api/ 目录非本节点所有权，故在此以交叉类型声明，不改 api 层；
- * 运行期信封形态由 resolveCardView 兜底校验（后端越约不信任类型标注）。
+ * P1-08 挂账②已正式化：card 四键信封字段收进 api/ipd/ai-suggest.ts 的 AiSuggestView
+ * （P1-07 的本地交叉类型已删）；运行期信封形态仍由 resolveCardView 兜底校验。
  */
-type AiSuggestViewWithCard = AiSuggestView & { card?: AiCardEnvelope | null };
 
 /** 分发层渲染视图：命中注册表的 (component, data) 对（组件契约 = data prop + confirm emit）。 */
 interface CardView {
   component: Component;
   data: AiCardData;
+  type: AiCardType;
 }
 
 const loading = ref(false);
-const result = ref<AiSuggestViewWithCard | null>(null);
+const result = ref<AiSuggestView | null>(null);
 const errorMsg = ref('');
 const promptText = ref('');
 /** 分发层（P1-07）：cardView 非空 = 渲染卡片；cardDegraded 非空 = 可见降级原因（文本回退）。 */
 const cardView = shallowRef<CardView | null>(null);
 const cardDegraded = ref('');
-/** 卡片 confirm 钩子提示（P1-07 只接住，提交链路由 P1-08 接线）。 */
+/** 卡片 confirm 提交链状态（P1-08）：提示文案 / 语气 / 进行中防重复点击。 */
 const cardNotice = ref('');
+const cardNoticeTone = ref<'error' | 'info' | 'success' | 'warning'>('info');
+const cardConfirmBusy = ref(false);
 
 /** 可出卡场景集（= 注册表 scene 集的唯一事实源推导；其外 3 轻场景保持纯文本不进卡）。 */
 const CARD_SCENES: ReadonlySet<string> = new Set(
@@ -116,7 +120,11 @@ function resolveCardView(raw: unknown): CardView | string {
     return `卡片组件未注册（type=${raw.type}），已回退文本建议`;
   }
   // CardDynString 收窄由各卡 dynText 承担（ai-cards 所有权），分发层按契约透传 data 不做窄化。
-  return { component: entry.component, data: raw.data as unknown as AiCardData };
+  return {
+    component: entry.component,
+    data: raw.data as unknown as AiCardData,
+    type: entry.type,
+  };
 }
 
 /**
@@ -148,8 +156,9 @@ async function run() {
   cardView.value = null;
   cardDegraded.value = '';
   cardNotice.value = '';
+  cardNoticeTone.value = 'info';
   try {
-    const view: AiSuggestViewWithCard = await aiSuggest(props.scene, {
+    const view: AiSuggestView = await aiSuggest(props.scene, {
       entityId: props.entityId || undefined,
       projectId: effectiveProjectId(),
       userPrompt: props.needsPrompt ? promptText.value.trim() : undefined,
@@ -183,12 +192,88 @@ function adopt() {
 }
 
 /**
- * 卡片「确认采纳」钩子（P1-07：只接住留 hook，本节点零提交逻辑）。
+ * 卡片「确认采纳」提交链（P1-08 C08 收口）。
  *
- * TODO(P1-08)：payload 映射既有 /api/v1 真人端点 + 审计三件套（C08 零直写，届时在此接线）。
+ * 映射铁律：每卡恰好一次既有 /api/v1 真人端点调用 或 一次预填复制，绝不直写业务表；
+ * 金额/评分/系数/删除/移交类值只进「建议值」展示区，绝不进提交载荷（方案 §5.1）。
+ * 所有 confirm 反馈统一带「P1-08」标记（既有 hook 用例回归锚点）。
  */
-function onCardConfirm(_payload: AiCardData) {
-  cardNotice.value = '已收到卡片确认；提交链路由 P1-08 接线（当前节点零提交逻辑）';
+/** 无「一次既有写端点」合法映射卡的预填指引（复制建议 → 真人填既有表单后手动提交）。 */
+const PREFILL_HINTS: Partial<Record<AiCardType, string>> = {
+  'demand.draft': '既有「需求受理」入口（由真人创建/受理需求后落表）',
+  'gate.precheck': '既有「评审要素判定」表单（本页逐项人工确认后提交）',
+  'project.charter': '既有「立项创建」表单（人工填写后提交立项）',
+};
+
+async function onCardConfirm(payload: AiCardData) {
+  if (cardConfirmBusy.value) return;
+  // mode!=='suggest' 防御保留（沿用 action-detail/index.vue 既有口径：非 suggest 一律防御性忽略）。
+  const raw = payload as unknown as Record<string, unknown>;
+  if (raw.mode !== undefined && raw.mode !== 'suggest') {
+    cardNoticeTone.value = 'warning';
+    cardNotice.value = `已防御性忽略非 suggest 模式卡片载荷（P1-08 防御保留，mode=${String(raw.mode)}）`;
+    return;
+  }
+  const cardType = cardView.value?.type;
+  if (!cardType) return;
+  cardConfirmBusy.value = true;
+  try {
+    if (cardType === 'gate.conclusion') {
+      await submitGateSign(payload as GateConclusionCardData);
+    } else {
+      await prefillSuggestion(cardType);
+    }
+  } finally {
+    cardConfirmBusy.value = false;
+  }
+}
+
+/**
+ * gate.conclusion → 既有签署端点恰一次（GateReviewService.sign 对应 POST /gates/{gateId}/sign）。
+ * decision 按真实票数推导（AC-GATE-05 任一 REJECT ⇒ REJECTED），非 AI 生成值；
+ * opinion 随带结论草稿文本（非五类值），审计 GATE_SIGN 由端点自带落痕。
+ */
+async function submitGateSign(data: GateConclusionCardData) {
+  const gateId = props.entityId?.trim();
+  if (!gateId) {
+    cardNoticeTone.value = 'error';
+    cardNotice.value = '签署提交失败（P1-08 提交链路）：缺 gateId（entityId 未传），未发起请求；请在既有 Gate 评审面板人工签署';
+    return;
+  }
+  const decision: GateDecision = data.failCount > 0 ? 'REJECT' : 'APPROVE';
+  const opinion = result.value?.markdown?.trim() || undefined;
+  cardNoticeTone.value = 'info';
+  cardNotice.value = '正在提交 Gate 签署（P1-08 提交链路，走既有签署端点）…';
+  try {
+    await signGate(gateId, decision, opinion);
+    cardNoticeTone.value = 'success';
+    cardNotice.value = `签署已提交（P1-08 提交链路）：判定=${decision}，审计由既有签署端点落痕`;
+  } catch (cause) {
+    cardNoticeTone.value = 'error';
+    cardNotice.value = `签署提交失败（P1-08 提交链路）：${ipdErrorText(cause, { fallback: '既有签署端点调用失败' })}；请在既有 Gate 评审面板人工签署`;
+  }
+}
+
+/** 预填降级卡（gate.precheck/project.charter/demand.draft）：复制建议文本，零请求零直写（C08）。 */
+async function prefillSuggestion(cardType: AiCardType) {
+  const hint = PREFILL_HINTS[cardType] ?? '既有业务表单';
+  const text = result.value?.markdown ?? '';
+  cardNoticeTone.value = 'info';
+  cardNotice.value = '正在复制建议文本（P1-08 预填链路）…';
+  const clipboard: Pick<Clipboard, 'writeText'> | undefined = navigator.clipboard;
+  if (!text || !clipboard?.writeText) {
+    cardNoticeTone.value = 'error';
+    cardNotice.value = `复制建议失败（P1-08 预填链路）：剪贴板不可用或建议为空；请手动复制建议文本到${hint}，AI 建议值不直达生效（C08）`;
+    return;
+  }
+  try {
+    await clipboard.writeText(text);
+    cardNoticeTone.value = 'success';
+    cardNotice.value = `建议文本已复制（P1-08 预填链路）：请粘贴到${hint}，目检后由真人提交，AI 建议值不直达生效（C08）`;
+  } catch (cause) {
+    cardNoticeTone.value = 'error';
+    cardNotice.value = `复制建议失败（P1-08 预填链路）：${ipdErrorText(cause, { fallback: '剪贴板写入被拒绝' })}；请手动复制建议文本到${hint}`;
+  }
 }
 </script>
 
@@ -231,16 +316,18 @@ function onCardConfirm(_payload: AiCardData) {
           :message="cardDegraded"
           data-testid="ai-suggest-card-degraded"
         />
-        <component
-          :is="cardView.component"
+        <div
           v-if="cardView"
-          :data="cardView.data"
-          @confirm="onCardConfirm"
-        />
+          class="card-host"
+          :class="{ 'card-host-busy': cardConfirmBusy }"
+          :aria-busy="cardConfirmBusy"
+        >
+          <component :is="cardView.component" :data="cardView.data" @confirm="onCardConfirm" />
+        </div>
         <pre v-else class="suggest-md">{{ result.markdown }}</pre>
         <Alert
           v-if="cardNotice"
-          type="info"
+          :type="cardNoticeTone"
           :message="cardNotice"
           data-testid="ai-suggest-card-notice"
         />
@@ -289,6 +376,11 @@ function onCardConfirm(_payload: AiCardData) {
   background: var(--ipd-bg-subtle, #fafafa);
   border: 1px solid var(--ipd-border, #eee);
   border-radius: 8px;
+}
+
+.card-host-busy {
+  pointer-events: none;
+  opacity: 0.6;
 }
 
 .suggest-actions {
