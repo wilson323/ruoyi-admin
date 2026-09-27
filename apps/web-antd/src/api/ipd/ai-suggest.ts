@@ -13,13 +13,24 @@ import type { AiCardEnvelope } from '../../views/ipd/_shared/ai-cards/types';
 
 import { ipdPost } from './http';
 
-/** 场景白名单（与后端 AiSuggestionService.SCENES 对齐，改动须双端同步）。 */
+/**
+ * 场景白名单 11 项（与后端 AiSuggestionService.SCENES 对齐，改动须双端同步）。
+ * 其中 4 项为结构化卡场景（AiSuggestionService.STRUCTURED_SCENES =
+ * system_configs 'ai.suggest.cardCatalog' 4 卡，见 _shared/ai-cards/card-registry.ts）；
+ * 其余 7 项（含 AI-P3 新增 demand.dedupe / change.impact-analyze /
+ * handover.checklist-generate / report.nl-query）无卡注册，
+ * 按注册表既有 fallback 模式经 getCardType 未命中自动降级纯文本路径。
+ */
 export type AiSuggestScene =
+  | 'change.impact-analyze'
   | 'demand.create.from-requirement'
+  | 'demand.dedupe'
   | 'gate.conclusion-draft'
   | 'gate.precheck-checklist'
+  | 'handover.checklist-generate'
   | 'project.create.suggest'
   | 'project.summary.refresh'
+  | 'report.nl-query'
   | 'workbench.next-step'
   | 'workbench.risk-warning';
 
