@@ -277,6 +277,12 @@ onMounted(() => {
         label="AI 整理规范需求单"
         data-testid="demand-ai-suggest"
       />
+      <AiSuggest
+        scene="demand.dedupe"
+        needs-prompt
+        label="AI 需求查重"
+        data-testid="demand-ai-dedupe"
+      />
     </div>
 
     <!-- 双 tab（原型 section-switch，max-width 360px） -->

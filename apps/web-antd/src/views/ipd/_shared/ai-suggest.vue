@@ -12,8 +12,9 @@
  * - P1-07 卡片分发层（三态）：响应带合法 card（type 命中 CARD_REGISTRY 且 version 匹配）
  *   → 渲染对应卡片组件（data prop + confirm emit 组件契约）；无 card → 既有纯文本渲染；
  *   card 非法/渲染异常 → 可见降级提示 + 文本回退——**文本路径永不删**（卡片层是增强不是依赖）。
- *   7 场景口径：4 结构化场景走卡片分发，3 轻场景（workbench.next-step / workbench.risk-warning /
- *   project.summary.refresh）保持纯文本不进卡（带 card 也忽略、不降级，与基线渲染完全一致）。
+ *   11 场景口径：4 结构化场景走卡片分发，7 轻场景（workbench.next-step / workbench.risk-warning /
+ *   project.summary.refresh / demand.dedupe / change.impact-analyze / handover.checklist-generate /
+ *   report.nl-query）保持纯文本不进卡（带 card 也忽略、不降级，与基线渲染完全一致）。
  * - P1-08 提交链（C08 收口）：卡片 confirm = 恰一次既有 /api/v1 真人端点调用（gate.conclusion
  *   → 既有签署端点）或预填复制降级；金额/评分/系数/删除/移交类值不进提交载荷（方案 §5.1）。
  * - R232 P1-08 红线修复：decision 从真实票推导（reviews[].decision ∈ APPROVE|REJECT|null 待签|

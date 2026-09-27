@@ -46,6 +46,7 @@ import {
 import { listProjects, type Project } from '../../../api/ipd/project';
 // R215 WP3.1 批次（ORPHAN-A8）：离职待移交清单（HrSyncController，页 27）
 import { listPendingHandovers, type PendingHandoverPerson } from '../../../api/ipd/hr-sync';
+import AiSuggest from '../_shared/ai-suggest.vue';
 
 const auth = useIpdAuthStore();
 const meId = computed(() => auth.identity?.person.id ?? '');
@@ -474,6 +475,13 @@ async function loadPending(): Promise<void> {
               归档此移交
             </button>
           </div>
+          <!-- AI-P3：移交清单生成（entityId=handoverId） -->
+          <AiSuggest
+            scene="handover.checklist-generate"
+            :entity-id="selectedId"
+            label="AI 生成移交清单"
+            data-testid="handover-ai-checklist"
+          />
         </template>
         <div v-else class="empty-state">
           <div><SwapOutlined /></div>

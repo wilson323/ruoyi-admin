@@ -501,3 +501,91 @@ export const DELETION_STATUS_TEXT: Record<string, string> = {
   REJECTED: '已驳回',
   WITHDRAWN: '已撤回',
 };
+
+// ============ AI 执行模式与任务状态（R236 生命周期节点智能体接线） ============
+
+/**
+ * AI 执行模式中文（R236 裁决 C：ActionDef.execMode 三档）。
+ * 真值源：后端 ActionCatalog 69 码 × execMode 列（AI_DIRECT / AI_GENERATE / HUMAN_GATE）。
+ */
+export const EXEC_MODE_TEXT: Record<string, string> = {
+  AI_DIRECT: 'AI 直接执行',
+  AI_GENERATE: 'AI 生成草稿',
+  HUMAN_GATE: '人工评审 Gate',
+};
+
+export const EXEC_MODE_TONE: Record<string, string> = {
+  AI_DIRECT: 'processing',
+  AI_GENERATE: 'warning',
+  HUMAN_GATE: 'error',
+};
+
+export function execModeText(mode: null | string | undefined, fallback = '—'): string {
+  if (!mode) return fallback;
+  return EXEC_MODE_TEXT[mode] ?? fallback;
+}
+
+export function execModeTone(mode: null | string | undefined, fallback = 'default'): string {
+  if (!mode) return fallback;
+  return EXEC_MODE_TONE[mode] ?? fallback;
+}
+
+/**
+ * AI 任务状态中文（R221 outbox 状态机：PENDING→RUNNING→SUCCEEDED/FAILED/DEAD）。
+ * DEAD = ≥3 次退避失败后转人工介入（视觉必须区别于普通 FAILED）。
+ */
+export const AI_TASK_STATUS_TEXT: Record<string, string> = {
+  DEAD: '已转人工',
+  FAILED: '已失败',
+  PENDING: '待执行',
+  RUNNING: '执行中',
+  SUCCEEDED: '已成功',
+};
+
+export const AI_TASK_STATUS_TONE: Record<string, string> = {
+  DEAD: 'error',
+  FAILED: 'warning',
+  PENDING: 'default',
+  RUNNING: 'processing',
+  SUCCEEDED: 'success',
+};
+
+export function aiTaskStatusText(status: null | string | undefined, fallback = '—'): string {
+  if (!status) return fallback;
+  return AI_TASK_STATUS_TEXT[status] ?? fallback;
+}
+
+export function aiTaskStatusTone(status: null | string | undefined, fallback = 'default'): string {
+  if (!status) return fallback;
+  return AI_TASK_STATUS_TONE[status] ?? fallback;
+}
+
+/**
+ * 69 码 → execMode 静态映射（R236 §5 SSOT 矩阵，与后端 ActionCatalog 逐行对齐）。
+ * 用途：flow.vue 在尚无 AI 任务时仍可展示节点的执行模式徽标——`/stage-actions` 的 VO 不带
+ * execMode，只有已产生 AI 任务时 AiAgentTaskView 才带，故此处存一份前端副本。
+ * 维护纪律：后端 ActionCatalog 改档位须同步此表——由后端哨兵
+ * `ExecutorCoverageSentinelTest#frontEndExecModeMapMatchesActionCatalog` 跨仓逐码对账，
+ * 不同步即红（跨仓定位用 IPD_FE_SHARED_DIR，与 guard 契约测试同一约定）。
+ */
+export const ACTION_EXEC_MODE: Record<string, string> = {
+  C01: 'AI_GENERATE', C02: 'AI_GENERATE', C03: 'AI_GENERATE', C04: 'AI_GENERATE',
+  C05: 'AI_GENERATE', C06: 'AI_GENERATE', C07: 'AI_DIRECT', C08: 'AI_DIRECT',
+  C09: 'AI_DIRECT', C10: 'AI_DIRECT', C11: 'HUMAN_GATE', C12: 'AI_GENERATE',
+  P01: 'AI_GENERATE', P02: 'AI_DIRECT', P03: 'AI_GENERATE', P04: 'AI_GENERATE',
+  P05: 'AI_GENERATE', P06: 'AI_GENERATE', P07: 'AI_GENERATE', P08: 'AI_DIRECT',
+  P09: 'AI_DIRECT', P10: 'AI_DIRECT', P11: 'AI_GENERATE', P12: 'AI_DIRECT',
+  P13: 'HUMAN_GATE',
+  D01: 'AI_GENERATE', D02: 'AI_DIRECT', D03: 'AI_DIRECT', D04: 'AI_GENERATE',
+  D05: 'HUMAN_GATE', D06: 'AI_GENERATE', D07: 'AI_DIRECT', D08: 'AI_DIRECT',
+  D09: 'AI_DIRECT', D10: 'AI_DIRECT', D11: 'AI_DIRECT',
+  V01: 'AI_DIRECT', V02: 'AI_DIRECT', V03: 'AI_DIRECT', V04: 'AI_DIRECT',
+  V05: 'AI_DIRECT', V06: 'AI_GENERATE', V07: 'AI_GENERATE', V08: 'AI_GENERATE',
+  V09: 'AI_DIRECT', V10: 'AI_DIRECT', V11: 'AI_DIRECT', V12: 'AI_DIRECT',
+  L01: 'AI_GENERATE', L02: 'AI_DIRECT', L03: 'AI_GENERATE', L04: 'AI_GENERATE',
+  L05: 'AI_DIRECT', L06: 'AI_DIRECT', L07: 'HUMAN_GATE', L08: 'AI_DIRECT',
+  LC01: 'AI_DIRECT', LC02: 'HUMAN_GATE', LC03: 'AI_DIRECT', LC04: 'AI_DIRECT',
+  LC05: 'AI_DIRECT', LC06: 'AI_DIRECT', LC07: 'AI_DIRECT', LC08: 'AI_GENERATE',
+  LC09: 'AI_DIRECT',
+  K01: 'AI_DIRECT', K02: 'AI_DIRECT', K03: 'AI_DIRECT', K04: 'AI_DIRECT',
+};

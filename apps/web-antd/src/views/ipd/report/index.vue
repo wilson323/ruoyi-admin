@@ -31,6 +31,7 @@ import {
   type ReportSummaryPage,
   type ReportSummaryRow,
 } from '../../../api/ipd/report';
+import AiSuggest from '../_shared/ai-suggest.vue';
 
 const auth = useIpdAuthStore();
 const personType = computed(() => auth.identity?.person.personType ?? '');
@@ -112,6 +113,16 @@ async function goPage(next: number): Promise<void> {
         <p>以流程效率和质量为主，不公开个人排行榜；建议仅供治理者审阅，不自动修改 SOP。</p>
       </div>
     </header>
+
+    <!-- AI-P3：自然语言查报表（userPrompt 必填，projectId 可选=跨项目导航） -->
+    <div style="margin-bottom: 16px">
+      <AiSuggest
+        scene="report.nl-query"
+        needs-prompt
+        label="AI 报表问答"
+        data-testid="report-ai-nl-query"
+      />
+    </div>
 
     <section class="surface summary-section">
       <div class="section-title">

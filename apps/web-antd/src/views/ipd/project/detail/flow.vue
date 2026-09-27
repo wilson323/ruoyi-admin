@@ -8,6 +8,11 @@
  * R215 GAP-F8（2026-09-25）：追加「项目 SOP 快照」Drawer（GET /sop-templates/instances?
  * projectId=，service IDOR 项目成员可见）；模板实例化 instantiate 归 GAP-B2 等 owner 拍板，本页不接按钮。
  *
+ * R236（2026-09-27）：节点级 AI 执行状态可视化——每个动作呈现 execMode 徽标 +
+ * AI 任务态（PENDING/RUNNING/SUCCEEDED/FAILED/DEAD）+ 产物链接 + 人审标识。
+ * 数据来源：GET /ai-agent-tasks?projectId=（AiAgentTaskView 只读投影）。
+ * 轮询策略：进入页面拉一次 + 手动刷新按钮，不起高频定时器。
+ *
  * 规格 vs 代码差异（G-04 以代码为准）：
  * - key-gates 五节点签署链（P2-5）后端未交付，阶段推进以 gate-checklist 只读清单呈现；
  * - 动作 stageId 是阶段表外键，无 stageId→编码映射端点，动作表不做阶段分组；
@@ -25,6 +30,7 @@ import {
   Steps,
   Table,
   Tag,
+  Tooltip,
   message,
 } from 'ant-design-vue';
 
@@ -35,9 +41,21 @@ import {
   type GateChecklistView,
   type Project,
 } from '../../../../api/ipd/project';
-import { listStageActions, type StageAction } from '../../../../api/ipd/stage-action';
+import {
+  fetchAiAgentTasksByProject,
+  listStageActions,
+  type AiAgentTaskView,
+  type StageAction,
+} from '../../../../api/ipd/stage-action';
 import { listSopTemplateInstances, type IpdSopInstance } from '../../../../api/ipd/sop-template';
 import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
+import {
+  ACTION_EXEC_MODE,
+  aiTaskStatusText,
+  aiTaskStatusTone,
+  execModeText,
+  execModeTone,
+} from '../../_shared/ipd-enums';
 import {
   STAGE_ORDER,
   actionStatusColor,
@@ -58,6 +76,62 @@ const loadError = ref<unknown>(null);
 const project = ref<null | Project>(null);
 const actions = ref<StageAction[]>([]);
 
+// ---------- R236 AI 任务状态 ----------
+
+const aiTasks = ref<AiAgentTaskView[]>([]);
+const aiTasksLoading = ref(false);
+
+/** 按 stageActionId 归并最新一条任务（create_time DESC，后端已排序，取首条即最新）。 */
+const aiTaskByActionId = computed(() => {
+  const map = new Map<string, AiAgentTaskView>();
+  for (const task of aiTasks.value) {
+    const key = task.stageActionId ? String(task.stageActionId) : '';
+    if (key && !map.has(key)) map.set(key, task);
+  }
+  return map;
+});
+
+/** 按 actionCode 归并最新一条任务（stageActionId 缺失时的回退匹配）。 */
+const aiTaskByCode = computed(() => {
+  const map = new Map<string, AiAgentTaskView>();
+  for (const task of aiTasks.value) {
+    const key = task.actionCode ?? '';
+    if (key && !map.has(key)) map.set(key, task);
+  }
+  return map;
+});
+
+/** 获取动作对应的 AI 任务（优先 stageActionId 精确匹配，回退 actionCode）。 */
+function taskForAction(action: Record<string, any>): AiAgentTaskView | undefined {
+  return aiTaskByActionId.value.get(String(action.id))
+    ?? aiTaskByCode.value.get(action.actionCode ?? '');
+}
+
+/** 获取动作的 execMode（优先从 AI 任务取，回退静态 69 码映射）。 */
+function execModeForAction(action: Record<string, any>): string {
+  const task = taskForAction(action);
+  if (task?.execMode) return task.execMode;
+  return ACTION_EXEC_MODE[action.actionCode ?? ''] ?? '';
+}
+
+/** 是否需人工确认（AI_GENERATE = 草稿待人审；HUMAN_GATE = 否决项必须人判）。 */
+function needsHumanReview(action: Record<string, any>): boolean {
+  const mode = execModeForAction(action);
+  return mode === 'AI_GENERATE' || mode === 'HUMAN_GATE';
+}
+
+async function loadAiTasks(): Promise<void> {
+  aiTasksLoading.value = true;
+  try {
+    aiTasks.value = await fetchAiAgentTasksByProject(projectId.value);
+  } catch {
+    // AI 任务加载失败不阻断主页面（降级为无 AI 状态展示）
+    aiTasks.value = [];
+  } finally {
+    aiTasksLoading.value = false;
+  }
+}
+
 async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
@@ -65,7 +139,7 @@ async function load(): Promise<void> {
     const [detail, rows] = await Promise.all([getProject(projectId.value), listStageActions(projectId.value)]);
     project.value = detail;
     actions.value = rows;
-    await loadChecklist();
+    await Promise.all([loadChecklist(), loadAiTasks()]);
   } catch (cause) {
     loadError.value = cause;
   } finally {
@@ -152,8 +226,10 @@ const checklistColumns = [
 const actionColumns = [
   { dataIndex: 'actionCode', key: 'actionCode', title: '编码', width: 130 },
   { dataIndex: 'actionName', key: 'actionName', title: '动作名称' },
+  { key: 'execMode', title: 'AI 模式', width: 150 },
   { key: 'depth', title: '管理类型', width: 110 },
   { key: 'status', title: '状态', width: 100 },
+  { key: 'aiStatus', title: 'AI 任务', width: 130 },
   { dataIndex: 'ownerRole', key: 'ownerRole', title: '责任角色', width: 120 },
   { key: 'dueDate', title: '截止日期', width: 130 },
   { key: 'actions', title: '操作', width: 110 },
@@ -166,6 +242,13 @@ function openAction(row: Record<string, any>): void {
       message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
     });
   }
+}
+
+/** AI 文档跳转（aiDocId 非空时可跳 AI 文档详情页）。 */
+function openAiDoc(docId: string): void {
+  router.push(`/ipd/ai-docs/${docId}`).catch((err: unknown) => {
+    message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
+  });
 }
 
 const actionPagination = computed(() => ({
@@ -321,22 +404,57 @@ const sopColumns = [
 
       <Card title="阶段动作（全项目）">
         <template #extra>
-          <Button size="small" @click="openSopSnapshots">项目 SOP 快照</Button>
+          <Space>
+            <Button :loading="aiTasksLoading" size="small" @click="loadAiTasks">刷新 AI 状态</Button>
+            <Button size="small" @click="openSopSnapshots">项目 SOP 快照</Button>
+          </Space>
         </template>
         <Table
           :columns="actionColumns"
           :data-source="actions"
           :pagination="actionPagination"
-          :scroll="{ x: 900 }"
+          :scroll="{ x: 1200 }"
           row-key="id"
           size="small"
         >
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'depth'">
+            <template v-if="column.key === 'execMode'">
+              <Tooltip :title="execModeForAction(record) || '未配置'">
+                <Tag :color="execModeTone(execModeForAction(record))">
+                  {{ execModeText(execModeForAction(record)) }}
+                </Tag>
+                <span
+                  v-if="needsHumanReview(record)"
+                  class="ml-1 text-xs text-orange-600"
+                >需人工确认</span>
+              </Tooltip>
+            </template>
+            <template v-else-if="column.key === 'depth'">
               <Tag :color="depthColor(record.depth)">{{ depthText(record.depth) }}</Tag>
             </template>
             <template v-else-if="column.key === 'status'">
               <Tag :color="actionStatusColor(record.status)">{{ actionStatusText(record.status) }}</Tag>
+            </template>
+            <template v-else-if="column.key === 'aiStatus'">
+              <template v-if="taskForAction(record)">
+                <Tag
+                  :color="aiTaskStatusTone(taskForAction(record)!.status)"
+                  :class="{ 'font-bold': taskForAction(record)!.status === 'DEAD' }"
+                >
+                  {{ aiTaskStatusText(taskForAction(record)!.status) }}
+                </Tag>
+                <Tooltip v-if="taskForAction(record)!.status === 'DEAD'" title="≥3 次退避失败，已转人工介入">
+                  <span class="ml-1 text-xs text-red-600">⚠ 人工介入</span>
+                </Tooltip>
+                <Button
+                  v-if="taskForAction(record)!.status === 'SUCCEEDED' && taskForAction(record)!.aiDocId"
+                  class="ml-1"
+                  size="small"
+                  type="link"
+                  @click="openAiDoc(String(taskForAction(record)!.aiDocId))"
+                >产物</Button>
+              </template>
+              <span v-else class="text-muted-foreground text-xs">—</span>
             </template>
             <template v-else-if="column.key === 'dueDate'">
               {{ record.dueDate ? projectDateText(record.dueDate) : '—' }}
@@ -348,6 +466,9 @@ const sopColumns = [
         </Table>
         <div class="text-muted-foreground mt-2 text-xs">
           深管动作完成需登记交付物、轻管动作需录入实际完成日期等字段（BR-IPD-03/04），操作在动作详情页进行。
+          <span class="ml-2">AI 模式说明：<Tag color="processing" size="small">AI 直接执行</Tag>全自动
+            <Tag class="ml-1" color="warning" size="small">AI 生成草稿</Tag>草稿待人审
+            <Tag class="ml-1" color="error" size="small">人工评审 Gate</Tag>否决项必须人判（AI 不代签）。</span>
         </div>
       </Card>
 
