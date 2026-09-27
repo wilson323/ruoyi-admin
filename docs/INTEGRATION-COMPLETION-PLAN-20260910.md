@@ -244,7 +244,10 @@ const sseAddr = `${apiURL}/resource/sse?...`;
 任务 2/3 涉及跨仓（ruoyi-ai 后端），按 OPS-09 软化纪律，需先确认：
 
 1. **任务 1**：是否立即执行（推荐：是，单字段修改）
+   - ✅ 过期——已拍板并执行（2026-09-11）：方案 B 落地，`router/routes/modules/ipd.ts:379` AI 文档助手 meta 现查已含 `order: 1.5`，本问无需再裁。
 2. **任务 2**：是否启动（推荐：是，但需确认兄弟会话不在 ruoyi-ai 在途改 SseController）
+   - ✅ 过期——SSE 404 已修（2026-09-11）：`utils/message.ts:27-29` 现查已消除双 `/v1` 拼接（`${apiURL}/resource/sse`，apiURL 含 /api/v1，vite 原样转发至后端 `IpdSseController`）；token 源同步切 `useIpdAuthStore().token`（message.ts:20-22）。本问无需再裁。
 3. **任务 3**：是否启动（推荐：是，但工作量 1-2 天，是否拆分为 P3-MENU-SQL + P3-MENU-后端 + P3-MENU-前端 三步？）
+   - ⚠️ 未核（2026-09-27 文档订正轮现查）：`preferences.ts:14` 已配 `accessMode: 'backend'`，但未找到 sys_menu 登记 IPD 业务菜单的 SQL/代码证据（`docs/script/sql/update/` 无 menu 脚本、ruoyi-system resources 无 ipd 菜单项），IPD 侧栏仍由前端路由生成——/menu 拆分是否落地无法核实，本问维持待裁。
 
 **本计划不含 commit**（仅设计），每个任务单独 commit。

@@ -48,7 +48,7 @@
    ```typescript
    canSupplement: boolean;        // 业务规则判定（截止时间前 + 状态合法）
    canWithdraw: boolean;          // 同上
-   supplementDeadlineAt: null | string;  // 补登截止时间（前端 UI 倒计时）
+   supplementDeadlineAt: null | string;  // 补登截止时间（前端 UI 倒计时）—— ✂ 后端判定为文档笔误，已裁砍除（20260927 待拍板梳理 §7.3 E4-A 案）；PortalDemandTrace 不交付该字段
    ```
 
 3. **业务码映射**（前端 ipd-error-text.ts 域 fallback 已知 7 个 code，40401 待域 fallback）：
@@ -108,11 +108,13 @@
 
 | 条件 | 状态 |
 |---|---|
-| 后端 PublicPortalController 暴露 supplement 端点 | ⏳ |
-| 后端 PublicPortalController 暴露 withdraw 端点 | ⏳ |
-| PortalDemandTrace 响应含 canSupplement / canWithdraw 字段 | ⏳ |
-| 前端 portal.ts + status/index.vue 接入三件 | ⏳ |
+| 后端 PublicPortalController 暴露 supplement 端点 | ✅（后端 77d128ec，2026-09-27） |
+| 后端 PublicPortalController 暴露 withdraw 端点 | ✅（后端 77d128ec，2026-09-27） |
+| PortalDemandTrace 响应含 canSupplement / canWithdraw 字段 | ✅（后端已交付；前端已消费 portal.ts:62-63/221-222） |
+| 前端 portal.ts + status/index.vue 接入三件 | ✅（dd48cc1：supplementDemand/withdrawDemand + status 页按 canSupplement/canWithdraw 渲染补登/撤回按钮） |
 | vitest 全绿 + typecheck 0 + 真 HTTP 端到端验证 | ⏳ |
+
+> 📌 2026-09-27 订正：前 4 项已闭环（后端 77d128ec + 前端 dd48cc1）。第 5 项部分达成——vitest 1471 绿 / check:type 0 已留证于 dd48cc1，真 HTTP 端到端联调（需后端 16039 重启）待验，本项维持 ⏳。`supplementDeadlineAt` 已按 E4-A 案裁砍，不再列为闭环条件。
 
 **全部 ⏳ 变 ✅ 才能从 todo 推到 done**。建议每条件由 owner / 后端会话起单卡触发。
 

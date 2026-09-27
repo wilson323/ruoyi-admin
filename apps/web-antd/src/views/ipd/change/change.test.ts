@@ -895,40 +895,45 @@ describe('IPD change page (prototype ChangesPage)', () => {
     wrapper.unmount();
   });
 
-  // ========== Flow 7: 重复点击/防抖（BUG-1 高发区·现状钉扎） ==========
-  // BUG-1（已登记报告）：决策按钮无 in-flight 守卫与防抖，响应返回前连点会双发写请求。
-  // 下面两例在「响应挂起窗口」内连点并钉扎现状（2 个请求）；修复后断言应翻转为 1。
+  // ========== Flow 7: 重复点击/防抖（BUG-1 · E5 修复后断言） ==========
+  // E5 修复（裁决 A）：决策按钮接 in-flight 锁 actionBusy（行级键 submit:${id} / sign:${id}），
+  // 首部守卫 + 按钮 disabled 吞掉响应返回前的连点。下面两例在「响应挂起窗口」内连点，
+  // 断言只发 1 个写请求且按钮禁用、文案切换（对齐 create 路径剧本 L801-825 的语义）。
 
-  it('pins BUG-1 double-fire: two clicks on 提交双签 emit two PUT submit requests in flight', async () => {
+  it('guards BUG-1 double-fire: two clicks on 提交双签 emit only one PUT submit request in flight', async () => {
     const hold = gate();
     const calls = stubApi({ deferred: [{ gate: hold, match: (method, url) => method === 'PUT' && url === '/api/v1/requirement-changes/33/submit' }] });
     const wrapper = await mountChange();
-    const submitButton = () => wrapper.findAll('.change-cards article')[2]?.findAll('button').find((button) => button.text() === '提交双签');
-    await submitButton()?.trigger('click');
-    await submitButton()?.trigger('click');
-    // 现状（BUG-1）：2 次点击 → 2 个 PUT /submit；期望行为应只发 1 个
-    expect(calls.filter((call) => call.url === '/api/v1/requirement-changes/33/submit').length).toBe(2);
-    // 伴生证据：在途按钮未置灰/未禁用（无 in-flight 守卫）
-    expect(submitButton()?.attributes('disabled')).toBeUndefined();
+    const actionButtons = () => wrapper.findAll('.change-cards article')[2]?.findAll('.decision-buttons button') ?? [];
+    await actionButtons()[0]?.trigger('click');
+    await actionButtons()[0]?.trigger('click');
+    // 修复后断言：2 次点击 → 1 个 PUT /submit（actionBusy 守卫拦下第二次）
+    expect(calls.filter((call) => call.url === '/api/v1/requirement-changes/33/submit').length).toBe(1);
+    // 伴生证据：在途按钮置灰禁用 + 文案切「提交中…」（同 create 路径剧本）
+    const pendingBtn = actionButtons().find((button) => button.text() === '提交中…');
+    expect(pendingBtn).toBeDefined();
+    expect(pendingBtn?.attributes('disabled')).toBeDefined();
     const listCallsBefore = calls.filter((call) => call.url.startsWith('/api/v1/requirement-changes?')).length;
     hold.resolve();
-    // 每个请求成功后各自触发 loadChanges 重载（进一步放大重复请求）
+    // 成功响应后单次触发 loadChanges 重载，finally 释放 in-flight 锁
     await vi.waitFor(() => {
       expect(calls.filter((call) => call.url.startsWith('/api/v1/requirement-changes?')).length).toBeGreaterThan(listCallsBefore);
     });
     wrapper.unmount();
   });
 
-  it('pins BUG-1 double-fire: two clicks on 拒绝 emit two PUT sign requests in flight', async () => {
+  it('guards BUG-1 double-fire: two clicks on 拒绝 emit only one PUT sign request in flight', async () => {
     const hold = gate();
     const calls = stubApi({ deferred: [{ gate: hold, match: (method, url) => method === 'PUT' && url === '/api/v1/requirement-changes/31/sign?decision=REJECT' }] });
     const wrapper = await mountChange();
-    const rejectButton = () => wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '拒绝');
-    await rejectButton()?.trigger('click');
-    await rejectButton()?.trigger('click');
-    // 现状（BUG-1）：2 次点击 → 2 个 PUT /sign?decision=REJECT；期望行为应只发 1 个
-    expect(calls.filter((call) => call.url === '/api/v1/requirement-changes/31/sign?decision=REJECT').length).toBe(2);
-    expect(rejectButton()?.attributes('disabled')).toBeUndefined();
+    const actionButtons = () => wrapper.findAll('.change-cards article')[0]?.findAll('.decision-buttons button') ?? [];
+    await actionButtons()[0]?.trigger('click');
+    await actionButtons()[0]?.trigger('click');
+    // 修复后断言：2 次点击 → 1 个 PUT /sign?decision=REJECT（行级锁 sign:31 拦下第二次）
+    expect(calls.filter((call) => call.url === '/api/v1/requirement-changes/31/sign?decision=REJECT').length).toBe(1);
+    const pendingBtn = actionButtons().find((button) => button.text() === '签署中…');
+    expect(pendingBtn).toBeDefined();
+    expect(pendingBtn?.attributes('disabled')).toBeDefined();
     hold.resolve();
     const listCallsBefore = calls.filter((call) => call.url.startsWith('/api/v1/requirement-changes?')).length;
     await vi.waitFor(() => {
@@ -953,19 +958,20 @@ describe('IPD change page (prototype ChangesPage)', () => {
     wrapper.unmount();
   });
 
-  it('gap: decision buttons stay rendered under a removing access directive (no v-access bound)', async () => {
+  it('hides decision buttons under a removing access directive (v-access bound post-E5)', async () => {
     stubApi();
     // vitest.ipd.setup.ts 约定：用「mounted 即移除」的 access 指令模拟无权限用户
     const wrapper = mount(Change, {
       global: { directives: { access: { mounted(el: HTMLElement) { el.remove(); } } } },
     });
     await vi.waitFor(() => expect(wrapper.text()).toContain('变更单 #31'));
-    // 缺口现状：本页决策按钮未绑定 v-access:code（IPD_PERMISSION_CODES.REQUIREMENT_CHANGE_SUBMIT/SIGN
-    // 均未被引用），无权限指令下按钮不隐藏也不置灰；修复（补权限码显隐）后本用例需翻转为「按钮不渲染」
+    // E5 修复后断言：本页决策按钮已绑 v-access:code（IPD_PERMISSION_CODES.REQUIREMENT_CHANGE_SUBMIT/SIGN），
+    // 无权限指令下按钮不渲染；决策按钮容器 div 本身不受指令影响仍在（收紧不放宽：无权即隐藏写口）
     const draftButtons = wrapper.findAll('.change-cards article')[2]?.findAll('.decision-buttons button').map((btn) => btn.text()) ?? [];
-    expect(draftButtons).toEqual(['提交双签']);
+    expect(draftButtons).toEqual([]);
     const signButtons = wrapper.findAll('.change-cards article')[0]?.findAll('.decision-buttons button').map((btn) => btn.text()) ?? [];
-    expect(signButtons).toEqual(['拒绝', '同意签署']);
+    expect(signButtons).toEqual([]);
+    expect(wrapper.findAll('.decision-buttons').length).toBe(2);
     wrapper.unmount();
   });
 
@@ -1140,15 +1146,16 @@ describe('IPD change page (prototype ChangesPage)', () => {
 
   // ========== Flow 11: 加载态与空列表 ==========
 
-  it('gap: shows the empty state while the list request is still in flight', async () => {
+  it('shows a loading state instead of the empty state while the list request is in flight', async () => {
     const hold = gate();
     const calls = stubApi({ deferred: [{ gate: hold, match: (method, url) => method === 'GET' && url.startsWith('/api/v1/requirement-changes?') }] });
     const wrapper = mount(Change);
     await vi.waitFor(() => expect(calls.some((call) => call.url.startsWith('/api/v1/requirement-changes?'))).toBe(true));
-    // 缺口现状：loading ref 未接线进模板，请求在途即渲染空态（误报「暂无变更申请单」）
-    expect(wrapper.find('.business-list .empty-state').exists()).toBe(true);
-    expect(wrapper.text()).toContain('暂无变更申请单');
-    expect(wrapper.text()).not.toContain('加载中');
+    // E5 修复后断言：loading ref 已接线进模板（仿 handover !pendingList.length && !pendingBusy 短路）——
+    // 请求在途渲染加载态，不再误报空态文案
+    expect(wrapper.find('.business-list .empty-state').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('暂无变更申请单');
+    expect(wrapper.text()).toContain('加载中');
     hold.resolve();
     await vi.waitFor(() => expect(wrapper.text()).toContain('变更单 #31'));
     // 数据到达后空态退场、卡片进场

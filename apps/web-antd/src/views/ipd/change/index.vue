@@ -16,6 +16,8 @@
   4. 发起弹窗：原型 排期影响/成本影响 数字输入 → 本仓为四维度影响快照 JSON（before/after）；
      关联需求下拉接入 DemandController.list（按当前项目 productId 过滤），2026-09-07 修复。
   5. 决策按钮：DRAFT→提交双签；PENDING_SIGN→拒绝/同意签署（服务端校验 MARKET_PM/RD_PM）。
+     E5 修复（2026-09-27，裁决 A）：决策按钮补 v-access:code 权限码显隐（REQUIREMENT_CHANGE_SUBMIT/SIGN）
+     + actionBusy 行级 in-flight 锁（disabled +「提交中…/签署中…」文案，杜绝双发）；loading 接列表空态短路。
   6. 「需求变更五节点链」面板：本仓为双PM两节点模型，五节点协作链（/api/collaboration）
      后端未交付，按原型渲染外壳与空态并如实登记，不做假数据。
 -->
@@ -42,6 +44,8 @@ import { listProjects, type Project } from '../../../api/ipd/project';
 import { fetchDemands, type IpdDemand } from '../../../api/ipd/demand';
 import { ipdErrorText } from '../_shared/ipd-error-text';
 import { changeStateLabel } from '../_shared/ipd-enums';
+import { IPD_PERMISSION_CODES } from '../_shared/ipd-permission-codes';
+import AiSuggest from '../_shared/ai-suggest.vue';
 
 /** V6 系统漂移修复：状态机集中查表（_shared/ipd-state-machines.CHANGE_STATUS_MACHINE），
  *  本页仅留展示别名映射（CSS 类名 → tone）。 */
@@ -70,6 +74,12 @@ const changes = ref<RequirementChange[]>([]);
 const total = ref(0);
 const modalOpen = ref(false);
 const submitting = ref(false);
+/** E5 修复（BUG-1）：决策动作 in-flight 锁，仿本页 create 路径 submitting 先例。
+ *  行级键 submit:${id} / sign:${id}；锁期间该行决策按钮 disabled + 文案切「提交中…/签署中…」。
+ *  守卫按键位等值判定拦下同行连点（杜绝双发，change.test.ts Flow 7 钉扎）；
+ *  不同行的动作互不串行阻塞——若用全局真值守卫，finally 在 await loadChanges() 之后才复位，
+ *  锁窗口覆盖整个重载 RTT，会误吞既有的跨行顺序操作剧本（submits-and-signs 用例实证）。 */
+const actionBusy = ref('');
 const createError = ref('');
 const createForm = ref({ afterSnapshot: '', beforeSnapshot: '', changeType: '', reason: '', requirementId: '' });
 const demands = ref<IpdDemand[]>([]);
@@ -144,16 +154,24 @@ watch(activeId, () => {
 });
 
 async function submitForSign(item: RequirementChange): Promise<void> {
+  const key = `submit:${item.id}`;
+  if (actionBusy.value === key) return;
+  actionBusy.value = key;
   try {
     await submitRequirementChange(item.id);
     message.success('变更单已进入双签队列');
     await loadChanges();
   } catch (cause) {
     message.error(ipdErrorText(cause, { domain: 'project' }));
+  } finally {
+    if (actionBusy.value === key) actionBusy.value = '';
   }
 }
 
 async function sign(item: RequirementChange, decision: 'APPROVE' | 'REJECT'): Promise<void> {
+  const key = `sign:${item.id}`;
+  if (actionBusy.value === key) return;
+  actionBusy.value = key;
   try {
     const updated = await signRequirementChange(item.id, decision);
     message.success(
@@ -166,6 +184,8 @@ async function sign(item: RequirementChange, decision: 'APPROVE' | 'REJECT'): Pr
     await loadChanges();
   } catch (cause) {
     message.error(ipdErrorText(cause, { domain: 'project' }));
+  } finally {
+    if (actionBusy.value === key) actionBusy.value = '';
   }
 }
 
@@ -302,14 +322,49 @@ async function createChange(): Promise<void> {
           </details>
           <div v-if="item.status === 'DRAFT' || item.status === 'PENDING_SIGN'" class="decision-buttons change-actions">
             <template v-if="item.status === 'DRAFT'">
-              <button type="button" @click="submitForSign(item)">提交双签</button>
+              <!-- E5 修复：v-access 权限码显隐（R234 镜像后端孤码）+ actionBusy 行级在途锁（仿 handover/sop-template 先例） -->
+              <button
+                v-access:code="[IPD_PERMISSION_CODES.REQUIREMENT_CHANGE_SUBMIT]"
+                type="button"
+                :disabled="actionBusy === `submit:${item.id}`"
+                @click="submitForSign(item)"
+              >
+                {{ actionBusy === `submit:${item.id}` ? '提交中…' : '提交双签' }}
+              </button>
             </template>
             <template v-else>
-              <button type="button" @click="sign(item, 'REJECT')">拒绝</button>
-              <button type="button" @click="sign(item, 'APPROVE')">同意签署</button>
+              <button
+                v-access:code="[IPD_PERMISSION_CODES.REQUIREMENT_CHANGE_SIGN]"
+                type="button"
+                :disabled="actionBusy === `sign:${item.id}`"
+                @click="sign(item, 'REJECT')"
+              >
+                {{ actionBusy === `sign:${item.id}` ? '签署中…' : '拒绝' }}
+              </button>
+              <button
+                v-access:code="[IPD_PERMISSION_CODES.REQUIREMENT_CHANGE_SIGN]"
+                type="button"
+                :disabled="actionBusy === `sign:${item.id}`"
+                @click="sign(item, 'APPROVE')"
+              >
+                {{ actionBusy === `sign:${item.id}` ? '签署中…' : '同意签署' }}
+              </button>
             </template>
           </div>
+          <AiSuggest
+            scene="change.impact-analyze"
+            :entity-id="String(item.id)"
+            :project-id="activeId"
+            label="AI 影响面分析"
+            data-testid="change-ai-impact"
+          />
         </article>
+      </div>
+      <!-- E5 修复：loading 接线空态短路（仿 handover 待移交清单 !pendingList.length && !pendingBusy 写法），
+           请求在途渲染加载态，不再误报「暂无变更申请单」 -->
+      <div v-else-if="loading" class="loading-state">
+        <SyncOutlined spin />
+        <strong>加载中…</strong>
       </div>
       <div v-else class="empty-state">
         <div><SyncOutlined /></div>
@@ -771,6 +826,21 @@ async function createChange(): Promise<void> {
   min-height: 200px;
   color: var(--ipd-muted);
   text-align: center;
+}
+
+.loading-state {
+  display: grid;
+  gap: 10px;
+  place-content: center;
+  justify-items: center;
+  min-height: 200px;
+  color: var(--ipd-muted);
+  text-align: center;
+}
+
+.loading-state :deep(.anticon) {
+  font-size: 24px;
+  color: var(--ipd-blue);
 }
 
 .empty-state > div {
