@@ -60,3 +60,7 @@ apps/web-antd/types/components.d.ts
 .serena/
 .claude-flow/
 .harness/.backup/
+
+# Local tooling noise directories (2026-09-27)
+.qoder/
+.harness/audit/
