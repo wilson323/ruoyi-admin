@@ -17,8 +17,9 @@ import {
 } from '../../../../api/ipd/contribution';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
 import { formatDateTime } from '../../_shared/format';
+import BackendPending from '../../_shared/backend-pending.vue';
 
-defineOptions({ name: 'IpdContribution', meta: { ipdCard: 'P0-10.35' } });
+defineOptions({ name: 'IpdContribution', meta: { ipdBackend: 'ContributionController 已交付：GET /contributions/{projectId}、GET /{projectId}/versions。', ipdCard: 'P0-10.35' } });
 
 const projectId = ref('');
 const view = ref<null | ContributionView>(null);
@@ -159,5 +160,7 @@ const versionColumns = [
         </template>
       </Table>
     </Card>
+
+    <BackendPending class="mt-4" />
   </div>
 </template>

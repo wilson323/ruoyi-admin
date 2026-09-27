@@ -60,6 +60,7 @@ import { formatDateTime, formatMoney, formatPercent, PENDING_TEXT } from '../../
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 import { ZK_RULE_BONUS_POOL_FORMULA, renderRulesDescription } from '../../_shared/zk-ipd-rules';
 import { bonusStateLabel, bonusStateTone, STATUS_TONE } from '../../_shared/ipd-enums';
+import BackendPending from '../../_shared/backend-pending.vue';
 
 /** 与 layouts/ipd.vue 阶段轨道全局项目下拉共用同一持久化键。 */
 const CURRENT_PROJECT_KEY = 'ipd:current-project';
@@ -789,5 +790,7 @@ const columns = [
         </template>
       </Table>
     </Card>
+
+    <BackendPending class="mt-4" />
   </div>
 </template>

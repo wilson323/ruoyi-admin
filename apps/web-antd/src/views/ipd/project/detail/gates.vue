@@ -18,6 +18,7 @@ import { useRoute } from 'vue-router';
 import { Alert, Button, Card, Empty, Input, Table, Tag } from 'ant-design-vue';
 
 import GatePanel from '../../review/gate-panel.vue';
+import BackendPending from '../../_shared/backend-pending.vue';
 import { type ProjectGateItem, listProjectGates } from '../../../../api/ipd/gate-review';
 import { formatDateTime } from '../../_shared/format';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
@@ -155,6 +156,8 @@ function fmtDate(value: null | number | string | undefined): string {
       reopen（round+1，第 3 轮组长列席）、超管延期（最多 3 次）、组长仲裁、超管终裁——按 GateReviewController 契约 1:1 渲染。
       材料归档（FormData）与五节点顺序签署链为后端真缺口，未做假数据。
     </div>
+
+    <BackendPending class="mt-4" />
   </div>
 </template>
 

@@ -19,8 +19,9 @@ import {
   submitNegativeFeedback,
 } from '../../../../api/ipd/negative-feedback';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
+import BackendPending from '../../_shared/backend-pending.vue';
 
-defineOptions({ name: 'IpdNegativeFeedback', meta: { ipdCard: 'P0-10.36' } });
+defineOptions({ name: 'IpdNegativeFeedback', meta: { ipdBackend: 'NegativeFeedbackController 已交付：GET /negative-feedbacks?projectId&status、POST /{id}/submit、POST /{id}/decide、POST /{id}/lift。', ipdCard: 'P0-10.36' } });
 
 const projectId = ref('');
 const status = ref<'' | NegativeStatus>('');
@@ -260,6 +261,8 @@ async function liftAction(rawRecord: Record<string, any>): Promise<void> {
         </template>
       </Table>
     </Card>
+
+    <BackendPending class="mt-4" />
   </div>
 </template>
 

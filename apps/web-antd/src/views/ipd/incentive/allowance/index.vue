@@ -38,6 +38,7 @@ import {
   ZK_RULE_LONG_NO_OUTPUT_ALERT,
   ZK_RULE_SCORE_BELOW_60_STOP,
 } from '../../_shared/zk-ipd-rules';
+import BackendPending from '../../_shared/backend-pending.vue';
 
 defineOptions({
   name: 'IpdAllowance',
@@ -307,5 +308,7 @@ onMounted(() => {
         </template>
       </Table>
     </Card>
+
+    <BackendPending class="mt-4" />
   </div>
 </template>

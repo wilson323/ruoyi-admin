@@ -61,8 +61,9 @@ import {
   renderRulesDescription,
   ZK_RULE_SHARED_KPI_REVISION,
 } from '../../_shared/zk-ipd-rules';
+import BackendPending from '../../_shared/backend-pending.vue';
 
-defineOptions({ name: 'IpdKpiShared', meta: { ipdCard: 'P0-10.30' } });
+defineOptions({ name: 'IpdKpiShared', meta: { ipdBackend: 'SharedKpiController 已交付（W4-E + ORPHAN-A7）：GET /kpi/shared、GET /kpi/shared/confirms、GET /kpi/shared/deadline-config、POST /kpi/shared/{id}/confirm。', ipdCard: 'P0-10.30' } });
 
 /** ORPHAN-A7 #82：签署权限 = ipd:kpi-shared:confirm 持有者（GROUP_LEADER / SUPER_ADMIN）。 */
 const auth = useIpdAuthStore();
@@ -537,6 +538,8 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
         </Table>
       </template>
     </Card>
+
+    <BackendPending class="mt-4" />
   </div>
 </template>
 

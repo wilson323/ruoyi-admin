@@ -12,7 +12,7 @@ import {
  * - 菜单结构 = 原型 App.jsx navItems 15 项（12 全员 + 3 超管）；49 页导航地图同步变更中；
  * - 已实现页面的 path/name/组件不动，只对齐 title/icon/order；原型未开工的一级入口挂 pending 占位（卡号 ZK-D2 = 原型对齐裁决）；
  * - 原型非一级路由的既有页（审计日志/AI 助手/删除审核/KPI/激励）保留路由但 hideInMenu；
- * - 后端未交付的页面统一挂 _shared/backend-pending.vue，meta 记录卡号与后端依赖（ipdCard/ipdBackend）；
+ * - 后端未交付的页面统一挂 _shared/backend-pending.vue，meta 记录卡号与后端依赖（ipdCard + ipdBackend 两字段）；
  * - 项目详情 8 个子页签、动作详情、编辑页等下钻路由 hideInMenu，用 activePath 保持菜单高亮；
  * - 游客门户（38/39）独立于后台布局，单独顶层注册。
  *
@@ -90,7 +90,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
               // 页23 项目详情-Gate 评审 —— 2026-09-06 接 W3-A7：后端 GateReviewController 已交付（review/sign/reopen/arbitrate/final-ruling/extend-deadline）
               //    + 前端 gate-panel.vue 真组件；项目维度 Gate 列表端点（/api/key-gates）后端未交付，页内手动 Gate 编号输入
               component: () => import('#/views/ipd/project/detail/gates.vue'),
-              meta: { activePath: '/ipd/projects', hideInMenu: true, ipdCard: 'P0-10.23', title: 'Gate 评审' },
+              meta: { activePath: '/ipd/projects', hideInMenu: true, ipdBackend: 'ProjectController GET /projects/{id}/gates（R30 项目维度列表）+ GateReviewController GET /gates/{gateId}/review + POST /gates/{gateId}/{sign|reopen|extend-deadline|arbitrate|final-ruling}。', ipdCard: 'P0-10.23', title: 'Gate 评审' },
               name: 'IpdProjectGates', path: 'gates',
             },
             {
@@ -102,14 +102,14 @@ const ipdLayoutRoute: RouteRecordRaw = {
               // 页26 变更单详情 —— 2026-09-06 真实现：后端 GET /requirement-changes/{id} 已交付（P2-6.1），
               //    前端 IpdChangeDetail 真组件 + getRequirementChange API 函数，五态齐全
               component: () => import('#/views/ipd/project/change-detail/index.vue'),
-              meta: { activePath: '/ipd/projects', hideInMenu: true, ipdCard: 'P0-10.25', title: '变更单详情' },
+              meta: { activePath: '/ipd/projects', hideInMenu: true, ipdBackend: 'RequirementChangeController 已交付（P2-6.1）：GET /requirement-changes/{id}、POST /requirement-changes/{id}/submit、POST /requirement-changes/{id}/sign。', ipdCard: 'P0-10.25', title: '变更单详情' },
               name: 'IpdChangeDetail', path: 'change/:changeId',
             },
             {
               // 页32 项目详情-KPI —— 2026-09-06 接 W3-A6：后端 GET /kpi/{performance,functional,trend} 全交付
               //    + 前端 kpi.ts 3 函数封装 + 真组件 IpdProjectKpi（顶部 Alert 口径 + 三段预览卡片）
               component: () => import('#/views/ipd/project/detail/kpi.vue'),
-              meta: { activePath: '/ipd/projects', hideInMenu: true, ipdCard: 'P0-10.32', title: 'KPI 考核' },
+              meta: { activePath: '/ipd/projects', hideInMenu: true, ipdBackend: 'KpiRecordController 已交付：GET /kpi/performance、GET /kpi/functional、GET /kpi/trend；PostLaunchReviewController（ORPHAN-A9）GET /post-launch-reviews/pending、POST /{id}/complete。', ipdCard: 'P0-10.32', title: 'KPI 考核' },
               name: 'IpdProjectKpi',
               path: 'kpi',
             },
@@ -117,7 +117,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
             //    BonusPoolController list/compute 已交付；freeze/distribute 后端有端点页面未接在页内登记）
             {
               component: () => import('#/views/ipd/incentive/bonus-pool/index.vue'),
-              meta: { activePath: '/ipd/projects', hideInMenu: true, ipdCard: 'P0-10.37', title: '激励台账' },
+              meta: { activePath: '/ipd/projects', hideInMenu: true, ipdBackend: 'BonusPoolController 已交付：GET /bonus-pool/list?projectId&status、GET /{id}。算/冻/分操作在 /ipd/incentive/bonus-pool 页。', ipdCard: 'P0-10.37', title: '激励台账' },
               name: 'IpdProjectIncentive', path: 'incentive',
             },
             {
@@ -265,7 +265,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     //    2026-09-06 真实现：审计日志 + 工作台待办 + 奖金池三源融合，五态齐全。
     {
       component: () => import('#/views/ipd/timeline/index.vue'),
-      meta: { icon: 'lucide:book-open', ipdCard: 'ZK-D2', order: 10, title: '全流程轨迹' },
+      meta: { icon: 'lucide:book-open', ipdBackend: '无 timeline 聚合端点；以审计日志（GET /audit-logs/scope）+ 工作台（GET /workbench/summary）+ 奖金池（GET /bonus-pool/list）三源融合按时间倒序。', ipdCard: 'ZK-D2', order: 10, title: '全流程轨迹' },
       name: 'IpdTimeline', path: 'timeline',
     },
     // ⑪ 报表分析（原型 /reports；2026-09-06 复刻：P4-4.1 月度绩效汇总+三类台账导出已交付为页面主区，
@@ -300,7 +300,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
           //    端点已交付为主区；原型 12 项 KPI 表格 + KpiDrawer 填报/共担 KPI 确认链未交付
           //    在页内登记真缺口（路由 IpdKpiShared 维持真缺口，IpdKpiScore 真组件挂在下条）
           component: () => import('#/views/ipd/kpi/index.vue'),
-          meta: { access: [...(PAGE_PERMISSIONS['/ipd/kpi/functional'] ?? [])], activePath: '/ipd/performance', title: '功能 KPI' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/kpi/functional'] ?? [])], activePath: '/ipd/performance', ipdBackend: 'KpiRecordController GET /kpi/functional 已交付；FunctionalMetricController（A2 P1 + ORPHAN-A6）GET/PUT/DELETE /kpi/functional-metrics、GET /kpi/functional-metrics/codes 已交付。', title: '功能 KPI' },
           name: 'IpdKpiFunctional',
           path: 'functional',
         },
@@ -309,13 +309,13 @@ const ipdLayoutRoute: RouteRecordRaw = {
         //    前端 IpdKpiShared 真组件承载双 PM 各自归集 + revision 维度分组 + 关联奖金池列表。
         {
           component: () => import('#/views/ipd/kpi/shared/index.vue'),
-          meta: { access: [...(PAGE_PERMISSIONS['/ipd/kpi/functional'] ?? [])], activePath: '/ipd/performance', ipdCard: 'P0-10.30', title: '共担 KPI 归集' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/kpi/functional'] ?? [])], activePath: '/ipd/performance', ipdBackend: 'SharedKpiController 已交付（W4-E + ORPHAN-A7）：GET /kpi/shared、GET /kpi/shared/confirms、GET /kpi/shared/deadline-config、POST /kpi/shared/{id}/confirm。', ipdCard: 'P0-10.30', title: '共担 KPI 归集' },
           name: 'IpdKpiShared', path: 'shared',
         },
         {
           // 页31 项目绩效评定 —— 2026-09-06 复刻：ProjectScoreController（明细/结算）+ TaskController（scan）已交付为真组件
           component: () => import('#/views/ipd/kpi/project-score/index.vue'),
-          meta: { access: [...(PAGE_PERMISSIONS['/ipd/kpi/project-score'] ?? [])], ipdCard: 'P0-10.31', title: '项目绩效评定' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/kpi/project-score'] ?? [])], ipdBackend: 'ProjectScoreController 已交付：GET /project-scores/{projectId}/{personId}、POST /{projectId}/{personId}/settle；TaskController GET /project-score-tasks/my 补交已接入。', ipdCard: 'P0-10.31', title: '项目绩效评定' },
           name: 'IpdKpiScore',
           path: 'project-score',
         },
@@ -344,13 +344,13 @@ const ipdLayoutRoute: RouteRecordRaw = {
           //   UI 接 AllowanceLedger domain 真实字段（month/lockedLevel/finalAmount/capApplied/
           //   stopReason），自动扫描按钮仅超管可见。
           component: () => import('#/views/ipd/incentive/allowance/index.vue'),
-          meta: { access: [...(PAGE_PERMISSIONS['/ipd/incentive/allowance'] ?? [])], ipdCard: 'P0-10.33', title: '津贴台账' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/incentive/allowance'] ?? [])], ipdBackend: 'AllowanceLedgerController 已交付（W4-D）：GET /allowance/ledger、GET /allowance/pending-stop、POST /allowance/auto-scan（仅超管）。', ipdCard: 'P0-10.33', title: '津贴台账' },
           name: 'IpdAllowance',
           path: 'allowance',
         },
         {
           component: () => import('#/views/ipd/incentive/bonus-pool/index.vue'),
-          meta: { access: [...(PAGE_PERMISSIONS['/ipd/incentive/bonus-pool'] ?? [])], activePath: '/ipd/projects', hideInMenu: true, ipdCard: 'P0-10.34', title: '奖金池核算' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/incentive/bonus-pool'] ?? [])], activePath: '/ipd/projects', hideInMenu: true, ipdBackend: 'BonusPoolController：GET /bonus-pool/page（ORPHAN-A4 切量，PERF-P0-2）、POST /compute、POST /auto-compute、POST /coefficient/preview、POST /{id}/freeze、POST /{id}/distribute、GET /{id}；ReceiptLedgerController（ORPHAN-A5）：GET /receipt-ledgers/by-project/{projectId}、POST /receipt-ledgers、POST /receipt-ledgers/{projectId}/refunds。', ipdCard: 'P0-10.34', title: '奖金池核算' },
           name: 'IpdBonusPool',
           path: 'bonus-pool',
         },
@@ -358,7 +358,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
           // 页35 贡献度评定 —— 2026-09-06 复刻：ContributionController 已交付为真组件，市场 PM 40-65%/
           //    研发 PM 35-60% / preview-save-confirm 端点已就位，原型 marketShare 70/30 默认已改
           component: () => import('#/views/ipd/incentive/contribution/index.vue'),
-          meta: { access: [...(PAGE_PERMISSIONS['/ipd/incentive/contribution'] ?? [])], ipdCard: 'P0-10.35', title: '贡献度评定' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/incentive/contribution'] ?? [])], ipdBackend: 'ContributionController 已交付：GET /contributions/{projectId}、GET /{projectId}/versions。', ipdCard: 'P0-10.35', title: '贡献度评定' },
           name: 'IpdContribution',
           path: 'contribution',
         },
@@ -366,7 +366,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
           // 页36 负反馈执行 —— 2026-09-06 复刻：NegativeFeedbackController（submit/decide/lift/by-project）
           //    已交付为真组件；停发/连带减半/共同担责三档与 triggerType 枚举已接入
           component: () => import('#/views/ipd/incentive/negative-feedback/index.vue'),
-          meta: { access: [...(PAGE_PERMISSIONS['/ipd/incentive/negative-feedback'] ?? [])], ipdCard: 'P0-10.36', title: '负反馈执行' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/incentive/negative-feedback'] ?? [])], ipdBackend: 'NegativeFeedbackController 已交付：GET /negative-feedbacks?projectId&status、POST /{id}/submit、POST /{id}/decide、POST /{id}/lift。', ipdCard: 'P0-10.36', title: '负反馈执行' },
           name: 'IpdNegativeFeedback',
           path: 'negative-feedback',
         },
@@ -421,7 +421,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     //    主体挂 GET /pm-directory（在职人员目录）真组件，IPD_PERMISSION_CODES.IDENTITY_SYNC_* 权限码走 _shared。
     {
       component: () => import('#/views/ipd/admin/identity-sync/index.vue'),
-      meta: { authority: ['SUPER_ADMIN'], icon: 'lucide:database', ipdCard: 'P0-10.44', order: 14, title: '人员同步' },
+      meta: { authority: ['SUPER_ADMIN'], icon: 'lucide:database', ipdBackend: 'PmDirectoryController 已交付：GET /pm-directory（在职目录只读视图）；identity-source Controller 待补（同步源类型/来源实例/最近同步时间三个维度未交付）。', ipdCard: 'P0-10.44', order: 14, title: '人员同步' },
       name: 'IpdIdentitySync', path: 'identity-sync',
     },
     // ⑮ 超级管理〔超管〕（原型 /admin，页06/18/28/44-49）

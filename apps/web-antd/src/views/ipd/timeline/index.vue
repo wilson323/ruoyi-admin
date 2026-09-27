@@ -42,6 +42,7 @@ import {
 } from '../../../api/ipd/bonus';
 import { IpdRequestError } from '../../../api/ipd/auth';
 import { formatDateTime, PENDING_TEXT } from '../_shared/format';
+import BackendPending from '../_shared/backend-pending.vue';
 
 defineOptions({
   name: 'IpdTimeline',
@@ -275,5 +276,7 @@ onMounted(load);
         </template>
       </Alert>
     </Card>
+
+    <BackendPending class="mt-4" />
   </div>
 </template>

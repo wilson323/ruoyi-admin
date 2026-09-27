@@ -17,8 +17,9 @@ import {
   settleProjectScore,
 } from '../../../../api/ipd/project-score';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
+import BackendPending from '../../_shared/backend-pending.vue';
 
-defineOptions({ name: 'IpdKpiScore', meta: { ipdCard: 'P0-10.31' } });
+defineOptions({ name: 'IpdKpiScore', meta: { ipdBackend: 'ProjectScoreController 已交付：GET /project-scores/{projectId}/{personId}、POST /{projectId}/{personId}/settle；TaskController GET /project-score-tasks/my 补交已接入。', ipdCard: 'P0-10.31' } });
 
 const projectId = ref('');
 const personId = ref('');
@@ -179,5 +180,7 @@ onMounted(loadMyTasks);
         </template>
       </Table>
     </Card>
+
+    <BackendPending class="mt-4" />
   </div>
 </template>

@@ -39,6 +39,7 @@ import {
   bonusStateTone,
   STATUS_TONE,
 } from '../../_shared/ipd-enums';
+import BackendPending from '../../_shared/backend-pending.vue';
 
 defineOptions({
   name: 'IpdProjectIncentive',
@@ -156,5 +157,7 @@ const columns = [
         </template>
       </Table>
     </Card>
+
+    <BackendPending class="mt-4" />
   </div>
 </template>

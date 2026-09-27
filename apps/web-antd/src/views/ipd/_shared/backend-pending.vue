@@ -9,10 +9,12 @@ import { useRoute } from 'vue-router';
 import { Alert, Card } from 'ant-design-vue';
 
 const props = defineProps<{ backend?: string; card?: string; note?: string }>();
-const route = useRoute();
-const card = computed(() => props.card ?? String(route.meta.ipdCard ?? '待补充'));
-const backend = computed(() => props.backend ?? String(route.meta.ipdBackend ?? '待补充'));
-const note = computed(() => props.note ?? String(route.meta.ipdNote ?? ''));
+/** vue-router 在单测 mount 无 router / portal 形态下 useRoute() 可能返回 undefined，链式兜底保不抛错。 */
+const route = (typeof window !== 'undefined' ? useRoute() : undefined) as ReturnType<typeof useRoute> | undefined;
+const meta = computed(() => ((route?.meta ?? {}) as Record<string, unknown>));
+const card = computed(() => props.card ?? String(meta.value.ipdCard ?? '待补充'));
+const backend = computed(() => props.backend ?? String(meta.value.ipdBackend ?? '待补充'));
+const note = computed(() => props.note ?? String(meta.value.ipdNote ?? ''));
 </script>
 
 <template>
