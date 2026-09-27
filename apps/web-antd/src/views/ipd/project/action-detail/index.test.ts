@@ -4,6 +4,10 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IpdRequestError } from '../../../../api/ipd/auth';
+import {
+  registerCopilotPageContext,
+  streamCopilot,
+} from '../../../../api/ipd/ai-copilot';
 import type { StageAction } from '../../../../api/ipd/stage-action';
 import ActionDetail from './index.vue';
 
@@ -237,5 +241,115 @@ describe('页12/13 动作详情', () => {
     const vm = wrapper.vm as unknown as { fields?: { algoType?: string } };
     expect(vm.fields?.algoType).not.toBe('IRIS');
     expect(api.recordStageActionFields).not.toHaveBeenCalled();
+  });
+});
+// ============================================================
+//  R232 P2-03 fillContext 落地：白名单同源镜像对账 + 预填 + C08 零自动提交
+// ============================================================
+
+describe('R232 P2-03 fillContext 落地', () => {
+  /**
+   * 白名单对账内嵌清单（后端唯一事实源镜像）：AiCopilotService.FILL_FIELD_WHITELIST
+   * ['stage-action-fields']（AiCopilotService.java L285-287，R230 起 6 字段）。
+   * 对照表：
+   *   后端 L286-287 = actualDoneAt, farValue, frrValue, certNo, certPassedAt, algoType
+   *   前端 FILLABLE_FIELDS（index.vue）= actualDoneAt, farValue, frrValue, certNo, certPassedAt, algoType
+   * 逐字段一致、禁扩（后端没有的字段一个不加）。
+   */
+  const BACKEND_FILL_FIELD_WHITELIST = [
+    'actualDoneAt', 'farValue', 'frrValue', 'certNo', 'certPassedAt', 'algoType',
+  ];
+
+  afterEach(() => registerCopilotPageContext(null));
+
+  it('白名单对账：前端 FILLABLE_FIELDS 镜像与后端 FILL_FIELD_WHITELIST 逐字段一致（6 字段，禁扩）', async () => {
+    api.listStageActions.mockResolvedValueOnce([deep({ actionCode: 'C08', status: 'IN_PROGRESS' })]);
+    const wrapper = await mountDetail();
+    const vm = wrapper.vm as unknown as { FILLABLE_FIELDS?: string[] };
+    expect(vm.FILLABLE_FIELDS).toBeDefined();
+    // 数量断言 + 逐字段集合断言（双向：无缺失、无多出 = 禁扩留证）
+    expect(vm.FILLABLE_FIELDS).toHaveLength(BACKEND_FILL_FIELD_WHITELIST.length);
+    expect([...(vm.FILLABLE_FIELDS ?? [])].sort()).toEqual([...BACKEND_FILL_FIELD_WHITELIST].sort());
+  });
+
+  it('fillPayload 预填：白名单内 6 字段全部回填、白名单外（remark/salary）忽略不落表单', async () => {
+    api.listStageActions.mockResolvedValueOnce([deep({ actionCode: 'C08', status: 'IN_PROGRESS' })]);
+    const wrapper = await mountDetail();
+    window.dispatchEvent(new CustomEvent('ipd:ai-fill-payload', {
+      detail: {
+        fields: {
+          actualDoneAt: 1_726_000_000_000,
+          algoType: 'FACE',
+          certNo: 'CN-1',
+          certPassedAt: 1_726_000_000_000,
+          farValue: 0.001,
+          frrValue: 0.002,
+          remark: '白名单外-越界值',
+          salary: '99999',
+        },
+        mode: 'suggest',
+        scene: 'stage-action-fields',
+      },
+    }));
+    await flushPromises();
+    const vm = wrapper.vm as unknown as {
+      aiFillHint?: string;
+      fields?: Record<string, unknown>;
+    };
+    // 预填字段 = 白名单内：逐字段断言
+    expect(vm.fields?.actualDoneAt).toBe(1_726_000_000_000);
+    expect(vm.fields?.farValue).toBe(0.001);
+    expect(vm.fields?.frrValue).toBe(0.002);
+    expect(vm.fields?.certNo).toBe('CN-1');
+    expect(vm.fields?.certPassedAt).toBe(1_726_000_000_000);
+    expect(vm.fields?.algoType).toBe('FACE');
+    // 白名单外字段忽略（禁扩）：一个不落表单
+    expect(vm.fields?.remark).toBe('');
+    expect(vm.fields?.salary).toBeUndefined();
+    // 计数对账：6/6 全应用（hint 计数 = 后端白名单字段数）
+    expect(vm.aiFillHint).toContain('已填充 6 个字段');
+  });
+
+  it('C08 铁律零自动提交：预填后无任何请求发出（saveFields/aiExecute/transit/deliverable 全零调用）', async () => {
+    api.listStageActions.mockResolvedValueOnce([deep({ actionCode: 'C08', status: 'IN_PROGRESS' })]);
+    await mountDetail();
+    window.dispatchEvent(new CustomEvent('ipd:ai-fill-payload', {
+      detail: {
+        fields: { algoType: 'FACE', certNo: 'CN-1' },
+        mode: 'suggest',
+        scene: 'stage-action-fields',
+      },
+    }));
+    await flushPromises();
+    // 预填只是填表单：提交必须人手动点既有「保存字段」按钮——预填链路零自动提交、零直写
+    expect(api.recordStageActionFields).not.toHaveBeenCalled();
+    expect(api.aiExecuteStageAction).not.toHaveBeenCalled();
+    expect(api.transitStageAction).not.toHaveBeenCalled();
+    expect(api.addStageActionDeliverable).not.toHaveBeenCalled();
+  });
+
+  it('fillContext 注册：挂载后 pageContext（scene/actionCode）随 streamCopilot 请求上送，卸载后清除', async () => {
+    api.listStageActions.mockResolvedValueOnce([deep({ actionCode: 'C08', status: 'IN_PROGRESS' })]);
+    // 每次调用返回全新 Response（同一 Response 的流只能读一次，复用会 locked）
+    const fetcher = vi.fn().mockImplementation(async () => new Response(
+      new ReadableStream<Uint8Array>({ start(c) { c.close(); } }),
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    ));
+    vi.stubGlobal('fetch', fetcher);
+    const handlers = { onDelta: () => {}, onDone: () => {}, onError: () => {}, onMeta: () => {} };
+    const wrapper = await mountDetail();
+    await streamCopilot({ message: '帮我填一下' }, handlers);
+    // 注册断言：页面上下文 JSON 随请求上送（键面 = 后端 fillPagePath 解析面）。
+    // 测试桩 id='W-1' 非数值 → stageActionId 省略（对齐后端 L324-325 仅采纳 >0 数值的条件，不发明键）。
+    const sent = JSON.parse(
+      String(new URL(String(fetcher.mock.calls[0]![0]), 'http://test.local').searchParams.get('pageContext')),
+    );
+    expect(sent).toEqual({ actionCode: 'C08', scene: 'stage-action-fields' });
+    // 卸载清除：防跨页串送
+    wrapper.unmount();
+    await streamCopilot({ message: '帮我填一下' }, handlers);
+    expect(
+      new URL(String(fetcher.mock.calls[1]![0]), 'http://test.local').searchParams.has('pageContext'),
+    ).toBe(false);
   });
 });

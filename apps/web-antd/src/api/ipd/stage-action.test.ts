@@ -144,3 +144,43 @@ describe('listStageActions business-code adapter (STG-501-A)', () => {
   });
 });
 
+
+describe('R232 P2-04 ai-agent-tasks read-only query contract', () => {
+  it('GET /api/v1/ai-agent-tasks/{taskId} 单查（taskId 为雪花字符串）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      envelope({ id: '2104', projectId: '200', actionCode: 'C11', status: 'SUCCEEDED', resultSummary: '备料完成', aiDocId: '9001', errorMsg: null, execMode: 'HUMAN_GATE', triggerType: 'PASSIVE' }),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const { fetchAiAgentTask } = await import('./stage-action');
+    const res = await fetchAiAgentTask('2104');
+    const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
+    expect(url.pathname).toBe('/api/v1/ai-agent-tasks/2104');
+    expect(fetcher.mock.calls[0]![1]?.method ?? 'GET').toBe('GET');
+    expect(res).toMatchObject({ id: '2104', status: 'SUCCEEDED', resultSummary: '备料完成' });
+  });
+
+  it('GET /api/v1/ai-agent-tasks?projectId= 按项目列表（空项目空数组）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope([]));
+    vi.stubGlobal('fetch', fetcher);
+    const { fetchAiAgentTasksByProject } = await import('./stage-action');
+    const res = await fetchAiAgentTasksByProject('200');
+    const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
+    expect(url.pathname).toBe('/api/v1/ai-agent-tasks');
+    expect(url.searchParams.get('projectId')).toBe('200');
+    expect(res).toEqual([]);
+  });
+
+  it('契约红线：AiAgentTaskView 类型面无 prompt/fillPayload/inputDigest 字段（状态到 result_summary 粒度）', async () => {
+    const { fetchAiAgentTask } = await import('./stage-action');
+    expect(typeof fetchAiAgentTask).toBe('function');
+    // 运行时样本断言：透传的 data 不得被前端补出敏感字段（后端 VO 组件面即无这些列）
+    const fetcher = vi.fn().mockResolvedValue(
+      envelope({ id: '1', projectId: '2', actionCode: 'C01', status: 'RUNNING', resultSummary: null, errorMsg: null, execMode: 'AI_GENERATE', triggerType: 'PASSIVE' }),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const res = await fetchAiAgentTask('1');
+    expect(Object.keys(res)).not.toContain('fillPayload');
+    expect(Object.keys(res)).not.toContain('inputDigest');
+    expect(Object.keys(res)).not.toContain('prompt');
+  });
+});

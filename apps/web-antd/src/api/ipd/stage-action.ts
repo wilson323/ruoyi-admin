@@ -204,3 +204,43 @@ export interface AiExecuteResult {
 export function aiExecuteStageAction(id: string): Promise<AiExecuteResult> {
   return ipdPost<AiExecuteResult>(`/stage-actions/${id}/ai-execute`);
 }
+/* ---------- R232 P2-04：ai_agent_tasks 只读查询（GET /api/v1/ai-agent-tasks，任务卡数据通道） ---------- */
+
+/**
+ * R221 任务行只读投影（后端 AiAgentTaskView record；Long 全局序列化为 string）。
+ *
+ * 暴露面 = 状态呈现到 result_summary 粒度：**无 prompt / fillPayload / inputDigest 原文**
+ *（审计规约 L0-5，后端 VO 组件面即不含这些列；前端渲染禁 v-html 防注入）。
+ */
+export interface AiAgentTaskView {
+  actionCode: null | string;
+  aiDocId?: null | string;
+  attempt?: null | number;
+  createTime?: null | number | string;
+  errorMsg: null | string;
+  execMode: null | string;
+  id: string;
+  projectId: string;
+  resultSummary: null | string;
+  stageActionId?: null | string;
+  status: 'DEAD' | 'FAILED' | 'PENDING' | 'RUNNING' | 'SUCCEEDED' | string;
+  triggeredBy?: null | string;
+  triggerType: null | string;
+  updateTime?: null | number | string;
+}
+
+/**
+ * 按 taskId 单查任务行（待办直达解析：通知载荷 sourceType=ai_agent_task + sourceId=taskId）。
+ * 不存在后端 50001 NOT_FOUND（ipdApiErrorText 可展示）。
+ */
+export function fetchAiAgentTask(taskId: string): Promise<AiAgentTaskView> {
+  return ipdGet<AiAgentTaskView>(`/ai-agent-tasks/${taskId}`);
+}
+
+/**
+ * 按项目列任务（create_time DESC 最新在前，后端上限 200）——任务卡时间线卡片组。
+ * 空项目返回空列表。
+ */
+export function fetchAiAgentTasksByProject(projectId: string): Promise<AiAgentTaskView[]> {
+  return ipdGet<AiAgentTaskView[]>('/ai-agent-tasks', { projectId });
+}

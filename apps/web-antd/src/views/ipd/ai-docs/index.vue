@@ -441,6 +441,13 @@ const sameContent = computed(
 
 onMounted(() => {
   void loadProjects();
+  // R232 P2-04：待办直达深链（/ipd/ai-assistant?projectId=&docId=）——
+  // docId 命中纯数字即自动加载版本链，落到 GENERATED 待审审批卡（跨设备不靠会话回放）。
+  const docId = route.query.docId;
+  if (typeof docId === 'string' && /^\d+$/.test(docId)) {
+    docIdInput.value = docId;
+    void loadChain(docId);
+  }
 });
 </script>
 

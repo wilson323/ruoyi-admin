@@ -23,12 +23,16 @@ import type {
 } from '../../../api/ipd/workbench';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
 import AiSuggest from '../_shared/ai-suggest.vue';
+import AiTaskTodoDrawer from '../_shared/ai-tasks/ai-task-todo-drawer.vue';
 import '../_shared/ipd-theme.css';
 import { RULES_BY_PAGE, renderRulesDescription } from '../_shared/zk-ipd-rules';
 import { WORKBENCH_TASK_STATUS_TEXT, taskTypeText } from '../_shared/ipd-enums';
 
 const auth = useIpdAuthStore();
 const workbenchRules = computed(() => renderRulesDescription(RULES_BY_PAGE.workbench));
+
+/** R232 P2-04：站内待办抽屉开关（NotificationService 载荷 → 待办直达 AI 审批卡）。 */
+const todoDrawerOpen = ref(false);
 
 /** ZK-IPD 设计稿：按当前小时生成时辰问候（24h 制）。 */
 const greeting = computed(() => {
@@ -276,6 +280,18 @@ watch(activeTab, (tab) => {
       </div>
     </div>
 
+    <!-- R232 P2-04：站内待办入口（待办直达 AI 审批卡，与「未读通知」metric 同区块） -->
+    <div class="ipd-wb-todo-entry">
+      <button
+        type="button"
+        class="ipd-wb-coach-btn"
+        data-testid="workbench-todo-btn"
+        @click="todoDrawerOpen = true"
+      >
+        站内待办（AI 任务直达）
+      </button>
+    </div>
+
     <!-- 责任任务队列筛选 tab（按 LIVE URL 实拍顺序） -->
     <div class="ipd-wb-queue">
       <div class="ipd-wb-tabs" role="tablist">
@@ -426,6 +442,12 @@ watch(activeTab, (tab) => {
         </section>
       </div>
     </section>
+
+    <!-- R232 P2-04：站内待办 + AI 任务直达抽屉（页03 站内信落位，跨设备不靠会话回放） -->
+    <AiTaskTodoDrawer
+      v-model:open="todoDrawerOpen"
+      :project-id="currentAdvance?.projectId ?? undefined"
+    />
   </div>
 </template>
 
@@ -445,6 +467,12 @@ watch(activeTab, (tab) => {
   margin: auto;
 }
 
+
+/* R232 P2-04 站内待办入口行 */
+.ipd-wb-todo-entry {
+  display: flex;
+  justify-content: flex-end;
+}
 
 /* 标题块（greeting + continue 按钮） */
 .ipd-wb-header {

@@ -11,7 +11,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useIpdAuthStore } from '../../store/ipd-auth';
 import type { CopilotStreamDone } from './ai-copilot';
-import { chatCopilot, createSseFrameParser, parseStreamDone, streamCopilot } from './ai-copilot';
+import {
+  chatCopilot,
+  createSseFrameParser,
+  parseStreamDone,
+  registerCopilotPageContext,
+  streamCopilot,
+} from './ai-copilot';
 
 const LF = String.fromCharCode(10);
 
@@ -279,5 +285,71 @@ describe('AI 副驾 API（R215 B3）', () => {
       onMeta: () => {},
     });
     expect(errors).toEqual([{ code: '403', message: 'AI 副驾暂不可用，请稍后重试' }]);
+  });
+});
+
+// ============================================================
+//  R232 P2-03 fillContext：pageContext 随请求上送（载荷断言）
+// ============================================================
+
+describe('R232 P2-03 fillContext：pageContext 随请求上送', () => {
+  const noopHandlers = {
+    onDelta: () => {},
+    onDone: () => {},
+    onError: () => {},
+    onMeta: () => {},
+  };
+  /** 键面 = 后端 fillPagePath 解析面（AiCopilotService.java L317-325）：scene/actionCode/stageActionId。 */
+  const ctx = { actionCode: 'C08', scene: 'stage-action-fields', stageActionId: 9001 };
+
+  beforeEach(() => registerCopilotPageContext(null));
+  afterEach(() => registerCopilotPageContext(null));
+
+  it('streamCopilot 显式传 pageContext：JSON 载荷随 GET query 上送（字段名对齐 AiCopilotReq.pageContext）', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(
+        sseResponse(frame('done', { status: 'ok', tokenPrompt: 0, tokenCompletion: 0, latencyMs: 1 })),
+      );
+    vi.stubGlobal('fetch', fetcher);
+    await streamCopilot(
+      { message: '帮我填一下', pageContext: ctx, projectId: '9140001' },
+      noopHandlers,
+    );
+    const query = new URL(String(fetcher.mock.calls[0]![0]), 'http://test.local').searchParams;
+    expect(query.get('message')).toBe('帮我填一下');
+    expect(query.get('projectId')).toBe('9140001');
+    // 载荷断言：JSON round-trip 三键逐键一致（后端不读的键一个不发明）
+    expect(JSON.parse(String(query.get('pageContext')))).toEqual({
+      actionCode: 'C08',
+      scene: 'stage-action-fields',
+      stageActionId: 9001,
+    });
+  });
+
+  it('fillContext 注册表：input 未传时以宿主页面注册上下文上送；清除后不再上送', async () => {
+    // 每次调用返回全新 Response（同一 Response 的流只能读一次，复用会 locked）
+    const fetcher = vi.fn().mockImplementation(async () => sseResponse(''));
+    vi.stubGlobal('fetch', fetcher);
+    registerCopilotPageContext(ctx);
+    await streamCopilot({ message: '帮我填一下' }, noopHandlers);
+    const sent = JSON.parse(
+      String(new URL(String(fetcher.mock.calls[0]![0]), 'http://test.local').searchParams.get('pageContext')),
+    );
+    expect(sent).toEqual({ actionCode: 'C08', scene: 'stage-action-fields', stageActionId: 9001 });
+    // 注册表清除（页面卸载路径）→ 与改造前逐字节一致：不带 pageContext 键
+    registerCopilotPageContext(null);
+    await streamCopilot({ message: '帮我填一下' }, noopHandlers);
+    expect(new URL(String(fetcher.mock.calls[1]![0]), 'http://test.local').searchParams.has('pageContext')).toBe(false);
+  });
+
+  it('input.pageContext 显式优先于注册上下文（双通道兼容：助手侧显式上送不断链）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(sseResponse(''));
+    vi.stubGlobal('fetch', fetcher);
+    registerCopilotPageContext({ actionCode: 'X99', scene: 'stage-action-fields' });
+    await streamCopilot({ message: '帮我填一下', pageContext: ctx }, noopHandlers);
+    expect(
+      JSON.parse(String(new URL(String(fetcher.mock.calls[0]![0]), 'http://test.local').searchParams.get('pageContext'))),
+    ).toEqual({ actionCode: 'C08', scene: 'stage-action-fields', stageActionId: 9001 });
   });
 });

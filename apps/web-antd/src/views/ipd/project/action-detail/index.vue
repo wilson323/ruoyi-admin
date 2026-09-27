@@ -50,6 +50,7 @@ import {
   recordStageActionFields,
   transitStageAction,
 } from '../../../../api/ipd/stage-action';
+import { registerCopilotPageContext } from '../../../../api/ipd/ai-copilot';
 import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import {
   actionStatusColor,
@@ -183,6 +184,7 @@ const deliverableOssId = ref('');
 async function load(): Promise<void> {
   if (!projectId.value || !actionId.value) {
     loadError.value = new Error('路由参数缺失：项目 ID 或动作 ID 为空');
+    registerCopilotPageContext(null);
     return;
   }
   loading.value = true;
@@ -192,9 +194,11 @@ async function load(): Promise<void> {
     const found = list.find((row) => row.id === actionId.value);
     if (!found) {
       loadError.value = new Error(`动作 ID ${actionId.value} 不在项目 ${projectId.value} 下`);
+      registerCopilotPageContext(null);
       return;
     }
     action.value = found;
+    syncFillPageContext();
     fields.actualDoneAt = typeof found.actualDoneAt === 'number' ? found.actualDoneAt : null;
     fields.algoType = found.algoType ?? '';
     fields.certNo = found.certNo ?? '';
@@ -327,10 +331,12 @@ async function aiExecute(): Promise<void> {
 /** 对话即填表：与 ai-assistant.vue 广播侧同名事件（`ipd:` 前缀惯例）。 */
 const AI_FILL_EVENT = 'ipd:ai-fill-payload';
 /**
- * C08 对话即填表回填集：与后端 AiCopilotService.FILL_FIELD_WHITELIST['stage-action-fields'] 对齐，
- * 但剔除 remark——本卡「保存字段」走 /{id}/fields（StageActionFieldsBody），该端点结构上不落 remark
- * （后端 DTO/recordFields 均无 remark 参数）。回填一个存不了的字段会让「保存字段」提示误导用户，
- * 故前端只回填可持久化的 6 字段；copilot 白名单含 remark 与 /fields 的不对称属后端遗留，另立卡对齐（R221 log 已记）。
+ * C08 对话即填表回填集：与后端唯一事实源 AiCopilotService.FILL_FIELD_WHITELIST['stage-action-fields']
+ * （AiCopilotService.java L285-287）**逐字段同源镜像**（R232 P2-03 fillContext）：
+ * 后端 6 字段 = actualDoneAt / farValue / frrValue / certNo / certPassedAt / algoType
+ * （R230 起 remark 已被后端从白名单移除，与 /fields 端点可落库字段同构，前端镜像随之 6 字段对齐）。
+ * **禁扩铁律**：后端没有的字段一个不加——收到白名单外字段一律忽略（onAiFill 循环天然只认镜像清单，
+ * 白名单外 key 不落表单并留 debug 日志）；后端白名单变更时以 L285-287 为源改本镜像，不得反向放宽。
  */
 const FILLABLE_FIELDS = ['actualDoneAt', 'farValue', 'frrValue', 'certNo', 'certPassedAt', 'algoType'];
 const aiFillHint = ref('');
@@ -345,15 +351,43 @@ function onAiFill(e: Event) {
   // 首切片只认 suggest（后端恒为 suggest）；auto 未落地前防御性忽略，避免被误当自动提交入口。
   if (detail.mode && detail.mode !== 'suggest') return;
   let applied = 0;
-  for (const key of FILLABLE_FIELDS) {
-    if (detail.fields[key] !== undefined) {
+  const dropped: string[] = [];
+  for (const key of Object.keys(detail.fields)) {
+    if (detail.fields[key] === undefined) continue;
+    // R232 P2-03 禁扩：只认 FILLABLE_FIELDS 同源镜像，白名单外字段忽略不落表单。
+    if ((FILLABLE_FIELDS as readonly string[]).includes(key)) {
       (fields as Record<string, unknown>)[key] = detail.fields[key];
       applied++;
+    } else {
+      dropped.push(key);
     }
+  }
+  if (dropped.length > 0) {
+    // debug 级留痕供走查观测（白名单外忽略是可预期防御行为，不上用户提示）。
+    console.debug('[ai-fill] 白名单外字段已忽略（禁扩，FILL_FIELD_WHITELIST 同源镜像）:', dropped);
   }
   if (applied > 0) {
     aiFillHint.value = `AI 已填充 ${applied} 个字段（建议模式），请目检后点「保存字段」提交`;
   }
+}
+
+/**
+ * R232 P2-03 fillContext 落地：向 streamCopilot 注册本页填表上下文（pageContext 上送源，
+ * 键面 = 后端 fillPagePath 解析面 AiCopilotService.java L317-325：scene/actionCode/stageActionId，
+ * 后端不读的键一个不发明）。stageActionId 仅可转数字且 >0 才送（对齐后端 L324-325 采纳条件）。
+ * C08 铁律：注册上下文只影响 FILL_PAGE 意图与 suggest 回填，与提交链路零耦合（提交必须人手动）。
+ */
+function syncFillPageContext(): void {
+  if (!action.value) {
+    registerCopilotPageContext(null);
+    return;
+  }
+  const stageActionId = Number(action.value.id);
+  registerCopilotPageContext({
+    actionCode: action.value.actionCode ?? undefined,
+    scene: 'stage-action-fields',
+    ...(Number.isInteger(stageActionId) && stageActionId > 0 ? { stageActionId } : {}),
+  });
 }
 
 onMounted(() => {
@@ -362,6 +396,7 @@ onMounted(() => {
 });
 onUnmounted(() => {
   window.removeEventListener(AI_FILL_EVENT, onAiFill);
+  registerCopilotPageContext(null);
   if (aiExecuteTimer) clearTimeout(aiExecuteTimer);
 });
 </script>

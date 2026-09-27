@@ -356,3 +356,31 @@ describe('页03 责任任务队列 · GET /workbench/tasks（WB-17-1 S0）', () 
     wrapper.unmount();
   });
 });
+
+describe('R232 P2-04 站内待办接线（待办直达 AI 审批卡）', () => {
+  it('「站内待办」按钮打开抽屉：收件箱（NotificationService 载荷）+ 任务时间线按项目加载', async () => {
+    loginAs('MARKET_PM', '测试人员');
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes('/workbench/summary')) return envelope(fullSummary);
+      return envelope([]);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mount(Workbench, { attachTo: document.body });
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="workbench-todo-btn"]').exists()).toBe(true));
+    expect(document.body.textContent ?? '').not.toContain('待我处理（kind=ACTION）');
+    await wrapper.find('[data-testid="workbench-todo-btn"]').trigger('click');
+    // 抽屉 teleports 到 body：待办区块出现 = 抽屉已开
+    await vi.waitFor(() => {
+      expect(document.body.textContent ?? '').toContain('待我处理（kind=ACTION）');
+    });
+    // 数据面复用 NotificationService 载荷（GET /api/v1/notifications）+ R221 任务列表（?projectId=10）；
+    // 两请求异步分批到达，waitFor 等齐（抽屉标题是静态渲染，不能作请求就绪信号）
+    await vi.waitFor(() => {
+      const urls = fetcher.mock.calls.map((c) => String(c[0]));
+      expect(urls.some((u) => u.includes('/api/v1/notifications'))).toBe(true);
+      expect(urls.some((u) => u.includes('/api/v1/ai-agent-tasks?projectId=10'))).toBe(true);
+    });
+    wrapper.unmount();
+  });
+});

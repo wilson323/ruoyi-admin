@@ -12,6 +12,8 @@
  *   是 JSON 包络专用同样不可复用，15s 超时也会掐断 60s 流）。
  * - history 多轮上下文只传 role+content，后端最大 8 轮，超出由前端裁剪。
  * - docType 可空：非空时 RAG 检索限定文档类型（R184 阶段 3）。
+ * - pageContext 可空（R232 P2-03 fillContext）：宿主页面注册的填表上下文 JSON，
+ *   随 GET query 上送（字段名对齐后端 AiCopilotReq.pageContext，≤4000）。
  */
 import type { AiCardEnvelope } from '../../views/ipd/_shared/ai-cards/types';
 
@@ -181,17 +183,48 @@ export function parseStreamDone(raw: unknown): CopilotStreamDone {
 }
 
 /**
+ * R232 P2-03 fillContext：宿主页面填表上下文（上送形态 = 后端 AiCopilotReq.pageContext
+ * JSON 字符串；GET /ai-copilot/chat/stream 的 @RequestParam pageContext，后端
+ * AiCopilotController L93-94，≤4000）。键面与后端解析面逐键对齐（AiCopilotService.fillPagePath
+ * 后端 L317-325 只读 scene/actionCode/stageActionId 三键）——后端不读的键一个不发明。
+ */
+export interface CopilotPageContext {
+  /** 动作编码（如 C08）；可空（后端 fillPagePath L321 可空解析，缺失不送键）。 */
+  actionCode?: string;
+  /** 场景键：唯一登记场景 = 后端 FILL_FIELD_WHITELIST 的键（stage-action-fields）。 */
+  scene: string;
+  /** 动作实例雪花 id；仅可转数字且 >0 才送（与后端 fillPagePath L324-325 采纳条件对齐）。 */
+  stageActionId?: number;
+}
+
+/**
+ * R232 P2-03 fillContext 注册表：宿主页面（动作详情）挂载注册本页填表上下文、卸载传 null 清除。
+ * streamCopilot 以此为 pageContext 缺省源；调用方显式传 input.pageContext 时显式优先
+ * （双通道兼容助手侧显式上送，谁传都不断链）。
+ */
+let registeredPageContext: CopilotPageContext | null = null;
+
+/** 注册/清除当前宿主页面填表上下文（null = 清除；页面卸载必须清除，防跨页串送上送）。 */
+export function registerCopilotPageContext(ctx: CopilotPageContext | null): void {
+  registeredPageContext = ctx;
+}
+
+/**
  * SSE 真流式问答：fetch + ReadableStream 逐帧分发。
  * 非 2xx / 非 event-stream 响应与传输异常统一走 onError（后端契约：鉴权失败也推
  * error 帧而非 JSON，二者在前端合并为一处处理）。
  */
 export async function streamCopilot(
-  input: { message: string; projectId?: string },
+  input: { message: string; pageContext?: CopilotPageContext; projectId?: string },
   handlers: CopilotStreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
   const params = new URLSearchParams({ message: input.message });
   if (input.projectId) params.set('projectId', input.projectId);
+  // R232 P2-03：pageContext 随请求上送（GET query JSON 字符串，字段名对齐 AiCopilotReq.pageContext；
+  // 显式 input 优先、缺省回落宿主页面注册表，无上下文不送键——与改造前逐字节一致）。
+  const pageContext = input.pageContext ?? registeredPageContext;
+  if (pageContext) params.set('pageContext', JSON.stringify(pageContext));
   const token = useIpdAuthStore().token;
   const headers: Record<string, string> = { Accept: 'text/event-stream' };
   if (token) headers.Authorization = `Bearer ${token}`;

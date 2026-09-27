@@ -360,3 +360,46 @@ describe('项目列表加载（回归 2026-09-10：/projects 返回 ProjectListI
     });
   });
 });
+
+describe('R232 P2-04 待办直达深链（/ipd/ai-assistant?projectId=&docId=）', () => {
+  it('docId 纯数字命中 → 自动加载版本链并回填文档 ID 输入框（无需手点「加载版本链」）', async () => {
+    await router.push('/?projectId=100&docId=1');
+    await router.isReady();
+    const fetcher = vi.fn();
+    fetcher.mockResolvedValueOnce(envelope(projectsFixture));
+    fetcher.mockResolvedValueOnce(envelope([docFixture({ id: '1', versionNo: 1, status: 'GENERATED' })]));
+    fetcher.mockImplementation(async () => envelope([]));
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mount(AiDocs, {
+      global: { plugins: [router] },
+      attachTo: document.body,
+    });
+    await flushPromises();
+    // 深链自动加载：GENERATED 待审行出现（BR-AI-04 角标即落点证据）
+    expect(wrapper.html(), '深链应自动加载版本链').toContain('AI 生成、未经审核');
+    const docIdInput = wrapper
+      .findAll('input')
+      .find((node) => (node.attributes('placeholder') ?? '').includes('文档 ID'));
+    expect(docIdInput?.element.value, '文档 ID 输入框应回填深链 docId').toBe('1');
+    const urls = fetcher.mock.calls.map((call) => String(call[0]));
+    expect(urls.some((u) => u.includes('/ai-documents/1/versions'))).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('docId 非纯数字（防注入/防误跳）→ 不自动加载，只拉项目列表', async () => {
+    await router.push('/?docId=abc%22%3E');
+    await router.isReady();
+    const fetcher = vi.fn();
+    fetcher.mockResolvedValueOnce(envelope(projectsFixture));
+    fetcher.mockImplementation(async () => envelope([]));
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mount(AiDocs, {
+      global: { plugins: [router] },
+      attachTo: document.body,
+    });
+    await flushPromises();
+    expect(fetcher.mock.calls.length, '非法 docId 不得触发任何版本链请求').toBe(1);
+    expect(wrapper.html()).not.toContain('AI 生成、未经审核');
+    wrapper.unmount();
+  });
+});
