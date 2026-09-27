@@ -292,17 +292,20 @@ async function handleReload(type: 'add' | 'update') {
               :disabled="!vxeCheckboxChecked(tableApi)"
               danger
               type="primary"
-              v-access:code="['system:user:remove']"
+              v-access:code="['workflow:definition:remove']"
               @click="handleMultiDelete"
             >
               {{ $t('pages.common.delete') }}
             </a-button>
-            <a-button v-access:code="['system:user:add']" @click="handleDeploy">
+            <a-button
+              v-access:code="['workflow:definition:import']"
+              @click="handleDeploy"
+            >
               部署
             </a-button>
             <a-button
               type="primary"
-              v-access:code="['system:user:add']"
+              v-access:code="['workflow:definition:add']"
               @click="handleAdd"
             >
               {{ $t('pages.common.add') }}
@@ -316,13 +319,19 @@ async function handleReload(type: 'add' | 'update') {
             :unchecked-value="0"
             checked-children="激活"
             un-checked-children="挂起"
+            v-access:code="['workflow:definition:edit']"
             @change="(status) => handleActive(row, status)"
           />
         </template>
         <template #action="{ row }">
           <div class="flex flex-col gap-1">
             <div>
-              <a-button size="small" type="link" @click="handleEdit(row)">
+              <a-button
+                size="small"
+                type="link"
+                v-access:code="['workflow:definition:edit']"
+                @click="handleEdit(row)"
+              >
                 编辑信息
               </a-button>
               <Popconfirm
@@ -331,7 +340,13 @@ async function handleReload(type: 'add' | 'update') {
                 title="确认删除？"
                 @confirm="handleDelete(row)"
               >
-                <a-button danger size="small" type="link" @click.stop="">
+                <a-button
+                  danger
+                  size="small"
+                  type="link"
+                  v-access:code="['workflow:definition:remove']"
+                  @click.stop=""
+                >
                   删除流程
                 </a-button>
               </Popconfirm>
@@ -340,6 +355,7 @@ async function handleReload(type: 'add' | 'update') {
               <a-button
                 size="small"
                 type="link"
+                v-access:code="row.isPublish ? '' : ['workflow:definition:edit']"
                 @click="handleDesign(row, !!row.isPublish)"
               >
                 {{ row.isPublish ? '查看流程' : '设计流程' }}
@@ -350,7 +366,12 @@ async function handleReload(type: 'add' | 'update') {
                 placement="left"
                 @confirm="handlePublish(row)"
               >
-                <a-button v-if="!row.isPublish" size="small" type="link">
+                <a-button
+                  v-if="!row.isPublish"
+                  v-access:code="['workflow:definition:edit']"
+                  size="small"
+                  type="link"
+                >
                   发布流程
                 </a-button>
               </Popconfirm>
@@ -362,9 +383,20 @@ async function handleReload(type: 'add' | 'update') {
                 placement="left"
                 @confirm="handleCopy(row)"
               >
-                <a-button size="small" type="link"> 复制流程 </a-button>
+                <a-button
+                  v-access:code="['workflow:definition:add']"
+                  size="small"
+                  type="link"
+                >
+                  复制流程
+                </a-button>
               </Popconfirm>
-              <a-button size="small" type="link" @click="handleExportXml(row)">
+              <a-button
+                size="small"
+                type="link"
+                v-access:code="['workflow:definition:import']"
+                @click="handleExportXml(row)"
+              >
                 导出流程
               </a-button>
             </div>

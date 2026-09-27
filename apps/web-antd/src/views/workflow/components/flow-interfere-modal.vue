@@ -165,7 +165,14 @@ function handleReductionSignature(userList: User[]) {
         </a-button>
       </template>
       <a-button @click="() => transferModalApi.open()">转办</a-button>
-      <a-button danger type="primary" @click="handleTermination">终止</a-button>
+      <a-button
+        v-access:code="['workflow:task:edit']"
+        danger
+        type="primary"
+        @click="handleTermination"
+      >
+        终止
+      </a-button>
     </template>
   </BasicModal>
 </template>

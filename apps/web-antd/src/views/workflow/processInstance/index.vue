@@ -189,7 +189,7 @@ function handleInfo(row: any) {
               :disabled="!vxeCheckboxChecked(tableApi)"
               danger
               type="primary"
-              v-access:code="['system:user:remove']"
+              v-access:code="['workflow:instance:remove']"
               @click="handleMultiDelete"
             >
               {{ $t('pages.common.delete') }}
@@ -203,6 +203,7 @@ function handleInfo(row: any) {
                 danger
                 size="small"
                 type="link"
+                v-access:code="['workflow:instance:edit']"
                 @click.stop="handleInvalid(row)"
               >
                 作废流程
@@ -213,7 +214,13 @@ function handleInfo(row: any) {
                 title="确认删除？"
                 @confirm="handleDelete(row)"
               >
-                <a-button danger size="small" type="link" @click.stop="">
+                <a-button
+                  danger
+                  size="small"
+                  type="link"
+                  v-access:code="['workflow:instance:remove']"
+                  @click.stop=""
+                >
                   删除流程
                 </a-button>
               </Popconfirm>
@@ -225,6 +232,7 @@ function handleInfo(row: any) {
               <a-button
                 size="small"
                 type="link"
+                v-access:code="['workflow:instance:edit']"
                 @click.stop="handleVariable(row)"
               >
                 变量查看

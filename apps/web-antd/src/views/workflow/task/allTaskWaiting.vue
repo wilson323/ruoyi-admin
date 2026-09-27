@@ -203,7 +203,7 @@ onMounted(async () => {
 
 <template>
   <Page :auto-content-height="true">
-    <div class="flex h-full gap-2">
+    <div v-access:code="['workflow:task:queryAll']" class="flex h-full gap-2">
       <div
         class="bg-background relative flex h-full min-w-[320px] max-w-[320px] flex-col rounded-lg"
       >

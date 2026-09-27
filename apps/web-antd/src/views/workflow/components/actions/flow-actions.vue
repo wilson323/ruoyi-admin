@@ -319,6 +319,7 @@ const showMultiActions = computed(() => {
         </a-button>
         <a-button
           v-if="editableAndRemoveable"
+          v-access:code="['workflow:instance:remove']"
           danger
           ghost
           type="primary"
@@ -339,6 +340,7 @@ const showMultiActions = computed(() => {
         </a-button>
         <a-button
           v-if="buttonPermissions?.termination"
+          v-access:code="['workflow:task:edit']"
           danger
           ghost
           type="primary"
@@ -409,7 +411,10 @@ const showMultiActions = computed(() => {
       </Space>
       <Space v-if="type === 'admin'">
         <a-button @click="handleFlowInterfere"> 流程干预 </a-button>
-        <a-button @click="() => updateAssigneeModalApi.open()">
+        <a-button
+          v-access:code="['workflow:task:edit']"
+          @click="() => updateAssigneeModalApi.open()"
+        >
           修改办理人
         </a-button>
         <FlowInterfereModal @complete="$emit('reload')" />
