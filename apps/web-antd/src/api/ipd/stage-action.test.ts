@@ -3,7 +3,7 @@
  */
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { addStageActionDeliverable } from './stage-action';
+import { addStageActionDeliverable, aiExecuteStageAction } from './stage-action';
 
 const envelope = (data: unknown) =>
   new Response(JSON.stringify({ code: 0, message: 'success', data, timestamp: '2026-09-05T00:00:00Z', traceId: 'fixture' }),
@@ -22,6 +22,20 @@ describe('stage-action deliverable ossId contract', () => {
     expect(url.searchParams.get('fileName')).toBe('doc.pdf');
     // ossId 透传 string（后端 Long 反序列化）；不再 optional
     expect(url.searchParams.get('ossId')).toBe('9001');
+  });
+});
+
+describe('R221 aiExecuteStageAction contract (POST /stage-actions/{id}/ai-execute)', () => {
+  it('POST 端点路径正确，返回 data 透传 taskId/status/actionCode', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(envelope({ taskId: '9001', status: 'PENDING', actionCode: 'C01' }));
+    vi.stubGlobal('fetch', fetcher);
+    const res = await aiExecuteStageAction('9001');
+    const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
+    expect(url.pathname).toBe('/api/v1/stage-actions/9001/ai-execute');
+    expect(fetcher.mock.calls[0]![1]?.method).toBe('POST');
+    expect(res).toMatchObject({ taskId: '9001', status: 'PENDING', actionCode: 'C01' });
   });
 });
 

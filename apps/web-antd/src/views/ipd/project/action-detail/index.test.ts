@@ -9,6 +9,7 @@ import ActionDetail from './index.vue';
 
 const api = vi.hoisted(() => ({
   addStageActionDeliverable: vi.fn(),
+  aiExecuteStageAction: vi.fn(),
   listStageActions: vi.fn(),
   recordStageActionFields: vi.fn(),
   transitStageAction: vi.fn(),
@@ -180,5 +181,40 @@ describe('页12/13 动作详情', () => {
     expect(html).not.toContain('FRR');
     // 阻断性动作徽标仍在
     expect(html).toContain('阻断性动作');
+  });
+
+  // ============================================================
+  //  R221 Task 14：AI 执行按钮 + 对话即填表前端半环
+  // ============================================================
+
+  it('R221 AI 执行按钮：进行中动作可见 → 点击调 aiExecuteStageAction', async () => {
+    api.listStageActions.mockResolvedValueOnce([deep({ actionCode: 'P08', status: 'IN_PROGRESS' })]);
+    api.aiExecuteStageAction.mockResolvedValueOnce({ actionCode: 'P08', status: 'PENDING', taskId: '9001' });
+    const wrapper = await mountDetail();
+    expect(wrapper.html()).toContain('AI 执行');
+    const btn = wrapper.findAll('button').find((b) => b.text().includes('AI 执行'));
+    await btn!.trigger('click');
+    await flushPromises();
+    expect(api.aiExecuteStageAction).toHaveBeenCalledWith('W-1');
+  });
+
+  it('R221 AI 执行按钮：DONE 动作不显示', async () => {
+    api.listStageActions.mockResolvedValueOnce([deep({ actionCode: 'P08', status: 'DONE' })]);
+    const wrapper = await mountDetail();
+    expect(wrapper.html()).not.toContain('AI 执行');
+  });
+
+  it('R221 对话即填表：fillPayload 事件回填字段但绝不自动 saveFields（suggest 红线）', async () => {
+    api.listStageActions.mockResolvedValueOnce([deep({ actionCode: 'C08', status: 'IN_PROGRESS' })]);
+    const wrapper = await mountDetail();
+    window.dispatchEvent(new CustomEvent('ipd:ai-fill-payload', {
+      detail: { fields: { remark: 'AI 建议值' }, mode: 'suggest', scene: 'stage-action-fields' },
+    }));
+    await flushPromises();
+    const vm = wrapper.vm as unknown as { fields?: { remark: string } };
+    expect(vm.fields?.remark).toBe('AI 建议值');
+    expect(wrapper.html()).toContain('AI 已填充');
+    // suggest 模式红线：回填后不得自动提交
+    expect(api.recordStageActionFields).not.toHaveBeenCalled();
   });
 });

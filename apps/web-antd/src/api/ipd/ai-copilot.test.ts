@@ -10,6 +10,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useIpdAuthStore } from '../../store/ipd-auth';
+import type { CopilotStreamDone } from './ai-copilot';
 import { chatCopilot, createSseFrameParser, streamCopilot } from './ai-copilot';
 
 const LF = String.fromCharCode(10);
@@ -120,6 +121,29 @@ describe('AI 副驾 API（R215 B3）', () => {
     const frames = parse(lines);
     expect(frames).toHaveLength(1);
     expect(frames[0]).toEqual({ data: { a: 1, b: 2 }, event: 'done' });
+  });
+
+  it('SSE 解析器：done 帧 fillPayload（R221 对话即填表）透传不丢', () => {
+    const parse = createSseFrameParser();
+    const doneData = {
+      latencyMs: 3,
+      status: 'ok',
+      tokenCompletion: 2,
+      tokenPrompt: 1,
+      fillPayload: {
+        fields: { remark: 'AI 建议值' },
+        mode: 'suggest',
+        scene: 'stage-action-fields',
+      },
+    };
+    const frames = parse(frame('done', doneData));
+    expect(frames).toHaveLength(1);
+    const done = frames[0]!.data as CopilotStreamDone;
+    expect(done.fillPayload).toMatchObject({
+      fields: { remark: 'AI 建议值' },
+      mode: 'suggest',
+      scene: 'stage-action-fields',
+    });
   });
 
   it('streamCopilot → SSE URL query + Bearer 头，四帧逐段分发到 handlers', async () => {

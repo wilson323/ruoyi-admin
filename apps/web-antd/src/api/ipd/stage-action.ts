@@ -188,3 +188,19 @@ export function addStageActionDeliverable(id: string, fileName: string, ossId: s
   params.set('ossId', ossId);
   return ipdPost<unknown>(`/stage-actions/${id}/deliverables?${params.toString()}`);
 }
+
+/** R221 ai-execute 返回（POST /stage-actions/{id}/ai-execute，后端 Map<taskId/status/actionCode>）。 */
+export interface AiExecuteResult {
+  actionCode: string;
+  status: string;
+  taskId: string;
+}
+
+/**
+ * R221：AI 代理执行（spec §3.1 PASSIVE 触发）。后端任务行落库即返回，不阻塞页面——
+ * 引擎 afterCommit 异步跑，前端提示已提交后延时刷新一次看结果。
+ * 权限沿用动作执行口径 ipd:stage-action:edit（后端 @SaCheckPermission OPERATION_STAGE_ACTION_EXECUTE）。
+ */
+export function aiExecuteStageAction(id: string): Promise<AiExecuteResult> {
+  return ipdPost<AiExecuteResult>(`/stage-actions/${id}/ai-execute`);
+}

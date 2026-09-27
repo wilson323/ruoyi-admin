@@ -17,7 +17,7 @@
  * - V02 certNo 格式 ^[A-Za-z0-9\-/]+$（后端 10001）。
  * - P10/V02 阻断性动作：/transit?target=DONE 前 /fields 必须含 certNo+certPassedAt；不通过则 40001。
  */
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
@@ -45,6 +45,7 @@ import type {
 } from '../../../../api/ipd/stage-action';
 import {
   addStageActionDeliverable,
+  aiExecuteStageAction,
   listStageActions,
   recordStageActionFields,
   transitStageAction,
@@ -161,7 +162,7 @@ const farFrrValid = computed(() => {
   return Number(fields.farValue) + Number(fields.frrValue) <= 1.000001;
 });
 
-const busyAction = ref<'' | 'saveFields' | 'transit'>('');
+const busyAction = ref<'' | 'aiExecute' | 'saveFields' | 'transit'>('');
 const submitError = ref<unknown>(null);
 
 const transitReasonModalOpen = ref(false);
@@ -295,7 +296,61 @@ function backToList(): void {
   router.replace(`/ipd/projects/${projectId.value}/flow`);
 }
 
-onMounted(load);
+// ============================================================
+//  R221 Task 14：AI 代理执行（PASSIVE）+ 对话即填表前端消费（suggest）
+// ============================================================
+
+/** AI 执行按钮可见：非终态（DONE/NA 无执行意义，后端 transit 幂等 no-op，前端直接隐藏）。 */
+const canAiExecute = computed(
+  () => !!action.value && !['DONE', 'NA'].includes(action.value.status),
+);
+
+async function aiExecute(): Promise<void> {
+  if (!action.value) return;
+  submitError.value = null;
+  busyAction.value = 'aiExecute';
+  try {
+    await aiExecuteStageAction(action.value.id);
+    message.success('AI 任务已提交，稍后刷新查看结果');
+    // 引擎 afterCommit 异步跑：延时 3s 后自动刷新一次拉取结果（不阻塞、不轮询）。
+    setTimeout(() => { void load(); }, 3000);
+  } catch (cause) {
+    submitError.value = cause;
+  } finally {
+    busyAction.value = '';
+  }
+}
+
+/** 对话即填表：与 ai-assistant.vue 广播侧同名事件（`ipd:` 前缀惯例）。 */
+const AI_FILL_EVENT = 'ipd:ai-fill-payload';
+/** C08 白名单与后端 AiCopilotService.FILL_FIELD_WHITELIST['stage-action-fields'] 严格一致。 */
+const FILLABLE_FIELDS = ['actualDoneAt', 'farValue', 'frrValue', 'certNo', 'certPassedAt', 'algoType', 'remark'];
+const aiFillHint = ref('');
+
+function onAiFill(e: Event) {
+  const detail = (e as CustomEvent).detail as
+    | { fields?: Record<string, unknown>; mode?: string; scene?: string }
+    | undefined;
+  // 首切片只认 stage-action-fields；suggest 模式（后端永远 suggest）回填到本地 fields，
+  // 绝不自动调 saveFields——敏感字段红线 spec §3.5，须人目检后手动提交。
+  if (detail?.scene !== 'stage-action-fields' || !detail.fields) return;
+  let applied = 0;
+  for (const key of FILLABLE_FIELDS) {
+    if (detail.fields[key] !== undefined) {
+      (fields as Record<string, unknown>)[key] = detail.fields[key];
+      applied++;
+    }
+  }
+  if (applied > 0) {
+    aiFillHint.value = `AI 已填充 ${applied} 个字段（建议模式），请目检后点「保存字段」提交`;
+  }
+}
+
+onMounted(() => {
+  void load();
+  window.addEventListener(AI_FILL_EVENT, onAiFill);
+});
+onUnmounted(() => window.removeEventListener(AI_FILL_EVENT, onAiFill));
 </script>
 
 <template>
@@ -464,9 +519,28 @@ onMounted(load);
                 :message="`FAR + FRR 之和需 ≤ 1.000000，当前 ${(Number(fields.farValue ?? 0) + Number(fields.frrValue ?? 0)).toFixed(6)}`"
               />
 
+              <Alert
+                v-if="aiFillHint"
+                class="mb-4"
+                type="info"
+                show-icon
+                closable
+                :message="aiFillHint"
+              />
+
               <Space>
                 <Button type="primary" v-access:code="IPD_PERMISSION_CODES.STAGE_ACTION_EXECUTE" :loading="busyAction === 'saveFields'" @click="saveFields">
                   保存字段
+                </Button>
+                <Button
+                  v-if="canAiExecute"
+                  type="primary"
+                  ghost
+                  v-access:code="IPD_PERMISSION_CODES.STAGE_ACTION_EXECUTE"
+                  :loading="busyAction === 'aiExecute'"
+                  @click="aiExecute"
+                >
+                  AI 执行
                 </Button>
                 <Button v-if="isDeep" v-access:code="IPD_PERMISSION_CODES.STAGE_ACTION_DELIVERABLE" :loading="busyAction === 'saveFields'" @click="openDeliverable">
                   登记交付物

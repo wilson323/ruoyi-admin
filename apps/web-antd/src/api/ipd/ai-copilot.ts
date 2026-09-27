@@ -60,10 +60,22 @@ export function chatCopilot(input: CopilotChatInput): Promise<CopilotChatView> {
 
 /** SSE done 帧载荷。 */
 export interface CopilotStreamDone {
+  /** R221 对话即填表：仅 FILL_PAGE 意图非空（后端 done 帧携 fillPayload，否则无此键）。 */
+  fillPayload?: CopilotFillPayload;
   latencyMs: number;
   status: string;
   tokenCompletion: number;
   tokenPrompt: number;
+}
+
+/**
+ * R221 对话即填表 done 帧载荷（spec §3.5）：后端永远 suggest 模式（敏感字段红线，
+ * 前端回填后目检手动保存，结构上无法自动提交）。
+ */
+export interface CopilotFillPayload {
+  fields: Record<string, string>;
+  mode: 'auto' | 'suggest';
+  scene: string;
 }
 
 /** SSE error 帧载荷（同步前置 IpdBusinessException 或异步流式失败）。 */

@@ -83,10 +83,16 @@ async function send() {
           assistant.content += token;
           scrollToListBottom();
         },
-        onDone: () => {
+        onDone: (done) => {
           assistant.streaming = false;
           if (!assistant.content) {
             assistant.content = '（模型未返回内容，请换个问法或稍后重试）';
+          }
+          // R221 对话即填表：done 帧携 fillPayload 时广播给当前页面消费（如动作详情 C08 回填）。
+          if (done?.fillPayload && typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent('ipd:ai-fill-payload', { detail: done.fillPayload }),
+            );
           }
         },
         onError: (err) => {
