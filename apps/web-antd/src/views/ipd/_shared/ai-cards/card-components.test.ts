@@ -230,4 +230,19 @@ describe('ai-cards 4 卡组件（P1-06）', () => {
     expect(getCardType('demand.draft', 1)?.component).toBe(DemandDraftCard);
     expect(listCardTypes().every((entry) => entry.component !== undefined)).toBe(true);
   });
+
+  it('dynText null/undefined 安全占位（待签票 decision:null 不崩溃，渲染 —）', () => {
+    const nullVoteData = {
+      ...conclusionData,
+      reviews: [
+        { reviewerType: 'MARKET_PM', decision: null, opinion: null, round: 1 },
+        { reviewerType: { path: '/reviews/1/reviewerType' }, decision: 'REJECT', opinion: '材料不足', round: 1 },
+      ],
+    } as unknown as GateConclusionCardData;
+    const wrapper = mount(GateConclusionCard, { props: { data: nullVoteData } });
+    expect(wrapper.text()).toContain('—');
+    expect(wrapper.text()).toContain('REJECT');
+    // null 行不崩溃且确认按钮仍可达（修复前：dynText 读 null.path 崩溃→降级不可达）
+    expect(wrapper.find('[data-testid="ai-card-confirm"]').exists()).toBe(true);
+  });
 });

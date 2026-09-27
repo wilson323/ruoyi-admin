@@ -300,11 +300,11 @@ describe('AiSuggest 卡片分发层（P1-07）', () => {
   });
 
   it('渲染异常 → onErrorCaptured 可见降级 + 文本回退（三态之三）', async () => {
-    // data 形态过信封校验但 gateCode=null 会让卡片 dynText 收窄抛错（模拟渲染异常）
+    // data 形态过信封校验但 items 含 null 行，模板读 item.result 时抛错（模拟渲染异常）
     const crashEnvelope = {
       type: 'gate.precheck',
       version: 1,
-      data: { gateCode: null, round: 1, reviewCount: 1, totalElements: 0, items: [] },
+      data: { gateCode: 'G1', round: 1, reviewCount: 1, totalElements: 1, items: [null] },
       sourceRefs: {},
     } as unknown as AiCardEnvelope;
     vi.mocked(aiSuggest).mockResolvedValue(viewWith(crashEnvelope, { scene: 'gate.precheck-checklist' }));
@@ -548,13 +548,12 @@ describe('AiSuggest 卡片 confirm 提交链（P1-08 C08 收口）', () => {
 
   /**
    * 3c: null decision (pending-sign domain value of gate_reviews.decision) must be
-   * skipped by derivation. NOTE: gate-conclusion card dynText crashes on null
-   * ("Cannot read properties of null"), an ai-cards ownership defect (deferred in
-   * the R232 report) — the card degrades so the confirm button is unreachable for
-   * null-vote payloads. Therefore this case enters the SAME derivation entry
-   * (openGateSignConfirm) directly and asserts the modal prefill decision.
+   * skipped by derivation. Card dynText is null-safe since the ai-cards defect fix
+   * (null renders as '—'); this case still enters the derivation entry
+   * (openGateSignConfirm) directly to isolate derivation semantics from the
+   * confirm-button flow covered by the modal cases below.
    */
-  it('case-3c null pending votes do not affect derivation (direct entry; card null-render defect deferred)', async () => {
+  it('case-3c null pending votes do not affect derivation (direct entry for derivation isolation)', async () => {
     const wrapper = await mountCard('gate.conclusion-draft', conclusionEnvelope, '30001');
     const setup = wrapper.vm.$ as unknown as {
       setupState: { openGateSignConfirm: (data: AiCardEnvelope['data']) => void };

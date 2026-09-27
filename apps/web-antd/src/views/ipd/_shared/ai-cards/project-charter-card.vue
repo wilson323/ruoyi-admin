@@ -32,8 +32,9 @@ const emit = defineEmits<{
   confirm: [payload: ProjectCharterCardData];
 }>();
 
-/** CardDynString 收窄渲染：字面量直显，绑定对象取 path（DynString 陷阱防御）。 */
-function dynText(value: CardDynString): string {
+/** CardDynString 收窄渲染：字面量直显，绑定对象取 path；null/undefined 安全占位（DynString 陷阱防御）。 */
+function dynText(value: CardDynString | null | undefined): string {
+  if (value == null) return '—';
   return typeof value === 'string' ? value : value.path;
 }
 
