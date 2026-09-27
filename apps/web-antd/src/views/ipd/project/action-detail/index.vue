@@ -230,6 +230,7 @@ async function saveFields(): Promise<void> {
   busyAction.value = 'saveFields';
   try {
     action.value = await recordStageActionFields(action.value.id, toFieldsBody());
+    aiFillHint.value = '';
     message.success('动作字段已保存（status 未变更，请走状态流转接口）');
   } catch (cause) {
     submitError.value = cause;
@@ -305,6 +306,8 @@ const canAiExecute = computed(
   () => !!action.value && !['DONE', 'NA'].includes(action.value.status),
 );
 
+let aiExecuteTimer: ReturnType<typeof setTimeout> | undefined;
+
 async function aiExecute(): Promise<void> {
   if (!action.value) return;
   submitError.value = null;
@@ -312,8 +315,8 @@ async function aiExecute(): Promise<void> {
   try {
     await aiExecuteStageAction(action.value.id);
     message.success('AI 任务已提交，稍后刷新查看结果');
-    // 引擎 afterCommit 异步跑：延时 3s 后自动刷新一次拉取结果（不阻塞、不轮询）。
-    setTimeout(() => { void load(); }, 3000);
+    // 引擎 afterCommit 异步跑：延时 3s 后自动刷新一次拉取结果（不阻塞、不轮询；卸载时 clearTimeout 防对已销毁组件回调）。
+    aiExecuteTimer = setTimeout(() => { void load(); }, 3000);
   } catch (cause) {
     submitError.value = cause;
   } finally {
@@ -323,8 +326,13 @@ async function aiExecute(): Promise<void> {
 
 /** 对话即填表：与 ai-assistant.vue 广播侧同名事件（`ipd:` 前缀惯例）。 */
 const AI_FILL_EVENT = 'ipd:ai-fill-payload';
-/** C08 白名单与后端 AiCopilotService.FILL_FIELD_WHITELIST['stage-action-fields'] 严格一致。 */
-const FILLABLE_FIELDS = ['actualDoneAt', 'farValue', 'frrValue', 'certNo', 'certPassedAt', 'algoType', 'remark'];
+/**
+ * C08 对话即填表回填集：与后端 AiCopilotService.FILL_FIELD_WHITELIST['stage-action-fields'] 对齐，
+ * 但剔除 remark——本卡「保存字段」走 /{id}/fields（StageActionFieldsBody），该端点结构上不落 remark
+ * （后端 DTO/recordFields 均无 remark 参数）。回填一个存不了的字段会让「保存字段」提示误导用户，
+ * 故前端只回填可持久化的 6 字段；copilot 白名单含 remark 与 /fields 的不对称属后端遗留，另立卡对齐（R221 log 已记）。
+ */
+const FILLABLE_FIELDS = ['actualDoneAt', 'farValue', 'frrValue', 'certNo', 'certPassedAt', 'algoType'];
 const aiFillHint = ref('');
 
 function onAiFill(e: Event) {
@@ -334,6 +342,8 @@ function onAiFill(e: Event) {
   // 首切片只认 stage-action-fields；suggest 模式（后端永远 suggest）回填到本地 fields，
   // 绝不自动调 saveFields——敏感字段红线 spec §3.5，须人目检后手动提交。
   if (detail?.scene !== 'stage-action-fields' || !detail.fields) return;
+  // 首切片只认 suggest（后端恒为 suggest）；auto 未落地前防御性忽略，避免被误当自动提交入口。
+  if (detail.mode && detail.mode !== 'suggest') return;
   let applied = 0;
   for (const key of FILLABLE_FIELDS) {
     if (detail.fields[key] !== undefined) {
@@ -350,7 +360,10 @@ onMounted(() => {
   void load();
   window.addEventListener(AI_FILL_EVENT, onAiFill);
 });
-onUnmounted(() => window.removeEventListener(AI_FILL_EVENT, onAiFill));
+onUnmounted(() => {
+  window.removeEventListener(AI_FILL_EVENT, onAiFill);
+  if (aiExecuteTimer) clearTimeout(aiExecuteTimer);
+});
 </script>
 
 <template>

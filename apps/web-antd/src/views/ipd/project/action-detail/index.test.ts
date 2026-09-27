@@ -204,17 +204,38 @@ describe('页12/13 动作详情', () => {
     expect(wrapper.html()).not.toContain('AI 执行');
   });
 
-  it('R221 对话即填表：fillPayload 事件回填字段但绝不自动 saveFields（suggest 红线）', async () => {
+  it('R221 对话即填表：fillPayload 回填可持久化字段、排除 remark、绝不自 saveFields（suggest 红线）', async () => {
     api.listStageActions.mockResolvedValueOnce([deep({ actionCode: 'C08', status: 'IN_PROGRESS' })]);
     const wrapper = await mountDetail();
     window.dispatchEvent(new CustomEvent('ipd:ai-fill-payload', {
-      detail: { fields: { remark: 'AI 建议值' }, mode: 'suggest', scene: 'stage-action-fields' },
+      detail: {
+        fields: { algoType: 'FACE', remark: 'AI 建议值', salary: '99999' },
+        mode: 'suggest',
+        scene: 'stage-action-fields',
+      },
     }));
     await flushPromises();
-    const vm = wrapper.vm as unknown as { fields?: { remark: string } };
-    expect(vm.fields?.remark).toBe('AI 建议值');
+    const vm = wrapper.vm as unknown as { fields?: { algoType?: string; remark?: string } };
+    // 可持久化字段回填
+    expect(vm.fields?.algoType).toBe('FACE');
+    // W1：remark 走 /fields 存不了 → 前端不回填，避免误导「保存字段」
+    expect(vm.fields?.remark).not.toBe('AI 建议值');
     expect(wrapper.html()).toContain('AI 已填充');
+    // 非白名单 key（salary）不得写入 fields
+    expect((vm.fields as Record<string, unknown>)?.salary).toBeUndefined();
     // suggest 模式红线：回填后不得自动提交
+    expect(api.recordStageActionFields).not.toHaveBeenCalled();
+  });
+
+  it('R221 对话即填表：mode=auto 防御性忽略（首切片未落地自动提交）', async () => {
+    api.listStageActions.mockResolvedValueOnce([deep({ actionCode: 'C08', status: 'IN_PROGRESS' })]);
+    const wrapper = await mountDetail();
+    window.dispatchEvent(new CustomEvent('ipd:ai-fill-payload', {
+      detail: { fields: { algoType: 'IRIS' }, mode: 'auto', scene: 'stage-action-fields' },
+    }));
+    await flushPromises();
+    const vm = wrapper.vm as unknown as { fields?: { algoType?: string } };
+    expect(vm.fields?.algoType).not.toBe('IRIS');
     expect(api.recordStageActionFields).not.toHaveBeenCalled();
   });
 });
