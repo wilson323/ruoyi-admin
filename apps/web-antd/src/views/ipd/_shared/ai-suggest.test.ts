@@ -7,13 +7,17 @@
  *
  * P1-07 分发层覆盖（第二个 describe）：合法 card→对应卡片组件、无 card→纯文本、
  * 非法 card/渲染异常→可见降级+文本回退、3 轻场景不出卡、confirm 只接住留 hook。
+ *
+ * P1-08-R232 覆盖（第三个 describe）：decision 按真实票（reviews[].decision 域值
+ * APPROVE|REJECT|null|ABSTAIN）推导、票面/要素不一致反例锁定、签署确认弹层
+ * （confirm 先出弹层不直达提交 / 弹层可改 decision+opinion / 取消零调用）。
  */
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IpdRequestError } from '../../../api/ipd/auth';
 import { aiSuggest, type AiSuggestScene, type AiSuggestView } from '../../../api/ipd/ai-suggest';
-import { signGate } from '../../../api/ipd/gate-review';
+import { signGate, type GateDecision } from '../../../api/ipd/gate-review';
 import AiSuggest from './ai-suggest.vue';
 import type { AiCardEnvelope } from './ai-cards/types';
 
@@ -61,13 +65,13 @@ const precheckEnvelope: AiCardEnvelope = {
   sourceRefs: { gate: '1' },
 };
 
-/** gate.conclusion 合法信封。 */
+/** gate.conclusion 合法信封（reviews[].decision=APPROVE 为 gate_reviews 合法域值）。 */
 const conclusionEnvelope: AiCardEnvelope = {
   type: 'gate.conclusion',
   version: 1,
   data: {
     gateCode: 'G1-TR',
-    reviews: [{ reviewerType: 'MARKET_PM', decision: 'PASS', opinion: '材料齐备', round: 1 }],
+    reviews: [{ reviewerType: 'MARKET_PM', decision: 'APPROVE', opinion: '材料齐备', round: 1 }],
     passCount: 1,
     conditionalCount: 0,
     failCount: 0,
@@ -358,19 +362,43 @@ describe('AiSuggest 卡片分发层（P1-07）', () => {
 });
 
 describe('AiSuggest 卡片 confirm 提交链（P1-08 C08 收口）', () => {
-  /** gate.conclusion 否决票信封（AC-GATE-05：任一 REJECT ⇒ Gate REJECTED）。 */
+  /** gate.conclusion 否决票信封（AC-GATE-05：任一 REJECT ⇒ Gate REJECTED；decision=REJECT 为 gate_reviews 合法域值）。 */
   const rejectEnvelope: AiCardEnvelope = {
     type: 'gate.conclusion',
     version: 1,
     data: {
       gateCode: 'G1-TR',
-      reviews: [{ reviewerType: 'MARKET_PM', decision: 'FAIL', opinion: '不通过', round: 1 }],
+      reviews: [{ reviewerType: 'MARKET_PM', decision: 'REJECT', opinion: '不通过', round: 1 }],
       passCount: 0,
       conditionalCount: 0,
       failCount: 1,
     },
     sourceRefs: { gate: '1' },
   };
+
+  /**
+   * 票面/要素反例信封（R232 修复①锁定）：reviews[].decision 直书 gate_reviews 域值
+   * （APPROVE|REJECT|null 待签|ABSTAIN 弃权；null 超出 CardDynString 静态联合，运行期域值直书不窄化）。
+   */
+  function votesEnvelope(reviews: Array<null | string>, failCount: number): AiCardEnvelope {
+    return {
+      type: 'gate.conclusion',
+      version: 1,
+      data: {
+        gateCode: 'G1-TR',
+        reviews: reviews.map((decision) => ({
+          reviewerType: 'MARKET_PM',
+          decision,
+          opinion: '意见',
+          round: 1,
+        })),
+        passCount: 0,
+        conditionalCount: 0,
+        failCount,
+      },
+      sourceRefs: { gate: '1' },
+    } as unknown as AiCardEnvelope;
+  }
 
   /** 建议值直达防线：金额/评分/系数/删除/移交类槽位绝不允许出现在提交载荷里（方案 §5.1）。 */
   const FORBIDDEN_PAYLOAD_KEYS =
@@ -380,6 +408,8 @@ describe('AiSuggest 卡片 confirm 提交链（P1-08 C08 收口）', () => {
 
   beforeEach(() => {
     vi.mocked(signGate).mockReset();
+    // Ant Modal Teleport 渲染到 document.body，逐用例清场防串态（仓内惯例）
+    document.body.innerHTML = '';
     // 剪贴板 mock 逐用例重装（happy-dom 的 navigator.clipboard 可能不存在）；
     // 测试环境按文件隔离且本 describe 位于文件末尾，故不设 afterEach 还原。
     clipboardWrite = vi.fn().mockResolvedValue(undefined);
@@ -398,11 +428,49 @@ describe('AiSuggest 卡片 confirm 提交链（P1-08 C08 收口）', () => {
     return wrapper;
   }
 
-  it('gate.conclusion confirm：恰一次既有签署端点调用，载荷无建议值直达字段', async () => {
+  /**
+   * Click a sign-modal footer button (Ant Modal teleports to document.body; repo
+   * convention, cf. operation/recovery-warnings.test.ts). Accepts semantic keys
+   * ('confirm-sign' = primary ok button, 'cancel' = the other footer button) or a
+   * literal button label (existing call sites keep their readable labels).
+   */
+  async function clickSignModalButton(label: string) {
+    const btns = [...document.body.querySelectorAll('.ant-modal-footer button')];
+    const btn = (
+      label === 'confirm-sign'
+        ? btns.find((b) => b.classList.contains('ant-btn-primary'))
+        : label === 'cancel'
+          ? btns.find((b) => !b.classList.contains('ant-btn-primary'))
+          : btns.find((b) => (b.textContent ?? '').replace(/\s+/g, '').includes(label))
+    ) as HTMLButtonElement | undefined;
+    expect(btn, `sign modal footer should have button: ${label}`).toBeDefined();
+    btn!.dispatchEvent(new Event('click', { bubbles: true }));
+    await flushPromises();
+  }
+
+  it('confirm 后先弹签署确认弹层：明示可修改 + 预填 AI 草稿，未确认零调用（C08 人终审）', async () => {
+    const wrapper = await mountCard('gate.conclusion-draft', conclusionEnvelope, '30001');
+    expect(document.body.querySelector('.ant-modal'), 'confirm 前不应有弹层').toBeNull();
+
+    await wrapper.get('[data-testid="ai-card-confirm"]').trigger('click');
+    await flushPromises();
+
+    const modal = document.body.querySelector('.ant-modal');
+    expect(modal, 'confirm 后应先弹签署确认弹层').toBeTruthy();
+    expect(modal?.textContent ?? '').toContain('以下内容将作为你的签署意见提交，可修改');
+    // decision 预填 = 真实票推导结果；opinion 预填 = AI 结论草稿（可改可清空）
+    expect(wrapper.findComponent({ name: 'ARadioGroup' }).props('value')).toBe('APPROVE');
+    expect(wrapper.findComponent({ name: 'ATextarea' }).props('value')).toBe(okView.markdown.trim());
+    expect(signGate).not.toHaveBeenCalled();
+    expect(clipboardWrite).not.toHaveBeenCalled();
+  });
+
+  it('弹层确认后：恰一次既有签署端点调用，载荷无建议值直达字段', async () => {
     const wrapper = await mountCard('gate.conclusion-draft', conclusionEnvelope, '30001');
 
     await wrapper.get('[data-testid="ai-card-confirm"]').trigger('click');
     await flushPromises();
+    await clickSignModalButton('确认签署');
 
     expect(signGate).toHaveBeenCalledTimes(1);
     expect(signGate).toHaveBeenCalledWith('30001', 'APPROVE', okView.markdown.trim());
@@ -413,22 +481,153 @@ describe('AiSuggest 卡片 confirm 提交链（P1-08 C08 收口）', () => {
     expect(notice).toContain('P1-08');
   });
 
-  it('gate.conclusion 有否决票：decision=REJECT 由真实票数推导（AC-GATE-05），非 AI 生成值', async () => {
+  it('gate.conclusion 有否决票：decision=REJECT 由真实票（reviews[].decision）推导（AC-GATE-05），非 AI 生成值', async () => {
     const wrapper = await mountCard('gate.conclusion-draft', rejectEnvelope, '30001');
 
     await wrapper.get('[data-testid="ai-card-confirm"]').trigger('click');
     await flushPromises();
+    await clickSignModalButton('确认签署');
 
     expect(signGate).toHaveBeenCalledTimes(1);
     expect(signGate).toHaveBeenCalledWith('30001', 'REJECT', okView.markdown.trim());
     expect(JSON.stringify(vi.mocked(signGate).mock.calls[0])).not.toMatch(FORBIDDEN_PAYLOAD_KEYS);
   });
 
-  it('防重复点击：进行中再点不重复发起（signGate 恰一次）且卡区可见禁用', async () => {
+  it('反例锁定：票面/要素不一致按真实票推导（failCount 与 decision 解耦，R232-1 修复①）', async () => {
+    const cases: Array<{
+      decision: GateDecision;
+      failCount: number;
+      name: string;
+      reviews: Array<null | string>;
+    }> = [
+      {
+        name: 'case-1 all-element-FAIL but all votes APPROVE => APPROVE',
+        failCount: 2,
+        reviews: ['APPROVE', 'APPROVE'],
+        decision: 'APPROVE',
+      },
+      {
+        name: 'case-2 failCount=0 but has REJECT vote => REJECT',
+        failCount: 0,
+        reviews: ['APPROVE', 'REJECT'],
+        decision: 'REJECT',
+      },
+      {
+        name: 'case-3a ABSTAIN votes do not affect derivation => APPROVE',
+        failCount: 0,
+        reviews: ['ABSTAIN', 'ABSTAIN'],
+        decision: 'APPROVE',
+      },
+      {
+        name: 'case-3b REJECT case-insensitive (reject) => REJECT',
+        failCount: 0,
+        reviews: ['ABSTAIN', 'reject'],
+        decision: 'REJECT',
+      },
+    ];
+    for (const testCase of cases) {
+      vi.mocked(signGate).mockReset();
+      const wrapper = await mountCard(
+        'gate.conclusion-draft',
+        votesEnvelope(testCase.reviews, testCase.failCount),
+        '30001',
+      );
+
+      await wrapper.get('[data-testid="ai-card-confirm"]').trigger('click');
+      await flushPromises();
+      expect(document.body.querySelector('.ant-modal'), `${testCase.name} should open sign modal`).toBeTruthy();
+      expect(signGate, `${testCase.name} zero call before human confirm`).not.toHaveBeenCalled();
+      await clickSignModalButton('confirm-sign');
+
+      expect(signGate, testCase.name).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(signGate).mock.calls[0]?.[1], testCase.name).toBe(testCase.decision);
+      wrapper.unmount();
+      document.body.innerHTML = '';
+    }
+  });
+
+  /**
+   * 3c: null decision (pending-sign domain value of gate_reviews.decision) must be
+   * skipped by derivation. NOTE: gate-conclusion card dynText crashes on null
+   * ("Cannot read properties of null"), an ai-cards ownership defect (deferred in
+   * the R232 report) — the card degrades so the confirm button is unreachable for
+   * null-vote payloads. Therefore this case enters the SAME derivation entry
+   * (openGateSignConfirm) directly and asserts the modal prefill decision.
+   */
+  it('case-3c null pending votes do not affect derivation (direct entry; card null-render defect deferred)', async () => {
+    const wrapper = await mountCard('gate.conclusion-draft', conclusionEnvelope, '30001');
+    const setup = wrapper.vm.$ as unknown as {
+      setupState: { openGateSignConfirm: (data: AiCardEnvelope['data']) => void };
+    };
+
+    // [null pending, ABSTAIN] => APPROVE (no REJECT vote)
+    setup.setupState.openGateSignConfirm(votesEnvelope([null, 'ABSTAIN'], 0).data);
+    await flushPromises();
+    expect(document.body.querySelector('.ant-modal'), 'direct entry should also open sign modal').toBeTruthy();
+    expect(wrapper.findComponent({ name: 'ARadioGroup' }).props('value')).toBe('APPROVE');
+    await clickSignModalButton('confirm-sign');
+    expect(signGate).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(signGate).mock.calls[0]?.[1]).toBe('APPROVE');
+
+    // [null pending, REJECT] => REJECT (null vote must not mask a real REJECT vote)
+    vi.mocked(signGate).mockReset();
+    setup.setupState.openGateSignConfirm(votesEnvelope([null, 'REJECT'], 0).data);
+    await flushPromises();
+    expect(wrapper.findComponent({ name: 'ARadioGroup' }).props('value')).toBe('REJECT');
+    await clickSignModalButton('confirm-sign');
+    expect(signGate).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(signGate).mock.calls[0]?.[1]).toBe('REJECT');
+  });
+
+  it('弹层内改 decision/opinion 后确认：恰一次调用，载荷=修改后值（真人终审可改）', async () => {
+    const wrapper = await mountCard('gate.conclusion-draft', conclusionEnvelope, '30001');
+
+    await wrapper.get('[data-testid="ai-card-confirm"]').trigger('click');
+    await flushPromises();
+    expect(signGate).not.toHaveBeenCalled();
+
+    // 弹层内改 decision（预填 APPROVE → REJECT）与 opinion（AI 草稿 → 真人意见）
+    await wrapper.findComponent({ name: 'ARadioGroup' }).vm.$emit('update:value', 'REJECT');
+    await wrapper
+      .findComponent({ name: 'ATextarea' })
+      .vm.$emit('update:value', '真人复核意见：材料已补齐，同意通过');
+    await clickSignModalButton('确认签署');
+
+    expect(signGate).toHaveBeenCalledTimes(1);
+    expect(signGate).toHaveBeenCalledWith('30001', 'REJECT', '真人复核意见：材料已补齐，同意通过');
+  });
+
+  it('弹层 opinion 可清空：清空后确认提交 opinion=undefined（AI 草稿不强塞）', async () => {
+    const wrapper = await mountCard('gate.conclusion-draft', conclusionEnvelope, '30001');
+
+    await wrapper.get('[data-testid="ai-card-confirm"]').trigger('click');
+    await flushPromises();
+    await wrapper.findComponent({ name: 'ATextarea' }).vm.$emit('update:value', '');
+    await clickSignModalButton('确认签署');
+
+    expect(signGate).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(signGate).mock.calls[0]?.[2]).toBeUndefined();
+  });
+
+  it('弹层取消：零调用（人未终审不落签）', async () => {
+    const wrapper = await mountCard('gate.conclusion-draft', rejectEnvelope, '30001');
+
+    await wrapper.get('[data-testid="ai-card-confirm"]').trigger('click');
+    await flushPromises();
+    await clickSignModalButton('取消');
+
+    expect(signGate).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="ai-suggest-card-notice"]').exists()).toBe(false);
+  });
+
+  it('防重复点击：弹层确认进行中重复点击不重复发起（signGate 恰一次）且卡区可见禁用', async () => {
     vi.mocked(signGate).mockImplementation(() => new Promise<never>(() => {}));
     const wrapper = await mountCard('gate.conclusion-draft', conclusionEnvelope, '30001');
 
     await wrapper.get('[data-testid="ai-card-confirm"]').trigger('click');
+    await flushPromises();
+    await clickSignModalButton('确认签署');
+    await clickSignModalButton('确认签署');
     await wrapper.get('[data-testid="ai-card-confirm"]').trigger('click');
 
     expect(signGate).toHaveBeenCalledTimes(1);
@@ -443,6 +642,7 @@ describe('AiSuggest 卡片 confirm 提交链（P1-08 C08 收口）', () => {
 
     await wrapper.get('[data-testid="ai-card-confirm"]').trigger('click');
     await flushPromises();
+    await clickSignModalButton('确认签署');
 
     expect(signGate).toHaveBeenCalledTimes(1);
     const notice = wrapper.get('[data-testid="ai-suggest-card-notice"]').text();

@@ -16,13 +16,17 @@
  *   project.summary.refresh）保持纯文本不进卡（带 card 也忽略、不降级，与基线渲染完全一致）。
  * - P1-08 提交链（C08 收口）：卡片 confirm = 恰一次既有 /api/v1 真人端点调用（gate.conclusion
  *   → 既有签署端点）或预填复制降级；金额/评分/系数/删除/移交类值不进提交载荷（方案 §5.1）。
+ * - R232 P1-08 红线修复：decision 从真实票推导（reviews[].decision ∈ APPROVE|REJECT|null 待签|
+ *   ABSTAIN 弃权，源 gate_reviews.decision）——failCount 是要素结果计数（gate_element_results），
+ *   与票面不一致是常态，禁作判定源；提交前过「签署确认弹层」真人终审（decision 可改、opinion
+ *   可编辑预填可清空，C08「AI 只建议、人终审」）。
  */
 import type { Component } from 'vue';
 
 import { onErrorCaptured, ref, shallowRef } from 'vue';
 
 import { PhSparkle as Sparkles } from '@phosphor-icons/vue';
-import { Alert, Button, Input, Tooltip } from 'ant-design-vue';
+import { Alert, Button, Input, Modal, Radio, Tooltip } from 'ant-design-vue';
 
 import { aiSuggest, type AiSuggestScene, type AiSuggestView } from '../../../api/ipd/ai-suggest';
 import { signGate, type GateDecision } from '../../../api/ipd/gate-review';
@@ -86,6 +90,10 @@ const cardDegraded = ref('');
 const cardNotice = ref('');
 const cardNoticeTone = ref<'error' | 'info' | 'success' | 'warning'>('info');
 const cardConfirmBusy = ref(false);
+/** Gate 签署确认弹层（R232 修复②+🟡#2）：真人终审草稿（AI 预填，真人可改可清空，C08）。 */
+const signModalOpen = ref(false);
+const signDraftDecision = ref<GateDecision>('APPROVE');
+const signDraftOpinion = ref('');
 
 /** 可出卡场景集（= 注册表 scene 集的唯一事实源推导；其外 3 轻场景保持纯文本不进卡）。 */
 const CARD_SCENES: ReadonlySet<string> = new Set(
@@ -197,6 +205,7 @@ function adopt() {
  * 映射铁律：每卡恰好一次既有 /api/v1 真人端点调用 或 一次预填复制，绝不直写业务表；
  * 金额/评分/系数/删除/移交类值只进「建议值」展示区，绝不进提交载荷（方案 §5.1）。
  * 所有 confirm 反馈统一带「P1-08」标记（既有 hook 用例回归锚点）。
+ * gate.conclusion 走签署确认弹层（R232 修复②）：confirm 不直达提交，真人终审后才落签。
  */
 /** 无「一次既有写端点」合法映射卡的预填指引（复制建议 → 真人填既有表单后手动提交）。 */
 const PREFILL_HINTS: Partial<Record<AiCardType, string>> = {
@@ -206,7 +215,7 @@ const PREFILL_HINTS: Partial<Record<AiCardType, string>> = {
 };
 
 async function onCardConfirm(payload: AiCardData) {
-  if (cardConfirmBusy.value) return;
+  if (cardConfirmBusy.value || signModalOpen.value) return;
   // mode!=='suggest' 防御保留（沿用 action-detail/index.vue 既有口径：非 suggest 一律防御性忽略）。
   const raw = payload as unknown as Record<string, unknown>;
   if (raw.mode !== undefined && raw.mode !== 'suggest') {
@@ -216,32 +225,88 @@ async function onCardConfirm(payload: AiCardData) {
   }
   const cardType = cardView.value?.type;
   if (!cardType) return;
+  if (cardType === 'gate.conclusion') {
+    // R232 修复②：confirm 不直达提交，先弹签署确认弹层（真人复核终审）。
+    openGateSignConfirm(payload as GateConclusionCardData);
+    return;
+  }
   cardConfirmBusy.value = true;
   try {
-    if (cardType === 'gate.conclusion') {
-      await submitGateSign(payload as GateConclusionCardData);
-    } else {
-      await prefillSuggestion(cardType);
-    }
+    await prefillSuggestion(cardType);
   } finally {
     cardConfirmBusy.value = false;
   }
 }
 
 /**
- * gate.conclusion → 既有签署端点恰一次（GateReviewService.sign 对应 POST /gates/{gateId}/sign）。
- * decision 按真实票数推导（AC-GATE-05 任一 REJECT ⇒ REJECTED），非 AI 生成值；
- * opinion 随带结论草稿文本（非五类值），审计 GATE_SIGN 由端点自带落痕。
+ * decision 按真实票推导（R232 修复①：原 `failCount > 0 → REJECT` 取错数据源）。
+ *
+ * 数据源 = data.reviews[].decision（gate_reviews.decision 域值 APPROVE|REJECT|null 待签|
+ * ABSTAIN 弃权）；failCount 是要素结果计数（gate_element_results.result=FAIL），票面/要素
+ * 不一致是常态，禁作判定源。规则：任一 REJECT 票（字符串、大小写不敏感）⇒ 'REJECT'；
+ * null/ABSTAIN/绑定对象等非 REJECT 票跳过不影响推导，无 REJECT 票 ⇒ 'APPROVE'。
  */
-async function submitGateSign(data: GateConclusionCardData) {
+function deriveGateDecision(data: GateConclusionCardData): GateDecision {
+  const reviews: unknown = Array.isArray(data.reviews) ? data.reviews : [];
+  for (const review of reviews as unknown[]) {
+    const decision = isRecord(review) ? review.decision : undefined;
+    if (typeof decision === 'string' && decision.trim().toUpperCase() === 'REJECT') {
+      return 'REJECT';
+    }
+  }
+  return 'APPROVE';
+}
+
+/**
+ * gate.conclusion confirm → 签署确认弹层（R232 修复② + 🟡#2 合并收口）：真人复核终审。
+ * 弹层展示将提交的 decision（可改：APPROVE/REJECT 二选）与 opinion（可编辑文本框，默认预填
+ * AI 结论草稿、可清空），文案明示「以下内容将作为你的签署意见提交，可修改」；真人确认后才调
+ * signGate（C08：AI 只建议、人终审）。「票面以提交时为准」为 TOCTOU 一行防御（出卡→签署间
+ * 票面变化的全量重取挂账，不在本组件做）。
+ */
+function openGateSignConfirm(data: GateConclusionCardData) {
   const gateId = props.entityId?.trim();
   if (!gateId) {
     cardNoticeTone.value = 'error';
     cardNotice.value = '签署提交失败（P1-08 提交链路）：缺 gateId（entityId 未传），未发起请求；请在既有 Gate 评审面板人工签署';
     return;
   }
-  const decision: GateDecision = data.failCount > 0 ? 'REJECT' : 'APPROVE';
-  const opinion = result.value?.markdown?.trim() || undefined;
+  signDraftDecision.value = deriveGateDecision(data);
+  signDraftOpinion.value = result.value?.markdown?.trim() || '';
+  signModalOpen.value = true;
+}
+
+/** 弹层确认：以真人复核后的 decision/opinion 恰一次调用既有签署端点（防重复点击守卫）。 */
+async function onSignModalOk() {
+  if (cardConfirmBusy.value) return;
+  const gateId = props.entityId?.trim();
+  if (!gateId) {
+    signModalOpen.value = false;
+    cardNoticeTone.value = 'error';
+    cardNotice.value = '签署提交失败（P1-08 提交链路）：缺 gateId（entityId 未传），未发起请求；请在既有 Gate 评审面板人工签署';
+    return;
+  }
+  cardConfirmBusy.value = true;
+  try {
+    await submitGateSign(gateId, signDraftDecision.value, signDraftOpinion.value.trim() || undefined);
+  } finally {
+    signModalOpen.value = false;
+    cardConfirmBusy.value = false;
+  }
+}
+
+/** 弹层取消：零提交（人未终审不落签）。 */
+function onSignModalCancel() {
+  if (cardConfirmBusy.value) return;
+  signModalOpen.value = false;
+}
+
+/**
+ * gate.conclusion → 既有签署端点恰一次（GateReviewService.sign 对应 POST /gates/{gateId}/sign）。
+ * decision 为真人复核后的终审值（默认预填 deriveGateDecision 真实票推导结果，弹层内可改）；
+ * opinion 为真人签署意见（默认预填 AI 结论草稿，可改可清空），审计 GATE_SIGN 由端点自带落痕。
+ */
+async function submitGateSign(gateId: string, decision: GateDecision, opinion: string | undefined) {
   cardNoticeTone.value = 'info';
   cardNotice.value = '正在提交 Gate 签署（P1-08 提交链路，走既有签署端点）…';
   try {
@@ -346,6 +411,48 @@ async function prefillSuggestion(cardType: AiCardType) {
         </div>
       </template>
     </div>
+    <!-- Gate 签署确认弹层（R232 修复② + 🟡#2）：真人复核终审，decision 可改、opinion 可编辑（C08）。 -->
+    <Modal
+      v-model:open="signModalOpen"
+      title="Gate 签署复核（AI 只建议 · 人终审）"
+      ok-text="确认签署"
+      cancel-text="取消"
+      :closable="false"
+      :confirm-loading="cardConfirmBusy"
+      :mask-closable="false"
+      @cancel="onSignModalCancel"
+      @ok="onSignModalOk"
+    >
+      <p class="sign-hint">以下内容将作为你的签署意见提交，可修改。</p>
+      <p class="sign-hint">票面以提交时为准（若出卡后又有新投票，以本次提交时刻的判定为准）。</p>
+      <div class="sign-field">
+        <span class="sign-label">签署判定</span>
+        <Radio.Group
+          v-model:value="signDraftDecision"
+          name="ai_suggest_sign_decision"
+          aria-label="签署判定（可修改）"
+          :disabled="cardConfirmBusy"
+          data-testid="ai-suggest-sign-decision"
+        >
+          <Radio value="APPROVE">APPROVE（通过）</Radio>
+          <Radio value="REJECT">REJECT（不通过）</Radio>
+        </Radio.Group>
+      </div>
+      <div class="sign-field">
+        <span class="sign-label">签署意见</span>
+        <Input.TextArea
+          v-model:value="signDraftOpinion"
+          id="ipd-ai-suggest-sign-opinion"
+          name="ai_suggest_sign_opinion"
+          aria-label="签署意见（可修改）"
+          :disabled="cardConfirmBusy"
+          :maxlength="2000"
+          :auto-size="{ maxRows: 6, minRows: 3 }"
+          placeholder="默认预填 AI 结论草稿，可修改或清空"
+          data-testid="ai-suggest-sign-opinion"
+        />
+      </div>
+    </Modal>
   </div>
 </template>
 
@@ -392,5 +499,21 @@ async function prefillSuggestion(cardType: AiCardType) {
 .suggest-actions .meta {
   margin-left: auto;
   color: var(--ipd-text-muted, #999);
+}
+
+.sign-hint {
+  margin: 0 0 8px;
+  color: var(--ipd-text-muted, #999);
+}
+
+.sign-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.sign-label {
+  font-weight: 600;
 }
 </style>
