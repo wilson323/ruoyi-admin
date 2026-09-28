@@ -16,7 +16,6 @@ import {
   DEPTH_COLOR,
   DEPTH_TEXT,
   LEVEL_TEXT,
-  PERSON_TYPE_TEXT_FROM_ROLE,
   SOURCE_TEXT,
   STAGE_TEXT,
   STAGE_TONE,
@@ -154,12 +153,6 @@ export function blockingBadge(isBlocking: null | string | undefined): string {
 
 /** 角色 → 可见项目筛选规则（页07 BR-ORG-06；按当前会话主体）。 */
 export type ProjectScope = 'all' | 'group' | 'mine';
-
-/** 已知角色中文显示（G-09：产品组长不允许改名为「评审上级」等）。 */
-export function personTypeText(type: null | string | undefined): string {
-  if (!type) return PROJECT_UNKNOWN;
-  return PERSON_TYPE_TEXT_FROM_ROLE[type] ?? PROJECT_UNKNOWN;
-}
 
 /** 六阶段顺序（深管卡片/轻管行的视觉骨架）。 */
 export const STAGE_ORDER: Array<{ code: string; label: string }> = [
