@@ -186,4 +186,47 @@ describe('页48 AI 模型配置', () => {
     expect(document.body.querySelector('.ant-modal')?.textContent).not.toContain('fixture-plain-secret');
     wrapper.unmount();
   });
+
+  it('向量模型(RAG) 两键回显并随保存上送，缺一半被表单拦截', async () => {
+    const ragModel = { ...models[0], embedEndpoint: 'https://api.embed.example/v1/embeddings', embedModel: 'text-embedding-v4' };
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path === '/api/v1/ai-models' && (!init?.method || init.method === 'GET')) return envelope([ragModel]);
+      if (path === '/api/v1/ai-models/701/update' && init?.method === 'POST') return envelope(ragModel);
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mount(Index);
+    // 列表「向量模型(RAG)」列回显 embedding 模型名（IPD RAG 真活链路消费同一配置）
+    await vi.waitFor(() => expect(wrapper.text()).toContain('text-embedding-v4'));
+    await wrapper.findAll('button').find((button) => buttonText(button) === '编辑')!.trigger('click');
+    await vi.waitFor(() => expect(document.body.querySelector('.ant-modal')).toBeTruthy());
+    const modal = document.body.querySelector('.ant-modal')!;
+    const modalInputs = [...modal.querySelectorAll('input.ant-input')] as HTMLInputElement[];
+    const embedEndpointInput = modalInputs.find((i) => i.value === 'https://api.embed.example/v1/embeddings');
+    const embedModelInput = modalInputs.find((i) => i.value === 'text-embedding-v4');
+    expect(embedEndpointInput).toBeTruthy();
+    expect(embedModelInput).toBeTruthy();
+
+    // 缺一半（清空向量模型）→ 校验拦截，update 不发出
+    embedModelInput!.value = '';
+    embedModelInput!.dispatchEvent(new Event('input'));
+    const save = [...modal.querySelectorAll('.ant-btn-primary')].find((button) => elementText(button).includes('保存'))!;
+    save.dispatchEvent(new Event('click'));
+    await vi.waitFor(() => expect(document.body.textContent).toContain('向量化端点与向量模型需同时填写'));
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+
+    // 补齐两键后保存，请求体带 embed 两键（后端 mergeEmbedKey：非空=覆盖）
+    embedModelInput!.value = 'text-embedding-v3';
+    embedModelInput!.dispatchEvent(new Event('input'));
+    save.dispatchEvent(new Event('click'));
+    await vi.waitFor(() => {
+      const call = fetcher.mock.calls.find(([, init]) => init?.method === 'POST');
+      expect(call).toBeTruthy();
+      const body = JSON.parse(String(call![1]?.body));
+      expect(body.embedEndpoint).toBe('https://api.embed.example/v1/embeddings');
+      expect(body.embedModel).toBe('text-embedding-v3');
+    });
+    wrapper.unmount();
+  });
 });

@@ -69,6 +69,8 @@ function asAiModel(record: Record<string, any>): IpdAiModelView {
 const modalForm = reactive({
   apiKey: '',
   endpoint: '',
+  embedEndpoint: '',
+  embedModel: '',
   maxTokens: undefined as undefined | number,
   model: '',
   provider: '',
@@ -92,6 +94,42 @@ const modalRules = computed<Record<string, RuleObject[]>>(() => ({
     { required: true, whitespace: true, message: '请输入提供商' },
     { max: 32, message: '提供商不能超过32个字符' },
   ],
+  // 向量模型（RAG）两键联动：缺一后端即视为 RAG 关闭（AiModelConfigService.mergeEmbedKey），
+  // 故在表单层拦下“填一半”的配置，避免运营误以为已启用。
+  embedEndpoint: [
+    {
+      trigger: 'blur',
+      validator: (_rule: RuleObject, value: string) => {
+        const current = String(value ?? '').trim();
+        const paired = String(modalForm.embedModel ?? '').trim();
+        if (!current) {
+          return paired
+            ? Promise.reject('向量化端点与向量模型需同时填写（缺一不启用 RAG）')
+            : Promise.resolve();
+        }
+        return /^https?:\/\//.test(current)
+          ? Promise.resolve()
+          : Promise.reject('向量化端点必须以 http:// 或 https:// 开头');
+      },
+    },
+  ],
+  embedModel: [
+    {
+      trigger: 'blur',
+      validator: (_rule: RuleObject, value: string) => {
+        const current = String(value ?? '').trim();
+        const paired = String(modalForm.embedEndpoint ?? '').trim();
+        if (!current) {
+          return paired
+            ? Promise.reject('向量化端点与向量模型需同时填写（缺一不启用 RAG）')
+            : Promise.resolve();
+        }
+        return current.length <= 64
+          ? Promise.resolve()
+          : Promise.reject('向量模型名称不能超过64个字符');
+      },
+    },
+  ],
 }));
 const modalFormRef = ref();
 
@@ -107,6 +145,7 @@ const columns = [
   { dataIndex: 'endpoint', key: 'endpoint', title: '接口地址' },
   { dataIndex: 'temperature', key: 'temperature', title: '温度', width: 80 },
   { dataIndex: 'maxTokens', key: 'maxTokens', title: '最大 Token', width: 110 },
+  { dataIndex: 'embedModel', key: 'embedModel', title: '向量模型(RAG)', width: 140 },
   { dataIndex: 'maskedKey', key: 'maskedKey', title: '密钥（脱敏）', width: 160 },
   { dataIndex: 'enabled', key: 'enabled', title: '状态', width: 90 },
   { key: 'actions', title: '操作', width: 230 },
@@ -136,6 +175,8 @@ function openCreate() {
   modalForm.apiKey = '';
   modalForm.temperature = undefined;
   modalForm.maxTokens = undefined;
+  modalForm.embedEndpoint = '';
+  modalForm.embedModel = '';
   modalOpen.value = true;
 }
 
@@ -147,6 +188,8 @@ function openEdit(record: IpdAiModelView) {
   modalForm.apiKey = '';
   modalForm.temperature = record.temperature === null ? undefined : Number(record.temperature);
   modalForm.maxTokens = record.maxTokens ?? undefined;
+  modalForm.embedEndpoint = record.embedEndpoint;
+  modalForm.embedModel = record.embedModel;
   modalOpen.value = true;
 }
 
@@ -161,6 +204,9 @@ async function saveModal() {
   const isEdit = !!editingId.value;
   const body = {
     endpoint: modalForm.endpoint.trim(),
+    // 向量模型两键统一上送字符串（空串=显式清除，后端 mergeEmbedKey 三态语义）。
+    embedEndpoint: modalForm.embedEndpoint.trim(),
+    embedModel: modalForm.embedModel.trim(),
     maxTokens: modalForm.maxTokens ?? null,
     model: modalForm.model.trim(),
     provider: modalForm.provider.trim(),
@@ -215,7 +261,7 @@ async function runTest(record: IpdAiModelView) {
 <template>
   <div class="flex flex-col gap-4 p-4">
     <Alert
-      message="AI 模型配置的密钥加密存储、永不回显（仅显示脱敏掩码）；全局至多一条配置生效，启用新配置时原生效配置自动停用。连接测试失败时不泄露任何凭证信息。"
+      message="AI 模型配置的密钥加密存储、永不回显（仅显示脱敏掩码）；全局至多一条配置生效，启用新配置时原生效配置自动停用。连接测试失败时不泄露任何凭证信息。「向量化端点 / 向量模型」两键同时填写才启用知识库 RAG 向量化（缺一即关闭）。"
       show-icon
       type="info"
     />
@@ -265,6 +311,10 @@ async function runTest(record: IpdAiModelView) {
             </template>
             <template v-else-if="column.key === 'maxTokens'">
               <span class="tabular-nums">{{ record.maxTokens ?? '待补充' }}</span>
+            </template>
+            <template v-else-if="column.key === 'embedModel'">
+              <code v-if="record.embedModel" class="text-xs">{{ record.embedModel }}</code>
+              <span v-else class="text-muted-foreground">未启用 RAG</span>
             </template>
             <template v-else-if="column.key === 'maskedKey'">
               <code v-if="record.maskedKey" class="text-xs">{{ record.maskedKey }}</code>
@@ -339,6 +389,12 @@ async function runTest(record: IpdAiModelView) {
         </FormItem>
         <FormItem label="最大 Token" name="maxTokens">
           <InputNumber v-model:value="modalForm.maxTokens" :max="200000" :min="1" :precision="0" class="w-full" placeholder="1-200000，选填" />
+        </FormItem>
+        <FormItem label="向量化端点" name="embedEndpoint">
+          <Input v-model:value="modalForm.embedEndpoint" :maxlength="255" placeholder="选填：RAG 向量化接口（OpenAI 兼容 /embeddings），https:// 开头" />
+        </FormItem>
+        <FormItem label="向量模型" name="embedModel">
+          <Input v-model:value="modalForm.embedModel" :maxlength="64" placeholder="选填：向量模型名，如 text-embedding-v4（与向量化端点同时填写才启用 RAG）" />
         </FormItem>
       </Form>
     </Modal>

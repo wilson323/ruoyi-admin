@@ -8,6 +8,8 @@
  * - 读需 ipd:ai-model:list（内部角色）；写/启停/连通测试（edit）仅超管；
  * - enabled='1' 表示全局唯一生效配置（enable 时原生效配置自动让位）；
  * - 更新时 apiKey 留空表示不修改密钥；连接测试结果由后端拼入 maskedKey 字段返回。
+ * - 向量模型（AI-STRAT-1）：embedEndpoint/embedModel 落 config_json，两键齐全才启用 RAG 向量化；
+ *   update 时 null=沿用旧值、blank=显式清除（关闭 RAG 的运营途径），前端表单统一上送字符串。
  */
 import { ipdGet, ipdPost } from './http';
 
@@ -16,6 +18,10 @@ export interface IpdAiModelView {
   /** '1' 生效中 / '0' 未生效 */
   enabled: string;
   endpoint: string;
+  /** RAG 向量化端点（OpenAI 兼容 /embeddings）；空串=RAG 未启用。 */
+  embedEndpoint: string;
+  /** RAG 向量化模型名（向量模型）；空串=RAG 未启用。 */
+  embedModel: string;
   id: string;
   maskedKey: string;
   maxTokens: null | number;
@@ -29,6 +35,10 @@ export interface IpdAiModelSaveReq {
   /** 新建必填（≥8 位）；更新留空/省略表示不修改密钥。 */
   apiKey?: string;
   endpoint: string;
+  /** RAG 向量化端点；update 留空字符串=显式清除，null/省略=沿用旧值。 */
+  embedEndpoint?: null | string;
+  /** RAG 向量化模型名；update 留空字符串=显式清除，null/省略=沿用旧值。 */
+  embedModel?: null | string;
   maxTokens?: null | number;
   model: string;
   provider: string;
@@ -40,6 +50,8 @@ function normalize(raw: unknown): IpdAiModelView {
   return {
     enabled: String(row.enabled ?? ''),
     endpoint: String(row.endpoint ?? ''),
+    embedEndpoint: String(row.embedEndpoint ?? ''),
+    embedModel: String(row.embedModel ?? ''),
     id: row.id === undefined || row.id === null ? '' : String(row.id),
     maskedKey: String(row.maskedKey ?? ''),
     maxTokens: row.maxTokens === undefined || row.maxTokens === null ? null : Number(row.maxTokens),

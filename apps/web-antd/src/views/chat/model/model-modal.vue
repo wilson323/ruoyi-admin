@@ -60,7 +60,8 @@ const categoryOptions = computed(() => {
   }
 
   // 联动逻辑：仅支持重排的厂商显示重排选项
-  const supportedRerankProviders = ['alibailian', 'qianwen', 'siliconflow'];
+  // 与后端 RerankModelFactory 可解析的 bean 对齐：qianwenRerank / siliconflowRerank / zhipuRerank
+  const supportedRerankProviders = ['qianwen', 'siliconflow', 'zhipu'];
   const currentProvider = String(formData.value.providerCode || '').toLowerCase();
   if (currentProvider && !supportedRerankProviders.includes(currentProvider)) {
     return options.filter((opt) => opt.value !== 'rerank');
@@ -145,7 +146,7 @@ watch(
 
     // 自动校验重排分类：如果切换到的厂商不支持重排，且当前选中了重排，则强行清空分类
     if (newProviderCode) {
-      const supportedRerankProviders = ['alibailian', 'qianwen', 'siliconflow'];
+      const supportedRerankProviders = ['qianwen', 'siliconflow', 'zhipu'];
       if (
         !supportedRerankProviders.includes(String(newProviderCode).toLowerCase()) &&
         formData.value.category === 'rerank'

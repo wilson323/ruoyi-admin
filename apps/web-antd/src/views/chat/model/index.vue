@@ -23,6 +23,16 @@ import { getDictOptions } from '#/utils/dict';
 import modelModal from './model-modal.vue';
 import { columns, querySchema } from './data';
 
+// 字典 chat_model_category 缺值时的兜底标签（audio/video 补值 SQL 见后端 docs/script/sql/update，待 owner apply 前保证列表可读）
+const CATEGORY_FALLBACK_LABELS: Record<string, string> = {
+  audio: '语音',
+  chat: '对话',
+  image: '图片',
+  rerank: '重排序',
+  vector: '向量',
+  video: '视频',
+};
+
 const formOptions: VbenFormProps = {
   commonConfig: {
     labelWidth: 80,
@@ -154,7 +164,9 @@ function handleDownloadExcel() {
         {{
           getDictOptions(DictEnum.CHAT_MODEL_CATEGORY).find(
             (item) => item.value === row.category,
-          )?.label || row.category
+          )?.label ||
+          CATEGORY_FALLBACK_LABELS[row.category] ||
+          row.category
         }}
       </template>
       <template #action="{ row }">
