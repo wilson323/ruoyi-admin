@@ -7,11 +7,6 @@
     "forgetPassword": "Forget Password",
     "oauthLogin": "Oauth Login"
   },
-  "dashboard": {
-    "title": "Dashboard",
-    "analytics": "Analytics",
-    "workspace": "Workspace"
-  },
   "workbench": {
     "taskType": {
       "stage_sign": "Stage Sign",

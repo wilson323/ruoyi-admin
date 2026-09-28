@@ -15,8 +15,6 @@ import { $t } from '@vben/locales';
 
 import { notification } from 'ant-design-vue';
 
-import { FileUploadOld, ImageUploadOld } from '#/components/upload-old';
-
 const RichTextarea = defineAsyncComponent(() =>
   import('#/components/tinymce/index').then((res) => res.Tinymce),
 );
@@ -137,10 +135,8 @@ export type ComponentType =
   | 'DefaultButton'
   | 'Divider'
   | 'FileUpload'
-  | 'FileUploadOld'
   | 'IconPicker'
   | 'ImageUpload'
-  | 'ImageUploadOld'
   | 'Input'
   | 'InputNumber'
   | 'InputPassword'
@@ -232,8 +228,6 @@ async function initComponentAdapter() {
     ImageUpload,
     FileUpload,
     RichTextarea,
-    ImageUploadOld,
-    FileUploadOld,
   };
 
   // 将组件注册到全局共享状态中

@@ -28,7 +28,6 @@
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
-    "@antv/g6": "^5.0.51",
     "@phosphor-icons/vue": "^2.2.1",
     "@tinymce/tinymce-vue": "^6.0.1",
     "@vben/access": "workspace:*",

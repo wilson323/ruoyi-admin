@@ -127,7 +127,7 @@ watch(
 
 <template>
   <BasicLayout @clear-preferences-and-logout="handleLogout">
-    <!-- 单企业部署非 SaaS（2026-09-06 owner 指令）：不渲染 TenantToggle 租户切换 -->
+    <!-- 单企业部署非 SaaS（2026-09-06 owner 指令）：不渲染租户切换；TenantToggle 组件零引用，已于 2026-09-27 死代码清理删除 -->
     <template #user-dropdown>
       <UserDropdown
         :avatar

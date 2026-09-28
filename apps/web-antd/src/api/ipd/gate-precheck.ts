@@ -111,7 +111,7 @@ export interface GateArbitrationAiSummary {
 }
 
 /** POST /gates/{gateId}/arbitration-divergences 响应（GatePrecheckService#arbitrationDivergences）。 */
-export interface GateArbitrationView {
+export interface GateArbitrationDivergencesView {
   aiSummary: GateArbitrationAiSummary;
   /** 恒 false：分歧汇总只读参考，不阻塞仲裁。 */
   blocking: boolean;
@@ -128,6 +128,10 @@ export interface GateArbitrationView {
  * 仲裁分歧点汇总（同轮双 PM 决策不一致清单 + AI 归纳；只归纳不裁决）。
  * 对应 GatePrecheckController#arbitrationDivergences — POST /api/v1/gates/{gateId}/arbitration-divergences
  */
-export function runArbitrationDivergences(gateId: string): Promise<GateArbitrationView> {
-  return ipdPost<GateArbitrationView>(`/gates/${encodeURIComponent(gateId)}/arbitration-divergences`);
+export function runArbitrationDivergences(
+  gateId: string,
+): Promise<GateArbitrationDivergencesView> {
+  return ipdPost<GateArbitrationDivergencesView>(
+    `/gates/${encodeURIComponent(gateId)}/arbitration-divergences`,
+  );
 }

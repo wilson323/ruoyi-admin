@@ -14,7 +14,7 @@ import { IpdRequestError } from './auth';
 import {
   runArbitrationDivergences,
   runGatePrecheck,
-  type GateArbitrationView,
+  type GateArbitrationDivergencesView,
   type GatePrecheckView,
 } from './gate-precheck';
 
@@ -103,7 +103,9 @@ describe('gate-precheck API — runGatePrecheck', () => {
 });
 
 describe('gate-precheck API — runArbitrationDivergences', () => {
-  const arbitrationFixture = (overrides: Partial<GateArbitrationView> = {}): GateArbitrationView => ({
+  const arbitrationFixture = (
+    overrides: Partial<GateArbitrationDivergencesView> = {},
+  ): GateArbitrationDivergencesView => ({
     aiSummary: { aiModel: 'test-model', degraded: false, markdown: '- 轮1：温测口径分歧' },
     blocking: false,
     decisionWritten: false,

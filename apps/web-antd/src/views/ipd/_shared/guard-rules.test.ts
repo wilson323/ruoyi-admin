@@ -3,7 +3,9 @@
 // 本测试钉住「消费面派生结果 == 后端规则表现态」，后端改规则未重导出 → 后端 compare 红，
 // 后端重导出但前端派生语义变了 → 本测试红。
 // 规则数演进：42（W11 §5-1 落地）→ 50（R28 §5-2 StageAction 接线轮补 stage_action 8 边，
-// 后端 main efe2f167 与 StateMachineGuardContractTest 哨兵 77 绿同批）。
+// 后端 main efe2f167 与 StateMachineGuardContractTest 哨兵 77 绿同批）→ 53（R33 一期补
+// kpi_shared_confirm 3 边）→ 89（D-1 蜂群 SWARM-A 六机 36 边三方合并，后端 b5441246 重导出，
+// 前端 999b9e0 同步）；后端加删规则须同步此处，与后端 ContractTest 哨兵联动。
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -15,9 +17,9 @@ import {
 import { BONUS_STATUS_MACHINE, CHANGE_STATUS_MACHINE } from './ipd-state-machines';
 
 describe('契约文件元信息', () => {
-  it('ruleCount 哨兵=50（后端加删规则须同步此处，与后端 ContractTest 哨兵联动）', () => {
-    expect(GUARD_RULES_META.ruleCount).toBe(50);
-    expect(GUARD_RULES).toHaveLength(50);
+  it('ruleCount 哨兵=89（后端加删规则须同步此处，与后端 ContractTest 哨兵联动）', () => {
+    expect(GUARD_RULES_META.ruleCount).toBe(89);
+    expect(GUARD_RULES).toHaveLength(89);
   });
 
   it('version 为 sha256 锁（导出侧自洽校验产物）', () => {

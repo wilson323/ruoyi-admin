@@ -57,7 +57,7 @@ import {
 import {
   runArbitrationDivergences,
   runGatePrecheck,
-  type GateArbitrationView,
+  type GateArbitrationDivergencesView,
   type GatePrecheckItemStatus,
   type GatePrecheckView,
 } from '../../../api/ipd/gate-precheck';
@@ -218,7 +218,7 @@ async function runPrecheck(): Promise<void> {
 /** AI-P2-1 R240：仲裁分歧点汇总（POST /gates/{gateId}/arbitration-divergences；AI 只归纳不裁决）。 */
 const arbitrationBusy = ref(false);
 const arbitrationError = ref('');
-const arbitrationResult = ref<null | GateArbitrationView>(null);
+const arbitrationResult = ref<null | GateArbitrationDivergencesView>(null);
 
 const arbitrationDecisionText: Record<string, string> = {
   APPROVE: '同意',

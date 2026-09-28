@@ -14,22 +14,13 @@
     "btn_zoom_out": "Zoom out",
     "preview": "Preview"
   },
-  "tenantToggle": {
-    "placeholder": "Please select a tenant",
-    "switch": "Switch to tenant: ",
-    "reset": "Reset to default tenant"
-  },
   "notice": {
     "title": "Notice",
     "received": "You have received a new message"
   },
   "upload": {
     "upload": "Upload",
-    "accept": "Support {0} format",
-    "acceptUpload": "Only upload files in {0} format",
     "maxSize": "A single file does not exceed {0}MB ",
-    "maxSizeMultiple": "Only upload files up to {0}MB!",
-    "maxNumber": "Only upload up to {0} files",
     "uploadSuccess": "Upload successfully",
     "uploadHelpMessage": "Please upload a file in {ext} format that does not exceed {size} .",
     "confirmDelete": "Confirm file deletion {0}?",
