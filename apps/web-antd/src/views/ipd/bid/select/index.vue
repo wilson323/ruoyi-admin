@@ -180,6 +180,21 @@
             </template>
           </Card>
 
+          <!-- L2 每页 AI 入口（2026-09-28）：投标方案评估（userPrompt 素材必填；采纳仅回传宿主，C08 零直写） -->
+          <div class="mb-4">
+            <AiSuggest
+              scene="bid.evaluate-proposal"
+              needs-prompt
+              adoptable
+              label="AI 投标方案评估"
+              data-testid="bid-ai-evaluate"
+              @adopt="onAiAdopt"
+            />
+            <p v-if="adoptedAi" class="text-muted-foreground mt-2 text-xs" data-testid="bid-ai-adopted">
+              AI 建议已回传宿主（{{ adoptedAi.scene }}）：仅草稿不写库，请人工复核后手动操作。
+            </p>
+          </div>
+
           <!-- 确认区：3 选 1 原子遴选（服务端单事务 + 行锁防双中标） -->
           <Card v-if="invitation.status === 'OPEN'" title="确认遴选">
             <p class="mb-3 text-sm">
@@ -227,6 +242,7 @@ import { getBidInvitation, listBidResponses, preSelectBidInvitationToken, select
 import type { BidInvitation, BidResponse } from '../../../../api/ipd/bid';
 import { runBidAiCompare, type BidAiCompareView } from '../../../../api/ipd/bid-ai-compare';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
+import AiSuggest from '../../_shared/ai-suggest.vue';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
 import {
   bidModeText,
@@ -410,4 +426,10 @@ async function doSelect(): Promise<void> {
 }
 
 onMounted(load);
+
+/** L2 AI 入口 adopt 回传（C08 零直写）：建议仅落本地暂存提示，由真人复核后走既有端点手动操作。 */
+const adoptedAi = ref<{ markdown: string; scene: string } | null>(null);
+function onAiAdopt(payload: { markdown: string; scene: string }): void {
+  adoptedAi.value = payload;
+}
 </script>

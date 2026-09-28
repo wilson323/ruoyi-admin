@@ -4,12 +4,13 @@
  * 重点覆盖：
  * - POST /ai/suggest 路径与 body 四字段（undefined 键透传给 http 层，包络 code=0 解包）；
  * - 视图字段原样透传（markdown/degraded/aiModel 等不做数值转换）；
- * - 非 0 包络错误经 IpdRequestError 通道抛出（复用 authenticatedRequest 链路，此处不重复测包络层）。
+ * - 非 0 包络错误经 IpdRequestError 通道抛出（复用 authenticatedRequest 链路，此处不重复测包络层）；
+ * - L2 场景镜像：AiSuggestScene 21 项 ↔ 后端 AiSuggestionService.SCENES 防漂移。
  */
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { aiSuggest } from './ai-suggest';
+import { type AiSuggestScene, aiSuggest } from './ai-suggest';
 
 const envelope = (data: unknown): Response =>
   new Response(
@@ -87,5 +88,60 @@ describe('aiSuggest（R227-C1 AI-FUSION L2）', () => {
     const r = await aiSuggest('project.summary.refresh', { projectId: '7' });
     expect(r.degraded).toBe(true);
     expect(r.aiModel).toBe('intent_match');
+  });
+});
+
+/**
+ * L2 场景镜像（防漂移）：前端 AiSuggestScene 联合类型 ↔ 后端 SCENES 清单。
+ *
+ * 后端真值源：ruoyi-ai/ruoyi-modules/ruoyi-ipd/.../ipd/service/AiSuggestionService.java
+ * 的 SCENES（POST /ai/suggest 单入口多场景分发）。跨仓不可 import，此处清单写死；
+ * 与后端对账日期 2026-09-28（L2 每页 AI 入口补全落地 21 项）。后端增删场景时，
+ * `satisfies Record<AiSuggestScene, true>` 会因键缺失/多余在 check:type 报错，双向防漂移。
+ */
+const SCENE_MIRROR = {
+  // AI-P3 及之前的 11 个老场景
+  'change.impact-analyze': true,
+  'demand.create.from-requirement': true,
+  'demand.dedupe': true,
+  'gate.conclusion-draft': true,
+  'gate.precheck-checklist': true,
+  'handover.checklist-generate': true,
+  'project.create.suggest': true,
+  'project.summary.refresh': true,
+  'report.nl-query': true,
+  'workbench.next-step': true,
+  'workbench.risk-warning': true,
+  // L2 每页 AI 入口补全（2026-09-28）新增 10 场景
+  'audit.anomaly-detect': true,
+  'bid.evaluate-proposal': true,
+  'bonus.fairness-analyze': true,
+  'demand.classify': true,
+  'demand.priority': true,
+  'kpi.contributor-summary': true,
+  'kpi.monthly-summary': true,
+  'product.name-classify': true,
+  'report.trend-analyze': true,
+  'timeline.storyline': true,
+} satisfies Record<AiSuggestScene, true>;
+
+describe('L2 场景镜像（AiSuggestScene ↔ 后端 SCENES 防漂移，对账 2026-09-28）', () => {
+  it('场景清单 21 项全对齐：11 老场景 + 10 个 L2 新场景逐项存在', () => {
+    expect(Object.keys(SCENE_MIRROR)).toHaveLength(21);
+  });
+
+  it.each([
+    'demand.classify',
+    'demand.priority',
+    'bid.evaluate-proposal',
+    'kpi.monthly-summary',
+    'kpi.contributor-summary',
+    'bonus.fairness-analyze',
+    'timeline.storyline',
+    'report.trend-analyze',
+    'audit.anomaly-detect',
+    'product.name-classify',
+  ] as const)('L2 新场景 %s 在前端联合类型中逐项存在', (scene) => {
+    expect(SCENE_MIRROR[scene]).toBe(true);
   });
 });

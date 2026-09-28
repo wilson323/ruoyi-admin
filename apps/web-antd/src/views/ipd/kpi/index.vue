@@ -18,6 +18,7 @@ import { computed, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { FundOutlined, LineChartOutlined, ProfileOutlined, RiseOutlined, TableOutlined } from '@ant-design/icons-vue';
 
+import AiSuggest from '../_shared/ai-suggest.vue';
 import BackendPending from '../_shared/backend-pending.vue';
 import { formatMoney } from '../_shared/format';
 import { ipdErrorText } from '../_shared/ipd-error-text';
@@ -141,6 +142,12 @@ async function load(): Promise<void> {
   }
 }
 
+/** L2 AI 入口 adopt 回传（C08 零直写）：建议仅落本地暂存提示，由真人复核后走既有端点手动操作。 */
+const adoptedAi = ref<{ markdown: string; scene: string } | null>(null);
+function onAiAdopt(payload: { markdown: string; scene: string }): void {
+  adoptedAi.value = payload;
+}
+
 onMounted(() => { void load(); });
 </script>
 
@@ -168,6 +175,29 @@ onMounted(() => { void load(); });
         <button class="primary-btn" :disabled="loading" @click="load()">查询</button>
       </div>
     </header>
+
+    <!-- L2 每页 AI 入口（2026-09-28）：KPI 月度/贡献者总结（userPrompt 素材必填；采纳仅回传宿主，C08 零直写） -->
+    <div class="mb-4">
+      <AiSuggest
+        scene="kpi.monthly-summary"
+        needs-prompt
+        adoptable
+        label="AI 月度总结"
+        data-testid="kpi-ai-monthly"
+        @adopt="onAiAdopt"
+      />
+      <AiSuggest
+        scene="kpi.contributor-summary"
+        needs-prompt
+        adoptable
+        label="AI 贡献者总结"
+        data-testid="kpi-ai-contributor"
+        @adopt="onAiAdopt"
+      />
+      <p v-if="adoptedAi" class="text-muted-foreground mt-2 text-xs" data-testid="kpi-ai-adopted">
+        AI 建议已回传宿主（{{ adoptedAi.scene }}）：仅草稿不写库，请人工复核后手动操作。
+      </p>
+    </div>
 
     <section class="surface performance-section">
       <div class="section-title">

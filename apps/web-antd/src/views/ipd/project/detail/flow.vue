@@ -48,6 +48,7 @@ import {
   type StageAction,
 } from '../../../../api/ipd/stage-action';
 import { listSopTemplateInstances, type IpdSopInstance } from '../../../../api/ipd/sop-template';
+import AiSuggest from '../../_shared/ai-suggest.vue';
 import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import {
   ACTION_EXEC_MODE,
@@ -75,6 +76,13 @@ const loading = ref(false);
 const loadError = ref<unknown>(null);
 const project = ref<null | Project>(null);
 const actions = ref<StageAction[]>([]);
+
+/** L2 AI 入口 adopt 回传（C08 零直写）：建议仅落本地暂存提示，由真人复核后走既有端点手动操作。 */
+const adoptedAi = ref<{ markdown: string; scene: string } | null>(null);
+function onAiAdopt(payload: { markdown: string; scene: string }): void {
+  adoptedAi.value = payload;
+}
+
 
 // ---------- R236 AI 任务状态 ----------
 
@@ -401,6 +409,21 @@ const sopColumns = [
           门禁清单暂不可用（当前阶段可能无配置），以推进按钮返回的服务端校验结果为准。
         </div>
       </Card>
+
+      <!-- L2 每页 AI 入口（2026-09-28）：项目时间线叙事（projectId 实体上下文驱动，userPrompt 可空；采纳仅回传宿主，C08 零直写） -->
+      <div>
+        <AiSuggest
+          scene="timeline.storyline"
+          :project-id="projectId"
+          adoptable
+          label="AI 时间线叙事"
+          data-testid="pd-flow-ai-storyline"
+          @adopt="onAiAdopt"
+        />
+        <p v-if="adoptedAi" class="text-muted-foreground mt-2 text-xs" data-testid="pd-flow-ai-adopted">
+          AI 建议已回传宿主（{{ adoptedAi.scene }}）：仅草稿不写库，请人工复核后手动操作。
+        </p>
+      </div>
 
       <Card title="阶段动作（全项目）">
         <template #extra>

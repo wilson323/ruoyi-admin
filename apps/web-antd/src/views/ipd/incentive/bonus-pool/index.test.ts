@@ -4,7 +4,11 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InputNumber, Select } from 'ant-design-vue';
 
+import { aiSuggest } from '../../../../api/ipd/ai-suggest';
 import BonusPool from './index.vue';
+
+// 模块层 mock：L2 AI 建议入口（C08 零直写——建议调用替换为 vi.fn，不触达网络）。
+vi.mock('../../../../api/ipd/ai-suggest', () => ({ aiSuggest: vi.fn() }));
 
 const envelope = (data: unknown, status = 200, code = 0) => new Response(
   JSON.stringify({ code, message: code === 0 ? 'success' : '操作失败', data, timestamp: '2026-09-05T00:00:00Z', traceId: 'fixture' }),
@@ -483,5 +487,63 @@ describe('R215-E2E-D 诊断：挂载期端点调用计数（单实例）', () =>
     expect(count('/receipt-ledgers/by-project')).toBe(1);
     wrapper.unmount();
     window.localStorage.removeItem('ipd:current-project');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// L2 每页 AI 入口（2026-09-28）：bonus.fairness-analyze（userPrompt 素材必填）
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** L2 AI 测试视图：非结构化场景（无卡）+ 非降级 → 纯文本 + 「采纳到表单」按钮。 */
+const suggestView = (scene: string, markdown: string) => ({
+  aiModel: 'mock-mini', card: null, completionTokens: 1, degraded: false,
+  latencyMs: 5, markdown, promptTokens: 1, scene,
+});
+
+describe('L2 AI 入口（bonus.fairness-analyze）', () => {
+  it('bonus.fairness-analyze：按钮存在、素材触发 scene、adopt 回传宿主（C08 零直写）', async () => {
+    window.localStorage.removeItem('ipd:current-project');
+    const aiSuggestMock = vi.mocked(aiSuggest);
+    aiSuggestMock.mockReset();
+    aiSuggestMock.mockResolvedValue(suggestView('bonus.fairness-analyze', '## 公平性分析\n- 系数分布均衡'));
+    const calls: { method: string; url: string }[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      calls.push({ method: (init?.method ?? 'GET').toUpperCase(), url: path });
+      if (path.includes('/receipt-ledgers/by-project')) return envelope([]);
+      if (path.includes('/bonus-pool/page')) {
+        return envelope({ records: [], total: 0, size: 20, current: 1, pages: 0 });
+      }
+      if (path.includes('/projects')) return envelope([]);
+      return envelope(null);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mount(BonusPool, { global: { directives: { access: { mounted() {} } } } });
+
+    // ① 按钮存在
+    const runBtn = wrapper.find('[data-testid="bonus-ai-fairness"] [data-testid="ai-suggest-run"]');
+    expect(runBtn.exists()).toBe(true);
+    expect(runBtn.text()).toContain('AI 奖金公平性分析');
+
+    // ② 触发 scene 正确（needsPrompt：先填素材再发起）
+    await wrapper.get('[data-testid="bonus-ai-fairness"] [data-testid="ai-suggest-prompt"]')
+      .setValue('Q3 奖金池 40000 元，4 人分配，系数 0.8~1.2');
+    await runBtn.trigger('click');
+    await vi.waitFor(() => expect(aiSuggestMock).toHaveBeenCalledWith(
+      'bonus.fairness-analyze',
+      expect.objectContaining({ userPrompt: 'Q3 奖金池 40000 元，4 人分配，系数 0.8~1.2' }),
+    ));
+
+    // ③ adopt 回传宿主（仅本地提示，不写库）
+    await wrapper.get('[data-testid="bonus-ai-fairness"] [data-testid="ai-suggest-adopt"]').trigger('click');
+    const ack = wrapper.find('[data-testid="bonus-ai-adopted"]');
+    expect(ack.exists()).toBe(true);
+    expect(ack.text()).toContain('已回传宿主');
+    expect(ack.text()).toContain('bonus.fairness-analyze');
+    expect(ack.text()).toContain('不写库');
+    // C08 零直写：核算/冻结/分配端点零触达，页面侧只见读请求
+    expect(calls.some((call) => call.url.includes('/compute'))).toBe(false);
+    expect(calls.every((call) => call.method === 'GET')).toBe(true);
+    wrapper.unmount();
   });
 });

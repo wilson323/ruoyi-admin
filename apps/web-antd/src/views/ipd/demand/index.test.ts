@@ -17,6 +17,7 @@ import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { aiSuggest } from '../../../api/ipd/ai-suggest';
 import { fetchDemands, linkDemandProject, triageDemand } from '../../../api/ipd/demand';
 import { listProducts } from '../../../api/ipd/product';
 import type { Product } from '../../../api/ipd/product';
@@ -44,11 +45,16 @@ vi.mock('../../../api/ipd/project', () => ({
   listProjects: vi.fn(),
 }));
 
+vi.mock('../../../api/ipd/ai-suggest', () => ({
+  aiSuggest: vi.fn(),
+}));
+
 const fetchDemandsMock = vi.mocked(fetchDemands);
 const triageDemandMock = vi.mocked(triageDemand);
 const linkDemandProjectMock = vi.mocked(linkDemandProject);
 const listProductsMock = vi.mocked(listProducts);
 const listProjectsMock = vi.mocked(listProjects);
+const aiSuggestMock = vi.mocked(aiSuggest);
 
 const demand = (overrides: Partial<IpdDemand> = {}): IpdDemand => ({
   createdAt: 1700000000000,
@@ -155,6 +161,7 @@ beforeEach(async () => {
   linkDemandProjectMock.mockReset();
   listProductsMock.mockReset();
   listProjectsMock.mockReset();
+  aiSuggestMock.mockReset();
 });
 
 afterEach(() => {
@@ -687,6 +694,79 @@ describe('F6. 详情下钻（R215-E2E-C）', () => {
     await rowLink.trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.path).toBe('/ipd/requirements/2103330885699985411');
+    wrapper.unmount();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// F7. L2 每页 AI 入口（2026-09-28）：demand.classify / demand.priority
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** L2 AI 测试视图：非结构化场景（无卡）+ 非降级 → 纯文本 + 「采纳到表单」按钮。 */
+const suggestView = (scene: string, markdown: string) => ({
+  aiModel: 'mock-mini', card: null, completionTokens: 1, degraded: false,
+  latencyMs: 5, markdown, promptTokens: 1, scene,
+});
+
+describe('F7. L2 AI 入口（demand.classify / demand.priority）', () => {
+  it('demand.classify：按钮存在、素材触发 scene=demand.classify、adopt 回传宿主（C08 零直写）', async () => {
+    loginAs('MARKET_PM');
+    fetchDemandsMock.mockResolvedValue({ demands: [], total: 0 });
+    aiSuggestMock.mockResolvedValue(suggestView('demand.classify', '## 分类建议\n- 归入产品需求'));
+    const wrapper = await mountDemand();
+
+    // ① 按钮存在（挂载 testid 命中 + 场景文案）
+    const runBtn = wrapper.find('[data-testid="demand-ai-classify"] [data-testid="ai-suggest-run"]');
+    expect(runBtn.exists()).toBe(true);
+    expect(runBtn.text()).toContain('AI 需求分类');
+
+    // ② 触发 scene 正确（needsPrompt：先填素材再发起）
+    await wrapper.get('[data-testid="demand-ai-classify"] [data-testid="ai-suggest-prompt"]')
+      .setValue('客户要求批量导出报表');
+    await runBtn.trigger('click');
+    await vi.waitFor(() => expect(aiSuggestMock).toHaveBeenCalledWith(
+      'demand.classify',
+      expect.objectContaining({ userPrompt: '客户要求批量导出报表' }),
+    ));
+
+    // ③ adopt 回传宿主（仅本地提示，不写库）
+    await wrapper.get('[data-testid="demand-ai-classify"] [data-testid="ai-suggest-adopt"]').trigger('click');
+    const ack = wrapper.find('[data-testid="demand-ai-adopted"]');
+    expect(ack.exists()).toBe(true);
+    expect(ack.text()).toContain('已回传宿主');
+    expect(ack.text()).toContain('demand.classify');
+    expect(ack.text()).toContain('不写库');
+    // C08 零直写：AI 入口链路未触达任何业务写端点
+    expect(triageDemandMock).not.toHaveBeenCalled();
+    expect(linkDemandProjectMock).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('demand.priority：按钮存在、素材触发 scene=demand.priority、adopt 回传宿主（C08 零直写）', async () => {
+    loginAs('MARKET_PM');
+    fetchDemandsMock.mockResolvedValue({ demands: [], total: 0 });
+    aiSuggestMock.mockResolvedValue(suggestView('demand.priority', '## 优先级建议\n- P1'));
+    const wrapper = await mountDemand();
+
+    const runBtn = wrapper.find('[data-testid="demand-ai-priority"] [data-testid="ai-suggest-run"]');
+    expect(runBtn.exists()).toBe(true);
+    expect(runBtn.text()).toContain('AI 需求优先级');
+
+    await wrapper.get('[data-testid="demand-ai-priority"] [data-testid="ai-suggest-prompt"]')
+      .setValue('客户现场停机风险，要求两周内交付');
+    await runBtn.trigger('click');
+    await vi.waitFor(() => expect(aiSuggestMock).toHaveBeenCalledWith(
+      'demand.priority',
+      expect.objectContaining({ userPrompt: '客户现场停机风险，要求两周内交付' }),
+    ));
+
+    await wrapper.get('[data-testid="demand-ai-priority"] [data-testid="ai-suggest-adopt"]').trigger('click');
+    const ack = wrapper.find('[data-testid="demand-ai-adopted"]');
+    expect(ack.exists()).toBe(true);
+    expect(ack.text()).toContain('demand.priority');
+    expect(ack.text()).toContain('不写库');
+    expect(triageDemandMock).not.toHaveBeenCalled();
+    expect(linkDemandProjectMock).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });

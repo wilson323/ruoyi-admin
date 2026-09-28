@@ -6,7 +6,11 @@ import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { aiSuggest } from '../../../api/ipd/ai-suggest';
 import Report from './index.vue';
+
+// 模块层 mock：L2 AI 建议入口（C08 零直写——建议调用替换为 vi.fn，不触达网络）。
+vi.mock('../../../api/ipd/ai-suggest', () => ({ aiSuggest: vi.fn() }));
 
 const response = (data: unknown, status = 200, code = 0, message?: string) => new Response(
   JSON.stringify({ code, message: message ?? (code ? '请求不合法' : 'success'), data, timestamp: '2026-09-06T00:00:00Z', traceId: 'fixture' }),
@@ -117,6 +121,62 @@ describe('IPD report page (prototype ProcessAnalyticsPage adaptation)', () => {
     expect(wrapper.text()).toContain('正在积累周期样本');
     // 真缺口登记条
     expect(wrapper.text()).toContain('/api/analytics/process');
+    wrapper.unmount();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// L2 每页 AI 入口（2026-09-28）：report.trend-analyze（userPrompt 素材必填）
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** L2 AI 测试视图：非结构化场景（无卡）+ 非降级 → 纯文本 + 「采纳到表单」按钮。 */
+const suggestView = (scene: string, markdown: string) => ({
+  aiModel: 'mock-mini', card: null, completionTokens: 1, degraded: false,
+  latencyMs: 5, markdown, promptTokens: 1, scene,
+});
+
+describe('L2 AI 入口（report.trend-analyze）', () => {
+  it('report.trend-analyze：按钮存在、素材触发 scene、adopt 回传宿主（C08 零直写）', async () => {
+    const aiSuggestMock = vi.mocked(aiSuggest);
+    aiSuggestMock.mockReset();
+    aiSuggestMock.mockResolvedValue(suggestView('report.trend-analyze', '## 趋势分析\n- 连续三月上升'));
+    // 自写 fetch 记录器：保留 method 供 C08 零写断言（stubApi 固定记 GET 不够力）
+    const calls: { method: string; url: string }[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ method: (init?.method ?? 'GET').toUpperCase(), url });
+      if (url.startsWith('/api/v1/report/project-summary')) {
+        return response({ current: 1, pages: 1, records: [summaryRow], size: 20, total: 1 });
+      }
+      return response(null, 404, 40400);
+    }));
+    const wrapper = mount(Report);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('演示项目'));
+
+    // ① 按钮存在（同页已挂 report.nl-query，趋势入口并列）
+    const runBtn = wrapper.find('[data-testid="report-ai-trend"] [data-testid="ai-suggest-run"]');
+    expect(runBtn.exists()).toBe(true);
+    expect(runBtn.text()).toContain('AI 报表趋势分析');
+
+    // ② 触发 scene 正确（needsPrompt：先填素材再发起）
+    await wrapper.get('[data-testid="report-ai-trend"] [data-testid="ai-suggest-prompt"]')
+      .setValue('近三月奖金池 30k→33k→36k');
+    await runBtn.trigger('click');
+    await vi.waitFor(() => expect(aiSuggestMock).toHaveBeenCalledWith(
+      'report.trend-analyze',
+      expect.objectContaining({ userPrompt: '近三月奖金池 30k→33k→36k' }),
+    ));
+
+    // ③ adopt 回传宿主（仅本地提示，不写库）
+    await wrapper.get('[data-testid="report-ai-trend"] [data-testid="ai-suggest-adopt"]').trigger('click');
+    const ack = wrapper.find('[data-testid="report-ai-adopted"]');
+    expect(ack.exists()).toBe(true);
+    expect(ack.text()).toContain('已回传宿主');
+    expect(ack.text()).toContain('report.trend-analyze');
+    expect(ack.text()).toContain('不写库');
+    // C08 零直写：导出登记等写端点零触达，页面侧只见读请求
+    expect(calls.some((call) => call.url.includes('/export/'))).toBe(false);
+    expect(calls.every((call) => call.method === 'GET')).toBe(true);
     wrapper.unmount();
   });
 });

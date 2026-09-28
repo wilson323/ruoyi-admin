@@ -12,7 +12,11 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
+import { aiSuggest } from '../../../../api/ipd/ai-suggest';
 import FlowTab from './flow.vue';
+
+// 模块层 mock：L2 AI 建议入口（C08 零直写——建议调用替换为 vi.fn，不触达网络）。
+vi.mock('../../../../api/ipd/ai-suggest', () => ({ aiSuggest: vi.fn() }));
 
 const envelope = (data: unknown, status = 200, code = 0, message = 'success'): Response =>
   new Response(
@@ -162,6 +166,55 @@ describe('页11 IPD 流程 · 项目 SOP 快照 Drawer（R215 GAP-F8）', () => 
     // antd Button 两字中文自动插空格（「重 试」），正则容错
     const retry = Array.from(document.body.querySelectorAll('button')).find((b) => /重\s*试/.test(b.textContent ?? ''));
     expect(retry).toBeDefined();
+    wrapper.unmount();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// L2 每页 AI 入口（2026-09-28）：timeline.storyline（projectId 实体上下文驱动，userPrompt 可空）
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** L2 AI 测试视图：非结构化场景（无卡）+ 非降级 → 纯文本 + 「采纳到表单」按钮。 */
+const suggestView = (scene: string, markdown: string) => ({
+  aiModel: 'mock-mini', card: null, completionTokens: 1, degraded: false,
+  latencyMs: 5, markdown, promptTokens: 1, scene,
+});
+
+describe('L2 AI 入口（timeline.storyline）', () => {
+  it('timeline.storyline：按钮存在、projectId 实体上下文触发、adopt 回传宿主（C08 零直写）', async () => {
+    const suggestMock = vi.mocked(aiSuggest);
+    suggestMock.mockReset();
+    suggestMock.mockResolvedValue(suggestView('timeline.storyline', '## 时间线叙事\n- 概念阶段如期完成'));
+    const calls: { method: string }[] = [];
+    const base = stubFlowFetch();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ method: (init?.method ?? 'GET').toUpperCase() });
+      return base(input);
+    });
+    const wrapper = await mountFlow(fetcher as unknown as ReturnType<typeof stubFlowFetch>);
+
+    // ① 按钮存在（projectId 驱动，无素材输入框）
+    const runBtn = wrapper.find('[data-testid="pd-flow-ai-storyline"] [data-testid="ai-suggest-run"]');
+    expect(runBtn.exists()).toBe(true);
+    expect(runBtn.text()).toContain('AI 时间线叙事');
+    expect(wrapper.find('[data-testid="pd-flow-ai-storyline"] [data-testid="ai-suggest-prompt"]').exists()).toBe(false);
+
+    // ② 触发 scene 正确（projectId 19 位雪花逐字符透传，userPrompt 可空）
+    await runBtn.trigger('click');
+    await vi.waitFor(() => expect(suggestMock).toHaveBeenCalledWith(
+      'timeline.storyline',
+      expect.objectContaining({ projectId: PROJECT_ID }),
+    ));
+
+    // ③ adopt 回传宿主（仅本地提示，不写库）
+    await wrapper.get('[data-testid="pd-flow-ai-storyline"] [data-testid="ai-suggest-adopt"]').trigger('click');
+    const ack = wrapper.find('[data-testid="pd-flow-ai-adopted"]');
+    expect(ack.exists()).toBe(true);
+    expect(ack.text()).toContain('已回传宿主');
+    expect(ack.text()).toContain('timeline.storyline');
+    expect(ack.text()).toContain('不写库');
+    // C08 零直写：挂载 + AI 链路全部为 GET（阶段动作/快照等只读端点）
+    expect(calls.every((call) => call.method === 'GET')).toBe(true);
     wrapper.unmount();
   });
 });

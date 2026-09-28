@@ -239,6 +239,12 @@ async function confirmLink() {
   }
 }
 
+/** L2 AI 入口 adopt 回传（C08 零直写）：建议仅落本地暂存提示，由真人复核后走既有端点手动操作。 */
+const adoptedAi = ref<{ markdown: string; scene: string } | null>(null);
+function onAiAdopt(payload: { markdown: string; scene: string }): void {
+  adoptedAi.value = payload;
+}
+
 /* ---------------- 双 tab（原型 section-switch） ---------------- */
 const activeTab = ref<'product' | 'project'>('product');
 
@@ -283,6 +289,26 @@ onMounted(() => {
         label="AI 需求查重"
         data-testid="demand-ai-dedupe"
       />
+      <!-- L2 每页 AI 入口（2026-09-28）：需求分类 / 优先级（userPrompt 素材必填；采纳仅回传宿主，C08 零直写） -->
+      <AiSuggest
+        scene="demand.classify"
+        needs-prompt
+        adoptable
+        label="AI 需求分类"
+        data-testid="demand-ai-classify"
+        @adopt="onAiAdopt"
+      />
+      <AiSuggest
+        scene="demand.priority"
+        needs-prompt
+        adoptable
+        label="AI 需求优先级"
+        data-testid="demand-ai-priority"
+        @adopt="onAiAdopt"
+      />
+      <p v-if="adoptedAi" class="text-muted-foreground mt-2 text-xs" data-testid="demand-ai-adopted">
+        AI 建议已回传宿主（{{ adoptedAi.scene }}）：仅草稿不写库，请人工复核后手动操作。
+      </p>
     </div>
 
     <!-- 双 tab（原型 section-switch，max-width 360px） -->

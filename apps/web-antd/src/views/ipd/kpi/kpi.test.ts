@@ -6,7 +6,10 @@ import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { aiSuggest } from '../../../api/ipd/ai-suggest';
 import KpiPage from './index.vue';
+
+vi.mock('../../../api/ipd/ai-suggest', () => ({ aiSuggest: vi.fn() }));
 
 const response = (data: unknown, code = 0) => new Response(
   JSON.stringify({ code, message: code ? '请求不合法' : 'success', data, timestamp: '2026-09-06T00:00:00Z', traceId: 'fixture' }),
@@ -233,6 +236,86 @@ describe('BackendPending 占位（W11 收口）', () => {
     expect(text).toContain('该页面已登记，后端接口尚未交付');
     expect(text).toContain('看板卡');
     expect(text).toContain('后端依赖');
+    wrapper.unmount();
+  });
+});
+
+// L2 每页 AI 入口（2026-09-28）：kpi.monthly-summary / kpi.contributor-summary（userPrompt 素材必填）
+describe('L2 AI 入口（kpi.monthly-summary / kpi.contributor-summary）', () => {
+  /** 自写 fetch 记录器：保留 method 供 C08 零写断言（stubApi 固定记 GET 不够力）。 */
+  function stubRecorder() {
+    const calls: { method: string; url: string }[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ method: (init?.method ?? 'GET').toUpperCase(), url });
+      if (url.includes('/kpi/performance')) return response(performanceSummary);
+      if (url.includes('/kpi/functional')) return response(functionalSources);
+      if (url.includes('/kpi/trend')) return response(trendPoints);
+      return response(null, 40400);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    return calls;
+  }
+
+  it('kpi.monthly-summary：按钮存在、素材触发 scene、adopt 回传宿主（C08 零直写）', async () => {
+    const calls = stubRecorder();
+    vi.mocked(aiSuggest).mockReset();
+    vi.mocked(aiSuggest).mockResolvedValue({
+      aiModel: 'mock-mini', card: null, completionTokens: 1, degraded: false,
+      latencyMs: 5, markdown: '## 月度总结\n- L1 合计 12,000', promptTokens: 1, scene: 'kpi.monthly-summary',
+    });
+    const wrapper = mount(KpiPage);
+
+    const runBtn = wrapper.find('[data-testid="kpi-ai-monthly"] [data-testid="ai-suggest-run"]');
+    expect(runBtn.exists()).toBe(true);
+    expect(runBtn.text()).toContain('AI 月度总结');
+
+    await wrapper.get('[data-testid="kpi-ai-monthly"] [data-testid="ai-suggest-prompt"]')
+      .setValue('2026-08 月度绩效素材：L1 12000、L2 8400');
+    await runBtn.trigger('click');
+    await vi.waitFor(() => expect(aiSuggest).toHaveBeenCalledWith(
+      'kpi.monthly-summary',
+      expect.objectContaining({ userPrompt: '2026-08 月度绩效素材：L1 12000、L2 8400' }),
+    ));
+
+    await wrapper.get('[data-testid="kpi-ai-monthly"] [data-testid="ai-suggest-adopt"]').trigger('click');
+    const ack = wrapper.find('[data-testid="kpi-ai-adopted"]');
+    expect(ack.exists()).toBe(true);
+    expect(ack.text()).toContain('已回传宿主');
+    expect(ack.text()).toContain('kpi.monthly-summary');
+    expect(ack.text()).toContain('不写库');
+    // C08 零直写：页面侧只见读请求（/ai/suggest 被模块 mock 拦截）
+    expect(calls.every((call) => call.method === 'GET')).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('kpi.contributor-summary：按钮存在、素材触发 scene、adopt 回传宿主（C08 零直写）', async () => {
+    const calls = stubRecorder();
+    vi.mocked(aiSuggest).mockReset();
+    vi.mocked(aiSuggest).mockResolvedValue({
+      aiModel: 'mock-mini', card: null, completionTokens: 1, degraded: false,
+      latencyMs: 5, markdown: '## 贡献者总结\n- 张三主导交付', promptTokens: 1, scene: 'kpi.contributor-summary',
+    });
+    const wrapper = mount(KpiPage);
+
+    const runBtn = wrapper.find('[data-testid="kpi-ai-contributor"] [data-testid="ai-suggest-run"]');
+    expect(runBtn.exists()).toBe(true);
+    expect(runBtn.text()).toContain('AI 贡献者总结');
+
+    await wrapper.get('[data-testid="kpi-ai-contributor"] [data-testid="ai-suggest-prompt"]')
+      .setValue('贡献素材：张三主导 A 模块交付');
+    await runBtn.trigger('click');
+    await vi.waitFor(() => expect(aiSuggest).toHaveBeenCalledWith(
+      'kpi.contributor-summary',
+      expect.objectContaining({ userPrompt: '贡献素材：张三主导 A 模块交付' }),
+    ));
+
+    await wrapper.get('[data-testid="kpi-ai-contributor"] [data-testid="ai-suggest-adopt"]').trigger('click');
+    const ack = wrapper.find('[data-testid="kpi-ai-adopted"]');
+    expect(ack.exists()).toBe(true);
+    expect(ack.text()).toContain('kpi.contributor-summary');
+    expect(ack.text()).toContain('不写库');
+    expect(calls.every((call) => call.method === 'GET')).toBe(true);
     wrapper.unmount();
   });
 });

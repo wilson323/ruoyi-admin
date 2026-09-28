@@ -20,6 +20,9 @@ vi.mock('../../../../api/ipd/bid', () => api);
 const compareApi = vi.hoisted(() => ({ runBidAiCompare: vi.fn() }));
 vi.mock('../../../../api/ipd/bid-ai-compare', () => compareApi);
 
+const suggestApi = vi.hoisted(() => ({ aiSuggest: vi.fn() }));
+vi.mock('../../../../api/ipd/ai-suggest', () => suggestApi);
+
 const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock('vue-router', () => ({
   useRouter: () => routerMock,
@@ -59,6 +62,7 @@ beforeEach(() => {
   api.preSelectBidInvitationToken.mockReset();
   api.selectBidInvitation.mockReset();
   compareApi.runBidAiCompare.mockReset();
+  suggestApi.aiSuggest.mockReset();
   api.preSelectBidInvitationToken.mockResolvedValue({ token: 'TOK123', expiresAt: '2026-09-10 23:59:59' });
   routerMock.push.mockReset();
 });
@@ -285,5 +289,48 @@ describe('页22 遴选 - AI 对比（AI-P2-2）', () => {
     expect(wrapper.text()).toContain('AI 对比暂不可用');
     // 结果表不渲染（「维度差异」列头仅在对照表出现；「差异高亮」字样在卡片说明里常驻，不可作负向断言）
     expect(wrapper.text()).not.toContain('维度差异');
+  });
+});
+
+// L2 每页 AI 入口（2026-09-28）：bid.evaluate-proposal（userPrompt 素材必填；采纳仅回传宿主）
+describe('页22 遴选 - L2 AI 入口（bid.evaluate-proposal）', () => {
+  it('按钮存在、素材触发 scene=bid.evaluate-proposal、adopt 回传宿主（C08 零直写）', async () => {
+    useIpdAuthStore().identity = identity('MARKET_PM', '9007199254740993');
+    api.getBidInvitation.mockResolvedValueOnce(invitation());
+    api.listBidResponses.mockResolvedValueOnce([
+      bidResponse({ id: 'A', rdPmId: '111', responseNote: '方案一：6 个月交付' }),
+      bidResponse({ id: 'B', rdPmId: '222', responseNote: '方案二：8 个月交付' }),
+    ]);
+    suggestApi.aiSuggest.mockResolvedValue({
+      aiModel: 'mock-mini', card: null, completionTokens: 1, degraded: false,
+      latencyMs: 5, markdown: '## 评估建议\n- 方案一工期占优', promptTokens: 1, scene: 'bid.evaluate-proposal',
+    });
+    const wrapper = await mountSelect();
+
+    // ① 按钮存在
+    const runBtn = wrapper.find('[data-testid="bid-ai-evaluate"] [data-testid="ai-suggest-run"]');
+    expect(runBtn.exists()).toBe(true);
+    expect(runBtn.text()).toContain('AI 投标方案评估');
+
+    // ② 触发 scene 正确
+    await wrapper.get('[data-testid="bid-ai-evaluate"] [data-testid="ai-suggest-prompt"]')
+      .setValue('两份应标：方案一 6 个月、方案二 8 个月');
+    await runBtn.trigger('click');
+    await vi.waitFor(() => expect(suggestApi.aiSuggest).toHaveBeenCalledWith(
+      'bid.evaluate-proposal',
+      expect.objectContaining({ userPrompt: '两份应标：方案一 6 个月、方案二 8 个月' }),
+    ));
+
+    // ③ adopt 回传宿主
+    await wrapper.get('[data-testid="bid-ai-evaluate"] [data-testid="ai-suggest-adopt"]').trigger('click');
+    const ack = wrapper.find('[data-testid="bid-ai-adopted"]');
+    expect(ack.exists()).toBe(true);
+    expect(ack.text()).toContain('已回传宿主');
+    expect(ack.text()).toContain('bid.evaluate-proposal');
+    expect(ack.text()).toContain('不写库');
+    // C08 零直写：未触达遴选/应标任何写端点
+    expect(api.selectBidInvitation).not.toHaveBeenCalled();
+    expect(api.preSelectBidInvitationToken).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 });
