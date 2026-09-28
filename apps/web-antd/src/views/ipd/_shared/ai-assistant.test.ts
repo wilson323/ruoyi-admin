@@ -1,7 +1,7 @@
 /**
  * AI 副驾 done 帧卡片分发渲染测试（R232 批次7 P2-02 重放）。
  *
- * 14 用例：① fillPayload 广播逐字段零回归（既有行为）② 4 卡事件到达（每类卡片 done 帧
+ * 16 用例：① fillPayload 广播逐字段零回归（既有行为）② 4 卡事件到达（每类卡片 done 帧
  * 渲染出对应组件 + ipd:ai-card 广播）③ 双事件并行（fillPayload 与 ipd:ai-card 互不覆盖）
  * ④ 非法信封零渲染不断对话（缺键/未知 type/version 不符 → ipd-ai-card-notice，后续消息
  * 继续处理）⑤ 渲染抛错降级（组件 render 抛错 → ipd-ai-card-degraded，对话不断）
@@ -12,7 +12,9 @@
  * ⑪ R3 铁律：卡片数值与 sourceRefs 对账不平 → 拒出卡降级纯文本（对账负向矩阵）
  * ⑫ BR-AI-04：4 卡头部风险 Alert 无一豁免
  * ⑬ C08 敏感值：金额/评分/系数/删除/移交只进「建议值」区，confirm 零写请求零提交指令
- * ⑭ 禁 v-html：恶意标记转义直显 + 副驾/4 卡渲染源码零 v-html/innerHTML。
+ * ⑭ 禁 v-html：恶意标记转义直显 + 副驾/4 卡渲染源码零 v-html/innerHTML
+ * ⑮ 放大工作界面：expand → 全屏双栏（左对话 / 右展示），collapse 还原侧栏
+ * ⑯ 放大模式右侧展示卡片：card-host 进 showcase-col，对话流保留文本，还原零状态丢失。
  *
  * 信封守卫复用 api/ipd/ai-copilot 真实 parseStreamDone（mock 只替身 streamCopilot；
  * 防双轨红线：isCardEnvelope/parseCardEnvelope 校验逻辑零复制）。R2/R3 过检在
@@ -742,5 +744,61 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     expect(text).toContain('<img src=x');
     expect(text).toContain('<b>bold-gate</b>');
     expect(text).toContain('<script>window.__xss=1</script>');
+  });
+
+  it('⑮ 放大工作界面：expand → 全屏双栏（左 ipd-ai-messages / 右 ipd-ai-showcase），collapse 还原侧栏', async () => {
+    await mountAssistant();
+    // 抽屉形态：单栏，无 workbench 容器、无展示区空态（卡片居消息流下方由 ①-⑭ 覆盖）
+    expect(bodyQuery('[data-testid="ipd-ai-workbench"]')).toBeNull();
+    expect(bodyQuery('[data-testid="ipd-ai-showcase-empty"]')).toBeNull();
+    expect(bodyQuery('[data-testid="ipd-ai-collapse"]')).toBeNull();
+
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-expand"]')!.click();
+    await flushPromises();
+
+    const workbench = bodyQuery('[data-testid="ipd-ai-workbench"]');
+    expect(workbench).toBeTruthy();
+    expect(workbench!.getAttribute('data-expanded')).toBe('true');
+    expect(workbench!.classList.contains('is-workbench')).toBe(true);
+    // 左对话 / 右展示同屏并存（同一消息列表 DOM，零第二对话通道）
+    expect(workbench!.querySelector('[data-testid="ipd-ai-messages"]')).toBeTruthy();
+    expect(workbench!.querySelector('[data-testid="ipd-ai-showcase"]')).toBeTruthy();
+    // 无卡片时右侧展示区空态提示（仅放大模式出现）
+    expect(bodyQuery('[data-testid="ipd-ai-showcase-empty"]')).toBeTruthy();
+    expect(bodyQuery('[data-testid="ipd-ai-expand"]')).toBeNull();
+
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-collapse"]')!.click();
+    await flushPromises();
+    expect(bodyQuery('[data-testid="ipd-ai-workbench"]')).toBeNull();
+    expect(bodyQuery('[data-testid="ipd-ai-showcase-empty"]')).toBeNull();
+    expect(bodyQuery('[data-testid="ipd-ai-expand"]')).toBeTruthy();
+  });
+
+  it('⑯ 放大模式右侧展示卡片：card-host 进 showcase-col，对话流保留文本；还原侧栏状态零丢失', async () => {
+    await mountAssistant();
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-expand"]')!.click();
+    await flushPromises();
+
+    await sendText('出一张预审卡');
+    lastHandlers().onDelta('已生成预审建议');
+    lastHandlers().onDone(doneWith({ card: precheckEnvelope }));
+    await flushPromises();
+
+    expect(
+      bodyQuery(
+        '[data-testid="ipd-ai-showcase"] [data-testid="ipd-ai-card-host"] [data-testid="ai-card-gate-precheck"]',
+      ),
+    ).toBeTruthy();
+    // 左侧对话流仍含本轮文本；卡片不混入消息列表
+    const msgList = bodyQuery('[data-testid="ipd-ai-messages"]')!;
+    expect(msgList.textContent ?? '').toContain('已生成预审建议');
+    expect(msgList.querySelector('[data-testid="ipd-ai-card-host"]')).toBeNull();
+
+    // 还原侧栏：同一卡片状态原样保留（布局切换零状态丢失）
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-collapse"]')!.click();
+    await flushPromises();
+    expect(
+      bodyQuery('[data-testid="ipd-ai-card-host"] [data-testid="ai-card-gate-precheck"]'),
+    ).toBeTruthy();
   });
 });

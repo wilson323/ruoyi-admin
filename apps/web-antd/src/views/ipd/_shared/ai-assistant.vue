@@ -28,12 +28,34 @@
  * + IpdAiCardRenderHost 渲染层（4 卡 useRenderTool = 注册表组件 + useDefaultRenderTool
  * 兜底）。单轨红线：不开第二个聊天 UI、不建平行卡片体系、不删文本降级路径；既有四帧
  * 文本/卡片通道零回归。
+ *
+ * P3-02（2026-09-28 放大工作界面）：抽屉标题栏「放大」→ 全屏工作界面——左侧对话、
+ * 右侧展示（卡片三态从消息流移至展示栏）。单状态双布局：messages/cardView 等状态与
+ * SSE 通道只此一份，切换仅改 CSS 布局（.is-workbench grid 双栏），零第二对话通道（守
+ * 单轨红线）；抽屉形态保持原单栏信息层级（卡片居消息流下、输入框上）。
  */
-import { computed, nextTick, onErrorCaptured, ref, shallowRef, type Component } from 'vue';
+import {
+  computed,
+  nextTick,
+  onErrorCaptured,
+  ref,
+  shallowRef,
+  type Component,
+} from 'vue';
 
 import { CopilotKitProvider } from '@copilotkit/vue/v2';
-import { PhSparkle as Sparkles } from '@phosphor-icons/vue';
-import { Alert, Button, Drawer, Input, message as antMessage } from 'ant-design-vue';
+import {
+  PhArrowsIn as CollapseIcon,
+  PhArrowsOut as ExpandIcon,
+  PhSparkle as Sparkles,
+} from '@phosphor-icons/vue';
+import {
+  Alert,
+  Button,
+  Drawer,
+  Input,
+  message as antMessage,
+} from 'ant-design-vue';
 
 import {
   parseStreamDone,
@@ -166,7 +188,9 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 function dropSchemaExtra(
   raw: Record<string, unknown>,
   keep: Readonly<Record<string, true>>,
-  arrayRowKeys: Readonly<Record<string, Readonly<Record<string, true>>>> | undefined,
+  arrayRowKeys:
+    | Readonly<Record<string, Readonly<Record<string, true>>>>
+    | undefined,
   prefix: string,
   dropped: string[],
 ): Record<string, unknown> {
@@ -183,7 +207,13 @@ function dropSchemaExtra(
     if (Array.isArray(rows)) {
       safe[field] = rows.map((row, index) =>
         isPlainRecord(row)
-          ? dropSchemaExtra(row, rowKeys, undefined, `${prefix}${field}[${index}].`, dropped)
+          ? dropSchemaExtra(
+              row,
+              rowKeys,
+              undefined,
+              `${prefix}${field}[${index}].`,
+              dropped,
+            )
           : row,
       );
     }
@@ -209,7 +239,8 @@ function reconcileCardViolations(
   refs: Record<string, unknown>,
 ): string[] {
   const violations: string[] = [];
-  const refCount = (value: unknown): number => (Array.isArray(value) ? value.length : 1);
+  const refCount = (value: unknown): number =>
+    Array.isArray(value) ? value.length : 1;
   const refKeys = (value: unknown): string[] =>
     (Array.isArray(value) ? value : [value]).map((item) => String(item));
   const dataCount = (value: unknown): number | null =>
@@ -219,7 +250,9 @@ function reconcileCardViolations(
     const elementResultIds = refCount(refs.elementResultIds);
     const items = dataCount(data.items);
     if (Number(data.reviewCount) !== reviewIds) {
-      violations.push(`reviewCount=${String(data.reviewCount)}↔reviewIds=${reviewIds}`);
+      violations.push(
+        `reviewCount=${String(data.reviewCount)}↔reviewIds=${reviewIds}`,
+      );
     }
     if (Number(data.totalElements) !== elementResultIds) {
       violations.push(
@@ -227,14 +260,18 @@ function reconcileCardViolations(
       );
     }
     if (items === null || items !== elementResultIds) {
-      violations.push(`items=${items ?? '缺失'}↔elementResultIds=${elementResultIds}`);
+      violations.push(
+        `items=${items ?? '缺失'}↔elementResultIds=${elementResultIds}`,
+      );
     }
   } else if (type === 'gate.conclusion') {
     const reviewIds = refCount(refs.reviewIds);
     const elementResultIds = refCount(refs.elementResultIds);
     const reviews = dataCount(data.reviews);
     const voteSum =
-      Number(data.passCount) + Number(data.conditionalCount) + Number(data.failCount);
+      Number(data.passCount) +
+      Number(data.conditionalCount) +
+      Number(data.failCount);
     if (reviews === null || reviews !== reviewIds) {
       violations.push(`reviews=${reviews ?? '缺失'}↔reviewIds=${reviewIds}`);
     }
@@ -259,9 +296,13 @@ function reconcileCardViolations(
       );
     }
     if (requirements === null || requirements !== requirementIds) {
-      violations.push(`requirements=${requirements ?? '缺失'}↔requirementIds=${requirementIds}`);
+      violations.push(
+        `requirements=${requirements ?? '缺失'}↔requirementIds=${requirementIds}`,
+      );
     }
-    for (const row of Array.isArray(data.requirements) ? data.requirements : []) {
+    for (const row of Array.isArray(data.requirements)
+      ? data.requirements
+      : []) {
       const id = isPlainRecord(row) ? row.requirementId : undefined;
       if (id !== undefined && !allowed.includes(String(id))) {
         violations.push(`requirementId=${String(id)}∉requirementIds`);
@@ -290,7 +331,8 @@ function enforceCardRenderRules(raw: AiCardEnvelope): CardCheckResult {
   ) {
     return {
       ok: false,
-      reason: '卡片信封结构非法（type/version/data/sourceRefs 形态不符），已忽略，对话继续',
+      reason:
+        '卡片信封结构非法（type/version/data/sourceRefs 形态不符），已忽略，对话继续',
     };
   }
   const entry = getCardType(raw.type, raw.version);
@@ -338,7 +380,11 @@ function enforceCardRenderRules(raw: AiCardEnvelope): CardCheckResult {
     };
   }
   // R3：卡片数值 ↔ sourceRefs 对账
-  const violations = reconcileCardViolations(raw.type as AiCardType, data, sourceRefs);
+  const violations = reconcileCardViolations(
+    raw.type as AiCardType,
+    data,
+    sourceRefs,
+  );
   if (violations.length > 0) {
     return {
       ok: false,
@@ -374,6 +420,8 @@ interface ChatMessage {
 const CURRENT_PROJECT_KEY = 'ipd:current-project';
 
 const open = ref(false);
+/** P3-02 放大工作界面态：false=右抽屉单栏；true=全屏工作界面（左对话 / 右展示）。 */
+const expanded = ref(false);
 const inputText = ref('');
 const sending = ref(false);
 const messages = ref<ChatMessage[]>([]);
@@ -407,7 +455,10 @@ function historyTurns(): CopilotTurn[] {
 
 async function scrollToListBottom() {
   await nextTick();
-  listRef.value?.scrollTo({ behavior: 'smooth', top: listRef.value.scrollHeight });
+  listRef.value?.scrollTo({
+    behavior: 'smooth',
+    top: listRef.value.scrollHeight,
+  });
 }
 
 /** 新轮清卡片态（P2-02）：用户发新消息开启新轮时清上一轮卡片渲染态，防跨轮串态。 */
@@ -426,8 +477,20 @@ async function send() {
   inputText.value = '';
   sending.value = true;
   messages.value.push(
-    { content: text, intent: null, role: 'user', sources: null, streaming: false },
-    { content: '', intent: null, role: 'assistant', sources: null, streaming: true },
+    {
+      content: text,
+      intent: null,
+      role: 'user',
+      sources: null,
+      streaming: false,
+    },
+    {
+      content: '',
+      intent: null,
+      role: 'assistant',
+      sources: null,
+      streaming: true,
+    },
   );
   await scrollToListBottom();
   abort = new AbortController();
@@ -448,7 +511,9 @@ async function send() {
           // R221 对话即填表：done 帧携 fillPayload 时广播给当前页面消费（如动作详情 C08 回填）。
           if (done?.fillPayload && typeof window !== 'undefined') {
             window.dispatchEvent(
-              new CustomEvent('ipd:ai-fill-payload', { detail: done.fillPayload }),
+              new CustomEvent('ipd:ai-fill-payload', {
+                detail: done.fillPayload,
+              }),
             );
           }
           // P2-02 done 处理泛化：card 字段分发渲染（无 card 原样透传，非法信封置 null 不断对话流）。
@@ -495,7 +560,9 @@ function handleDoneCard(done: CopilotStreamDone): void {
   try {
     const card = parseStreamDone(raw).card;
     if (!card) {
-      rejectCard('卡片信封非法（缺 type/version/data/sourceRefs 四键），已忽略，对话继续');
+      rejectCard(
+        '卡片信封非法（缺 type/version/data/sourceRefs 四键），已忽略，对话继续',
+      );
       return;
     }
     const checked = enforceCardRenderRules(card);
@@ -504,7 +571,9 @@ function handleDoneCard(done: CopilotStreamDone): void {
       return;
     }
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('ipd:ai-card', { detail: checked.card }));
+      window.dispatchEvent(
+        new CustomEvent('ipd:ai-card', { detail: checked.card }),
+      );
     }
     cardNotice.value = '';
     cardDegraded.value = '';
@@ -525,6 +594,11 @@ function rejectCard(notice: string): void {
 function toggleOpen() {
   open.value = !open.value;
   if (!open.value) abort?.abort();
+}
+
+/** P3-02 放大/还原：只切布局态（expand ↔ collapse），对话流与卡片态原样保留。 */
+function toggleExpand() {
+  expanded.value = !expanded.value;
 }
 
 function clearConversation() {
@@ -577,38 +651,109 @@ defineExpose({ clearConversation, send });
     </button>
     <Drawer
       :open="open"
-      :width="440"
+      :width="expanded ? '100%' : 440"
       data-testid="ipd-ai-drawer"
       title="AI 副驾"
       @close="toggleOpen"
     >
-      <div class="ipd-ai-panel">
-        <Alert
-          message="AI 生成内容由大模型产出，未经审核、不做内容过滤，仅供参考（BR-AI-04）。"
-          show-icon
-          type="warning"
-        />
-        <div v-if="currentProjectId" class="ctx-chip" data-testid="ipd-ai-ctx">
-          已注入当前项目上下文（#{{ currentProjectId }}）：问「我的待办」「项目风险」试试
-        </div>
-        <div ref="listRef" class="msg-list" data-testid="ipd-ai-messages">
-          <div v-if="messages.length === 0" class="empty-hint">
-            你好，我是 IPD AI 副驾。可以问项目待办、推进建议，或任何 IPD 流程问题。
-          </div>
+      <template #extra>
+        <button
+          v-if="!expanded"
+          aria-label="放大为工作界面"
+          class="ipd-ai-size-btn"
+          data-testid="ipd-ai-expand"
+          title="放大：完整工作界面（左对话 / 右展示）"
+          type="button"
+          @click="toggleExpand"
+        >
+          <ExpandIcon :size="16" />
+        </button>
+        <button
+          v-else
+          aria-label="还原为侧栏"
+          class="ipd-ai-size-btn"
+          data-testid="ipd-ai-collapse"
+          title="还原为侧栏"
+          type="button"
+          @click="toggleExpand"
+        >
+          <CollapseIcon :size="16" />
+        </button>
+      </template>
+      <div
+        :class="['ipd-ai-panel', { 'is-workbench': expanded }]"
+        :data-expanded="expanded ? 'true' : undefined"
+        :data-testid="expanded ? 'ipd-ai-workbench' : undefined"
+      >
+        <div class="chat-col">
+          <Alert
+            message="AI 生成内容由大模型产出，未经审核、不做内容过滤，仅供参考（BR-AI-04）。"
+            show-icon
+            type="warning"
+          />
           <div
-            v-for="(m, i) in messages"
-            :key="i"
-            :class="['msg', m.role]"
-            :data-testid="`ipd-ai-msg-${m.role}`"
+            v-if="currentProjectId"
+            class="ctx-chip"
+            data-testid="ipd-ai-ctx"
           >
-            <div class="bubble">
-              {{ m.content }}<span v-if="m.streaming" class="cursor">▍</span>
+            已注入当前项目上下文（#{{
+              currentProjectId
+            }}）：问「我的待办」「项目风险」试试
+          </div>
+          <div ref="listRef" class="msg-list" data-testid="ipd-ai-messages">
+            <div v-if="messages.length === 0" class="empty-hint">
+              你好，我是 IPD AI 副驾。可以问项目待办、推进建议，或任何 IPD
+              流程问题。
             </div>
-            <div v-if="m.role === 'assistant' && m.sources?.length" class="sources">
-              来源：{{ m.sources.join('；') }}
+            <div
+              v-for="(m, i) in messages"
+              :key="i"
+              :class="['msg', m.role]"
+              :data-testid="`ipd-ai-msg-${m.role}`"
+            >
+              <div class="bubble">
+                {{ m.content }}<span v-if="m.streaming" class="cursor">▍</span>
+              </div>
+              <div
+                v-if="m.role === 'assistant' && m.sources?.length"
+                class="sources"
+              >
+                来源：{{ m.sources.join('；') }}
+              </div>
             </div>
           </div>
-          <div v-if="cardView" class="ipd-ai-card-host" data-testid="ipd-ai-card-host">
+          <div class="input-row">
+            <Input
+              v-model:value="inputText"
+              :maxlength="2000"
+              :disabled="sending"
+              placeholder="输入问题，回车发送（≤2000 字）"
+              data-testid="ipd-ai-input"
+              @keyup.enter="send"
+            />
+            <Button
+              :loading="sending"
+              data-testid="ipd-ai-send"
+              type="primary"
+              @click="send"
+            >
+              发送
+            </Button>
+            <Button
+              data-testid="ipd-ai-new"
+              title="开启新会话"
+              @click="clearConversation"
+            >
+              新会话
+            </Button>
+          </div>
+        </div>
+        <aside class="showcase-col" data-testid="ipd-ai-showcase">
+          <div
+            v-if="cardView"
+            class="ipd-ai-card-host"
+            data-testid="ipd-ai-card-host"
+          >
             <component
               :is="cardView.component"
               :data="cardView.data"
@@ -629,28 +774,15 @@ defineExpose({ clearConversation, send });
           >
             {{ cardNotice }}
           </div>
-        </div>
-        <div class="input-row">
-          <Input
-            v-model:value="inputText"
-            :maxlength="2000"
-            :disabled="sending"
-            placeholder="输入问题，回车发送（≤2000 字）"
-            data-testid="ipd-ai-input"
-            @keyup.enter="send"
-          />
-          <Button
-            :loading="sending"
-            data-testid="ipd-ai-send"
-            type="primary"
-            @click="send"
+          <div
+            v-else-if="expanded"
+            class="showcase-empty"
+            data-testid="ipd-ai-showcase-empty"
           >
-            发送
-          </Button>
-          <Button data-testid="ipd-ai-new" title="开启新会话" @click="clearConversation">
-            新会话
-          </Button>
-        </div>
+            右侧展示区：对话中产出的结构化建议卡（预审 / 结论 / 章程 /
+            需求草案）会在此展开。
+          </div>
+        </aside>
       </div>
     </Drawer>
   </CopilotKitProvider>
@@ -688,6 +820,61 @@ defineExpose({ clearConversation, send });
   flex-direction: column;
   gap: 10px;
   height: 100%;
+}
+/* P3-02 放大工作界面：同一状态切双栏布局（左对话 / 右展示），零第二对话通道 */
+.ipd-ai-panel.is-workbench {
+  display: grid;
+  grid-template-columns: minmax(320px, 5fr) minmax(0, 7fr);
+  gap: 0;
+}
+.ipd-ai-panel.is-workbench .chat-col {
+  padding-right: 16px;
+}
+.ipd-ai-panel.is-workbench .showcase-col {
+  padding: 4px 2px 4px 16px;
+  overflow-y: auto;
+  border-left: 1px solid var(--ipd-line, #e2e8f0);
+}
+.chat-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+.showcase-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+.showcase-empty {
+  padding: 12px;
+  border: 1px dashed var(--ipd-line, #e2e8f0);
+  border-radius: 8px;
+  background: var(--ipd-surface, #f5f7fa);
+  color: var(--ipd-muted, #6b7488);
+  font-size: 12px;
+  line-height: 1.8;
+}
+.ipd-ai-size-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--ipd-line, #e2e8f0);
+  border-radius: 6px;
+  background: var(--ipd-surface, #f5f7fa);
+  color: var(--ipd-text, #26303f);
+  cursor: pointer;
+}
+.ipd-ai-size-btn:focus-visible {
+  outline: 2px solid var(--ipd-focus-ring-color, #2f6fed);
+  outline-offset: 2px;
+}
+.ipd-ai-size-btn:hover {
+  filter: brightness(1.05);
 }
 .ctx-chip {
   padding: 6px 10px;
