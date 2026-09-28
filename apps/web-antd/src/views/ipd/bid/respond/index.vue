@@ -180,6 +180,46 @@
                 show-icon
               />
 
+              <div class="mb-3">
+                <!-- AI-P2-2 #2：应标完整性检查（提交前自检，只读零写入；检查≠提交，不代人工决策） -->
+                <Button
+                  size="small"
+                  :loading="checkBusy"
+                  :disabled="submitBusy"
+                  data-testid="bid-ai-check-run"
+                  @click="runCompletenessCheck"
+                >
+                  {{ checkBusy ? 'AI 检查中…' : 'AI 完整性检查（提交前自检）' }}
+                </Button>
+                <article v-if="checkResult" class="mt-2 rounded border p-3" data-testid="bid-ai-check-panel">
+                  <p class="mb-2 text-xs">
+                    <strong>检查结论：</strong>{{ checkResult.summary }}
+                    <span class="text-muted-foreground">
+                      （只读自检 · 不代人工决策；模型 {{ checkResult.model ?? '—' }} ·
+                      prompt/completion {{ checkResult.tokenPrompt }}/{{ checkResult.completionTokens }}）
+                    </span>
+                  </p>
+                  <ul class="space-y-1 text-xs">
+                    <li v-for="row in checkResult.checks" :key="row.requirement" data-testid="bid-ai-check-row">
+                      <Tag
+                        :color="row.status === 'MET' ? 'green' : row.status === 'PARTIAL' ? 'orange' : 'red'"
+                      >{{ checkStatusText[row.status] ?? row.status }}</Tag>
+                      <strong>{{ row.requirement }}</strong>
+                      <span class="text-muted-foreground">{{ row.evidence }}</span>
+                    </li>
+                  </ul>
+                </article>
+                <Alert
+                  v-if="checkError"
+                  class="mt-2"
+                  :message="checkError"
+                  type="error"
+                  show-icon
+                  role="alert"
+                  data-testid="bid-ai-check-error"
+                />
+              </div>
+
               <div class="flex gap-2">
                 <Button type="primary" :loading="submitBusy" @click="doAccept">提交应标</Button>
                 <Popconfirm
@@ -229,6 +269,11 @@ import {
   withdrawBidResponse,
 } from '../../../../api/ipd/bid';
 import type { BidInvitation, BidResponse } from '../../../../api/ipd/bid';
+import {
+  checkBidResponseCompleteness,
+  type BidCheckRow,
+  type BidCheckView,
+} from '../../../../api/ipd/bid-ai-suite';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
 import {
@@ -317,6 +362,36 @@ const latestMine = computed(() => (!isCreatorView.value ? responses.value[0] ?? 
 
 const noteLength = computed(() => composeResponseNote(form).length);
 const noteOverflow = computed(() => noteLength.value > 500);
+
+/** AI-P2-2 #2：应标完整性检查（提交前自检，只读零写入；检查≠提交，不代人工决策）。 */
+const checkBusy = ref(false);
+const checkError = ref('');
+const checkResult = ref<null | BidCheckView>(null);
+
+const checkStatusText: Record<BidCheckRow['status'], string> = {
+  MET: '已覆盖',
+  MISSING: '缺失',
+  PARTIAL: '部分覆盖',
+};
+
+async function runCompletenessCheck(): Promise<void> {
+  if (checkBusy.value || !invitation.value) return;
+  const note = composeResponseNote(form);
+  if (!note.trim()) {
+    message.warning('请先填写应标内容，再做完整性检查');
+    return;
+  }
+  checkBusy.value = true;
+  checkError.value = '';
+  try {
+    checkResult.value = await checkBidResponseCompleteness(bidId.value, note);
+  } catch (cause) {
+    checkResult.value = null;
+    checkError.value = ipdErrorText(cause, { domain: 'bid', fallback: '完整性检查失败，请稍后重试' });
+  } finally {
+    checkBusy.value = false;
+  }
+}
 
 function goBack(): void {
   router.push('/ipd/bids').catch((err: unknown) => {

@@ -55,7 +55,9 @@ import {
   type IpdGateElementView,
 } from '../../../api/ipd/gate-element-result';
 import {
+  runArbitrationDivergences,
   runGatePrecheck,
+  type GateArbitrationView,
   type GatePrecheckItemStatus,
   type GatePrecheckView,
 } from '../../../api/ipd/gate-precheck';
@@ -210,6 +212,30 @@ async function runPrecheck(): Promise<void> {
     precheckError.value = ipdErrorText(cause, { fallback: 'AI 预审失败，请稍后重试' });
   } finally {
     precheckBusy.value = false;
+  }
+}
+
+/** AI-P2-1 R240：仲裁分歧点汇总（POST /gates/{gateId}/arbitration-divergences；AI 只归纳不裁决）。 */
+const arbitrationBusy = ref(false);
+const arbitrationError = ref('');
+const arbitrationResult = ref<null | GateArbitrationView>(null);
+
+const arbitrationDecisionText: Record<string, string> = {
+  APPROVE: '同意',
+  REJECT: '驳回',
+};
+
+async function runArbitration(): Promise<void> {
+  if (!view.value || arbitrationBusy.value) return;
+  arbitrationBusy.value = true;
+  arbitrationError.value = '';
+  try {
+    arbitrationResult.value = await runArbitrationDivergences(view.value.gateId);
+  } catch (cause) {
+    arbitrationResult.value = null;
+    arbitrationError.value = ipdErrorText(cause, { fallback: '仲裁分歧点汇总失败，请稍后重试' });
+  } finally {
+    arbitrationBusy.value = false;
   }
 }
 
@@ -426,6 +452,16 @@ function finalRuling(decision: GateDecision): void {
         >
           {{ precheckBusy ? 'AI 预审中…' : 'AI 预审（材料覆盖检查）' }}
         </button>
+        <button
+          v-access:code="IPD_PERMISSION_CODES.GATE_REVIEW_LIST"
+          class="panel-action"
+          type="button"
+          data-testid="gate-arbitration-run"
+          :disabled="arbitrationBusy"
+          @click="runArbitration"
+        >
+          {{ arbitrationBusy ? '汇总中…' : '仲裁分歧点汇总' }}
+        </button>
       </div>
       <!-- AI-P2-1 预审结果面板：覆盖统计 + 证据定位 + AI 参考清单（blocking/decisionWritten 恒 false 自证） -->
       <article v-if="precheckResult" class="gate-elements-card" data-testid="gate-precheck-panel">
@@ -455,6 +491,30 @@ function finalRuling(decision: GateDecision): void {
         <pre v-else class="gate-precheck-ai" data-testid="gate-precheck-ai">{{ precheckResult.aiChecklist.markdown }}</pre>
       </article>
       <div v-if="precheckError" class="gate-error" data-testid="gate-precheck-error">{{ precheckError }}</div>
+      <!-- AI-P2-1 R240 仲裁分歧点汇总面板：分歧清单 + AI 归纳（只归纳不裁决，blocking/decisionWritten 恒 false 自证） -->
+      <article v-if="arbitrationResult" class="gate-elements-card" data-testid="gate-arbitration-panel">
+        <header class="elements-header">
+          <strong>仲裁分歧点汇总（第 {{ arbitrationResult.round ?? '—' }} 轮）</strong>
+          <span class="elements-ok">只读参考 · 只归纳不裁决 · 不阻塞仲裁</span>
+        </header>
+        <ul v-if="arbitrationResult.divergences.length" class="gate-precheck-list">
+          <li v-for="row in arbitrationResult.divergences" :key="row.round" data-status="MISSING">
+            <strong>第 {{ row.round }} 轮分歧</strong>
+            <span>市场PM：{{ arbitrationDecisionText[row.marketDecision] ?? row.marketDecision }}（{{ row.marketOpinion || '无意见' }}）</span>
+            <span>研发PM：{{ arbitrationDecisionText[row.rdDecision] ?? row.rdDecision }}（{{ row.rdOpinion || '无意见' }}）</span>
+          </li>
+        </ul>
+        <p v-else class="gate-opinion" data-testid="gate-arbitration-empty">无分歧点：各轮双 PM 决策一致或存在未签评审行。</p>
+        <div
+          v-if="arbitrationResult.aiSummary.degraded"
+          class="elements-stale"
+          data-testid="gate-arbitration-degraded"
+        >
+          {{ arbitrationResult.aiSummary.markdown || 'AI 分歧归纳暂不可用，以上为结构化分歧数据。' }}
+        </div>
+        <pre v-else class="gate-precheck-ai" data-testid="gate-arbitration-ai">{{ arbitrationResult.aiSummary.markdown }}</pre>
+      </article>
+      <div v-if="arbitrationError" class="gate-error" data-testid="gate-arbitration-error">{{ arbitrationError }}</div>
       <article class="gate-card">
         <header>
           <span>

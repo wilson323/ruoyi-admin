@@ -1,8 +1,8 @@
 /**
- * Gate 评审材料 AI 预审接口（AI-P2-1，后端 GatePrecheckController）。
+ * Gate 评审材料 AI 预审 + 仲裁分歧点汇总接口（AI-P2-1，后端 GatePrecheckController）。
  *
- * 真值：POST /api/v1/gates/{gateId}/precheck（无请求体；2026-09-27 磁盘核实
- * GatePrecheckController.java + GatePrecheckService.java）。
+ * 真值：POST /api/v1/gates/{gateId}/precheck 与 POST /api/v1/gates/{gateId}/arbitration-divergences
+ * （2026-09-27 磁盘核实 GatePrecheckController.java + GatePrecheckService.java）。
  * 契约要点：
  * - code=0 包络走 ipdPost；ID 一律字符串（大整数 BigNumberSerializer 保真）；
  * - 返回「已覆盖/部分/缺失 + 证据定位 + AI 参考清单」结构化统计（确定性代码算）；
@@ -92,4 +92,42 @@ export interface GatePrecheckView {
  */
 export function runGatePrecheck(gateId: string): Promise<GatePrecheckView> {
   return ipdPost<GatePrecheckView>(`/gates/${encodeURIComponent(gateId)}/precheck`);
+}
+
+/** 同轮分歧点（后端 divergences[]；同轮 MARKET_PM/RD_PM 已签 decision 不一致才成行）。 */
+export interface GateArbitrationDivergence {
+  marketDecision: string;
+  marketOpinion: null | string;
+  round: number;
+  rdDecision: string;
+  rdOpinion: null | string;
+}
+
+/** AI 归纳段（AiGateway 瞬时通道；零分歧跳 AI 给确定性结论，失败 degraded=true 不抛）。 */
+export interface GateArbitrationAiSummary {
+  aiModel: null | string;
+  degraded: boolean;
+  markdown: string;
+}
+
+/** POST /gates/{gateId}/arbitration-divergences 响应（GatePrecheckService#arbitrationDivergences）。 */
+export interface GateArbitrationView {
+  aiSummary: GateArbitrationAiSummary;
+  /** 恒 false：分歧汇总只读参考，不阻塞仲裁。 */
+  blocking: boolean;
+  /** 恒 false：不代写仲裁决策（仲裁/终裁恒人工，AI 只归纳不裁决）。 */
+  decisionWritten: boolean;
+  divergences: GateArbitrationDivergence[];
+  gateId: string;
+  latencyMs: number;
+  /** Gate 当前轮次（数字，非 ID）。 */
+  round: null | number;
+}
+
+/**
+ * 仲裁分歧点汇总（同轮双 PM 决策不一致清单 + AI 归纳；只归纳不裁决）。
+ * 对应 GatePrecheckController#arbitrationDivergences — POST /api/v1/gates/{gateId}/arbitration-divergences
+ */
+export function runArbitrationDivergences(gateId: string): Promise<GateArbitrationView> {
+  return ipdPost<GateArbitrationView>(`/gates/${encodeURIComponent(gateId)}/arbitration-divergences`);
 }

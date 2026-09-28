@@ -79,6 +79,41 @@
           />
         </Form.Item>
 
+        <!-- AI-P2-2 #1：AI 起草招标书（预填 → PM 确认 → 正式创建；草稿已登记版本链 v1 待审核，不代人工决策） -->
+        <Form.Item label="AI 起草（选填辅助）">
+          <Textarea
+            v-model:value="draftBrief"
+            :rows="4"
+            :maxlength="25000"
+            placeholder="描述你的招标需求（PM 原始需求），AI 将起草完整招标书并预填到上方「招标内容」；请人工确认文末「起草说明」假设后提交。"
+            :disabled="draftBusy || submitting"
+          />
+          <div class="mt-2 flex items-center gap-2">
+            <Button
+              size="small"
+              :loading="draftBusy"
+              :disabled="submitting"
+              data-testid="bid-ai-draft-run"
+              @click="runDraft"
+            >
+              {{ draftBusy ? 'AI 起草中…' : 'AI 起草招标书' }}
+            </Button>
+            <span v-if="draftResult" class="text-muted-foreground text-xs" data-testid="bid-ai-draft-meta">
+              草稿 #{{ draftResult.docId }}（{{ draftResult.status }}）· 模型 {{ draftResult.model ?? '—' }} ·
+              prompt/completion {{ draftResult.tokenPrompt }}/{{ draftResult.tokenCompletion }}；预填内容请人工确认，超 4000 字需精简。
+            </span>
+          </div>
+          <Alert
+            v-if="draftError"
+            class="mt-2"
+            :message="draftError"
+            type="error"
+            show-icon
+            role="alert"
+            data-testid="bid-ai-draft-error"
+          />
+        </Form.Item>
+
         <Form.Item label="招标方式" required>
           <Radio.Group v-model:value="form.mode" :disabled="submitting">
             <Radio value="ONE_TO_ONE">定向邀请</Radio>
@@ -166,6 +201,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Radio, Select, message } from 'ant-design-vue';
 import { createBidInvitationP231 } from '../../../../api/ipd/bid';
+import { draftBidInvitationDoc, type BidDraftView } from '../../../../api/ipd/bid-ai-suite';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
 import '../../_shared/ipd-theme.css';
@@ -178,6 +214,39 @@ const isMarketSide = computed(() => ['MARKET_PM', 'SUPER_ADMIN'].includes(auth.i
 
 const submitting = ref(false);
 const submitError = ref('');
+
+/** AI-P2-2 #1：招标书起草（预填 → PM 确认 → 正式创建；草稿已登记版本链 v1 待审核）。 */
+const draftBrief = ref('');
+const draftBusy = ref(false);
+const draftError = ref('');
+const draftResult = ref<null | BidDraftView>(null);
+
+async function runDraft(): Promise<void> {
+  if (draftBusy.value) return;
+  const projectId = form.projectId.trim();
+  const title = form.title.trim();
+  if (!projectId || !title) {
+    message.warning('请先填写「所属项目 ID」与「招标标题」，再让 AI 起草');
+    return;
+  }
+  if (!draftBrief.value.trim()) {
+    message.warning('请先填写 AI 起草的 PM 原始需求');
+    return;
+  }
+  draftBusy.value = true;
+  draftError.value = '';
+  try {
+    const view = await draftBidInvitationDoc(projectId, title, draftBrief.value.trim());
+    draftResult.value = view;
+    form.content = view.content; // 预填；人工确认后仍走正常创建流（提交校验不豁免）
+    message.success('AI 起草完成，已预填到「招标内容」，请确认「起草说明」假设后提交');
+  } catch (cause) {
+    draftResult.value = null;
+    draftError.value = ipdErrorText(cause, { domain: 'bid', fallback: 'AI 起草失败，请稍后重试' });
+  } finally {
+    draftBusy.value = false;
+  }
+}
 
 const levelOptions = [
   { label: 'L1', value: 'L1' },
