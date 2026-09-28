@@ -7,6 +7,8 @@ import { useAccessStore } from '@vben/stores';
 
 import { useEventListener } from '@vueuse/core';
 
+import { currentPlatformClientId } from '#/api/ipd/auth';
+
 defineOptions({ name: 'FlowDesigner' });
 
 const route = useRoute();
@@ -19,7 +21,9 @@ const accessStore = useAccessStore();
 const params = {
   Authorization: `Bearer ${accessStore.accessToken}`,
   id: definitionId,
-  clientid: clientId,
+  // clientid-contract（login-single-track 2026-09-28）：warm-flow 设计器凭平台票调基线接口，
+  // clientid 须为换票交付的权威值（SecurityConfig 校验），静态值仅作回退。
+  clientid: currentPlatformClientId() ?? clientId,
   onlyDesignShow: true,
 };
 

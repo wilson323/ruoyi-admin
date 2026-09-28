@@ -4,16 +4,20 @@ import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 
 import { useAccessStore, useUserStore } from '@vben/stores';
+import { useAppConfig } from '@vben/hooks';
 
 import {
   IPD_LOGIN_CREDENTIAL_ERROR,
   IPD_LOGIN_CREDENTIAL_TEXT,
   IpdRequestError,
+  clearPlatformToken,
   fetchPlatformToken,
   loginIpd,
   parseIdentity,
   refreshIpd,
   requestIpd,
+  restorePlatformToken,
+  storePlatformToken,
 } from '../api/ipd/auth';
 import { getUserInfoApi } from '../api/core/user';
 import { ipdErrorText } from '../views/ipd/_shared/ipd-error-text';
@@ -21,8 +25,8 @@ import { vbenCodesOf, vbenRolesOf } from './vben-identity';
 
 const STORAGE_KEY = 'ruoyi-ipd.session';
 const LEGACY_STORAGE_KEY = 'ruoyi-ipd.session-token';
-/** 平台票独立存放：生命周期与 IPD 票互不耦合（平台票过期≠IPD 会话过期，反之亦然）。 */
-const PLATFORM_STORAGE_KEY = 'ruoyi-ipd.platform';
+/** 静态配置的 clientid（VITE_GLOB_APP_CLIENT_ID）：仅作换票前首跳/回退，权威值以换票交付为准（见对账告警）。 */
+const { clientId: staticClientId } = useAppConfig(import.meta.env, import.meta.env.PROD);
 interface StoredSession {
   accessToken: string;
   accessExpiresAt: number;
@@ -43,17 +47,6 @@ const expiredSession = (cause: unknown): cause is IpdRequestError => cause insta
   cause.kind === 'http' && cause.status === 401 && cause.code === 20001;
 const supersededSession = () => new IpdRequestError('登录状态已改变，请重试', 0, 0, 'cancelled');
 const uncertainRefresh = () => new IpdRequestError('无法确认会话刷新结果，请重新登录。', 0, 0, 'transport');
-
-interface StoredPlatformToken { expiresAt: number; token: string }
-function restorePlatformToken(): StoredPlatformToken | null {
-  try {
-    const data = JSON.parse(sessionStorage.getItem(PLATFORM_STORAGE_KEY) ?? 'null');
-    if (data && typeof data.token === 'string' && data.token &&
-        Number.isFinite(data.expiresAt) && data.expiresAt > 0) return data;
-  } catch { /* Malformed local data never becomes a platform session. */ }
-  sessionStorage.removeItem(PLATFORM_STORAGE_KEY);
-  return null;
-}
 
 export const useIpdAuthStore = defineStore('ipd-auth', () => {
   const restored = restoredSession();
@@ -107,10 +100,17 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
       return cached.token;
     }
     const result = await fetchPlatformToken(token.value);
-    sessionStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify({
+    storePlatformToken({
+      clientId: result.clientId,
       expiresAt: Date.now() + result.expiresIn * 1000,
       token: result.token,
-    }));
+    });
+    // clientid-contract 对账（login-single-track 2026-09-28）：权威值=换票交付的 sys_client.client_id
+    //（与 token extra 同源）；与静态配置不一致时以权威值为准并告警——.env 硬编码是待收敛的
+    // 第二事实源（五类病根⑤：多事实源无对账），告警即「会喊对不上」而非静默 401。
+    if (staticClientId && result.clientId !== staticClientId) {
+      console.warn(`[clientid-contract] 换票交付 clientId=${result.clientId} 与静态配置 VITE_GLOB_APP_CLIENT_ID=${staticClientId} 不一致，已以交付值为准，请收敛 .env 第二事实源`);
+    }
     accessStore.setAccessToken(result.token);
     try {
       const info = await getUserInfoApi();
@@ -152,7 +152,7 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
     sessionStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem(LEGACY_STORAGE_KEY);
     // 平台会话随 IPD 会话同生共死：登出/失效时一并清除（AI 平台桥，2026-09-06）
-    sessionStorage.removeItem(PLATFORM_STORAGE_KEY);
+    clearPlatformToken();
     accessStore.setAccessToken(null);
     // 立即清空侧栏，避免下一账号首帧残留上一角色菜单；模块缓存由 buildAccessMenus 换角色时丢弃
     accessStore.setAccessMenus([]);

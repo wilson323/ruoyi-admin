@@ -239,8 +239,12 @@ export async function refreshIpd(token: string): Promise<IpdLoginResult> {
   return parseSession(await requestIpd('/auth/refresh', { method: 'POST', token }));
 }
 
-/** 平台会话票（AI 平台桥，2026-09-06）：凭有效 IPD 票换基线平台票，/chat、/system 等原平台接口凭此票访问。 */
+/** 平台会话票（AI 平台桥，2026-09-06）：凭有效 IPD 票换基线平台票，/chat、/system 等原平台接口凭此票访问。
+ *  clientId = sys_client.client_id（UUID）——基线 /system/** 鉴权要求请求头 clientid 与 token extra 一致
+ *  （SecurityConfig 校验），后端换票响应交付此权威值；前端必须消费它而非依赖静态配置
+ *  （clientid-contract / login-single-track 2026-09-28）。 */
 export interface IpdPlatformToken {
+  clientId: string;
   expiresIn: number;
   platformUser: string;
   token: string;
@@ -255,14 +259,47 @@ export async function fetchPlatformToken(token: string): Promise<IpdPlatformToke
     typeof data.token !== 'string' || !data.token ||
     data.tokenType !== 'Bearer' ||
     typeof data.platformUser !== 'string' || !data.platformUser ||
+    // clientid-contract：缺 clientId 的响应=契约断裂，必须立即抛错而非静默降级到静态配置
+    typeof data.clientId !== 'string' || !data.clientId ||
     !(typeof data.expiresIn === 'number' && Number.isSafeInteger(data.expiresIn) && data.expiresIn > 0)
   ) {
     throw new IpdRequestError('平台会话签发响应异常，请重试');
   }
   return {
+    clientId: data.clientId,
     expiresIn: data.expiresIn,
     platformUser: data.platformUser,
     token: data.token,
     tokenType: 'Bearer',
   };
+}
+
+/** 平台票本地缓存 key（sessionStorage）：过期判定独立于 IPD 票（平台票过期≠IPD 会话过期），但登出时随 IPD 会话一并清除。 */
+export const PLATFORM_STORAGE_KEY = 'ruoyi-ipd.platform';
+
+/** 平台票缓存结构：token + 过期时刻 + 换票交付的权威 clientId（三字段缺一即作废，不留旧格式活口）。 */
+export interface StoredPlatformToken { clientId: string; expiresAt: number; token: string }
+
+export function restorePlatformToken(): StoredPlatformToken | null {
+  try {
+    const data = JSON.parse(sessionStorage.getItem(PLATFORM_STORAGE_KEY) ?? 'null');
+    if (data && typeof data.token === 'string' && data.token &&
+        typeof data.clientId === 'string' && data.clientId &&
+        Number.isFinite(data.expiresAt) && data.expiresAt > 0) return data;
+  } catch { /* Malformed local data never becomes a platform session. */ }
+  sessionStorage.removeItem(PLATFORM_STORAGE_KEY);
+  return null;
+}
+
+export function storePlatformToken(stored: StoredPlatformToken): void {
+  sessionStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify(stored));
+}
+
+export function clearPlatformToken(): void {
+  sessionStorage.removeItem(PLATFORM_STORAGE_KEY);
+}
+
+/** 权威 clientid（换票响应交付的 sys_client.client_id，与 token extra 同源）；无缓存时回 null 由调用方回退。 */
+export function currentPlatformClientId(): string | null {
+  return restorePlatformToken()?.clientId ?? null;
 }

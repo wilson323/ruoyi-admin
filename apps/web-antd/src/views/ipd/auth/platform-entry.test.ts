@@ -64,6 +64,8 @@ const ok = (data: unknown, status = 200, code = 0) =>
 
 const tokenOk = () =>
   ok({
+    // clientid-contract（login-single-track 2026-09-28）：换票响应必含权威 clientId，缺字段即契约断裂
+    clientId: 'client-fixture',
     expiresIn: 900,
     platformUser: 'ipd-admin',
     token: 'platform-one',

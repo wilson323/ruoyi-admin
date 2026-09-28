@@ -32,6 +32,7 @@ import { message, Modal } from 'ant-design-vue';
 import { isEmpty, isNull } from 'lodash-es';
 
 import { handleUnauthorizedLogout } from './helper';
+import { currentPlatformClientId } from './ipd/auth';
 
 const { clientId, enableEncrypt, rsaPublicKey, rsaPrivateKey } =
   useAppConfig(import.meta.env, import.meta.env.PROD);
@@ -143,8 +144,12 @@ function createRequestClient(baseURL: string) {
        * 添加全局clientId
        * 关于header的clientId被错误绑定到实体类
        * https://gitee.com/dapppp/meet-plus-vben5/issues/IC0BDS
+       *
+       * clientid-contract（login-single-track 2026-09-28）：权威值=换票交付的 sys_client.client_id
+       * （与 token extra 同源，SecurityConfig 校验 header/param clientid 一致）；
+       * 静态 VITE_GLOB_APP_CLIENT_ID 仅作换票前首跳/回退，不得反向覆盖权威值。
        */
-      config.headers.ClientID = clientId;
+      config.headers.ClientID = currentPlatformClientId() ?? clientId;
       /**
        * 格式化get/delete参数
        * 如果包含自定义的paramsSerializer则不走此逻辑

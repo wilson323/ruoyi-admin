@@ -21,8 +21,14 @@ import {
   IPD_LOGIN_CREDENTIAL_ERROR,
   IPD_LOGIN_CREDENTIAL_TEXT,
   IpdRequestError,
+  PLATFORM_STORAGE_KEY,
+  clearPlatformToken,
+  currentPlatformClientId,
+  fetchPlatformToken,
   parseIdentity,
   requestIpd,
+  restorePlatformToken,
+  storePlatformToken,
 } from './auth';
 
 /** 200 OK 但 envelope.code !== 0：触发 requestIpd 的 messageFromCode 分支（不走 /auth/login 特化路径）。 */
@@ -674,5 +680,60 @@ describe('BUSINESS_CODE_MESSAGES coverage via requestIpd', () => {
     expect(cause).toBeInstanceOf(IpdRequestError);
     expect((cause as IpdRequestError).kind).toBe('transport');
     expect((cause as IpdRequestError).message).toBe('无法连接服务，请检查网络后重试');
+  });
+});
+
+/**
+ * F) 平台票契约（clientid-contract / login-single-track 2026-09-28）：
+ *    换票响应必须交付权威 clientId（sys_client.client_id，与 token extra 同源，SecurityConfig 校验）；
+ *    缺失=契约断裂必须立即抛错而非静默降级到静态配置（吞掉即回到「契约靠猜」）；
+ *    缓存三字段缺一即作废，旧格式不留活口。
+ */
+describe('F) 平台票契约（clientid-contract）', () => {
+  const okEnvelope = (data: unknown) =>
+    new Response(
+      JSON.stringify({ code: 0, data, message: '', timestamp: '2026-09-28T00:00:00Z', traceId: 'fixture' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+
+  const FULL_TICKET = {
+    clientId: 'e5cd7e4891bf95d1d19206ce24a7b32e',
+    expiresIn: 7200,
+    platformUser: 'ipd-admin',
+    token: 'jwt-fixture',
+    tokenType: 'Bearer',
+  };
+
+  afterEach(() => sessionStorage.clear());
+
+  it('F1 换票响应交付的权威 clientId 必须入库并可取回', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okEnvelope(FULL_TICKET)));
+    const ticket = await fetchPlatformToken('ipd-token');
+    expect(ticket.clientId).toBe('e5cd7e4891bf95d1d19206ce24a7b32e');
+    storePlatformToken({ clientId: ticket.clientId, expiresAt: Date.now() + 1000, token: ticket.token });
+    expect(currentPlatformClientId()).toBe('e5cd7e4891bf95d1d19206ce24a7b32e');
+  });
+
+  it('F2 缺 clientId 的换票响应=契约断裂，立即抛错不静默降级', async () => {
+    const { clientId: _dropped, ...withoutClientId } = FULL_TICKET;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okEnvelope(withoutClientId)));
+    await expect(fetchPlatformToken('ipd-token')).rejects.toThrow('平台会话签发响应异常');
+  });
+
+  it('F3 缓存缺 clientId 的旧格式作废并清除（不留双轨活口）', () => {
+    sessionStorage.setItem(PLATFORM_STORAGE_KEY, JSON.stringify({ expiresAt: Date.now() + 1000, token: 'legacy' }));
+    expect(restorePlatformToken()).toBeNull();
+    expect(sessionStorage.getItem(PLATFORM_STORAGE_KEY)).toBeNull();
+    expect(currentPlatformClientId()).toBeNull();
+  });
+
+  it('F4 取值序钉死：权威值优先，无权威值才回退静态值', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okEnvelope(FULL_TICKET)));
+    const ticket = await fetchPlatformToken('ipd-token');
+    storePlatformToken({ clientId: ticket.clientId, expiresAt: Date.now() + 1000, token: ticket.token });
+    // 有权威值时静态回退不得命中（调用方 currentPlatformClientId() ?? 静态值）
+    expect(currentPlatformClientId() ?? 'static-fallback').toBe('e5cd7e4891bf95d1d19206ce24a7b32e');
+    clearPlatformToken();
+    expect(currentPlatformClientId() ?? 'static-fallback').toBe('static-fallback');
   });
 });
