@@ -9,6 +9,8 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { Alert, Tag } from 'ant-design-vue';
 
+import type { Product } from '../../../api/ipd/product';
+import { listProducts } from '../../../api/ipd/product';
 import {
   fetchMyInitiated,
   fetchMyPendingApprovals,
@@ -27,6 +29,9 @@ import AiTaskTodoDrawer from '../_shared/ai-tasks/ai-task-todo-drawer.vue';
 import '../_shared/ipd-theme.css';
 import { RULES_BY_PAGE, renderRulesDescription } from '../_shared/zk-ipd-rules';
 import { WORKBENCH_TASK_STATUS_TEXT, taskTypeText } from '../_shared/ipd-enums';
+import type { SpaceScope } from './space-context';
+import SpaceProgress from './space-progress.vue';
+import TodoQuickEntry from './todo-quick-entry.vue';
 
 const auth = useIpdAuthStore();
 const workbenchRules = computed(() => renderRulesDescription(RULES_BY_PAGE.workbench));
@@ -199,6 +204,47 @@ const taskGroups = computed<TaskGroup[]>(() => {
   }));
 });
 
+/* ---------- 产品空间（=工作空间）：选择器 + 空间内容/数据范围 ----------
+ * 概念关系：产品空间即工作空间；不同产品空间对应不同的工作空间内容与数据范围。
+ * 选项真值 listProducts()（label=productName，value=id），默认选中第一个；切换触发空间重载。 */
+
+const spaces = ref<Product[]>([]);
+const spacesState = ref<'empty' | 'error' | 'loading' | 'ready'>('loading');
+const selectedSpaceId = ref('');
+/** 当前空间项目数据范围（space-progress 上报；待办快捷入口按 projectIds 过滤）。 */
+const spaceScope = ref<SpaceScope>({ status: 'loading' });
+
+const selectedSpaceName = computed(
+  () => spaces.value.find((p) => p.id === selectedSpaceId.value)?.productName ?? '',
+);
+
+async function loadSpaces(): Promise<void> {
+  spacesState.value = 'loading';
+  try {
+    const rows = await listProducts();
+    spaces.value = rows;
+    if (rows.length === 0) {
+      // 产品空间为空 → 整块空态（不渲染模拟下拉/示例数据）
+      spacesState.value = 'empty';
+      selectedSpaceId.value = '';
+      return;
+    }
+    spacesState.value = 'ready';
+    // 默认选中第一个产品空间；已选项仍存在则保持
+    const first = rows[0];
+    if (first && !rows.some((p) => p.id === selectedSpaceId.value)) {
+      selectedSpaceId.value = first.id;
+    }
+  } catch {
+    spaces.value = [];
+    spacesState.value = 'error';
+  }
+}
+
+function onSpaceScopeChange(scope: SpaceScope): void {
+  spaceScope.value = scope;
+}
+
 /** 删除审批待办数（组长=待初审；超管=待终审）。 */
 const deletionPending = computed(() => summary.value?.deletionPending ?? 0);
 
@@ -206,6 +252,8 @@ const deletionPending = computed(() => summary.value?.deletionPending ?? 0);
 const currentAdvance = computed(() => summary.value?.currentAdvance ?? null);
 
 onMounted(async () => {
+  // 产品空间（=工作空间）选择器真数据（与聚合接口并行，互不阻塞）
+  void loadSpaces();
   try {
     summary.value = await fetchWorkbenchSummary();
   } catch (error) {
@@ -242,6 +290,21 @@ watch(activeTab, (tab) => {
         <p class="ipd-wb-subtitle">
           所有跨项目、跨角色待办都在这里接力；必须进入业务详情查看上下文后办理。
         </p>
+      </div>
+      <div class="ipd-wb-space-picker" data-testid="workbench-space-picker">
+        <label class="ipd-wb-space-label" for="ipd-wb-space-select">产品空间（工作空间）</label>
+        <select
+          v-if="spacesState === 'ready'"
+          id="ipd-wb-space-select"
+          v-model="selectedSpaceId"
+          class="ipd-wb-space-select"
+          data-testid="workbench-space-select"
+        >
+          <option v-for="p in spaces" :key="p.id" :value="p.id">{{ p.productName }}</option>
+        </select>
+        <span v-else class="ipd-wb-space-placeholder">
+          {{ spacesState === 'loading' ? '产品空间加载中…' : spacesState === 'empty' ? '暂无产品空间' : '产品空间加载失败' }}
+        </span>
       </div>
       <button
         type="button"
@@ -291,6 +354,43 @@ watch(activeTab, (tab) => {
         站内待办（AI 任务直达）
       </button>
     </div>
+
+    <!-- 产品空间（=工作空间）：第一个项目的阶段进度 + 待办事项快捷入口（真实接口四态，不假绿） -->
+    <section class="ipd-wb-space" data-testid="workbench-space-section">
+      <header class="ipd-wb-section-header">
+        <h2 class="ipd-wb-section-title">工作空间{{ selectedSpaceName ? ` · ${selectedSpaceName}` : '' }}</h2>
+        <span class="ipd-wb-section-meta">不同产品空间对应不同的工作空间内容与数据范围</span>
+      </header>
+      <div v-if="spacesState === 'loading'" class="ipd-wb-empty">产品空间加载中…</div>
+      <div v-else-if="spacesState === 'error'" class="ipd-wb-empty" data-testid="workbench-space-error">
+        <p class="ipd-wb-fail-text">产品空间加载失败</p>
+        <button
+          type="button"
+          class="ipd-wb-retry-btn"
+          data-testid="workbench-space-retry"
+          @click="loadSpaces"
+        >
+          重试
+        </button>
+      </div>
+      <div v-else-if="spacesState === 'empty'" class="ipd-wb-empty" data-testid="workbench-space-empty">
+        暂无产品空间
+      </div>
+      <div v-else class="ipd-wb-space-grid">
+        <SpaceProgress
+          :space-id="selectedSpaceId"
+          :space-name="selectedSpaceName"
+          @open-flow="(projectId) => $router.push(`/ipd/projects/${projectId}/flow`).catch(() => {})"
+          @scope-change="onSpaceScopeChange"
+        />
+        <TodoQuickEntry
+          :scope="spaceScope"
+          :space-id="selectedSpaceId"
+          :space-name="selectedSpaceName"
+          @open-task="(deepLink) => $router.push(deepLink).catch(() => {})"
+        />
+      </div>
+    </section>
 
     <!-- 责任任务队列筛选 tab（按 LIVE URL 实拍顺序） -->
     <div class="ipd-wb-queue">
@@ -456,6 +556,10 @@ watch(activeTab, (tab) => {
 /* V12-F3: 原 1100px 断点归一至 768px（唯一断点常量见 _shared/ipd-breakpoints.ts） */
 @media (max-width: 768px) {
   .ipd-wb-queue-grid { grid-template-columns: 1fr; }
+
+  .ipd-wb-space-grid { grid-template-columns: 1fr; }
+
+  .ipd-wb-header { flex-wrap: wrap; }
 }
 
 /* 页面容器（原型 .page-frame：28px 32px 60px，max-width 1600px 居中） */
@@ -467,6 +571,67 @@ watch(activeTab, (tab) => {
   margin: auto;
 }
 
+
+/* 产品空间（=工作空间）：选择器 + 区块 */
+.ipd-wb-space-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ipd-wb-space-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ipd-muted, #697388);
+}
+
+.ipd-wb-space-select {
+  height: 38px;
+  min-width: 200px;
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--ipd-text, #172033);
+  background: var(--ipd-surface, #fff);
+  border: 1px solid var(--ipd-line, #dfe4ed);
+  border-radius: 6px;
+}
+
+.ipd-wb-space-placeholder {
+  height: 38px;
+  font-size: 13px;
+  line-height: 38px;
+  color: var(--ipd-muted, #697388);
+}
+
+.ipd-wb-space {
+  padding: 20px 24px;
+  background: var(--ipd-surface, #fff);
+  border: 1px solid var(--ipd-line, #dfe4ed);
+  border-radius: 8px;
+}
+
+.ipd-wb-space-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.ipd-wb-fail-text {
+  margin: 0 0 10px;
+  font-weight: 600;
+  color: var(--ipd-red, #e45757);
+}
+
+.ipd-wb-retry-btn {
+  padding: 6px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ipd-blue, #245bf4);
+  cursor: pointer;
+  background: var(--ipd-blue-soft, #edf2ff);
+  border: 1px solid var(--ipd-blue, #245bf4);
+  border-radius: 6px;
+}
 
 /* R232 P2-04 站内待办入口行 */
 .ipd-wb-todo-entry {
