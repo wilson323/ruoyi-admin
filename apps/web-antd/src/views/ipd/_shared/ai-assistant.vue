@@ -22,9 +22,16 @@
  * confirm 只收组件 emit 零直写（C08 铁律：卡片层零直写，真人提交走既有端点）；
  * 新轮/新会话清上一轮卡片态。
  * 信封守卫复用 api/ipd/ai-copilot 的 parseStreamDone（import 复用，禁复制校验逻辑防双轨）。
+ *
+ * P3-01（2026-09-28 CopilotKit 单轨融合）：宿主挂 CopilotKitProvider（runtimeUrl=
+ * /api/copilotkit，Bearer header 鉴权，契约 docs/copilotkit单轨融合契约-20260928.md）
+ * + IpdAiCardRenderHost 渲染层（4 卡 useRenderTool = 注册表组件 + useDefaultRenderTool
+ * 兜底）。单轨红线：不开第二个聊天 UI、不建平行卡片体系、不删文本降级路径；既有四帧
+ * 文本/卡片通道零回归。
  */
 import { computed, nextTick, onErrorCaptured, ref, shallowRef, type Component } from 'vue';
 
+import { CopilotKitProvider } from '@copilotkit/vue/v2';
 import { PhSparkle as Sparkles } from '@phosphor-icons/vue';
 import { Alert, Button, Drawer, Input, message as antMessage } from 'ant-design-vue';
 
@@ -35,6 +42,10 @@ import {
 } from '../../../api/ipd/ai-copilot';
 
 import { getCardType } from './ai-cards/card-registry';
+import {
+  copilotKitAuthHeaders,
+  IpdAiCardRenderHost,
+} from './ai-cards/copilotkit-render';
 import type {
   AiCardData,
   AiCardEnvelope,
@@ -547,94 +558,102 @@ defineExpose({ clearConversation, send });
 </script>
 
 <template>
-  <button
-    aria-label="AI 副驾"
-    class="ipd-ai-fab"
-    data-testid="ipd-ai-fab"
-    type="button"
-    @click="toggleOpen"
+  <CopilotKitProvider
+    :enable-inspector="false"
+    :headers="copilotKitAuthHeaders"
+    runtime-url="/api/copilotkit"
   >
-    <Sparkles :size="20" />
-    <span>AI 副驾</span>
-  </button>
-  <Drawer
-    :open="open"
-    :width="440"
-    data-testid="ipd-ai-drawer"
-    title="AI 副驾"
-    @close="toggleOpen"
-  >
-    <div class="ipd-ai-panel">
-      <Alert
-        message="AI 生成内容由大模型产出，未经审核、不做内容过滤，仅供参考（BR-AI-04）。"
-        show-icon
-        type="warning"
-      />
-      <div v-if="currentProjectId" class="ctx-chip" data-testid="ipd-ai-ctx">
-        已注入当前项目上下文（#{{ currentProjectId }}）：问「我的待办」「项目风险」试试
-      </div>
-      <div ref="listRef" class="msg-list" data-testid="ipd-ai-messages">
-        <div v-if="messages.length === 0" class="empty-hint">
-          你好，我是 IPD AI 副驾。可以问项目待办、推进建议，或任何 IPD 流程问题。
-        </div>
-        <div
-          v-for="(m, i) in messages"
-          :key="i"
-          :class="['msg', m.role]"
-          :data-testid="`ipd-ai-msg-${m.role}`"
-        >
-          <div class="bubble">
-            {{ m.content }}<span v-if="m.streaming" class="cursor">▍</span>
-          </div>
-          <div v-if="m.role === 'assistant' && m.sources?.length" class="sources">
-            来源：{{ m.sources.join('；') }}
-          </div>
-        </div>
-        <div v-if="cardView" class="ipd-ai-card-host" data-testid="ipd-ai-card-host">
-          <component
-            :is="cardView.component"
-            :data="cardView.data"
-            @confirm="onCardConfirm"
-          />
-        </div>
-        <div
-          v-else-if="cardDegraded"
-          class="ipd-ai-card-degraded"
-          data-testid="ipd-ai-card-degraded"
-        >
-          {{ cardDegraded }}
-        </div>
-        <div
-          v-else-if="cardNotice"
-          class="ipd-ai-card-notice"
-          data-testid="ipd-ai-card-notice"
-        >
-          {{ cardNotice }}
-        </div>
-      </div>
-      <div class="input-row">
-        <Input
-          v-model:value="inputText"
-          :maxlength="2000"
-          :disabled="sending"
-          placeholder="输入问题，回车发送（≤2000 字）"
-          data-testid="ipd-ai-input"
-          @keyup.enter="send"
+    <IpdAiCardRenderHost :on-confirm="onCardConfirm" />
+
+    <button
+      aria-label="AI 副驾"
+      class="ipd-ai-fab"
+      data-testid="ipd-ai-fab"
+      type="button"
+      @click="toggleOpen"
+    >
+      <Sparkles :size="20" />
+      <span>AI 副驾</span>
+    </button>
+    <Drawer
+      :open="open"
+      :width="440"
+      data-testid="ipd-ai-drawer"
+      title="AI 副驾"
+      @close="toggleOpen"
+    >
+      <div class="ipd-ai-panel">
+        <Alert
+          message="AI 生成内容由大模型产出，未经审核、不做内容过滤，仅供参考（BR-AI-04）。"
+          show-icon
+          type="warning"
         />
-        <Button
-          :loading="sending"
-          data-testid="ipd-ai-send"
-          type="primary"
-          @click="send"
-        >
-          发送
-        </Button>
-        <Button data-testid="ipd-ai-new" title="开启新会话" @click="clearConversation">
-          新会话
-        </Button>
+        <div v-if="currentProjectId" class="ctx-chip" data-testid="ipd-ai-ctx">
+          已注入当前项目上下文（#{{ currentProjectId }}）：问「我的待办」「项目风险」试试
+        </div>
+        <div ref="listRef" class="msg-list" data-testid="ipd-ai-messages">
+          <div v-if="messages.length === 0" class="empty-hint">
+            你好，我是 IPD AI 副驾。可以问项目待办、推进建议，或任何 IPD 流程问题。
+          </div>
+          <div
+            v-for="(m, i) in messages"
+            :key="i"
+            :class="['msg', m.role]"
+            :data-testid="`ipd-ai-msg-${m.role}`"
+          >
+            <div class="bubble">
+              {{ m.content }}<span v-if="m.streaming" class="cursor">▍</span>
+            </div>
+            <div v-if="m.role === 'assistant' && m.sources?.length" class="sources">
+              来源：{{ m.sources.join('；') }}
+            </div>
+          </div>
+          <div v-if="cardView" class="ipd-ai-card-host" data-testid="ipd-ai-card-host">
+            <component
+              :is="cardView.component"
+              :data="cardView.data"
+              @confirm="onCardConfirm"
+            />
+          </div>
+          <div
+            v-else-if="cardDegraded"
+            class="ipd-ai-card-degraded"
+            data-testid="ipd-ai-card-degraded"
+          >
+            {{ cardDegraded }}
+          </div>
+          <div
+            v-else-if="cardNotice"
+            class="ipd-ai-card-notice"
+            data-testid="ipd-ai-card-notice"
+          >
+            {{ cardNotice }}
+          </div>
+        </div>
+        <div class="input-row">
+          <Input
+            v-model:value="inputText"
+            :maxlength="2000"
+            :disabled="sending"
+            placeholder="输入问题，回车发送（≤2000 字）"
+            data-testid="ipd-ai-input"
+            @keyup.enter="send"
+          />
+          <Button
+            :loading="sending"
+            data-testid="ipd-ai-send"
+            type="primary"
+            @click="send"
+          >
+            发送
+          </Button>
+          <Button data-testid="ipd-ai-new" title="开启新会话" @click="clearConversation">
+            新会话
+          </Button>
+        </div>
       </div>
-    </div>
-  </Drawer>
+    </Drawer>
+  </CopilotKitProvider>
 </template>
 
 <style scoped>

@@ -416,8 +416,15 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     bodyQuery<HTMLButtonElement>('[data-testid="ai-card-confirm"]')!.click();
     await flushPromises();
 
-    // 零直写：confirm 不触发任何 fetch（含 /api/v1 写调用），也不多发一轮对话
-    expect(fetcher).not.toHaveBeenCalled();
+    // 零直写（C08）：confirm 不触发任何 /api/v1 请求（一切写端点必经 /api/v1）、
+    // 不触发 CopilotKit run，也不多发一轮对话。CopilotKitProvider 的 runtime 只读
+    // 探测（GET /info / POST {method:"info"}，契约 §6 探针①）非写调用，不计入。
+    expect(
+      fetcher.mock.calls.filter(([url]) => String(url).includes('/api/v1')),
+    ).toEqual([]);
+    expect(
+      fetcher.mock.calls.filter(([url]) => String(url).includes('/agent/')),
+    ).toEqual([]);
     expect(streamCalls).toHaveLength(1);
     // 卡片仍在、未误降级（confirm 只收组件 emit，无副作用）
     expect(
@@ -684,7 +691,13 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     // confirm 只暂存 emit 零直写：点击后无任何 fetch/写调用、不多发对话轮
     bodyQuery<HTMLButtonElement>('[data-testid="ai-card-confirm"]')!.click();
     await flushPromises();
-    expect(fetcher).not.toHaveBeenCalled();
+    // C08 同⑥口径：零 /api/v1 直写 + 零 CopilotKit run 触发（只读探测不计入）
+    expect(
+      fetcher.mock.calls.filter(([url]) => String(url).includes('/api/v1')),
+    ).toEqual([]);
+    expect(
+      fetcher.mock.calls.filter(([url]) => String(url).includes('/agent/')),
+    ).toEqual([]);
     expect(streamCalls).toHaveLength(1);
 
     // 载荷零提交指令：纯四键信封（无 action/submit/落库语义键，语义不越界）
