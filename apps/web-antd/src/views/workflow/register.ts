@@ -1,3 +1,5 @@
+import type { Component } from 'vue';
+
 import { defineAsyncComponent, markRaw } from 'vue';
 
 /**
@@ -19,3 +21,29 @@ export const flowComponentsMap = {
 };
 
 export type FlowComponentsMapMapKey = keyof typeof flowComponentsMap;
+
+/**
+ * 注册表未命中时的通用兜底描述组件（补遗 P0-2 formPath 注册表 fallback）。
+ */
+export const FlowDescriptionFallback: Component = markRaw(
+  defineAsyncComponent(
+    () => import('./components/flow-description-fallback.vue'),
+  ),
+);
+
+/**
+ * formPath → 流程描述组件解析（补遗 P0-2：注册表仅 1 条且无 fallback，
+ * `component :is` 取 undefined 渲染空白）。
+ *
+ * <p>契约：命中注册表返回对应组件；formPath 空值或未注册返回通用兜底组件，
+ * 永不返回 undefined/空串。
+ */
+export function resolveFlowDescriptionComponent(
+  formPath: string | null | undefined,
+): Component {
+  const registered =
+    formPath != null && formPath !== ''
+      ? flowComponentsMap[formPath as FlowComponentsMapMapKey]
+      : undefined;
+  return registered ?? FlowDescriptionFallback;
+}

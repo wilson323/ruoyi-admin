@@ -4,8 +4,8 @@
  * BR-DEL-03：两级通过后软删除进入归档区；「彻底清除」为不可恢复的物理清除，
  * 仅对已删除记录开放，二次确认后执行；删除动作本身写入审计链。
  */
-import { computed, onMounted, ref } from 'vue';
-import { Alert, Button, Card, Popconfirm, Table, message } from 'ant-design-vue';
+import { computed, onMounted } from 'vue';
+import { Alert, Button, Card, Popconfirm, Table } from 'ant-design-vue';
 
 import {
   listDeletionArchive,
@@ -16,40 +16,29 @@ import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { formatDateTime } from '../../_shared/format';
 import { DELETION_STATUS_TEXT } from '../../_shared/ipd-enums';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
+import { useApprovalQueue } from '../../_shared/use-approval-queue';
 
 const auth = useIpdAuthStore();
 const isAdmin = computed(() => auth.identity?.person.personType === 'SUPER_ADMIN');
 
-const rows = ref<DeletionRequest[]>([]);
-const loading = ref(false);
-const purgingId = ref('');
+/* D-3⑧ 渐进改造：列表加载 + 行级清除动作收进 useApprovalQueue 共享 composable
+   （消除 rows/loading/busyId/try-catch-toast/reload 骨架重复；行为与改造前逐点对齐：
+   非超管零请求、成功文案、失败兜底「清除失败」、成功后 reload 权威刷新、ID 字符串透传）。 */
+const { busyId: purgingId, load, rows, runRowAction, loading } = useApprovalQueue<DeletionRequest>({
+  canLoad: () => isAdmin.value,
+  fetchList: listDeletionArchive,
+  getId: (row) => String(row.id ?? ''),
+  loadErrorFallback: '加载归档区失败',
+});
 
-async function load() {
-  if (!isAdmin.value) return;
-  loading.value = true;
-  try {
-    rows.value = await listDeletionArchive();
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '加载归档区失败');
-  } finally {
-    loading.value = false;
-  }
-}
-
-/** 表格 slot 的 record 是宽松对象；id 从 any 收敛为 string。 */
+/** 表格 slot 的 record 是宽松对象；composable 内经 getId 收敛为 string id。 */
 async function purge(record: Record<string, any>) {
-  const id = String(record.id ?? '');
-  if (!id || purgingId.value) return;
-  purgingId.value = id;
-  try {
-    await purgeDeletionRequest(id);
-    message.success('已彻底清除，该记录不可恢复');
-    await load();
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '清除失败');
-  } finally {
-    purgingId.value = '';
-  }
+  await runRowAction({
+    action: (id) => purgeDeletionRequest(id),
+    errorFallback: '清除失败',
+    row: record,
+    successText: '已彻底清除，该记录不可恢复',
+  });
 }
 
 onMounted(load);

@@ -17,6 +17,8 @@ export default defineConfig({
       'apps/web-antd/src/router/ipd-guard.test.ts',
       'apps/web-antd/src/store/**/*.test.ts',
       'apps/web-antd/src/views/ipd/**/*.test.ts',
+      // E1-② formPath 注册表 fallback 契约（views/workflow 域首测，P0-2）
+      'apps/web-antd/src/views/workflow/**/*.test.ts',
     ],
     setupFiles: ['./vitest.ipd.setup.ts'],
     coverage: {

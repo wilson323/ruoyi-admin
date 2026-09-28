@@ -3,15 +3,13 @@
 动态渲染要显示的内容 需要再flowDescripionsMap先定义好组件
 -->
 <script setup lang="ts">
-import type { FlowComponentsMapMapKey } from '../register';
-
 import type { FlowInfoResponse } from '#/api/workflow/instance/model';
 import type { TaskInfo } from '#/api/workflow/task/model';
 
 import { Divider } from 'ant-design-vue';
 
 import { ApprovalTimeline } from '.';
-import { flowComponentsMap } from '../register';
+import { resolveFlowDescriptionComponent } from '../register';
 
 defineOptions({
   name: 'ApprovalDetails',
@@ -29,9 +27,10 @@ defineProps<{
     <!--
      动态渲染要显示的内容 需要再flowDescripionsMap先定义好组件
      business-id为业务ID 必传
+     formPath 未注册时由 resolveFlowDescriptionComponent 回退通用描述（P0-2 fallback）
     -->
     <component
-      :is="flowComponentsMap[task.formPath as FlowComponentsMapMapKey]"
+      :is="resolveFlowDescriptionComponent(task.formPath)"
       :business-id="task.businessId"
     />
     <Divider />

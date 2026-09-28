@@ -40,10 +40,18 @@ import {
   type DeletionRequest,
 } from '../../../../api/ipd/deletion';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
+import {
+  canSubmitDecision,
+  createDecisionDraft,
+  DELETION_REVIEW_SCHEMA,
+  normalizedOpinion,
+  visibleHints,
+} from '../../_shared/approval-decision-schema';
 import BackendPending from '../../_shared/backend-pending.vue';
 import { formatDateTime } from '../../_shared/format';
 import { DELETION_STATUS_TEXT } from '../../_shared/ipd-enums';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
+import { useApprovalQueue } from '../../_shared/use-approval-queue';
 
 /* ipdCard 待 owner 裁决 */
 defineOptions({ name: 'IpdDeletionReview', meta: { ipdBackend: 'DeletionRequestController 已交付（P1-1）：GET /deletion-requests/review-queue、POST /deletion-requests/{id}/leader-decision、POST /deletion-requests/{id}/admin-decision、POST /deletion-requests/escalate-overdue、GET /deletion-requests/overdue-admin-review（AC-DEL-07 超期工具）；摸底（0907）登记的「列表查询」缺口已闭环，2026-09-27 复核无剩余端点缺口。' } });
@@ -55,22 +63,28 @@ const isAdmin = computed(() => personType.value === 'SUPER_ADMIN');
 const canDecide = computed(() => isLeader.value || isAdmin.value);
 const decisionTitle = computed(() => (isLeader.value ? '组长初审' : '超管终审'));
 
-const decision = reactive({ id: '', approve: true, opinion: '' });
+/* D-3⑧ schema 抽取：决策草稿/校验/文案/条件提示全部来自 approval-decision-schema
+   （字段初值与校验口径与改造前逐点一致：approve=true 起始、编号 trim 非空才可提交、
+   意见空白 → undefined）。 */
+const decision = reactive(createDecisionDraft());
 const deciding = ref(false);
 const lastResult = ref<DeletionRequest | null>(null);
+const decisionRole = computed<'admin' | 'leader'>(() => (isLeader.value ? 'leader' : 'admin'));
+const decisionHints = computed(() =>
+  visibleHints(DELETION_REVIEW_SCHEMA, decisionRole.value, decision.approve),
+);
 
 async function submitDecision() {
-  const id = decision.id.trim();
+  const id = decision.entityId.trim();
   if (!id || deciding.value) return;
   deciding.value = true;
   try {
-    const opinion = decision.opinion.trim() || undefined;
+    const opinion = normalizedOpinion(decision);
     lastResult.value = isLeader.value
       ? await leaderDecideDeletion(id, decision.approve, opinion)
       : await adminDecideDeletion(id, decision.approve, opinion);
     message.success(decision.approve ? '已通过' : '已驳回');
-    decision.id = '';
-    decision.opinion = '';
+    Object.assign(decision, createDecisionDraft());
     await loadReviewQueue();
   } catch (error) {
     message.error(error instanceof Error ? error.message : '操作失败，请稍后重试');
@@ -94,19 +108,17 @@ async function escalate() {
   }
 }
 
-const overdue = ref<DeletionRequest[]>([]);
-const overdueLoading = ref(false);
-async function loadOverdue() {
-  if (!isAdmin.value) return;
-  overdueLoading.value = true;
-  try {
-    overdue.value = await listOverdueAdminReview();
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '加载超期清单失败');
-  } finally {
-    overdueLoading.value = false;
-  }
-}
+/* D-3⑧：超期终审清单队列（同一 composable 第二实例；非超管零请求 + 失败兜底文案不变）。 */
+const {
+  load: loadOverdue,
+  loading: overdueLoading,
+  rows: overdue,
+} = useApprovalQueue<DeletionRequest>({
+  canLoad: () => isAdmin.value,
+  fetchList: listOverdueAdminReview,
+  getId: (row) => String(row.id ?? ''),
+  loadErrorFallback: '加载超期清单失败',
+});
 
 /**
  * P1-1：「待我审核」列表（服务端按当前会话人角色分流）。
@@ -116,46 +128,38 @@ async function loadOverdue() {
  *   <li>其他内部角色 → 空集</li>
  * </ul>
  */
-const reviewQueue = ref<DeletionRequest[]>([]);
-const queueLoading = ref(false);
-const decidingRowId = ref<string>('');
-
-async function loadReviewQueue() {
-  if (!canDecide.value) {
-    reviewQueue.value = [];
-    return;
-  }
-  queueLoading.value = true;
-  try {
-    reviewQueue.value = await listDeletionReviewQueue();
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '加载待我审核列表失败');
-  } finally {
-    queueLoading.value = false;
-  }
-}
+/* D-3⑧：待审队列与行级审批动作收进 useApprovalQueue（rows/loading/busyId/
+   成功摘行+reload/失败兜底——与 P1-1 原实现行为逐点对齐：
+   不可决策角色清空零请求、bodyCell 宽松 record 与仅 id 字符串两形态经 row 归一、
+   角色派发（leader/admin 端点）留在页面 action 闭包，composable 不懂业务）。 */
+const {
+  busyId: decidingRowId,
+  load: loadReviewQueue,
+  loading: queueLoading,
+  rows: reviewQueue,
+  runRowAction,
+} = useApprovalQueue<DeletionRequest>({
+  canLoad: () => canDecide.value,
+  fetchList: listDeletionReviewQueue,
+  getId: (row) => String(row.id ?? ''),
+  loadErrorFallback: '加载待我审核列表失败',
+});
 
 /** P1-1：行内「通过/驳回」直发，不需经手填表单。 */
 async function decideRow(row: DeletionRequest | string, approve: boolean) {
-  // P1-1：table bodyCell 的 record 类型为 Record<string, any>，
-  // 函数同时支持 DeletionRequest 全文与仅 id 字符串两种入参。
-  const id = typeof row === 'string' ? row : String(row.id ?? '');
-  if (!id || decidingRowId.value) return;
-  decidingRowId.value = id;
-  try {
-    const updated = isLeader.value
-      ? await leaderDecideDeletion(id, approve)
-      : await adminDecideDeletion(id, approve);
-    lastResult.value = updated;
-    message.success(approve ? '已通过' : '已驳回');
-    // 乐观更新：被审批的申请从队列中移除（状态转 ADMIN_REVIEW / REJECTED / DELETED，不再属于待我审核）
-    reviewQueue.value = reviewQueue.value.filter((it) => String(it.id) !== id);
-    await loadReviewQueue();
-  } catch (error) {
-    message.error(error instanceof Error ? error.message : '操作失败，请稍后重试');
-  } finally {
-    decidingRowId.value = '';
-  }
+  await runRowAction({
+    action: (id) =>
+      isLeader.value ? leaderDecideDeletion(id, approve) : adminDecideDeletion(id, approve),
+    errorFallback: '操作失败，请稍后重试',
+    // 乐观摘行由 outcome='remove' 承接（状态转 ADMIN_REVIEW/REJECTED/DELETED
+    // 后不再属于待我审核）；此处只回显「最近一次审核结果」。
+    onDone: (updated) => {
+      lastResult.value = updated;
+    },
+    outcome: 'remove',
+    row,
+    successText: approve ? '已通过' : '已驳回',
+  });
 }
 
 onMounted(() => {
@@ -201,29 +205,31 @@ const reviewColumns = [
           </div>
         </Tooltip>
         <div v-else class="flex flex-col gap-4">
+          <!-- D-3⑧：字段文案/校验/条件提示由 DELETION_REVIEW_SCHEMA 驱动（渲染仍为 antdv 原生控件） -->
           <div>
-            <div class="mb-1 text-sm">申请编号（点击列表行可自动填入）</div>
-            <Input v-model:value="decision.id" placeholder="待审核的删除申请编号" />
+            <div class="mb-1 text-sm">{{ DELETION_REVIEW_SCHEMA.entityIdLabel }}</div>
+            <Input v-model:value="decision.entityId" :placeholder="DELETION_REVIEW_SCHEMA.entityIdPlaceholder" />
           </div>
           <div>
             <div class="mb-1 text-sm">审核意见</div>
             <RadioGroup v-model:value="decision.approve">
-              <RadioButton :value="true">通过</RadioButton>
-              <RadioButton :value="false">驳回</RadioButton>
+              <RadioButton :value="true">{{ DELETION_REVIEW_SCHEMA.approveText }}</RadioButton>
+              <RadioButton :value="false">{{ DELETION_REVIEW_SCHEMA.rejectText }}</RadioButton>
             </RadioGroup>
-            <div v-if="isLeader && decision.approve" class="text-muted-foreground mt-1 text-xs">
-              通过后将进入超级管理员终审（AC-DEL-02）。
-            </div>
-            <div v-if="isAdmin && decision.approve" class="text-destructive mt-1 text-xs">
-              终审通过将原子软删目标对象，请谨慎操作。
+            <div
+              v-for="hint in decisionHints"
+              :key="hint.text"
+              :class="['mt-1 text-xs', hint.tone === 'danger' ? 'text-destructive' : 'text-muted-foreground']"
+            >
+              {{ hint.text }}
             </div>
           </div>
           <div>
-            <div class="mb-1 text-sm">意见说明（驳回时建议填写）</div>
-            <Textarea v-model:value="decision.opinion" :rows="3" placeholder="审核意见，随申请记录与审计留存" />
+            <div class="mb-1 text-sm">{{ DELETION_REVIEW_SCHEMA.opinionLabel }}</div>
+            <Textarea v-model:value="decision.opinion" :rows="3" :placeholder="DELETION_REVIEW_SCHEMA.opinionPlaceholder" />
           </div>
-          <Button :disabled="decision.id.trim() === ''" :loading="deciding" type="primary" v-access:code="[IPD_PERMISSION_CODES.DELETION_REQUEST_LEADER, IPD_PERMISSION_CODES.DELETION_REQUEST_ADMIN]" @click="submitDecision">
-            提交审核意见
+          <Button :disabled="!canSubmitDecision(decision)" :loading="deciding" type="primary" v-access:code="[IPD_PERMISSION_CODES.DELETION_REQUEST_LEADER, IPD_PERMISSION_CODES.DELETION_REQUEST_ADMIN]" @click="submitDecision">
+            {{ DELETION_REVIEW_SCHEMA.submitLabel }}
           </Button>
         </div>
       </Card>
@@ -236,10 +242,10 @@ const reviewColumns = [
             :data-source="reviewQueue"
             :loading="queueLoading"
             :pagination="{ pageSize: 10, showSizeChanger: false }"
-            :row-class-name="(record) => String(record.id) === decision.id ? 'ipd-row-selected' : ''"
+            :row-class-name="(record) => String(record.id) === decision.entityId ? 'ipd-row-selected' : ''"
             row-key="id"
             size="small"
-            @row-click="(record) => (decision.id = String(record.id))"
+            @row-click="(record) => (decision.entityId = String(record.id))"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'entity'">
