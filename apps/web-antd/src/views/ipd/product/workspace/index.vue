@@ -12,8 +12,8 @@
  * - 「切换并查看」适配：原型切全局当前项目，本项目跳该项目详情页。
 -->
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, ref, watch } from 'vue';
+import { RouterView, useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 
 import { listProductGroups, listProducts } from '../../../../api/ipd/product';
@@ -24,6 +24,8 @@ import { PRODUCT_STATUS_TEXT } from '../../_shared/ipd-enums';
 import '../../_shared/ipd-theme.css';
 
 const router = useRouter();
+const route = useRoute();
+const isIndexRoute = computed(() => route.name === undefined || route.name === 'IpdProducts');
 
 const products = ref<Product[]>([]);
 const groups = ref(new Map<string, string>());
@@ -105,13 +107,14 @@ const heroMetrics = computed(() => [
   { label: '历史项目', value: data.value?.metrics.closedProjects ?? 0 },
 ]);
 
-onMounted(() => {
-  loadProducts();
-});
+watch(isIndexRoute, (isIndex) => {
+  if (isIndex) void loadProducts();
+}, { immediate: true });
 </script>
 
 <template>
-  <div class="ipd-pw">
+  <RouterView v-if="!isIndexRoute" />
+  <div v-else class="ipd-pw">
     <!-- 页头（原型 Frame：产品空间 + 产品下拉） -->
     <header class="ipd-pw-heading">
       <div>

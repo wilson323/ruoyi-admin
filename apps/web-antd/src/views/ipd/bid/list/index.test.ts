@@ -23,7 +23,12 @@ const routerMock = vi.hoisted(() => ({
   push: vi.fn().mockResolvedValue(undefined),
   resolve: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock('vue-router', () => ({ useRouter: () => routerMock, useRoute: () => ({ params: {} }) }));
+const routeMock = vi.hoisted(() => ({ name: 'IpdBids' }));
+vi.mock('vue-router', () => ({
+  RouterView: { template: '<div data-testid="bid-child-route" />' },
+  useRouter: () => routerMock,
+  useRoute: () => routeMock,
+}));
 
 function stubAntd(): void {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -70,6 +75,7 @@ beforeEach(() => {
   api.listBidInvitations.mockReset();
   api.withdrawBidInvitation.mockReset();
   resetRouterMock();
+  routeMock.name = 'IpdBids';
 });
 
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -163,13 +169,21 @@ describe('页19 招标单列表 - 五态与权限', () => {
     expect(createBtn!.attributes('disabled')).toBeUndefined();
   });
 
-  it('权限边界：GROUP_LEADER 看到「发起招标」被禁用（暂不可发起）', async () => {
+  it('权限边界：GROUP_LEADER 可发起招标（与后端 requireProjectCreator 一致）', async () => {
     useIpdAuthStore().identity = identity('GROUP_LEADER', '9007199254740993');
     api.listBidInvitations.mockResolvedValueOnce(pageOf([]));
     const wrapper = await mountList();
     const createBtn = wrapper.findAll('button').find((b) => b.text().includes('发起招标'));
     expect(createBtn).toBeTruthy();
-    expect(createBtn!.attributes('disabled')).toBeDefined();
+    expect(createBtn!.attributes('disabled')).toBeUndefined();
+  });
+
+  it('子路由激活时渲染出口，不继续显示招标列表', async () => {
+    routeMock.name = 'IpdBidCreate';
+    const wrapper = await mountList();
+    expect(wrapper.find('[data-testid="bid-child-route"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain('发起招标');
+    expect(api.listBidInvitations).not.toHaveBeenCalled();
   });
 
   it('MARKET_PM 发起人视角：可触发「撤回」与「关闭」', async () => {

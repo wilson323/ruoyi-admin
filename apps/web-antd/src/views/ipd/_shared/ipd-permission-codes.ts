@@ -188,7 +188,8 @@ export const PAGE_PERMISSIONS: Record<string, readonly IpdPermissionCode[]> = {
   // 页18 国别认证清单
   '/ipd/admin/cert-templates': [IPD_PERMISSION_CODES.CERT_TEMPLATE_LIST],
   // 页19-22 研发招募
-  '/ipd/bids': [IPD_PERMISSION_CODES.BID_INVITATION_ADMIN_ASSIGN],
+  '/ipd/bids': [IPD_PERMISSION_CODES.PROJECT_LIST],
+  '/ipd/bids/create': [IPD_PERMISSION_CODES.BID_INVITATION_CREATE],
   // 页23 Gate 评审
   '/ipd/admin/gate-elements': [IPD_PERMISSION_CODES.GATE_ELEMENT_LIST],
   // 页27 项目移交

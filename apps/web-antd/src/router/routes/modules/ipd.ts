@@ -202,7 +202,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
       children: [
         {
           component: () => import('#/views/ipd/bid/create/index.vue'),
-          meta: { activePath: '/ipd/bids', hideInMenu: true, title: '发起招标' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/bids/create'] ?? [])], activePath: '/ipd/bids', hideInMenu: true, title: '发起招标' },
           name: 'IpdBidCreate', path: 'create',
         },
         {

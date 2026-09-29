@@ -91,6 +91,8 @@ describe('IPD 权限码常量（与后端 IpdPermissionCode 镜像对账由后�
 describe('PAGE_PERMISSIONS 49 页权限矩阵', () => {
   it('关键页都已登记权限码', () => {
     expect(PAGE_PERMISSIONS['/ipd/projects']).toContain(IPD_PERMISSION_CODES.PROJECT_LIST);
+    expect(PAGE_PERMISSIONS['/ipd/bids']).toEqual([IPD_PERMISSION_CODES.PROJECT_LIST]);
+    expect(PAGE_PERMISSIONS['/ipd/bids/create']).toEqual([IPD_PERMISSION_CODES.BID_INVITATION_CREATE]);
     expect(PAGE_PERMISSIONS['/ipd/kpi/functional']).toContain(IPD_PERMISSION_CODES.KPI_QUERY);
     expect(PAGE_PERMISSIONS['/ipd/incentive/allowance']).toBeDefined();
     expect(PAGE_PERMISSIONS['/ipd/incentive/bonus-pool']).toContain(

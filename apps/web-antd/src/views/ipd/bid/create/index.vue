@@ -9,9 +9,9 @@
         show-icon
       />
       <Alert
-        v-if="!isMarketSide"
+        v-if="!canCreateBid"
         class="mb-4"
-        message="发起招标通常由市场PM 操作，当前角色提交后仍以服务端权限校验结果为准。"
+        message="仅市场PM、产品组长或超级管理员可发起招标，提交后仍以服务端权限校验结果为准。"
         type="info"
         show-icon
       />
@@ -210,7 +210,7 @@ const router = useRouter();
 const auth = useIpdAuthStore();
 
 const Textarea = Input.TextArea;
-const isMarketSide = computed(() => ['MARKET_PM', 'SUPER_ADMIN'].includes(auth.identity?.person.personType ?? ''));
+const canCreateBid = computed(() => ['MARKET_PM', 'GROUP_LEADER', 'SUPER_ADMIN'].includes(auth.identity?.person.personType ?? ''));
 
 const submitting = ref(false);
 const submitError = ref('');

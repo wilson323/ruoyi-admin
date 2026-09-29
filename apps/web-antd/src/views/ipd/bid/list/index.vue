@@ -1,5 +1,6 @@
 <template>
-  <div class="p-4">
+  <RouterView v-if="!isIndexRoute" />
+  <div v-else class="p-4">
     <Card>
       <!-- ZK-IPD §四.1.3 招标规则提示 -->
       <Alert
@@ -194,8 +195,8 @@
 <script setup lang="ts">
 // 页19 招标组队-招标单列表（看板卡 P0-10.19；后端 P2-3.1 / P2-3.2 已交付）。
 // 布局：状态筛选 + 待我应标筛选 + 分页表格 + 行内操作（应标/遴选/撤回/关闭/详情抽屉）。
-import { computed, onMounted, reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, reactive, ref, watch } from 'vue';
+import { RouterView, useRoute, useRouter } from 'vue-router';
 import {
   Alert,
   Button,
@@ -232,6 +233,8 @@ import { RULES_BY_PAGE, renderRulesDescription } from '../../_shared/zk-ipd-rule
 import '../../_shared/ipd-theme.css';
 
 const router = useRouter();
+const route = useRoute();
+const isIndexRoute = computed(() => route.name === undefined || route.name === 'IpdBids');
 const bidListRules = computed(() => renderRulesDescription(RULES_BY_PAGE.bidList));
 const auth = useIpdAuthStore();
 
@@ -254,8 +257,8 @@ const Textarea = Input.TextArea;
 const myId = computed(() => auth.identity?.person.id ?? '');
 const isSuperAdmin = computed(() => auth.identity?.person.personType === 'SUPER_ADMIN');
 const isRdPm = computed(() => auth.identity?.person.personType === 'RD_PM');
-const canCreateBid = computed(() => ['MARKET_PM', 'SUPER_ADMIN'].includes(auth.identity?.person.personType ?? ''));
-const createDeniedReason = '发起招标通常由市场PM 操作，当前角色暂不可用。如需代创建请联系你的产品组长，由产品组长走超管指派端点（BID_INVITATION_ADMIN_ASSIGN）代为发起。';
+const canCreateBid = computed(() => ['MARKET_PM', 'GROUP_LEADER', 'SUPER_ADMIN'].includes(auth.identity?.person.personType ?? ''));
+const createDeniedReason = '仅市场PM、产品组长或超级管理员可发起招标。';
 
 const statusOptions = [
   { label: '全部状态', value: '' },
@@ -485,5 +488,7 @@ async function openDetail(record: Pick<BidInvitation, 'id'>): Promise<void> {
   }
 }
 
-onMounted(load);
+watch(isIndexRoute, (isIndex) => {
+  if (isIndex) void load();
+}, { immediate: true });
 </script>

@@ -191,6 +191,6 @@ describe('页20 发起招标 - 校验与提交（GAP-F2 校验型入口）', () 
       person: { id: '99', groupId: null, name: '研发人员', username: 'rd', personType: 'RD_PM', accountStatus: 'ACTIVE' },
     };
     const wrapper = await mountCreate();
-    expect(wrapper.html()).toContain('发起招标通常由市场PM 操作');
+    expect(wrapper.html()).toContain('仅市场PM、产品组长或超级管理员可发起招标');
   });
 });
