@@ -13,7 +13,7 @@
 -->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { FileTextOutlined } from '@ant-design/icons-vue';
 import { Alert, Modal, Select, message } from 'ant-design-vue';
 
@@ -30,6 +30,7 @@ import { DEMAND_STATUS_TONE, demandStateLabel } from '../_shared/ipd-enums';
 import '../_shared/ipd-theme.css';
 
 const auth = useIpdAuthStore();
+const route = useRoute();
 const router = useRouter();
 const isSuperAdmin = computed(() => auth.identity?.person.personType === 'SUPER_ADMIN');
 const demandRules = computed(() => renderRulesDescription(RULES_BY_PAGE.demand));
@@ -59,7 +60,12 @@ function formatTime(value: null | number | string | undefined): string {
 const demands = ref<IpdDemand[]>([]);
 const products = ref<Product[]>([]);
 const loadError = ref('');
-const statusFilter = ref('all');
+const statusFilter = ref(
+  typeof route.query.status === 'string' &&
+    STATUS_ORDER.some((status) => status === route.query.status)
+    ? route.query.status
+    : 'all',
+);
 const productFilter = ref('');
 const busyId = ref('');
 

@@ -111,7 +111,9 @@ beforeAll(() => {
           );
         },
       );
-      req.setTimeout(5000, () => req.destroy(new Error('Local HTTP timeout')));
+      // 真后端 generate 链路实测延迟 ≈4.3s（2026-09-29 A5 真跑），5s 预算会随机超时；
+      // 放宽到 15s 属环境延迟容差，不改任何业务断言。
+      req.setTimeout(15_000, () => req.destroy(new Error('Local HTTP timeout')));
       req.on('error', reject);
       if (typeof init?.body === 'string') req.write(init.body);
       req.end();
@@ -363,10 +365,11 @@ describe.skipIf(!live)('R6 AI 文档版本链端到端真跑（login → generat
     expect(response.status).toBe(200);
     const payload = (await response.json()) as Record<string, unknown>;
     expect(payload.code).toBe(0);
-    expect(isRecord(payload.data)).toBe(true);
-    const data = payload.data as unknown;
-    expect(Array.isArray(data)).toBe(true);
-    expect((data as unknown[]).length).toBeGreaterThanOrEqual(1);
+    // 真库实测（2026-09-29 A5）：GET /versions 的 data 是列表——与前端消费者
+    // listAiDocumentVersions 的 Array.isArray 契约一致；原 isRecord 断言把数组判
+    // false 属测试笔误（live 首次真跑才暴露），非后端契约缺口。
+    expect(Array.isArray(payload.data)).toBe(true);
+    expect((payload.data as unknown[]).length).toBeGreaterThanOrEqual(1);
   });
 
   it('步骤 6：diff GET /api/v1/ai-documents/:id/diff?from=&to= → 返回字段级 diff 结构', async () => {

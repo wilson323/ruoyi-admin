@@ -44,6 +44,8 @@ export const columns: VxeGridProps['columns'] = [
     title: '工具名称',
     field: 'name',
     showOverflow: true,
+    // E1 三栏：名称列渲染为选中链接（写回 index.vue 的 activeTool），高亮当前详情列
+    slots: { default: 'name' },
     width: 200,
   },
   {
@@ -139,14 +141,6 @@ export const drawerSchema: FormSchemaGetter = () => [
     fieldName: 'status',
     label: '状态',
   },
-  {
-    component: 'Textarea',
-    componentProps: {
-      rows: 8,
-    },
-    fieldName: 'configJson',
-    formItemClass: 'col-span-2',
-    help: '配置信息只写不回显；编辑时留空会保留原配置。示例：{"command": "npx", "args": ["-y", "@modelcontextprotocol/server-everything"]}',
-    label: '配置信息',
-  },
+  // Track E5：schema 不再存在任何 configJson 输入（表单域与 write-only 契约解耦，
+  // 连接配置完全由 McpConnectionForm 结构化承接；#19 凭据 write-only 红线）。
 ];

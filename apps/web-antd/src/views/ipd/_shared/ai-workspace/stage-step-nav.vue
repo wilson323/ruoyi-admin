@@ -5,6 +5,7 @@ import type { SubStage } from '../../../../api/ipd/stage-sub-stages';
 
 const props = defineProps<{
   activeCode: null | string;
+  stageCode?: string;
   stages: SubStage[];
 }>();
 const emit = defineEmits<{ select: [code: string] }>();
@@ -12,6 +13,7 @@ const emit = defineEmits<{ select: [code: string] }>();
 const groups = computed(() => {
   const byStage = new Map<string, SubStage[]>();
   for (const stage of props.stages) {
+    if (props.stageCode && stage.stageCode !== props.stageCode) continue;
     const items = byStage.get(stage.stageCode) ?? [];
     items.push(stage);
     byStage.set(stage.stageCode, items);
@@ -22,6 +24,7 @@ const groups = computed(() => {
 
 <template>
   <div class="stage-nav" data-testid="ipd-ai-step-nav">
+    <div v-if="groups.length === 0" class="stage-empty">该浏览阶段暂无可显示的小阶段。</div>
     <section v-for="group in groups" :key="group.code" class="stage-group">
       <h3>{{ group.code }}</h3>
       <button
@@ -43,6 +46,7 @@ const groups = computed(() => {
 
 <style scoped>
 .stage-nav { display: grid; gap: 12px; }
+.stage-empty { padding: 10px; border: 1px dashed var(--ipd-line); border-radius: 8px; color: var(--ipd-muted); font-size: 12px; }
 .stage-group { display: grid; gap: 6px; }
 .stage-group h3 { color: var(--ipd-text); font-size: 13px; }
 .stage-item { display: grid; gap: 4px; padding: 10px; border: 1px solid var(--ipd-line); border-radius: 8px; background: var(--ipd-bg); color: var(--ipd-text); text-align: left; cursor: pointer; }

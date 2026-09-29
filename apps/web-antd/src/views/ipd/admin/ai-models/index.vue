@@ -391,7 +391,7 @@ async function runTest(record: IpdAiModelView) {
           <InputNumber v-model:value="modalForm.maxTokens" :max="200000" :min="1" :precision="0" class="w-full" placeholder="1-200000，选填" />
         </FormItem>
         <FormItem label="向量化端点" name="embedEndpoint">
-          <Input v-model:value="modalForm.embedEndpoint" :maxlength="255" placeholder="选填：RAG 向量化接口（OpenAI 兼容 /embeddings），https:// 开头" />
+          <Input v-model:value="modalForm.embedEndpoint" :maxlength="255" placeholder="选填：RAG 向量化端点，…/v1 或 …/v1/embeddings 均可（后端归一），https:// 开头" />
         </FormItem>
         <FormItem label="向量模型" name="embedModel">
           <Input v-model:value="modalForm.embedModel" :maxlength="64" placeholder="选填：向量模型名，如 text-embedding-v4（与向量化端点同时填写才启用 RAG）" />

@@ -1,6 +1,6 @@
 /**
- * AI 工作界面双模式状态（P3-03）：classic=右抽屉单栏 / ai=全屏工作界面。
- * 纯函数 + 注入 storage（happy-dom 可测）；只持久化「布局偏好」，不持久化对话内容
+ * AI 双业务模式：classic=传统页面的 AI 副驾，ai=项目智能体工作方式。
+ * 窗口尺寸由组件独立控制。只持久化模式偏好，不持久化对话内容
  * （对话归档属 B5，互不耦合）。
  */
 export type WorkspaceMode = 'ai' | 'classic';

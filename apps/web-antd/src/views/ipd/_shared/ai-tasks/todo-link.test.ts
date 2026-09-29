@@ -82,6 +82,13 @@ describe('actionUrlFallback（手动找并存路径）', () => {
   it('NotificationService 发布口径 /projects/{id} 归一到应用路由 /ipd/projects/{id}/overview', () => {
     expect(actionUrlFallback(aiRow)).toBe('/ipd/projects/200/overview');
   });
+  it('已持久化的逾期待指派通知旧链接可进入正式需求池并保留状态筛选', () => {
+    expect(actionUrlFallback({
+      ...plainRow,
+      actionUrl: '/demands/pool?status=SUBMITTED',
+      eventType: 'DEMAND_OVERDUE_UNASSIGNED',
+    })).toBe('/ipd/requirements?status=SUBMITTED');
+  });
   it('未知形态原样返回；完全缺席回工作台', () => {
     expect(actionUrlFallback({ ...aiRow, actionUrl: '/custom/path' })).toBe('/custom/path');
     expect(actionUrlFallback({ ...aiRow, actionUrl: null })).toBe('/ipd/workbench');

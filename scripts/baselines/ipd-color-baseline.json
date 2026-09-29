@@ -1,0 +1,209 @@
+{
+  "$schema_version": 1,
+  "generated_at": "2026-09-28T23:58:25.278Z",
+  "gen_cmd": "node scripts/check-ipd-color-gate.mjs --update-baseline",
+  "root": "apps/web-antd/src",
+  "files": {
+    "components/cropper/src/cropper-avatar.vue": {
+      "r1": 4,
+      "r2": 0
+    },
+    "components/cropper/src/cropper-modal.vue": {
+      "r1": 7,
+      "r2": 0
+    },
+    "components/tinymce/src/editor.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "components/upload/src/file-upload.vue": {
+      "r1": 2,
+      "r2": 0
+    },
+    "components/upload/src/image-upload.vue": {
+      "r1": 4,
+      "r2": 0
+    },
+    "layouts/ipd.vue": {
+      "r1": 6,
+      "r2": 0
+    },
+    "packages/workflow-designer/StandaloneWorkflowDesigner.vue": {
+      "r1": 38,
+      "r2": 0
+    },
+    "packages/workflow-designer/components/RunDetail.vue": {
+      "r1": 4,
+      "r2": 0
+    },
+    "packages/workflow-designer/components/edges/CustomEdge.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "packages/workflow-designer/components/nodes/SwitcherNode.vue": {
+      "r1": 25,
+      "r2": 0
+    },
+    "packages/workflow-designer/properties/SwitcherNodeProperty.vue": {
+      "r1": 51,
+      "r2": 0
+    },
+    "views/_core/oauth-common.ts": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/aiflow/edit.vue": {
+      "r1": 5,
+      "r2": 0
+    },
+    "views/aiflow/run.vue": {
+      "r1": 11,
+      "r2": 0
+    },
+    "views/chat/model/model-modal.vue": {
+      "r1": 2,
+      "r2": 0
+    },
+    "views/graph/collect/index.vue": {
+      "r1": 5,
+      "r2": 0
+    },
+    "views/ipd/_shared/ai-assistant.vue": {
+      "r1": 3,
+      "r2": 0
+    },
+    "views/ipd/_shared/ipd-a11y.css": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/ipd/_shared/ipd-theme.css": {
+      "r1": 7,
+      "r2": 1
+    },
+    "views/ipd/admin/handover/index.vue": {
+      "r1": 13,
+      "r2": 0
+    },
+    "views/ipd/auth/change-password.vue": {
+      "r1": 15,
+      "r2": 0
+    },
+    "views/ipd/auth/login.vue": {
+      "r1": 26,
+      "r2": 0
+    },
+    "views/ipd/change/index.vue": {
+      "r1": 35,
+      "r2": 0
+    },
+    "views/ipd/demand/index.vue": {
+      "r1": 18,
+      "r2": 0
+    },
+    "views/ipd/handover/index.vue": {
+      "r1": 24,
+      "r2": 0
+    },
+    "views/ipd/kpi/index.vue": {
+      "r1": 9,
+      "r2": 0
+    },
+    "views/ipd/kpi/shared/index.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/ipd/portal/portal-shell.vue": {
+      "r1": 7,
+      "r2": 0
+    },
+    "views/ipd/portal/status/index.vue": {
+      "r1": 4,
+      "r2": 0
+    },
+    "views/ipd/portal/submit/index.vue": {
+      "r1": 9,
+      "r2": 0
+    },
+    "views/ipd/product/catalog/index.vue": {
+      "r1": 10,
+      "r2": 0
+    },
+    "views/ipd/product/workspace/index.vue": {
+      "r1": 14,
+      "r2": 0
+    },
+    "views/ipd/project/detail/kpi.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/ipd/report/index.vue": {
+      "r1": 19,
+      "r2": 0
+    },
+    "views/ipd/review/gate-panel.vue": {
+      "r1": 46,
+      "r2": 0
+    },
+    "views/ipd/review/index.vue": {
+      "r1": 26,
+      "r2": 0
+    },
+    "views/ipd/workbench/index.vue": {
+      "r1": 6,
+      "r2": 0
+    },
+    "views/ipd/workbench/space-progress.vue": {
+      "r1": 3,
+      "r2": 0
+    },
+    "views/ipd/workbench/todo-quick-entry.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/knowledge/info/detail/components/FileManagement.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/knowledge/info/detail/components/RetrievalTest.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/monitor/trace/trace-detail-drawer.vue": {
+      "r1": 5,
+      "r2": 0
+    },
+    "views/system/client/client-drawer.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/system/dict/data/tag-style-picker.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/system/menu/index.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/workflow/task/allTaskWaiting.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/workflow/task/myDocument.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/workflow/task/taskCopyList.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/workflow/task/taskFinish.vue": {
+      "r1": 1,
+      "r2": 0
+    },
+    "views/workflow/task/taskWaiting.vue": {
+      "r1": 1,
+      "r2": 0
+    }
+  },
+  "notice": "脚本独占写（node scripts/check-ipd-color-gate.mjs --update-baseline）。手工编辑违反 ratchet-data-guard 精神；R1/R2 计数棘轮只减不增，新增违规须修复不得入账。"
+}

@@ -3,7 +3,7 @@
  * 全局 AI 副驾（R215 AI 融合批次3 = AI-FUSION-B3）。
  *
  * 挂载于 layouts/ipd.vue：所有 IPD 页面共享同一入口（浮钮 + 右抽屉）。
- * 走后端 AiCopilotService 三档上下文（项目/个人/RAG，AI-STRAT-1 Phase 2）——
+ * 走后端 AiCopilotService 的项目、个人、已审核文档与同租户公共知识上下文——
  * 前端只传 message + 当前项目 id，上下文由后端注入（不教 AI 编数据）。
  *
  * 交互契约：
@@ -30,9 +30,11 @@
  * 文本/卡片通道零回归。
  *
  * 工作界面目前只展示目录与占位；独立智能体后端合同未交付前禁用执行。
- * 切换模式会中止并清空副驾会话，避免两个业务语义共用请求与卡片。
+ * 业务模式与抽屉尺寸是两种独立状态；切换业务模式会中止并清空旧会话，
+ * 避免副驾与项目智能体共用请求与卡片。
  */
 import {
+  computed,
   nextTick,
   onErrorCaptured,
   onMounted,
@@ -51,9 +53,7 @@ import {
 } from '@phosphor-icons/vue';
 import {
   Alert,
-  Button,
   Drawer,
-  Input,
   message as antMessage,
 } from 'ant-design-vue';
 
@@ -64,6 +64,10 @@ import {
 } from '../../../api/ipd/ai-copilot';
 
 import { getCardType } from './ai-cards/card-registry';
+import AiComposer, {
+  formatAttachmentSize,
+  type ComposerAttachment,
+} from './ai-composer.vue';
 import {
   copilotKitAuthHeaders,
   IpdAiCardRenderHost,
@@ -80,8 +84,10 @@ import {
   parseGuideSteps,
 } from './ai-guide/guide-script';
 import { IpdGuideScriptHost } from './ai-guide/guide-script-host';
+import { IpdSwarmProgressHost } from './ai-swarm/swarm-progress-host';
 import GuideSuggestionBar from './ai-guide/guide-suggestion-bar.vue';
 import StageStepNav from './ai-workspace/stage-step-nav.vue';
+import { ipdErrorText } from './ipd-error-text';
 import type {
   AiCardData,
   AiCardEnvelope,
@@ -433,19 +439,37 @@ interface ChatMessage {
 /** 与 layouts/ipd.vue 同 key：AI 上下文自动跟随全局当前项目。 */
 const CURRENT_PROJECT_KEY = 'ipd:current-project';
 
+const props = defineProps<{
+  projectCurrentStage?: null | string;
+  stages?: Array<{ code: string; name: string }>;
+}>();
+/** 浏览阶段只影响工作区视图，不推进项目的服务端 currentStage。 */
+const viewStageCode = ref(props.projectCurrentStage || props.stages?.[0]?.code || 'CONCEPT');
+const viewStageName = computed(
+  () => props.stages?.find((stage) => stage.code === viewStageCode.value)?.name ?? viewStageCode.value,
+);
+watch(() => props.projectCurrentStage, (stage) => {
+  if (stage) viewStageCode.value = stage;
+});
+function selectViewStage(code: string) {
+  if (props.stages?.some((stage) => stage.code === code)) viewStageCode.value = code;
+}
+
 const open = ref(false);
-/** P3-02 放大工作界面态：false=右抽屉单栏；true=全屏工作界面（左对话 / 右展示）。 */
+/** 展示尺寸：false=右抽屉；true=全屏工作界面，不决定业务模式。 */
 const expanded = ref(false);
 /**
- * AI 工作界面后端独立执行合同尚未交付。切换时清理副驾会话，工作界面不调用副驾流。
+ * AI 工作界面后端独立执行合同尚未交付。切换时清理旧模式会话，工作界面不调用副驾流。
  */
 const {
   activeSubStageCode,
+  focusPane,
   mode: workspaceMode,
   pane: workspacePane,
   setMode,
 } = useIpdAiWorkspace();
 expanded.value = workspaceMode.value === 'ai';
+open.value = workspaceMode.value === 'ai';
 function applyMode(next: WorkspaceMode) {
   if (next !== workspaceMode.value) {
     abort?.abort();
@@ -461,8 +485,20 @@ function applyMode(next: WorkspaceMode) {
     clearCardState();
   }
   setMode(next);
-  expanded.value = next === 'ai';
+  if (next === 'ai') {
+    expanded.value = true;
+    open.value = true;
+  } else {
+    expanded.value = false;
+    open.value = false;
+  }
 }
+function onModeSelected(event: Event) {
+  const next = (event as CustomEvent<{ mode?: string }>).detail?.mode;
+  if (next === 'classic' || next === 'ai') applyMode(next);
+}
+onMounted(() => window.addEventListener('ipd:ai-mode-select', onModeSelected));
+onUnmounted(() => window.removeEventListener('ipd:ai-mode-select', onModeSelected));
 const inputText = ref('');
 const sending = ref(false);
 const messages = ref<ChatMessage[]>([]);
@@ -483,12 +519,13 @@ async function loadSubStages() {
     subStageError.value = '';
     subStagesLoaded.value = true;
   } catch (error) {
-    subStageError.value = error instanceof Error ? error.message : '小阶段数据暂不可用';
+    subStageError.value = ipdErrorText(error, { domain: 'project', fallback: '小阶段数据暂不可用' });
   }
 }
 
-watch(workspacePane, (pane) => {
-  if (pane === 'steps') void loadSubStages();
+watch([workspacePane, open], ([_pane, visible]) => {
+  // 四区自动渲染后步骤区常驻挂载：可见即载入小阶段（pane 仅作锚点偏好）。
+  if (visible) void loadSubStages();
 }, { immediate: true });
 
 function selectSubStage(code: string) {
@@ -497,6 +534,7 @@ function selectSubStage(code: string) {
     return;
   }
   activeSubStageCode.value = code;
+  if (workspaceMode.value !== 'classic') return;
   window.dispatchEvent(new CustomEvent('ipd:guide-sub-stage', {
     detail: {
       projectId: currentProjectId.value || undefined,
@@ -506,6 +544,7 @@ function selectSubStage(code: string) {
 }
 
 async function onGuideSubStage(event: Event) {
+  if (workspaceMode.value !== 'classic') return;
   const detail = (event as CustomEvent<unknown>).detail;
   if (!detail || typeof detail !== 'object' || !('subStageCode' in detail)) return;
   const { subStageCode, projectId } = detail as {
@@ -521,7 +560,7 @@ async function onGuideSubStage(event: Event) {
       subStageCode,
       projectId,
     );
-    if (request !== guideRequest) return;
+    if (request !== guideRequest || workspaceMode.value !== 'classic') return;
     const steps = parseGuideSteps(events);
     guideSuggestions.value = buildGuideSuggestions(steps);
     guideContext.value = buildGuideContextValue(subStageCode, steps[0] ?? null);
@@ -539,7 +578,7 @@ async function onGuideSubStage(event: Event) {
   } catch (error) {
     if (request !== guideRequest) return;
     guideContext.value = buildGuideContextValue('', null);
-    console.warn('[IPD] 小阶段引导加载失败', error);
+    antMessage.warning(ipdErrorText(error, { domain: 'project', fallback: '小阶段引导暂不可用' }));
   }
 }
 
@@ -629,17 +668,31 @@ function clearCardState() {
 let abort: AbortController | null = null;
 let runVersion = 0;
 
-async function send() {
+/** 附件清单后缀（诚实呈现：后端 /ai-copilot 无文件通道，只随消息声明名称/大小，不上传内容）。 */
+function attachmentManifest(attachments: ComposerAttachment[]): string {
+  if (!attachments.length) return '';
+  const list = attachments
+    .map((file) => `${file.name}（${formatAttachmentSize(file.size)}）`)
+    .join('；');
+  return `\n\n[附件清单（文件内容未上传，仅随消息声明）] ${list}`;
+}
+
+/** 输入框发送入口（AiComposer send 事件：文本 + 附件清单）。 */
+function onComposerSend(payload: { attachments: ComposerAttachment[]; text: string }): void {
+  void send(payload.text, payload.attachments);
+}
+
+async function send(text: string = inputText.value.trim(), attachments: ComposerAttachment[] = []) {
   // B4/C1 尚无独立 agentId 和可信项目执行口；不能用副驾 SSE 冒充智能体。
   if (workspaceMode.value === 'ai') return;
-  const text = inputText.value.trim();
-  if (!text || sending.value) return;
+  const body = text + attachmentManifest(attachments);
+  if ((!text && attachments.length === 0) || sending.value) return;
   clearCardState();
   inputText.value = '';
   sending.value = true;
   messages.value.push(
     {
-      content: text,
+      content: body,
       intent: null,
       role: 'user',
       sources: null,
@@ -659,7 +712,7 @@ async function send() {
   const assistant = messages.value.at(-1)!;
   try {
     await streamCopilot(
-      { message: text, projectId: currentProjectId.value || undefined },
+      { message: body, projectId: currentProjectId.value || undefined },
       {
         onDelta: (token) => {
           if (version !== runVersion) return;
@@ -746,9 +799,10 @@ function handleDoneCard(done: CopilotStreamDone): void {
     cardNotice.value = '';
     cardDegraded.value = '';
     cardView.value = { component: checked.component, data: checked.card.data };
+    // 自动渲染定位：出卡即滚动到工作区「建议卡」区（四区常驻不切换）。
+    focusPane('cards');
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    rejectCard(`卡片处理异常（${detail}），已忽略，对话继续`);
+    rejectCard(`${ipdErrorText(error, { fallback: '卡片处理异常' })}，已忽略，对话继续`);
   }
 }
 
@@ -757,6 +811,8 @@ function rejectCard(notice: string): void {
   cardView.value = null;
   cardDegraded.value = '';
   cardNotice.value = notice;
+  // 自动渲染定位：降级/非法提示同样落在「建议卡」区，定位保持可见。
+  focusPane('cards');
 }
 
 function toggleOpen() {
@@ -764,12 +820,13 @@ function toggleOpen() {
   if (!open.value) abort?.abort();
 }
 
-/** 切换模式时旧流失效，避免副驾会话与未来项目智能体任务串用。 */
+/** 只改变展示尺寸，不改变业务模式或清空当前会话。 */
 function toggleExpand() {
-  applyMode(expanded.value ? 'classic' : 'ai');
+  expanded.value = !expanded.value;
 }
 
 function clearConversation() {
+  if (workspaceMode.value !== 'classic') return;
   abort?.abort();
   runVersion++;
   sending.value = false;
@@ -785,8 +842,7 @@ function clearConversation() {
 onErrorCaptured((error: unknown) => {
   if (!cardView.value) return true;
   cardView.value = null;
-  const detail = error instanceof Error ? error.message : String(error);
-  cardDegraded.value = `卡片渲染异常（${detail}），已降级占位，对话不受影响`;
+  cardDegraded.value = `${ipdErrorText(error, { fallback: '卡片渲染异常' })}，已降级占位，对话不受影响`;
   return false;
 });
 
@@ -809,16 +865,17 @@ defineExpose({ clearConversation, send });
   >
     <IpdAiCardRenderHost :on-confirm="onCardConfirm" />
     <IpdGuideScriptHost :value="guideContext" />
+    <IpdSwarmProgressHost />
 
     <button
-      aria-label="AI 副驾"
+      :aria-label="workspaceMode === 'ai' ? '项目 AI 工作界面' : 'AI 副驾'"
       class="ipd-ai-fab"
       data-testid="ipd-ai-fab"
       type="button"
       @click="toggleOpen"
     >
       <Sparkles :size="20" />
-      <span>AI 副驾</span>
+      <span>{{ workspaceMode === 'ai' ? '项目 AI' : 'AI 副驾' }}</span>
     </button>
     <Drawer
       :open="open"
@@ -830,10 +887,10 @@ defineExpose({ clearConversation, send });
       <template #extra>
         <button
           v-if="!expanded"
-          aria-label="放大为工作界面"
+          aria-label="放大工作窗口"
           class="ipd-ai-size-btn"
           data-testid="ipd-ai-expand"
-          title="放大：完整工作界面（左对话 / 右展示）"
+          title="放大工作窗口"
           type="button"
           @click="toggleExpand"
         >
@@ -841,10 +898,10 @@ defineExpose({ clearConversation, send });
         </button>
         <button
           v-else
-          aria-label="还原为侧栏"
+          aria-label="缩小工作窗口"
           class="ipd-ai-size-btn"
           data-testid="ipd-ai-collapse"
-          title="还原为侧栏"
+          title="缩小工作窗口"
           type="button"
           @click="toggleExpand"
         >
@@ -852,10 +909,60 @@ defineExpose({ clearConversation, send });
         </button>
       </template>
       <div
-        :class="['ipd-ai-panel', { 'is-workbench': expanded }]"
+        :class="['ipd-ai-panel', { 'is-workbench': expanded, 'is-project-mode': workspaceMode === 'ai' }]"
         :data-expanded="expanded ? 'true' : undefined"
         :data-testid="expanded ? 'ipd-ai-workbench' : undefined"
       >
+        <div class="ipd-ai-mode-switch" role="group" aria-label="AI 工作方式">
+          <button
+            :aria-pressed="workspaceMode === 'classic'"
+            :class="['ipd-ai-mode-option', { 'is-active': workspaceMode === 'classic' }]"
+            data-testid="ipd-ai-mode-classic"
+            type="button"
+            @click="applyMode('classic')"
+          >
+            <strong>AI 副驾</strong>
+            <span>当前页面咨询与建议</span>
+          </button>
+          <button
+            :aria-pressed="workspaceMode === 'ai'"
+            :class="['ipd-ai-mode-option', { 'is-active': workspaceMode === 'ai' }]"
+            data-testid="ipd-ai-mode-project"
+            type="button"
+            @click="applyMode('ai')"
+          >
+            <strong>项目智能体</strong>
+            <span>按项目执行与回读</span>
+          </button>
+        </div>
+        <nav
+          v-if="expanded && workspaceMode === 'ai' && stages?.length"
+          aria-label="浏览阶段（不改变项目实际进度）"
+          class="ipd-ai-stage-nav"
+          data-testid="ipd-ai-stage-nav"
+        >
+          <button
+            v-for="(stage, index) in stages"
+            :key="stage.code"
+            :aria-pressed="viewStageCode === stage.code"
+            :class="['ipd-ai-stage-option', { 'is-active': viewStageCode === stage.code }]"
+            :data-testid="`ipd-ai-stage-${stage.code}`"
+            type="button"
+            @click="selectViewStage(stage.code)"
+          >
+            <span class="ipd-ai-stage-number">{{ index + 1 }}</span>
+            <span>{{ stage.name }}</span>
+            <small v-if="projectCurrentStage === stage.code">当前进度</small>
+          </button>
+        </nav>
+        <aside
+          v-if="expanded && workspaceMode === 'ai'"
+          class="ipd-ai-runs-col"
+          data-testid="ipd-ai-runs"
+        >
+          <h3>项目运行</h3>
+          <p>运行记录将在项目智能体的持久化服务接入后显示。</p>
+        </aside>
         <div class="chat-col">
           <Alert
             v-if="workspaceMode === 'ai'"
@@ -874,9 +981,10 @@ defineExpose({ clearConversation, send });
             class="ctx-chip"
             data-testid="ipd-ai-ctx"
           >
-            已注入当前项目上下文（#{{
-              currentProjectId
-            }}）：问「我的待办」「项目风险」试试
+            <template v-if="workspaceMode === 'classic'">
+              已注入当前项目上下文（#{{ currentProjectId }}）：问「我的待办」「项目风险」试试
+            </template>
+            <template v-else>当前项目：#{{ currentProjectId }}（执行未启用）</template>
           </div>
           <div ref="listRef" class="msg-list" data-testid="ipd-ai-messages">
             <div v-if="messages.length === 0" class="empty-hint">
@@ -902,41 +1010,27 @@ defineExpose({ clearConversation, send });
             </div>
           </div>
           <GuideSuggestionBar
+            v-if="workspaceMode === 'classic'"
             :suggestions="guideSuggestions"
             @pick="inputText = $event"
           />
-          <div class="input-row">
-            <Input
-              v-model:value="inputText"
-              :maxlength="2000"
-              :disabled="sending || workspaceMode === 'ai'"
-              placeholder="输入问题，回车发送（≤2000 字）"
-              data-testid="ipd-ai-input"
-              @keyup.enter="send"
-            />
-            <Button
-              :disabled="workspaceMode === 'ai'"
-              :loading="sending"
-              data-testid="ipd-ai-send"
-              type="primary"
-              @click="send"
-            >
-              发送
-            </Button>
-            <Button
-              data-testid="ipd-ai-new"
-              title="开启新会话"
-              @click="clearConversation"
-            >
-              新会话
-            </Button>
-          </div>
+          <AiComposer
+            v-model="inputText"
+            :disabled="sending || workspaceMode === 'ai'"
+            :sending="sending"
+            :show-reset="workspaceMode === 'classic'"
+            @reset="clearConversation"
+            @send="onComposerSend"
+          />
         </div>
         <aside
           :data-mode="workspaceMode"
           class="showcase-col"
           data-testid="ipd-ai-showcase"
         >
+          <div v-if="expanded && workspaceMode === 'ai'" class="ipd-ai-view-stage">
+            正在浏览：{{ viewStageName }}阶段 <span>仅切换视图，不推进项目</span>
+          </div>
           <IpdAiWorkspace>
             <template #steps>
               <Alert
@@ -948,6 +1042,7 @@ defineExpose({ clearConversation, send });
               <StageStepNav
                 v-else-if="subStages.length"
                 :active-code="activeSubStageCode"
+                :stage-code="workspaceMode === 'ai' ? viewStageCode : undefined"
                 :stages="subStages"
                 @select="selectSubStage"
               />
@@ -986,9 +1081,8 @@ defineExpose({ clearConversation, send });
                 class="showcase-empty"
                 data-testid="ipd-ai-showcase-empty"
               >
-                右侧工作区：对话中产出的结构化建议卡（预审 / 结论 / 章程 /
-                需求草案）会在此展开；「步骤 / 画布 / 文档」页签依次由
-                B2/B3/B4 落位。
+                工作区：建议卡 / 步骤 / 画布 / 文档四区常驻自动渲染，对话中产出即就地展开（
+                步骤 / 画布 / 文档依次由 B2/B3/B4 落位）。
               </div>
             </template>
           </IpdAiWorkspace>
@@ -1011,16 +1105,16 @@ defineExpose({ clearConversation, send });
   padding: 10px 16px;
   border: 0;
   border-radius: 999px;
-  background: var(--ipd-blue, #2f6fed);
-  color: #fff;
+  background: var(--ipd-blue);
+  color: hsl(var(--primary-foreground));
   font-size: 14px;
   font-weight: 650;
   cursor: pointer;
-  box-shadow: 0 6px 18px rgba(47, 111, 237, 0.35);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--ipd-blue) 28%, transparent);
 }
 .ipd-ai-fab:focus-visible {
-  outline: 2px solid var(--ipd-focus-ring-color, #2f6fed);
-  outline-offset: 2px;
+  outline: var(--ipd-focus-ring-width) solid var(--ipd-focus-ring-color);
+  outline-offset: var(--ipd-focus-ring-offset);
 }
 .ipd-ai-fab:hover {
   filter: brightness(1.08);
@@ -1031,19 +1125,185 @@ defineExpose({ clearConversation, send });
   gap: 10px;
   height: 100%;
 }
-/* P3-02 放大工作界面：同一状态切双栏布局（左对话 / 右展示），零第二对话通道 */
+.ipd-ai-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--ipd-line);
+  border-radius: 12px;
+  background: var(--ipd-bg);
+}
+.ipd-ai-mode-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ipd-muted);
+  text-align: left;
+  cursor: pointer;
+}
+.ipd-ai-mode-option strong {
+  color: var(--ipd-text);
+  font-size: 13px;
+}
+.ipd-ai-mode-option span {
+  font-size: 11px;
+}
+.ipd-ai-mode-option.is-active {
+  border-color: var(--ipd-line);
+  background: var(--ipd-surface);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ipd-navy) 10%, transparent);
+}
+.ipd-ai-mode-option.is-active strong {
+  color: var(--ipd-blue);
+}
+:global(html.dark) .ipd-ai-mode-option.is-active strong {
+  color: var(--ipd-blue-dark);
+}
+.ipd-ai-mode-option:hover:not(.is-active) {
+  background: var(--ipd-blue-soft);
+}
+.ipd-ai-mode-option:focus-visible {
+  outline: var(--ipd-focus-ring-width) solid var(--ipd-focus-ring-color);
+  outline-offset: var(--ipd-focus-ring-offset);
+}
+/* 放大只改变展示尺寸；AI 模式按原型排为运行、工作区、对话。 */
 .ipd-ai-panel.is-workbench {
   display: grid;
   grid-template-columns: minmax(320px, 5fr) minmax(0, 7fr);
-  gap: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0 16px;
+}
+.ipd-ai-panel.is-workbench .ipd-ai-mode-switch {
+  grid-column: 1 / -1;
+  margin-bottom: 8px;
+}
+.ipd-ai-panel.is-workbench.is-project-mode {
+  grid-template-columns: minmax(180px, 220px) minmax(280px, 1fr) minmax(320px, 0.85fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+.ipd-ai-stage-nav {
+  display: flex;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  gap: 6px;
+  min-width: 0;
+  margin: 0 0 12px;
+  padding: 6px;
+  overflow-x: auto;
+  border: 1px solid var(--ipd-line);
+  border-radius: 10px;
+  background: var(--ipd-bg);
+}
+.ipd-ai-stage-option {
+  display: flex;
+  flex: 1 0 116px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ipd-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ipd-ai-stage-option.is-active {
+  border-color: var(--ipd-line);
+  background: var(--ipd-surface);
+  color: var(--ipd-blue);
+}
+:global(html.dark) .ipd-ai-stage-option.is-active {
+  color: var(--ipd-blue-dark);
+}
+.ipd-ai-stage-option:focus-visible {
+  outline: var(--ipd-focus-ring-width) solid var(--ipd-focus-ring-color);
+  outline-offset: var(--ipd-focus-ring-offset);
+}
+.ipd-ai-stage-number {
+  display: grid;
+  flex: 0 0 20px;
+  place-items: center;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ipd-line);
+  color: var(--ipd-text);
+  font-size: 11px;
+  font-weight: 700;
+}
+.ipd-ai-stage-option.is-active .ipd-ai-stage-number {
+  background: var(--ipd-blue);
+  color: hsl(var(--primary-foreground));
+}
+:global(html.dark) .ipd-ai-stage-option.is-active .ipd-ai-stage-number {
+  color: var(--ipd-navy);
+}
+.ipd-ai-stage-option small {
+  color: var(--ipd-muted);
+  font-size: 10px;
+}
+.ipd-ai-runs-col {
+  grid-column: 1;
+  grid-row: 3;
+  padding: 14px;
+  border: 1px solid var(--ipd-line);
+  border-radius: 10px;
+  background: var(--ipd-surface);
+}
+.ipd-ai-runs-col h3 {
+  margin: 0 0 10px;
+  color: var(--ipd-text);
+  font-size: 14px;
+}
+.ipd-ai-runs-col p {
+  margin: 0;
+  color: var(--ipd-muted);
+  font-size: 12px;
+  line-height: 1.7;
 }
 .ipd-ai-panel.is-workbench .chat-col {
   padding-right: 16px;
 }
+.ipd-ai-panel.is-workbench.is-project-mode .chat-col {
+  grid-column: 3;
+  grid-row: 3;
+  padding-right: 0;
+  padding-left: 16px;
+  border-left: 1px solid var(--ipd-line);
+}
 .ipd-ai-panel.is-workbench .showcase-col {
   padding: 4px 2px 4px 16px;
   overflow-y: auto;
-  border-left: 1px solid var(--ipd-line, #e2e8f0);
+  border-left: 1px solid var(--ipd-line);
+}
+.ipd-ai-panel.is-workbench.is-project-mode .showcase-col {
+  grid-column: 2;
+  grid-row: 3;
+  padding: 0;
+  border-left: 0;
+}
+.ipd-ai-view-stage {
+  padding: 8px 10px;
+  border: 1px solid var(--ipd-line);
+  border-radius: 8px;
+  background: var(--ipd-surface);
+  color: var(--ipd-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+.ipd-ai-view-stage span {
+  margin-left: 8px;
+  color: var(--ipd-muted);
+  font-size: 11px;
+  font-weight: 400;
 }
 .chat-col {
   display: flex;
@@ -1060,10 +1320,10 @@ defineExpose({ clearConversation, send });
 }
 .showcase-empty {
   padding: 12px;
-  border: 1px dashed var(--ipd-line, #e2e8f0);
+  border: 1px dashed var(--ipd-line);
   border-radius: 8px;
-  background: var(--ipd-surface, #f5f7fa);
-  color: var(--ipd-muted, #6b7488);
+  background: var(--ipd-surface);
+  color: var(--ipd-muted);
   font-size: 12px;
   line-height: 1.8;
 }
@@ -1073,15 +1333,15 @@ defineExpose({ clearConversation, send });
   justify-content: center;
   width: 28px;
   height: 28px;
-  border: 1px solid var(--ipd-line, #e2e8f0);
+  border: 1px solid var(--ipd-line);
   border-radius: 6px;
-  background: var(--ipd-surface, #f5f7fa);
-  color: var(--ipd-text, #26303f);
+  background: var(--ipd-surface);
+  color: var(--ipd-text);
   cursor: pointer;
 }
 .ipd-ai-size-btn:focus-visible {
-  outline: 2px solid var(--ipd-focus-ring-color, #2f6fed);
-  outline-offset: 2px;
+  outline: var(--ipd-focus-ring-width) solid var(--ipd-focus-ring-color);
+  outline-offset: var(--ipd-focus-ring-offset);
 }
 .ipd-ai-size-btn:hover {
   filter: brightness(1.05);
@@ -1089,9 +1349,9 @@ defineExpose({ clearConversation, send });
 .ctx-chip {
   padding: 6px 10px;
   border-radius: 6px;
-  background: var(--ipd-surface, #f5f7fa);
-  border: 1px solid var(--ipd-line, #e2e8f0);
-  color: var(--ipd-muted, #6b7488);
+  background: var(--ipd-surface);
+  border: 1px solid var(--ipd-line);
+  color: var(--ipd-muted);
   font-size: 12px;
 }
 .msg-list {
@@ -1104,7 +1364,7 @@ defineExpose({ clearConversation, send });
   padding: 4px 2px;
 }
 .empty-hint {
-  color: var(--ipd-muted, #6b7488);
+  color: var(--ipd-muted);
   font-size: 13px;
   line-height: 1.8;
   padding: 12px 4px;
@@ -1125,20 +1385,24 @@ defineExpose({ clearConversation, send });
   word-break: break-word;
 }
 .msg.user .bubble {
-  background: var(--ipd-blue, #2f6fed);
-  color: #fff;
+  background: var(--ipd-blue);
+  color: hsl(var(--primary-foreground));
   border-bottom-right-radius: 2px;
 }
+:global(html.dark) .ipd-ai-fab,
+:global(html.dark) .msg.user .bubble {
+  color: var(--ipd-navy);
+}
 .msg.assistant .bubble {
-  background: var(--ipd-surface, #f5f7fa);
-  border: 1px solid var(--ipd-line, #e2e8f0);
-  color: var(--ipd-text, #26303f);
+  background: var(--ipd-surface);
+  border: 1px solid var(--ipd-line);
+  color: var(--ipd-text);
   border-bottom-left-radius: 2px;
 }
 .msg .sources {
   margin-top: 4px;
   font-size: 12px;
-  color: var(--ipd-muted, #8b94a4);
+  color: var(--ipd-muted);
 }
 .cursor {
   animation: ipd-ai-blink 1s step-end infinite;
@@ -1147,13 +1411,6 @@ defineExpose({ clearConversation, send });
   50% {
     opacity: 0;
   }
-}
-.input-row {
-  display: flex;
-  gap: 8px;
-}
-.input-row .ant-input {
-  flex: 1;
 }
 /* P2-02 卡片三态容器（host=卡片分发渲染 / degraded=渲染降级占位 / notice=非法信封提示） */
 .ipd-ai-card-host {
@@ -1168,13 +1425,43 @@ defineExpose({ clearConversation, send });
   line-height: 1.7;
 }
 .ipd-ai-card-degraded {
-  border: 1px dashed var(--ipd-line, #e2e8f0);
-  background: var(--ipd-surface, #f5f7fa);
-  color: var(--ipd-muted, #6b7488);
+  border: 1px dashed var(--ipd-line);
+  background: var(--ipd-surface);
+  color: var(--ipd-muted);
 }
 .ipd-ai-card-notice {
-  border: 1px solid var(--ipd-line, #e2e8f0);
-  background: var(--ipd-surface, #f5f7fa);
-  color: var(--ipd-muted, #6b7488);
+  border: 1px solid var(--ipd-line);
+  background: var(--ipd-surface);
+  color: var(--ipd-muted);
+}
+@media (max-width: 1024px) {
+  .ipd-ai-panel.is-workbench.is-project-mode {
+    grid-template-columns: minmax(145px, 180px) minmax(220px, 1fr) minmax(260px, 0.9fr);
+    gap: 0 10px;
+  }
+}
+@media (max-width: 768px) {
+  .ipd-ai-panel.is-workbench,
+  .ipd-ai-panel.is-workbench.is-project-mode {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .ipd-ai-runs-col {
+    display: none;
+  }
+  .ipd-ai-stage-nav {
+    flex: 0 0 auto;
+  }
+  .ipd-ai-panel.is-workbench .chat-col,
+  .ipd-ai-panel.is-workbench.is-project-mode .chat-col,
+  .ipd-ai-panel.is-workbench .showcase-col,
+  .ipd-ai-panel.is-workbench.is-project-mode .showcase-col {
+    padding: 0;
+    border: 0;
+  }
+  .ipd-ai-panel.is-workbench .chat-col {
+    min-height: 320px;
+  }
 }
 </style>

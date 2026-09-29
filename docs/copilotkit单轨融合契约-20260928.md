@@ -298,3 +298,91 @@ content 解析出的 `version` 过注册表检查（`getCardType(type, version)`
 > 触发），语义更精确，卡片层零直写铁律覆盖不减。
 
 > 本阶段不起 dev server；round-trip 证明归 proof 子代理（U2/U3/L2）。
+
+---
+
+## 9. 多智能体/蜂群进度展示补齐（2026-09-29 增补）
+
+> 本节是 §1~§8 单轨融合的**增量补充**，语义不与既有章节冲突：既有四帧→AG-UI 映射（§4）、
+> useRenderTool 渲染映射（§5）、card-registry 4 卡（红线 #2）全部**零改动**。本节只新增
+> 「AG-UI 生命周期事件词表 + 活动订阅渲染路径」，论证其不违反单轨红线。
+
+### 9.1 需求与协议现实（为什么不进 card-registry）
+
+需求：在既有 AG-UI 桥上补齐多智能体展示能力——后端推送子智能体/蜂群执行进度，前端渲染
+各子任务状态/耗时/产出摘要 + 步骤节拍。
+
+**协议现实决定了渲染路径**：AG-UI 的子智能体/步骤进度是**生命周期事件**（`SUBAGENT_*` /
+`STEP_*`），不是工具调用（`TOOL_CALL_*`）。而 card-registry + `useRenderTool`（§5）是**专为
+`TOOL_CALL_*` 设计**的渲染路径——`useRenderTool` 按 `toolCallName` 匹配，对非工具调用事件
+**永不触发**。因此把蜂群进度塞进 card-registry 会造出一张**永远不会被调用的死卡**，反而
+逼近红线 #2（平行卡片体系）。
+
+正确路径是 CopilotKit 的**一等活动订阅子系统**（`AbstractAgent.subscribe` + `AgentSubscriber`
+原生回调 `onSubagentStartedEvent` 等）——这是 SDK 内建能力，不是自造平行体系。
+
+### 9.2 事件词表扩展（官方 wire 名，禁发明）
+
+后端 `AgUiEventType` 枚举 + `AgUiEvents` 工厂新增 5 个事件（取值与官方 `@ag-ui/core@0.0.59`
+`EventType` 常量逐一核对一致；`ruoyi-ai` 仓 `ruoyi-modules/ruoyi-ipd/.../copilotkit/`）：
+
+| 官方 wire 名 | 必填字段 | 可选字段（仅非空下发） | 工厂方法 |
+|--------------|----------|------------------------|----------|
+| `SUBAGENT_STARTED` | `subagentRunId` `name` | `description`（`parent*` 首版不产） | `AgUiEvents.subagentStarted(id,name,desc)` |
+| `SUBAGENT_FINISHED` | `subagentRunId` | `result`（任意值）`outcome`（判别联合 `{type:"success"}`\|`{type:"suspended",interruptIds?}`） | `AgUiEvents.subagentFinished(id,result,outcome)` |
+| `SUBAGENT_ERROR` | `subagentRunId` `message` | `code` | `AgUiEvents.subagentError(id,msg,code)` |
+| `STEP_STARTED` | `stepName` | `subagentRunId` | `AgUiEvents.stepStarted(name,subagentRunId)` |
+| `STEP_FINISHED` | `stepName` | `subagentRunId` | `AgUiEvents.stepFinished(name,subagentRunId)` |
+
+**命名对齐说明**：需求原文用 `SUBAGENT_START/PROGRESS/COMPLETE` 为口头近似名；落地一律改用
+官方 wire 名 `SUBAGENT_STARTED/FINISHED/ERROR`（红线：事件名/字段不发明）。**协议无
+`SUBAGENT_PROGRESS`**——「进度」由 `STEP_STARTED/FINISHED` 步骤节拍 + `SUBAGENT_*` 生命周期
+表达（后端枚举 JSDoc 已注明）。事件体一律 `LinkedHashMap`（`type` 键在首位，线格式 JSON
+稳定可断言），经**同一 SSE 通道 + code0 包络**下发（不新建通道），线格式同 §3.3。
+
+**当前生产者状态**：`AiCopilotService.chatStream` 为单一 RAG 流，尚无子智能体分裂，故本节
+5 个工厂**暂无生产调用方**——wire 契约由后端单测 `AgUiEventsSwarmTest`（`@Tag("dev")`，8 用例）
+唯一锁定；待真实 swarm 编排层接入后按此形状产出，前端订阅方即可解析。
+
+### 9.3 前端渲染路径（活动订阅，非平行卡片体系）
+
+落点 `apps/web-antd/src/views/ipd/_shared/ai-swarm/`（三件套，镜像 `ai-guide/guide-script*`
+先例范式）：
+
+| 文件 | 职责 |
+|------|------|
+| `swarm-progress.ts` | 零依赖纯函数 VM 构建器：折叠 `SUBAGENT_*`/`STEP_*` 事件帧 → `SwarmProgressVm`（各子任务状态/耗时/产出摘要 + 步骤节拍）；`swarm-progress.test.ts` 14 用例钉死折叠行为 |
+| `swarm-progress.vue` | 纯展示卡（C08 零直写）：antd `Collapse`（Reasoning 可折叠）+ `Timeline`（Task 步骤清单）+ `Tag`（状态色）+ `Empty`（空态）；色板仅走 `--ipd-*` 令牌，状态色走 antd preset tone（零新色值） |
+| `swarm-progress-host.ts` | `useAgent({agentId:'ipd_copilot'}).subscribe()` 订阅宿主：`onSubagent{Started,Finished,Error}Event` + `onStep{Started,Finished}Event` 回调增量缓冲 → `computed(foldSwarmEvents)` 派生 VM → 有任务才渲染卡、无任务渲染 `null`（优雅空态） |
+
+**挂载**：`IpdSwarmProgressHost` 作为 `CopilotKitProvider` 子组件，与 `IpdAiCardRenderHost` /
+`IpdGuideScriptHost` 并列（`ai-assistant.vue`）。订阅随 agent 实例切换重建，`onRunStartedEvent`
+重置缓冲（进度卡只呈现当前 run 的蜂群，不跨 run 累积），`onBeforeUnmount` 退订。
+
+**AI Elements 交互借鉴（不引入其本体）**：AI Elements 仅 React + shadcn/ui + Next.js 前提，
+与本项目 Vue 3 + Ant Design Vue 栈零兼容，故**不引入 AI Elements 本身**；其交互设计模式
+（不受版权约束）用 antd 复刻为 `swarm-progress.vue`——Reasoning 模式→`Collapse` 可折叠/展开、
+Task 模式→`Timeline` 步骤清单。文档自动识别/文件下载/计划展示等其余方向不在本单范围。
+
+### 9.4 单轨红线合规论证（逐条）
+
+| # | 红线 | 本增补落点 | 判定 |
+|---|------|-----------|------|
+| 1 | 不开第二个聊天 UI | `IpdSwarmProgressHost` 挂在既有 `ai-assistant.vue` 的 `CopilotKitProvider` 内，无任何新聊天窗口 | ✅ 合规 |
+| 2 | 不建平行卡片体系 | 走 CopilotKit **一等活动订阅子系统**（`AbstractAgent.subscribe`），复用同一 `agentId 'ipd_copilot'`（§3.1）；**不进 card-registry、不用 useRenderTool**（§9.1 已论证：蜂群是生命周期事件非工具调用，进 card-registry 反成死卡）；card-registry 仍为 §5 的 4 卡不变 | ✅ 合规（订阅是 SDK 内建能力，非自造平行体系） |
+| 3 | 不删文本降级路径 | 四帧 `delta` 文本通道 + `ipd:ai-fill-payload` 回填通道零改动；无 swarm 事件时宿主渲染 `null`，不影响既有文本呈现 | ✅ 合规 |
+| 4 | 不加新写入端点（C08） | `swarm-progress.vue` 纯展示，组件内零写入/零请求路径；事件经既有 SSE 通道下发，不新增端点 | ✅ 合规 |
+| 5 | 不复制校验逻辑防双轨 | VM 折叠为纯函数（`foldSwarmEvents`），不复制 R2/R3 过检逻辑 | ✅ 合规 |
+
+### 9.5 验证记录（2026-09-29）
+
+| 命令 | 结果 |
+|------|------|
+| 后端 `mvn -o -pl ruoyi-modules/ruoyi-ipd -Dtest=AgUiEventsSwarmTest test`（错峰/单模块/无 -am 无 clean） | BUILD SUCCESS，Tests run: 8, Failures: 0, Errors: 0, **Skipped: 0**（`@Tag("dev")` 生效，非假绿跳过） |
+| 前端 `pnpm exec vitest run --config vitest.ipd.config.mts .../ai-swarm` | 2 文件 21 用例全绿（纯函数 14 + 组件/红线扫描 7） |
+| 前端 `pnpm exec vitest run ...`（ai-assistant + guide + ai-cards 回归） | 7 文件 70 用例全绿（宿主挂载零回归；CopilotKit runtime 只读探测的 ECONNREFUSED 为预期噪声，见 §6 探针①） |
+| 前端 `pnpm run check:type`（根，turbo typecheck） | EXIT 0（1 successful，日志无 TS 诊断） |
+
+> 遗留（并入 §7.3 L2 round-trip proof）：真 swarm 生产者接入后，进度卡在会话流中的**视觉呈现
+> 位置**与 `SUBAGENT_*`/`STEP_*` 端到端订阅推进，待 dev server round-trip 用 Inspector 实测；
+> 当前无生产者，宿主恒渲染 `null`（不谎称有实时数据）。

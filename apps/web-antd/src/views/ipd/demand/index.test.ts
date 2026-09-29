@@ -173,6 +173,23 @@ afterEach(() => {
 // F1. 列表/筛选
 // ──────────────────────────────────────────────────────────────────────────────
 describe('F1. 列表/筛选', () => {
+  it('历史通知深链按 status=SUBMITTED 预筛选需求池', async () => {
+    loginAs('MARKET_PM');
+    await router.push('/ipd/requirements?status=SUBMITTED');
+    fetchDemandsMock.mockResolvedValue({
+      demands: [
+        demand({ id: '1', status: 'SUBMITTED' }),
+        demand({ id: '2', status: 'EVALUATING' }),
+      ],
+      total: 2,
+    });
+    const wrapper = await mountDemand();
+    expect(wrapper.findAll('.ipd-req-demand-list article')).toHaveLength(1);
+    expect(wrapper.text()).toContain('#1');
+    expect(wrapper.text()).not.toContain('#2');
+    wrapper.unmount();
+  });
+
   it('onMounted 调用 fetchDemands（无过滤），渲染所有 status 标签', async () => {
     loginAs('MARKET_PM');
     fetchDemandsMock.mockResolvedValue({

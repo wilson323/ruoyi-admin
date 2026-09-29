@@ -19,6 +19,10 @@ export default defineConfig({
       'apps/web-antd/src/views/ipd/**/*.test.ts',
       // E1-② formPath 注册表 fallback 契约（views/workflow 域首测，P0-2）
       'apps/web-antd/src/views/workflow/**/*.test.ts',
+      // Track E（MCP 与 Skill 配置中心）：存量页改造补测（E5-⑥ 白名单扩展）
+      'apps/web-antd/src/views/mcp/**/*.test.ts',
+      'apps/web-antd/src/views/agent/agent/**/*.test.ts',
+      'apps/web-antd/src/api/mcp/**/*.test.ts',
     ],
     setupFiles: ['./vitest.ipd.setup.ts'],
     coverage: {
@@ -29,6 +33,9 @@ export default defineConfig({
         'apps/web-antd/src/api/ipd/**/*.{ts,vue}',
         'apps/web-antd/src/router/ipd-guard.ts',
         'apps/web-antd/src/views/ipd/**/*.{ts,vue}',
+        // Track E（E5-⑥ 白名单扩展）
+        'apps/web-antd/src/views/mcp/**/*.{ts,vue}',
+        'apps/web-antd/src/views/agent/agent/**/*.{ts,vue}',
       ],
       exclude: [
         '**/node_modules/**',

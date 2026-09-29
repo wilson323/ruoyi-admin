@@ -54,6 +54,10 @@ export function aiTaskDeepLink(task: AiAgentTaskView): string {
  */
 export function actionUrlFallback(notification: IpdNotification): string {
   const url = notification.actionUrl ?? '';
+  // AC-PROD-09 旧通知已持久化为原型路由；正式需求池位于 /ipd/requirements。
+  if (url === '/demands/pool?status=SUBMITTED') {
+    return '/ipd/requirements?status=SUBMITTED';
+  }
   const matched = /^\/projects\/(\d+)$/.exec(url);
   if (matched) {
     return `/ipd/projects/${matched[1]}/overview`;

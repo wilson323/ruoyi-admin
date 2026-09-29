@@ -1,0 +1,66 @@
+/* ============================================================================
+ * IPD 设计 token 全局层（方案 A：全局单份）
+ *
+ * 目的：让 `--ipd-*` 变量对**所有** IPD 相关页面可用，包括不走
+ *       `layouts/ipd.vue`、未 import `views/ipd/_shared/ipd-theme.css` 的
+ *       管理与配置页（views/mcp/**、views/agent/**）。
+ *
+ * 真值源：/Users/mac/Documents/ZK-IPD/产品流程细化管理工具 2/src/styles.css
+ *         （设计稿字段 --navy / --blue / --green / --red / --amber / --text
+ *          / --muted / --line / --surface，逐值已对账一致）
+ * 同源副本：apps/web-antd/src/views/ipd/_shared/ipd-theme.css 的 :root 与
+ *           html.dark 段。两处取值必须相同；本文件只定义变量，
+ *           **不含任何 body / 组件副作用规则**，避免污染非 IPD 页面。
+ *
+ * 约束（见 ruoyi-ai/docs/ipd-系统说明/开发计划-AI工作界面六阶段小阶段化-20260928.md
+ * Global Constraints #21）：新 UI 取色一律 `var(--ipd-*)`，禁止硬编码
+ * hex/rgb/hsl 字面量，禁止引入 antd 默认蓝 #1677ff 而不覆盖。
+ * ============================================================================ */
+
+:root {
+  /* ZK-IPD 主题色板（与设计稿 1:1 对齐） */
+  --ipd-navy: #071426;
+  --ipd-navy-2: #18253a;
+  --ipd-blue: #245bf4;
+  --ipd-blue-dark: #1747d7;
+  --ipd-blue-soft: #edf2ff;
+  --ipd-green: #2f9e52;
+  --ipd-red: #e45757;
+  --ipd-amber: #c98313;
+  --ipd-text: #172033;
+  --ipd-muted: #697388;
+  --ipd-line: #dfe4ed;
+  --ipd-surface: #ffffff;
+  --ipd-bg: #f5f7fb;
+
+  /* 统一焦点环 token（键盘焦点环必须可见；色值跟随 --ipd-blue，暗色自动翻转） */
+  --ipd-focus-ring-color: var(--ipd-blue);
+  --ipd-focus-ring-width: 2px;
+  --ipd-focus-ring-offset: 2px;
+
+  /* ZK-IPD 字体栈（设计稿：Inter + 中文） */
+  --ipd-font:
+    Inter, 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', system-ui,
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/*
+ * 暗色模式色板 —— 由 Vben 的 useDark() 在 documentElement 上切换 `dark` class。
+ * 必须与 :root 成对定义：若页面只依赖本全局层而未 import ipd-theme.css，
+ * 缺少本段会导致暗色下仍取到浅色值。
+ */
+html.dark {
+  --ipd-navy: #0d1b2a;
+  --ipd-navy-2: #1b2a41;
+  --ipd-blue: #4f7df9;
+  --ipd-blue-dark: #649bff;
+  --ipd-blue-soft: #1a2540;
+  --ipd-green: #4ec27a;
+  --ipd-red: #ff7676;
+  --ipd-amber: #e9a93a;
+  --ipd-text: #e6ebf5;
+  --ipd-muted: #95a1b8;
+  --ipd-line: #2a3654;
+  --ipd-surface: #1a2336;
+  --ipd-bg: #0d1626;
+}

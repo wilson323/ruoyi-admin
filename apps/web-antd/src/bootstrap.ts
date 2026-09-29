@@ -6,6 +6,10 @@ import { preferences, updatePreferences } from '@vben/preferences';
 import { initStores } from '@vben/stores';
 import '@vben/styles';
 import '@vben/styles/antd';
+// IPD 设计 token 全局层（2026-09-28，方案 A 全局单份）：让 --ipd-* 对未 import
+// views/ipd/_shared/ipd-theme.css 的配置管理页（views/mcp/**、views/agent/**）也可用。
+// 本文件只定义 CSS 变量，无 body / 组件副作用规则，不影响非 IPD 页面。
+import './styles/ipd-tokens.css';
 
 import { useTitle } from '@vueuse/core';
 
@@ -43,6 +47,20 @@ async function bootstrap(namespace: string) {
   // packages/@core/preferences/src/config.ts 已改 /avatar-v1.png，但缓存优先覆盖，
   // 启动时再强制写一次；头像源仅仓库 owner 控制，用户设置面板不能改，安全。
   updatePreferences({ app: { defaultAvatar: '/avatar-v1.png' } });
+
+  // 2026-09-28 颜色一致性（owner 硬约束）：同上，缓存优先会让 preferences.ts 的
+  // theme.colorPrimary 修复对存量浏览器失效。启动时强制覆盖一次主题色四件，
+  // 与 var(--ipd-*) 逐值相等：#245bf4=--ipd-blue、#2f9e52=--ipd-green、
+  // #c98313=--ipd-amber、#e45757=--ipd-red。这些值是产品品牌色，与 IPD 视觉
+  // 一致性对齐优先于用户在偏好面板的主题色选择；下次启动自动写回缓存。
+  updatePreferences({
+    theme: {
+      colorPrimary: '#245bf4',
+      colorSuccess: '#2f9e52',
+      colorWarning: '#c98313',
+      colorDestructive: '#e45757',
+    },
+  });
 
   // 初始化组件适配器
   await initComponentAdapter();

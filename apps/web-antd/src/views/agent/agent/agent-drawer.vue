@@ -9,6 +9,7 @@ import { useVbenForm } from '#/adapter/form';
 import { agentAdd, agentInfo, agentUpdate } from '#/api/agent/agent';
 import { defaultFormValueGetter, useBeforeCloseDiff } from '#/utils/popup';
 
+import SkillBindingBench from './_shared/skill-binding-bench.vue';
 import { drawerSchema } from './data';
 
 const emit = defineEmits<{ reload: [] }>();
@@ -17,6 +18,9 @@ const isUpdate = ref(false);
 const title = computed(() => {
   return isUpdate.value ? $t('pages.common.edit') : $t('pages.common.add');
 });
+
+/** E3：技能绑定台值面（= AgentVO.skillNames），提交前与 form 值显式合成。 */
+const skillNames = ref<string[]>([]);
 
 const [BasicForm, formApi] = useVbenForm({
   commonConfig: {
@@ -53,6 +57,11 @@ const [BasicDrawer, drawerApi] = useVbenDrawer({
     if (isUpdate.value && id) {
       const record = await agentInfo(id);
       await formApi.setValues(record);
+      skillNames.value = Array.isArray(record.skillNames)
+        ? [...record.skillNames]
+        : [];
+    } else {
+      skillNames.value = [];
     }
     await markInitialized();
 
@@ -68,6 +77,8 @@ async function handleConfirm() {
       return;
     }
     const data = cloneDeep(await formApi.getValues());
+    // E3 合成：技能值面以绑定台为准（表单 skillNames 项为隐藏占位）
+    data.skillNames = [...skillNames.value];
     await (isUpdate.value ? agentUpdate(data) : agentAdd(data));
     resetInitialized();
     emit('reload');
@@ -81,12 +92,20 @@ async function handleConfirm() {
 
 async function handleClosed() {
   await formApi.resetForm();
+  skillNames.value = [];
   resetInitialized();
 }
 </script>
 
 <template>
-  <BasicDrawer :title="title" class="w-[600px]">
+  <BasicDrawer :title="title" class="w-[720px]">
     <BasicForm />
+    <SkillBindingBench v-model="skillNames" class="ipd-agent-bench" />
   </BasicDrawer>
 </template>
+
+<style scoped>
+.ipd-agent-bench {
+  margin-top: 12px;
+}
+</style>

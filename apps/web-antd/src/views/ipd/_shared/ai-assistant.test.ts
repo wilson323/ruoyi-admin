@@ -33,6 +33,8 @@ import type {
   CopilotStreamHandlers,
 } from '../../../api/ipd/ai-copilot';
 import { streamCopilot } from '../../../api/ipd/ai-copilot';
+import { fetchGuideEvents } from '../../../api/ipd/guide-script';
+import { fetchSubStages } from '../../../api/ipd/stage-sub-stages';
 import AiAssistant from './ai-assistant.vue';
 import type { AiCardEnvelope } from './ai-cards/types';
 import { useIpdAiWorkspace } from './ai-workspace/use-ai-workspace';
@@ -41,6 +43,8 @@ vi.mock('../../../api/ipd/ai-copilot', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../api/ipd/ai-copilot')>();
   return { ...actual, streamCopilot: vi.fn() };
 });
+vi.mock('../../../api/ipd/guide-script', () => ({ fetchGuideEvents: vi.fn() }));
+vi.mock('../../../api/ipd/stage-sub-stages', () => ({ fetchSubStages: vi.fn() }));
 
 /** sourceRefs 构造（信封值面 number|string|string[]，测试引用 id 集用 number[] 表达后收窄断言）。 */
 function sourceRefsOf(refs: Record<string, unknown>): AiCardEnvelope['sourceRefs'] {
@@ -229,6 +233,9 @@ beforeEach(() => {
   assistantWrapper = null;
   window.localStorage.clear();
   useIpdAiWorkspace().setMode('classic');
+  useIpdAiWorkspace().setPane('cards');
+  vi.mocked(fetchGuideEvents).mockReset();
+  vi.mocked(fetchSubStages).mockReset();
   vi.mocked(streamCopilot).mockReset();
   vi.mocked(streamCopilot).mockImplementation(async (input, handlers) => {
     streamCalls.push({ handlers, message: input.message, projectId: input.projectId });
@@ -258,10 +265,12 @@ function bodyQuery<T extends Element = HTMLElement>(selector: string): T | null 
 }
 
 /** 挂载助手并打开抽屉（Drawer getContainer=body 传送，按仓内惯例 attachTo + body 查询）。 */
-async function mountAssistant() {
+async function mountAssistant(props: { projectCurrentStage?: string; stages?: Array<{ code: string; name: string }> } = {}) {
   document.body.innerHTML = '';
-  assistantWrapper = mount(AiAssistant, { attachTo: document.body });
-  bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-fab"]')!.click();
+  assistantWrapper = mount(AiAssistant, { attachTo: document.body, props });
+  if (useIpdAiWorkspace().mode.value === 'classic') {
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-fab"]')!.click();
+  }
   await flushPromises();
 }
 
@@ -782,7 +791,7 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     expect(bodyQuery('[data-testid="ipd-ai-expand"]')).toBeTruthy();
   });
 
-  it('⑯ 切换到工作界面清理副驾会话，未交付独立入口时不复用副驾 SSE', async () => {
+  it('⑯ 业务模式切换清理副驾会话，窗口尺寸不改变模式', async () => {
     await mountAssistant();
     await sendText('出一张预审卡');
     lastHandlers().onDelta('已生成预审建议');
@@ -790,9 +799,11 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     await flushPromises();
     expect(bodyQuery('[data-testid="ipd-ai-card-host"]')).toBeTruthy();
     expect(streamCalls).toHaveLength(1);
-    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-expand"]')!.click();
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-project"]')!.click();
     await flushPromises();
     expect(bodyQuery('[data-testid="ipd-ai-agent-unavailable"]')).toBeTruthy();
+    expect(bodyQuery('[data-testid="ipd-ai-runs"]')).toBeTruthy();
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-project"]')?.getAttribute('aria-pressed')).toBe('true');
     const activeWorkbench = bodyQuery('[data-testid="ipd-ai-workbench"]')!;
     expect(activeWorkbench.querySelector('[data-testid="ipd-ai-card-host"]')).toBeNull();
     expect(activeWorkbench.querySelector('[data-testid="ipd-ai-messages"]')?.textContent).not.toContain('已生成预审建议');
@@ -800,6 +811,12 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     lastHandlers().onDelta('迟到的副驾帧');
     expect(activeWorkbench.querySelector('[data-testid="ipd-ai-messages"]')?.textContent).not.toContain('迟到的副驾帧');
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-collapse"]')!.click();
+    await flushPromises();
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-project"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(true);
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-classic"]')!.click();
+    await flushPromises();
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-fab"]')!.click();
     await flushPromises();
     expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(false);
     await sendText('副驾继续');
@@ -822,13 +839,83 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     expect(streamCalls.at(-1)?.projectId).toBe('9007199254740993123');
   });
 
-  it('⑱ 刷新恢复 AI 布局时保持全屏和可返回副驾', async () => {
+  it('⑱ 刷新恢复 AI 模式时保持全屏，缩小窗口后可显式切回副驾', async () => {
     useIpdAiWorkspace().setMode('ai');
     await mountAssistant();
     expect(bodyQuery('[data-testid="ipd-ai-workbench"]')).toBeTruthy();
     expect(bodyQuery('[data-testid="ipd-ai-agent-unavailable"]')).toBeTruthy();
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-collapse"]')!.click();
     await flushPromises();
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(true);
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-classic"]')!.click();
+    await flushPromises();
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-fab"]')!.click();
+    await flushPromises();
     expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(false);
+  });
+
+  it('⑲ 阶段栏模式事件进入 AI 工作界面，再回传统页面', async () => {
+    await mountAssistant();
+    window.dispatchEvent(new CustomEvent('ipd:ai-mode-select', { detail: { mode: 'ai' } }));
+    await flushPromises();
+    expect(bodyQuery('[data-testid="ipd-ai-workbench"]')).toBeTruthy();
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-project"]')?.getAttribute('aria-pressed')).toBe('true');
+    window.dispatchEvent(new CustomEvent('ipd:ai-mode-select', { detail: { mode: 'classic' } }));
+    await flushPromises();
+    expect(useIpdAiWorkspace().mode.value).toBe('classic');
+    expect(bodyQuery('[data-testid="ipd-ai-workbench"]')).toBeNull();
+  });
+
+  it('⑳ 项目模式只浏览阶段，不冒充项目推进或已注入执行上下文', async () => {
+    window.localStorage.setItem('ipd:current-project', 'P-1');
+    useIpdAiWorkspace().setMode('ai');
+    await mountAssistant({
+      projectCurrentStage: 'PLAN',
+      stages: [
+        { code: 'CONCEPT', name: '概念' },
+        { code: 'PLAN', name: '计划' },
+        { code: 'DEV', name: '开发' },
+      ],
+    });
+    expect(bodyQuery('[data-testid="ipd-ai-stage-nav"]')).toBeTruthy();
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-stage-PLAN"]')?.getAttribute('aria-pressed')).toBe('true');
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-stage-DEV"]')!.click();
+    await flushPromises();
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-stage-DEV"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(bodyQuery('[data-testid="ipd-ai-showcase"]')?.textContent).toContain('正在浏览：开发阶段');
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-stage-PLAN"]')?.textContent).toContain('当前进度');
+    expect(bodyQuery('[data-testid="ipd-ai-ctx"]')?.textContent).toContain('执行未启用');
+    expect(bodyQuery('[data-testid="ipd-ai-ctx"]')?.textContent).not.toContain('已注入');
+    expect(bodyQuery('[data-testid="ipd-ai-new"]')).toBeNull();
+    expect(streamCalls).toHaveLength(0);
+  });
+
+  it('㉑ 项目占位模式阻断旧副驾引导事件，切回副驾后恢复引导', async () => {
+    window.localStorage.setItem('ipd:current-project', 'P-1');
+    useIpdAiWorkspace().setPane('steps');
+    useIpdAiWorkspace().setMode('ai');
+    vi.mocked(fetchSubStages).mockResolvedValue([{
+      actions: [], code: 'S1', gateCode: null, id: '1', isGate: 'N',
+      name: '概念小阶段', ownerRole: 'MARKET_PM', skillHint: null,
+      sortOrder: 1, stageCode: 'CONCEPT',
+    }]);
+    vi.mocked(fetchGuideEvents).mockResolvedValue([]);
+    await mountAssistant({ projectCurrentStage: 'CONCEPT', stages: [{ code: 'CONCEPT', name: '概念' }] });
+    const emitted = trackEvents('ipd:guide-sub-stage');
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-step-S1"]')!.click();
+    window.dispatchEvent(new CustomEvent('ipd:guide-sub-stage', {
+      detail: { projectId: 'P-1', subStageCode: 'S1' },
+    }));
+    await flushPromises();
+    expect(emitted).toHaveLength(1); // 只计测试显式派发；项目模式点击不派发。
+    expect(fetchGuideEvents).not.toHaveBeenCalled();
+
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-classic"]')!.click();
+    await flushPromises();
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-fab"]')!.click();
+    await flushPromises();
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-step-S1"]')!.click();
+    await flushPromises();
+    expect(fetchGuideEvents).toHaveBeenCalledWith('S1', 'P-1');
   });
 });

@@ -1,0 +1,7 @@
+/* 自证夹具（D-G02 干净态）：token 真值源（唯一合法硬编码色位置）。 */
+:root {
+  --ipd-blue: #245bf4;
+  --ipd-green: #2f9e52;
+  --ipd-amber: #c98313;
+  --ipd-red: #e45757;
+}

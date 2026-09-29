@@ -5,7 +5,6 @@ import {
   agentKnowledgeOptions,
   agentMcpToolOptions,
   agentModelOptions,
-  agentSkillOptions,
 } from '#/api/agent/agent';
 
 export const querySchema: FormSchemaGetter = () => [
@@ -154,17 +153,15 @@ export const drawerSchema: FormSchemaGetter = () => [
     label: '关联工具',
   },
   {
-    component: 'ApiSelect',
-    componentProps: {
-      api: agentSkillOptions,
-      labelField: 'description',
-      valueField: 'name',
-      mode: 'multiple',
-      placeholder: '请选择关联的磁盘技能',
+    component: 'Input',
+    dependencies: {
+      show: () => false,
+      triggerFields: [''],
     },
+    // E3：skillNames 值面移交 SkillBindingBench（drawer 内挂载并显式合成），
+    // 本项仅占位保持 form 值树完整，不再渲染裸多选下拉
     fieldName: 'skillNames',
-    formItemClass: 'col-span-2',
-    label: '关联技能',
+    label: '技能',
   },
   {
     component: 'ApiSelect',

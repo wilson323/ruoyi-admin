@@ -4,16 +4,28 @@ import type { VbenFormProps } from '@vben/common-ui';
 import type { VxeGridProps } from '#/adapter/vxe-table';
 import type { InfoForm } from '#/api/knowledge/info/model';
 
+import { ref } from 'vue';
+
 import { Page } from '@vben/common-ui';
 import { getVxePopupContainer } from '@vben/utils';
 
-import { Modal, Popconfirm, Space } from 'ant-design-vue';
+import {
+  Button,
+  Card,
+  Input,
+  Modal,
+  Popconfirm,
+  Space,
+  Tag,
+} from 'ant-design-vue';
 
 import { useVbenModal } from '@vben/common-ui';
 import { useVbenVxeGrid, vxeCheckboxChecked } from '#/adapter/vxe-table';
 import { infoExport, infoList, infoRemove } from '#/api/knowledge/info';
 import { commonDownloadExcel } from '#/utils/file/download';
 
+import CatalogCards from '../../_shared/catalog-cards.vue';
+import { useCatalogCards } from '../../_shared/use-catalog-cards';
 import KnowledgeAddModal from './components/KnowledgeAddModal.vue';
 import { columns, querySchema } from './data';
 import { useRouter } from 'vue-router';
@@ -83,17 +95,28 @@ const [AddModal, modalApi] = useVbenModal({
   connectedComponent: KnowledgeAddModal,
 });
 
+const viewMode = ref<'card' | 'table'>('card');
+const keyword = ref('');
+const cards = useCatalogCards((pageNum, pageSize) =>
+  infoList({ pageNum, pageSize, name: keyword.value.trim() }),
+);
+
+async function refreshVisible() {
+  if (viewMode.value === 'card') await cards.refresh();
+  else await tableApi.query();
+}
+
 function handleAdd() {
   modalApi.open();
 }
 
-function handleDetail(row: Required<InfoForm>) {
+function handleDetail(row: { id: string | number }) {
   router.push(`/knowledge/info/detail/${row.id}`);
 }
 
-async function handleDelete(row: Required<InfoForm>) {
+async function handleDelete(row: { id: string | number }) {
   await infoRemove(row.id);
-  await tableApi.query();
+  await refreshVisible();
 }
 
 function handleMultiDelete() {
@@ -105,21 +128,93 @@ function handleMultiDelete() {
     content: `确认删除选中的${ids.length}条记录吗？`,
     onOk: async () => {
       await infoRemove(ids);
-      await tableApi.query();
+      await refreshVisible();
     },
   });
 }
 
 function handleDownloadExcel() {
-  commonDownloadExcel(infoExport, '知识库数据', tableApi.formApi.form.values, {
-    fieldMappingTime: formOptions.fieldMappingTime,
-  });
+  commonDownloadExcel(
+    infoExport,
+    '知识库数据',
+    viewMode.value === 'card'
+      ? { name: keyword.value.trim() }
+      : tableApi.formApi.form.values,
+    {
+      fieldMappingTime: formOptions.fieldMappingTime,
+    },
+  );
 }
 </script>
 
 <template>
   <Page :auto-content-height="true">
-    <BasicTable table-title="知识库列表">
+    <div class="mb-3 flex justify-end">
+      <Button @click="viewMode = viewMode === 'card' ? 'table' : 'card'">
+        {{ viewMode === 'card' ? '切换表格' : '切换卡片' }}
+      </Button>
+    </div>
+    <CatalogCards
+      v-if="viewMode === 'card'"
+      title="知识库列表"
+      :loading="cards.loading.value"
+      :error="cards.error.value"
+      :total="cards.total.value"
+      :page="cards.page.value"
+      :page-size="cards.pageSize.value"
+      @page-change="cards.changePage"
+    >
+      <template #actions>
+        <Button
+          v-access:code="['system:info:export']"
+          @click="handleDownloadExcel"
+          >导出</Button
+        >
+        <Button
+          type="primary"
+          v-access:code="['system:info:add']"
+          @click="handleAdd"
+          >新增</Button
+        >
+      </template>
+      <template #filters>
+        <Input
+          v-model:value="keyword"
+          allow-clear
+          placeholder="搜索知识库名称"
+          style="max-width: 280px"
+          @press-enter="cards.search"
+        />
+        <Button @click="cards.search">搜索</Button>
+      </template>
+      <Card
+        v-for="row in cards.rows.value"
+        :key="row.id"
+        class="ipd-catalog-card"
+        size="small"
+      >
+        <div class="ipd-catalog-card__title">{{ row.name }}</div>
+        <div class="ipd-catalog-card__description">
+          {{ row.description || '暂无描述' }}
+        </div>
+        <div class="ipd-catalog-card__meta">
+          <Tag :color="row.share === 1 ? 'blue' : 'default'">{{
+            row.share === 1 ? '公开' : '私有'
+          }}</Tag>
+          <span>向量库：{{ row.vectorModel || '未配置' }}</span>
+          <span>向量模型：{{ row.embeddingModel || '未配置' }}</span>
+        </div>
+        <div class="ipd-catalog-card__actions">
+          <Button size="small" @click="handleDetail(row)">详情</Button>
+          <Popconfirm title="确认删除？" @confirm="handleDelete(row)">
+            <Button size="small" danger v-access:code="['system:info:remove']"
+              >删除</Button
+            >
+          </Popconfirm>
+        </div>
+      </Card>
+    </CatalogCards>
+    <BasicTable v-else table-title="知识库列表">
       <template #toolbar-tools>
         <Space>
           <a-button
@@ -148,11 +243,7 @@ function handleDownloadExcel() {
       </template>
       <template #action="{ row }">
         <Space>
-          <ghost-button
-            @click.stop="handleDetail(row)"
-          >
-            详情
-          </ghost-button>
+          <ghost-button @click.stop="handleDetail(row)"> 详情 </ghost-button>
           <Popconfirm
             :get-popup-container="getVxePopupContainer"
             placement="left"
@@ -170,6 +261,6 @@ function handleDownloadExcel() {
         </Space>
       </template>
     </BasicTable>
-    <AddModal @reload="tableApi.query()" />
+    <AddModal @reload="refreshVisible" />
   </Page>
 </template>

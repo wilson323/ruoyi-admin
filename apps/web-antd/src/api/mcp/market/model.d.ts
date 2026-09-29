@@ -18,6 +18,12 @@ export interface McpMarketTool {
   toolVersion: string;
   isLoaded: boolean;
   localToolId: number;
+  /**
+   * E2-BE-1 白名单脱敏元数据（description/homepage/license/tags…）。
+   * 原始 tool_metadata 后端刻意不出参（"Provider metadata is deliberately
+   * excluded"）；E2-BE-1 未落地时该键缺席，前端走诚实空态。
+   */
+  metadataView?: Record<string, unknown> | null;
 }
 
 export interface McpMarketRefreshResult {

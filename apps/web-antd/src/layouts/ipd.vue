@@ -17,6 +17,8 @@ import { PhCalendarBlank as CalendarBlank } from '@phosphor-icons/vue';
 
 import { listProjects, type Project } from '../api/ipd/project';
 import AiAssistant from '../views/ipd/_shared/ai-assistant.vue';
+import { useIpdAiWorkspace } from '../views/ipd/_shared/ai-workspace/use-ai-workspace';
+import type { WorkspaceMode } from '../views/ipd/_shared/ai-workspace/workspace-mode';
 import '../views/ipd/_shared/ipd-theme.css';
 import '../views/ipd/_shared/ipd-a11y.css';
 
@@ -42,6 +44,12 @@ const currentProjectId = ref('');
 const CURRENT_PROJECT_KEY = 'ipd:current-project';
 /** 子页（如奖金池）表单改项目时派发，顶栏只改值不整页 reload。 */
 const PROJECT_SYNC_EVENT = 'ipd:current-project-changed';
+const { mode: aiMode } = useIpdAiWorkspace();
+
+/** 顶栏只发出模式意图；AI 宿主统一负责停止旧流及清理卡片。 */
+function selectAiMode(mode: WorkspaceMode) {
+  window.dispatchEvent(new CustomEvent('ipd:ai-mode-select', { detail: { mode } }));
+}
 
 /**
  * 应用全局项目 id：写入 localStorage；整页刷新仅在显式切换时使用。
@@ -135,6 +143,22 @@ function switchProject(id: string) {
           <i v-if="index < stages.length - 1" />
         </div>
       </div>
+      <div class="rail-ai-mode" role="group" aria-label="工作方式">
+        <button
+          :aria-pressed="aiMode === 'classic'"
+          :class="{ active: aiMode === 'classic' }"
+          data-testid="ipd-mode-classic"
+          type="button"
+          @click="selectAiMode('classic')"
+        >传统模式</button>
+        <button
+          :aria-pressed="aiMode === 'ai'"
+          :class="{ active: aiMode === 'ai' }"
+          data-testid="ipd-mode-ai"
+          type="button"
+          @click="selectAiMode('ai')"
+        >AI 模式</button>
+      </div>
       <div class="today">
         <CalendarBlank :size="16" />
         今天 {{ today }}
@@ -145,7 +169,7 @@ function switchProject(id: string) {
       <router-view />
     </div>
     <!-- R215 AI 融合批次3：全局 AI 副驾入口（后端三档上下文 + RAG，见 ai-copilot.ts 契约注释） -->
-    <AiAssistant />
+    <AiAssistant :project-current-stage="currentProject?.currentStage" :stages="stages" />
   </div>
 </template>
 
@@ -188,6 +212,39 @@ function switchProject(id: string) {
   font-weight: 650;
   cursor: pointer;
 }
+.ipd-stage-shell .rail-ai-mode {
+  display: flex;
+  align-self: center;
+  flex-shrink: 0;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--ipd-line);
+  border-radius: 10px;
+  background: var(--ipd-bg);
+}
+.ipd-stage-shell .rail-ai-mode button {
+  padding: 7px 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ipd-muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ipd-stage-shell .rail-ai-mode button.active {
+  background: var(--ipd-surface);
+  color: var(--ipd-blue);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--ipd-navy) 10%, transparent);
+}
+html.dark .ipd-stage-shell .rail-ai-mode button.active {
+  color: var(--ipd-blue-dark);
+}
+.ipd-stage-shell .rail-ai-mode button:focus-visible {
+  outline: var(--ipd-focus-ring-width) solid var(--ipd-focus-ring-color);
+  outline-offset: var(--ipd-focus-ring-offset);
+}
 /* V12-F1：outline:none 的替代——键盘聚焦时显式 token 焦点环（同特异性压过上方 none） */
 .ipd-stage-shell .rail-project select:focus-visible {
   outline: var(--ipd-focus-ring-width) solid var(--ipd-focus-ring-color);
@@ -205,7 +262,7 @@ function switchProject(id: string) {
   display: flex;
   align-items: center;
   gap: 9px;
-  color: #616b7e;
+  color: var(--ipd-muted);
   position: relative;
   padding: 0 13px;
 }
@@ -213,7 +270,7 @@ function switchProject(id: string) {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: #e5e8ed;
+  background: var(--ipd-line);
   display: grid;
   place-items: center;
   font-size: 12px;
@@ -229,7 +286,7 @@ function switchProject(id: string) {
   position: absolute;
   height: 2px;
   width: 44px;
-  background: #dfe3ea;
+  background: var(--ipd-line);
   right: -22px;
   top: 50%;
   margin-top: -1px;
@@ -240,7 +297,10 @@ function switchProject(id: string) {
 }
 .ipd-stage-shell .stage-node.active > span {
   background: var(--ipd-blue);
-  color: white;
+  color: hsl(var(--primary-foreground));
+}
+html.dark .ipd-stage-shell .stage-node.active > span {
+  color: var(--ipd-navy);
 }
 .ipd-stage-shell .stage-node.active i {
   background: var(--ipd-blue);
@@ -250,7 +310,7 @@ function switchProject(id: string) {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #4e586d;
+  color: var(--ipd-muted);
   padding: 0 8px 0 16px;
   font-size: 12px;
   white-space: nowrap;
@@ -258,7 +318,7 @@ function switchProject(id: string) {
 .ipd-stage-shell .today small {
   display: block;
   margin-left: 4px;
-  color: #8b94a4;
+  color: var(--ipd-muted);
 }
 
 /* ==== 暗色模式补全（迁移自旧自绘壳 html.dark 段）==== */
@@ -266,7 +326,7 @@ html.dark .ipd-stage-shell .stage-node {
   color: var(--ipd-muted);
 }
 html.dark .ipd-stage-shell .stage-node > span {
-  background: #223049;
+  background: var(--ipd-line);
 }
 html.dark .ipd-stage-shell .stage-node i {
   background: var(--ipd-line);
@@ -276,5 +336,10 @@ html.dark .ipd-stage-shell .today {
 }
 html.dark .ipd-stage-shell .today small {
   color: var(--ipd-muted);
+}
+@media (max-width: 1024px) {
+  .ipd-stage-shell .today {
+    display: none;
+  }
 }
 </style>

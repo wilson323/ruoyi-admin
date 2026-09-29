@@ -635,7 +635,16 @@ const ipdLayoutRoute: RouteRecordRaw = {
 
 /** 游客门户（页38/39）路由已迁出到 ./portal.ts，由 routes/index.ts 的 import.meta.glob 自动注册。 */
 
-export default [ipdLayoutRoute];
+// AC-PROD-09：旧通知持久化了原型地址。兼容用户直接打开历史深链，
+// 新通知由后端发布正式地址；保留查询参数供需求池预筛选。
+const legacyDemandPoolRoute: RouteRecordRaw = {
+  meta: { hideInMenu: true, title: '需求管理' },
+  name: 'IpdLegacyDemandPool',
+  path: '/demands/pool',
+  redirect: (to) => ({ path: '/ipd/requirements', query: to.query }),
+};
+
+export default [ipdLayoutRoute, legacyDemandPoolRoute];
 
 /** 供守卫生成菜单使用。 */
 export { ipdLayoutRoute };
