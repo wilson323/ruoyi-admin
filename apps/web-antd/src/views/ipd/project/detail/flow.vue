@@ -15,7 +15,8 @@
  *
  * 规格 vs 代码差异（G-04 以代码为准）：
  * - key-gates 五节点签署链（P2-5）后端未交付，阶段推进以 gate-checklist 只读清单呈现；
- * - 动作 stageId 是阶段表外键，无 stageId→编码映射端点，动作表不做阶段分组；
+ * - 阶段清单已接 GET /projects/{id}/stages（R128 P0#2 后端补交，P3-6.1 契约；空/失败回退
+ *   STAGE_ORDER 六阶段骨架不断链）；动作表不做阶段分组（原型页11 无分组要求）；
  * - 动作详情操作（深管/轻管分形态）在页 12/13（action-detail）完成，本页仅导航。
  */
 import { computed, onMounted, ref } from 'vue';
@@ -38,8 +39,10 @@ import {
   advanceProjectStage,
   getGateChecklist,
   getProject,
+  listProjectStages,
   type GateChecklistView,
   type Project,
+  type ProjectStageRow,
 } from '../../../../api/ipd/project';
 import {
   fetchAiAgentTasksByProject,
@@ -144,9 +147,15 @@ async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
   try {
-    const [detail, rows] = await Promise.all([getProject(projectId.value), listStageActions(projectId.value)]);
+    const [detail, rows, stageRows] = await Promise.all([
+      getProject(projectId.value),
+      listStageActions(projectId.value),
+      // 阶段清单（P3-6.1）：失败吞掉回退 STAGE_ORDER 骨架，与 gate-checklist 同口径不断链。
+      listProjectStages(projectId.value).catch(() => [] as ProjectStageRow[]),
+    ]);
     project.value = detail;
     actions.value = rows;
+    serverStages.value = stageRows;
     await Promise.all([loadChecklist(), loadAiTasks()]);
   } catch (cause) {
     loadError.value = cause;
@@ -157,13 +166,24 @@ async function load(): Promise<void> {
 
 onMounted(load);
 
+/** 阶段清单数据源（GET /projects/{id}/stages 服务端真值；空=回退 STAGE_ORDER 骨架）。 */
+const serverStages = ref<ProjectStageRow[]>([]);
+
+/** 归一阶段序列：服务端 stages 按 sortOrder 升序（title 取 stageName），缺数据回退六阶段骨架。 */
+const stageSequence = computed<Array<{ code: null | string; label: string }>>(() => {
+  if (serverStages.value.length === 0) return STAGE_ORDER;
+  return [...serverStages.value]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((stage) => ({ code: stage.code, label: stage.name ?? stageText(stage.code) }));
+});
+
 const currentStageIndex = computed(() => {
-  const index = STAGE_ORDER.findIndex((stage) => stage.code === project.value?.currentStage);
+  const index = stageSequence.value.findIndex((stage) => stage.code === project.value?.currentStage);
   return index >= 0 ? index : 0;
 });
 
 const stepItems = computed(() =>
-  STAGE_ORDER.map((stage, index) => ({
+  stageSequence.value.map((stage, index) => ({
     title: stage.label,
     status:
       index < currentStageIndex.value

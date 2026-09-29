@@ -30,6 +30,7 @@ import {
   legacyImportProjectsBatch,
   listProjectCertItems,
   listProjectMembers,
+  listProjectStages,
   listProjects,
   parseTargetMarkets,
   recordProjectLaunchDate,
@@ -583,5 +584,35 @@ describe('project API — ORPHAN-A3 基线/上市日期/成员/存量批量契�
     expect(rows[0]!.ok).toBe(true);
     expect(rows[0]!.markedCodes).toEqual(['SA-C4']);
     expect(rows[1]!.error).toBe('产品 ID 不存在: p-404');
+  });
+});
+
+// ---------- 阶段清单（P3-6.1 契约 GET /projects/{id}/stages；R128 P0#2 接线） ----------
+
+describe('project API — listProjectStages (pure)', () => {
+  it('URL 逐字符透传 19 位雪花 id，rows 归一化：id 字符串化 / name-code-status 可空 / sortOrder 数字化', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      envelope({
+        stages: [
+          { code: 'CONCEPT', id: '2096266885000000001', name: '概念', sortOrder: '1', status: null },
+          { code: 'PLAN', id: '2096266885000000002', name: null, sortOrder: 2, status: 'DONE' },
+        ],
+      }),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const rows = await listProjectStages('2096266885000000001');
+    const url = String(fetcher.mock.calls[0]?.[0]);
+    expect(new URL(url, 'http://ipd.local').pathname).toBe('/api/v1/projects/2096266885000000001/stages');
+    expect(rows[0]).toEqual({ id: '2096266885000000001', name: '概念', code: 'CONCEPT', status: null, sortOrder: 1 });
+    expect(rows[1]).toEqual({ id: '2096266885000000002', name: null, code: 'PLAN', status: 'DONE', sortOrder: 2 });
+  });
+
+  it('data 缺 stages / 非数组 → 空数组（前端回退 STAGE_ORDER 骨架的依据）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({ stages: null }));
+    vi.stubGlobal('fetch', fetcher);
+    expect(await listProjectStages('100')).toEqual([]);
+    const fetcher2 = vi.fn().mockResolvedValue(envelope([]));
+    vi.stubGlobal('fetch', fetcher2);
+    expect(await listProjectStages('100')).toEqual([]);
   });
 });

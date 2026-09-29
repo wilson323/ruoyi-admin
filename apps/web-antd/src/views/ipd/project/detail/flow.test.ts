@@ -56,11 +56,12 @@ const sopInstancesFixture = [
   },
 ];
 
-/** fetch 分发 stub：project 详情 / stage-actions / gate-checklist / sop instances 四口径。 */
-function stubFlowFetch(sopResponder?: () => Response) {
+/** fetch 分发 stub：project 详情 / stages / stage-actions / gate-checklist / sop instances 五口径。 */
+function stubFlowFetch(sopResponder?: () => Response, stagesResponder?: () => Response) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const path = String(input);
     if (path.includes('/gate-checklist')) return envelope(checklistFixture);
+    if (path.endsWith('/stages')) return stagesResponder ? stagesResponder() : envelope({ stages: [] });
     if (path.includes('/stage-actions')) return envelope([]);
     if (path.includes('/sop-templates/instances')) {
       return sopResponder ? sopResponder() : envelope(sopInstancesFixture);
@@ -215,6 +216,50 @@ describe('L2 AI 入口（timeline.storyline）', () => {
     expect(ack.text()).toContain('不写库');
     // C08 零直写：挂载 + AI 链路全部为 GET（阶段动作/快照等只读端点）
     expect(calls.every((call) => call.method === 'GET')).toBe(true);
+    wrapper.unmount();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 阶段清单接线（R139 派单#4 / P3-6.1 契约）：GET /projects/{id}/stages 服务端数据源 + STAGE_ORDER 回退
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** 六阶段服务端 fixture：故意乱序 + 自定义 stageName，验证 sortOrder 归位与 name 透传。 */
+const stagesFixtureOutOfOrder = [
+  { id: '2096266885000000003', name: '开发', code: 'DEV', status: null, sortOrder: 3 },
+  { id: '2096266885000000001', name: '概念', code: 'CONCEPT', status: null, sortOrder: 1 },
+  { id: '2096262688500000006'.slice(0, 19), name: '生命周期管理', code: 'LIFECYCLE', status: null, sortOrder: 6 },
+  { id: '2096266885000000002', name: '计划', code: 'PLAN', status: null, sortOrder: 2 },
+  { id: '2096266885000000005', name: '发布', code: 'LAUNCH', status: null, sortOrder: 5 },
+  { id: '2096266885000000004', name: '验证', code: 'VALID', status: null, sortOrder: 4 },
+];
+
+describe('阶段清单 GET /projects/{id}/stages（P3-6.1 接线）', () => {
+  it('挂载即请求 /api/v1/projects/{19位雪花}/stages（路径逐字符无损，GET 只读）', async () => {
+    const fetcher = stubFlowFetch();
+    const wrapper = await mountFlow(fetcher);
+    const stagesCall = fetcher.mock.calls
+      .map((c) => String(c[0]))
+      .find((p) => p.endsWith(`/api/v1/projects/${PROJECT_ID}/stages`));
+    expect(stagesCall).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it('server stages 驱动渲染：title 取服务端 stageName，乱序 fixture 按 sortOrder 归位', async () => {
+    const fetcher = stubFlowFetch(undefined, () => envelope({ stages: stagesFixtureOutOfOrder }));
+    const wrapper = await mountFlow(fetcher);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('生命周期管理')); // 自定义服务端名透传
+    const titles = wrapper.findAll('.ant-steps-item-title').map((n) => n.text());
+    expect(titles).toEqual(['概念', '计划', '开发', '验证', '发布', '生命周期管理']);
+    wrapper.unmount();
+  });
+
+  it('stages 端点异常（500）→ 回退 STAGE_ORDER 六阶段骨架，页面不断链', async () => {
+    const fetcher = stubFlowFetch(undefined, () => envelope(null, 500, 50000, '阶段服务暂不可用'));
+    const wrapper = await mountFlow(fetcher);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('阶段动作（全项目）'));
+    const titles = wrapper.findAll('.ant-steps-item-title').map((n) => n.text());
+    expect(titles).toEqual(['概念', '计划', '开发', '验证', '发布', '生命周期']);
     wrapper.unmount();
   });
 });

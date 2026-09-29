@@ -352,6 +352,42 @@ export function advanceProjectStage(id: string): Promise<Project> {
   ).then(normalizeProject);
 }
 
+// ---------- 项目阶段清单（P3-6.1 契约 GET /{id}/stages；R128 P0#2 后端补线） ----------
+
+/** 阶段行（后端 ProjectController.ProjectStageView：id 字符串化守雪花精度）。 */
+export interface ProjectStageRow {
+  id: string;
+  name: null | string;
+  /** 阶段编码（CONCEPT|PLAN|DEV|VALID|LAUNCH|LIFECYCLE，真库 project_stages.stage_code）。 */
+  code: null | string;
+  /** 阶段状态（后端 project_stages.status 原样透传，key-gates 交付前可为空）。 */
+  status: null | string;
+  sortOrder: number;
+}
+
+/** 阶段清单（GET /projects/{id}/stages → {stages:[{id,name,code,status,sortOrder}]}；无阶段返回空数组）。 */
+export function listProjectStages(id: string): Promise<ProjectStageRow[]> {
+  return ipdGet<unknown>(
+    `/projects/${encodeURIComponent(id)}/stages`,
+  ).then((raw) => {
+    const row = toRecord(raw);
+    const stages = Array.isArray(row.stages) ? row.stages : [];
+    return stages.map((item) => {
+      const it = toRecord(item);
+      return {
+        id: asString(it.id),
+        name: asNullableString(it.name),
+        code: asNullableString(it.code),
+        status: asNullableString(it.status),
+        sortOrder:
+          typeof it.sortOrder === 'number'
+            ? it.sortOrder
+            : Number(it.sortOrder ?? 0) || 0,
+      };
+    });
+  });
+}
+
 // ---------- 阶段门禁清单（页12） ----------
 
 export interface GateChecklistItem {
