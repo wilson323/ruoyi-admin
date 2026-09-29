@@ -26,6 +26,8 @@ import {
   Button,
   Card,
   Drawer,
+  Popconfirm,
+  Select,
   Space,
   Spin,
   Steps,
@@ -51,6 +53,13 @@ import {
   type StageAction,
 } from '../../../../api/ipd/stage-action';
 import { listSopTemplateInstances, type IpdSopInstance } from '../../../../api/ipd/sop-template';
+import {
+  advanceSubStage,
+  fetchSubStageProgress,
+  fetchSubStages,
+  type SubStage,
+  type SubStageProgress,
+} from '../../../../api/ipd/stage-sub-stages';
 import AiSuggest from '../../_shared/ai-suggest.vue';
 import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import {
@@ -79,6 +88,56 @@ const loading = ref(false);
 const loadError = ref<unknown>(null);
 const project = ref<null | Project>(null);
 const actions = ref<StageAction[]>([]);
+const subStages = ref<SubStage[]>([]);
+const subStageProgress = ref<null | SubStageProgress>(null);
+const subStageError = ref('');
+const subStageLoading = ref(false);
+const subStageAdvancing = ref(false);
+const targetSubStageCode = ref('');
+
+const subStageOptions = computed(() => subStages.value
+  .filter((stage) => stage.stageCode === subStageProgress.value?.currentStage)
+  .map((stage) => ({ value: stage.code, label: `${stage.name}（${stage.code}）` })));
+
+async function loadSubStageProgress(): Promise<void> {
+  subStageLoading.value = true;
+  subStageError.value = '';
+  try {
+    const [catalog, progress] = await Promise.all([
+      fetchSubStages(),
+      fetchSubStageProgress(projectId.value),
+    ]);
+    subStages.value = catalog;
+    subStageProgress.value = progress;
+    targetSubStageCode.value = '';
+  } catch (cause) {
+    subStageProgress.value = null;
+    subStageError.value = ipdErrorText(cause, { domain: 'project', fallback: '小阶段游标加载失败' });
+  } finally {
+    subStageLoading.value = false;
+  }
+}
+
+async function confirmSubStageAdvance(): Promise<void> {
+  const progress = subStageProgress.value;
+  const target = targetSubStageCode.value;
+  if (!progress || !target || subStageAdvancing.value) return;
+  subStageAdvancing.value = true;
+  subStageError.value = '';
+  try {
+    await advanceSubStage(projectId.value, target, progress.version);
+    await loadSubStageProgress();
+    if (subStageProgress.value?.currentSubStageCode !== target) {
+      throw new Error('推进结果与服务端回读不一致，请刷新后核实');
+    }
+    message.success('小阶段已推进并回读确认');
+  } catch (cause) {
+    await loadSubStageProgress();
+    subStageError.value = ipdErrorText(cause, { domain: 'project', fallback: '小阶段推进失败' });
+  } finally {
+    subStageAdvancing.value = false;
+  }
+}
 
 /** L2 AI 入口 adopt 回传（C08 零直写）：建议仅落本地暂存提示，由真人复核后走既有端点手动操作。 */
 const adoptedAi = ref<{ markdown: string; scene: string } | null>(null);
@@ -156,7 +215,7 @@ async function load(): Promise<void> {
     project.value = detail;
     actions.value = rows;
     serverStages.value = stageRows;
-    await Promise.all([loadChecklist(), loadAiTasks()]);
+    await Promise.all([loadChecklist(), loadAiTasks(), loadSubStageProgress()]);
   } catch (cause) {
     loadError.value = cause;
   } finally {
@@ -428,6 +487,27 @@ const sopColumns = [
         <div v-else-if="!checklistLoading" class="text-muted-foreground mt-4 text-sm">
           门禁清单暂不可用（当前阶段可能无配置），以推进按钮返回的服务端校验结果为准。
         </div>
+      </Card>
+
+      <Card title="小阶段游标" data-testid="ipd-sub-stage-progress">
+        <Alert v-if="subStageError" type="error" show-icon :message="subStageError" />
+        <p v-if="subStageProgress">
+          当前小阶段：{{ subStages.find((stage) => stage.code === subStageProgress?.currentSubStageCode)?.name ?? subStageProgress.currentSubStageCode ?? '尚未开始' }}；版本 {{ subStageProgress.version }}
+        </p>
+        <Space wrap>
+          <Select
+            v-model:value="targetSubStageCode"
+            aria-label="目标小阶段"
+            :options="subStageOptions"
+            placeholder="选择下一小阶段"
+            style="min-width: 220px"
+          />
+          <Popconfirm title="确认推进此项目的小阶段？服务端将校验顺序和门禁。" @confirm="confirmSubStageAdvance">
+            <Button :disabled="!subStageProgress || !targetSubStageCode || subStageLoading" :loading="subStageAdvancing">确认推进小阶段</Button>
+          </Popconfirm>
+          <Button :loading="subStageLoading" @click="loadSubStageProgress">刷新游标</Button>
+        </Space>
+        <p class="text-muted-foreground mt-2 text-xs">选择仅为操作意图；服务端按项目成员、当前阶段、顺序、门禁和版本裁定。</p>
       </Card>
 
       <!-- L2 每页 AI 入口（2026-09-28）：项目时间线叙事（projectId 实体上下文驱动，userPrompt 可空；采纳仅回传宿主，C08 零直写） -->

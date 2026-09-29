@@ -7,10 +7,11 @@
  * - 空态与负例：无快照 → 空态文案；非项目成员 403 → Alert 透传后端 envelope message（E2E-B 契约）。
  * 注：instantiate 归 GAP-B2 等 owner 拍板，本页无实例化按钮（断言锁定防回流）。
  */
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
+import { Popconfirm } from 'ant-design-vue';
 
 import { aiSuggest } from '../../../../api/ipd/ai-suggest';
 import FlowTab from './flow.vue';
@@ -60,6 +61,8 @@ const sopInstancesFixture = [
 function stubFlowFetch(sopResponder?: () => Response, stagesResponder?: () => Response) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const path = String(input);
+    if (path.includes('/ipd/stage/sub-stages/progress')) return envelope({ projectId: PROJECT_ID, currentStage: 'CONCEPT', currentSubStageCode: null, version: 0, gateResult: null, replayed: false, advanced: false });
+    if (path.endsWith('/ipd/stage/sub-stages')) return envelope([{ id: '801', code: 'CONCEPT-01', name: '机会识别', stageCode: 'CONCEPT', sortOrder: 1, isGate: '0', gateCode: null, skillHint: null, ownerRole: 'PM', actions: [] }]);
     if (path.includes('/gate-checklist')) return envelope(checklistFixture);
     if (path.endsWith('/stages')) return stagesResponder ? stagesResponder() : envelope({ stages: [] });
     if (path.includes('/stage-actions')) return envelope([]);
@@ -98,6 +101,50 @@ afterEach(() => {
 });
 
 describe('页11 IPD 流程 · 项目 SOP 快照 Drawer（R215 GAP-F8）', () => {
+  it('读取项目小阶段持久化游标，保持 19 位项目 ID 字符串', async () => {
+    const fetcher = stubFlowFetch();
+    const wrapper = await mountFlow(fetcher);
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="ipd-sub-stage-progress"]').text()).toContain('版本 0'));
+    expect(wrapper.find('[data-testid="ipd-sub-stage-progress"]').text()).toContain('尚未开始');
+    expect(fetcher.mock.calls.map((call) => String(call[0]))).toContain(`/api/v1/ipd/stage/sub-stages/progress?projectId=${PROJECT_ID}`);
+    wrapper.unmount();
+  });
+
+  it('人工确认小阶段推进后携带版本并回读服务端游标', async () => {
+    let currentCode: null | string = null;
+    let version = 0;
+    const base = stubFlowFetch();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.includes('/ipd/stage/sub-stages/progress')) {
+        return envelope({ projectId: PROJECT_ID, currentStage: 'CONCEPT', currentSubStageCode: currentCode, version, gateResult: null, replayed: false, advanced: false });
+      }
+      if (path.includes('/ipd/stage/sub-stages/advance') && init?.method === 'POST') {
+        currentCode = 'CONCEPT-01';
+        version = 1;
+        return envelope({ projectId: PROJECT_ID, currentStage: 'CONCEPT', currentSubStageCode: currentCode, version, gateResult: 'PASSED', replayed: false, advanced: true });
+      }
+      return base(input);
+    });
+    const wrapper = await mountFlow(fetcher as unknown as ReturnType<typeof stubFlowFetch>);
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="ipd-sub-stage-progress"]').text()).toContain('版本 0'));
+    await wrapper.find('[data-testid="ipd-sub-stage-progress"] .ant-select-selector').trigger('mousedown');
+    const option = [...document.body.querySelectorAll('.ant-select-item-option')]
+      .find((item) => item.textContent?.includes('机会识别'));
+    expect(option).toBeDefined();
+    (option as HTMLElement).click();
+    await flushPromises();
+    const advanceButton = wrapper.findAll('button').find((button) => button.text().includes('确认推进小阶段'));
+    expect(advanceButton).toBeDefined();
+    expect(advanceButton!.attributes('disabled')).toBeUndefined();
+    wrapper.getComponent(Popconfirm).vm.$emit('confirm');
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="ipd-sub-stage-progress"]').text()).toContain('版本 1'));
+    expect(wrapper.find('[data-testid="ipd-sub-stage-progress"]').text()).toContain('机会识别');
+    expect(fetcher.mock.calls.some(([path, init]) =>
+      String(path).includes(`/ipd/stage/sub-stages/advance?projectId=${PROJECT_ID}&targetSubStageCode=CONCEPT-01&expectedVersion=0`)
+      && init?.method === 'POST')).toBe(true);
+    wrapper.unmount();
+  });
   it('首屏回归：阶段进度/动作表照常渲染，F8 未引入 instantiate 入口（GAP-B2 边界锁定）', async () => {
     const fetcher = stubFlowFetch();
     const wrapper = await mountFlow(fetcher);

@@ -252,15 +252,31 @@ export async function streamCopilot(
     return;
   }
   const decoder = new TextDecoder();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    for (const frame of parse(decoder.decode(value, { stream: true }))) {
-      if (frame.event === 'meta') handlers.onMeta(frame.data as CopilotChatView);
-      else if (frame.event === 'delta') handlers.onDelta(String(frame.data));
-      else if (frame.event === 'done') handlers.onDone(parseStreamDone(frame.data));
-      else if (frame.event === 'error')
-        handlers.onError(frame.data as CopilotStreamError);
+  try {
+    for (;;) {
+      let result: ReadableStreamReadResult<Uint8Array>;
+      try {
+        result = await reader.read();
+      } catch {
+        if (!signal?.aborted) {
+          handlers.onError({
+            code: 'TRANSPORT',
+            message: '响应流中断，请重试',
+          });
+        }
+        break;
+      }
+      const { done, value } = result;
+      if (done) break;
+      for (const frame of parse(decoder.decode(value, { stream: true }))) {
+        if (frame.event === 'meta') handlers.onMeta(frame.data as CopilotChatView);
+        else if (frame.event === 'delta') handlers.onDelta(String(frame.data));
+        else if (frame.event === 'done') handlers.onDone(parseStreamDone(frame.data));
+        else if (frame.event === 'error')
+          handlers.onError(frame.data as CopilotStreamError);
+      }
     }
+  } finally {
+    reader.releaseLock();
   }
 }

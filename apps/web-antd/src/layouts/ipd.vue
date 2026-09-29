@@ -48,11 +48,15 @@ const PROJECT_SYNC_EVENT = 'ipd:current-project-changed';
  */
 function applyProjectId(id: string, reload: boolean) {
   if (!id || id === currentProjectId.value) {
-    if (id) window.localStorage.setItem(CURRENT_PROJECT_KEY, id);
+    if (id) {
+      window.localStorage.setItem(CURRENT_PROJECT_KEY, id);
+      window.dispatchEvent(new CustomEvent('ipd:active-project-updated', { detail: { projectId: id } }));
+    }
     return;
   }
   window.localStorage.setItem(CURRENT_PROJECT_KEY, id);
   currentProjectId.value = id;
+  window.dispatchEvent(new CustomEvent('ipd:active-project-updated', { detail: { projectId: id } }));
   if (reload) window.location.reload();
 }
 

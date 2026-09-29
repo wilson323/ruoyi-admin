@@ -25,7 +25,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
@@ -35,6 +35,7 @@ import type {
 import { streamCopilot } from '../../../api/ipd/ai-copilot';
 import AiAssistant from './ai-assistant.vue';
 import type { AiCardEnvelope } from './ai-cards/types';
+import { useIpdAiWorkspace } from './ai-workspace/use-ai-workspace';
 
 vi.mock('../../../api/ipd/ai-copilot', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../api/ipd/ai-copilot')>();
@@ -217,21 +218,25 @@ function doneWith(over: Record<string, unknown> = {}): CopilotStreamDone {
 }
 
 /** streamCopilot 替身捕获的逐轮 handler（用例直接驱动 delta/done，SSE 传输不在本文件测）。 */
-let streamCalls: Array<{ handlers: CopilotStreamHandlers; message: string }>;
+let streamCalls: Array<{ handlers: CopilotStreamHandlers; message: string; projectId?: string }>;
 /** window 事件捕获（ipd:ai-fill-payload / ipd:ai-card），逐用例清场防串态。 */
 let trackedEvents: Array<{ listener: (event: Event) => void; type: string }>;
+let assistantWrapper: null | VueWrapper;
 
 beforeEach(() => {
   streamCalls = [];
   trackedEvents = [];
+  assistantWrapper = null;
   window.localStorage.clear();
+  useIpdAiWorkspace().setMode('classic');
   vi.mocked(streamCopilot).mockReset();
   vi.mocked(streamCopilot).mockImplementation(async (input, handlers) => {
-    streamCalls.push({ handlers, message: input.message });
+    streamCalls.push({ handlers, message: input.message, projectId: input.projectId });
   });
 });
 
 afterEach(() => {
+  assistantWrapper?.unmount();
   for (const tracked of trackedEvents) {
     window.removeEventListener(tracked.type, tracked.listener);
   }
@@ -255,7 +260,7 @@ function bodyQuery<T extends Element = HTMLElement>(selector: string): T | null 
 /** 挂载助手并打开抽屉（Drawer getContainer=body 传送，按仓内惯例 attachTo + body 查询）。 */
 async function mountAssistant() {
   document.body.innerHTML = '';
-  mount(AiAssistant, { attachTo: document.body });
+  assistantWrapper = mount(AiAssistant, { attachTo: document.body });
   bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-fab"]')!.click();
   await flushPromises();
 }
@@ -408,7 +413,9 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
   });
 
   it('⑥ confirm 按钮零直写：点击后无任何 fetch/写调用（C08 铁律：卡片层零直写）', async () => {
-    const fetcher = vi.fn(async () => new Response('{}'));
+    const fetcher = vi.fn<(url: string, init?: unknown) => Promise<Response>>(
+      async () => new Response('{}'),
+    );
     vi.stubGlobal('fetch', fetcher);
     await mountAssistant();
     await sendText('出一张卡');
@@ -664,7 +671,9 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
   });
 
   it('⑬ C08 敏感值只进「建议值」区：金额/评分/系数/删除/移交仅展示，confirm 零写请求零提交指令', async () => {
-    const fetcher = vi.fn(async () => new Response('{}'));
+    const fetcher = vi.fn<(url: string, init?: unknown) => Promise<Response>>(
+      async () => new Response('{}'),
+    );
     vi.stubGlobal('fetch', fetcher);
     await mountAssistant();
     const cardEvents = trackEvents('ipd:ai-card');
@@ -765,7 +774,6 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     expect(workbench!.querySelector('[data-testid="ipd-ai-showcase"]')).toBeTruthy();
     // 无卡片时右侧展示区空态提示（仅放大模式出现）
     expect(bodyQuery('[data-testid="ipd-ai-showcase-empty"]')).toBeTruthy();
-    expect(bodyQuery('[data-testid="ipd-ai-expand"]')).toBeNull();
 
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-collapse"]')!.click();
     await flushPromises();
@@ -774,31 +782,53 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     expect(bodyQuery('[data-testid="ipd-ai-expand"]')).toBeTruthy();
   });
 
-  it('⑯ 放大模式右侧展示卡片：card-host 进 showcase-col，对话流保留文本；还原侧栏状态零丢失', async () => {
+  it('⑯ 切换到工作界面清理副驾会话，未交付独立入口时不复用副驾 SSE', async () => {
     await mountAssistant();
-    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-expand"]')!.click();
-    await flushPromises();
-
     await sendText('出一张预审卡');
     lastHandlers().onDelta('已生成预审建议');
     lastHandlers().onDone(doneWith({ card: precheckEnvelope }));
     await flushPromises();
-
-    expect(
-      bodyQuery(
-        '[data-testid="ipd-ai-showcase"] [data-testid="ipd-ai-card-host"] [data-testid="ai-card-gate-precheck"]',
-      ),
-    ).toBeTruthy();
-    // 左侧对话流仍含本轮文本；卡片不混入消息列表
-    const msgList = bodyQuery('[data-testid="ipd-ai-messages"]')!;
-    expect(msgList.textContent ?? '').toContain('已生成预审建议');
-    expect(msgList.querySelector('[data-testid="ipd-ai-card-host"]')).toBeNull();
-
-    // 还原侧栏：同一卡片状态原样保留（布局切换零状态丢失）
+    expect(bodyQuery('[data-testid="ipd-ai-card-host"]')).toBeTruthy();
+    expect(streamCalls).toHaveLength(1);
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-expand"]')!.click();
+    await flushPromises();
+    expect(bodyQuery('[data-testid="ipd-ai-agent-unavailable"]')).toBeTruthy();
+    const activeWorkbench = bodyQuery('[data-testid="ipd-ai-workbench"]')!;
+    expect(activeWorkbench.querySelector('[data-testid="ipd-ai-card-host"]')).toBeNull();
+    expect(activeWorkbench.querySelector('[data-testid="ipd-ai-messages"]')?.textContent).not.toContain('已生成预审建议');
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(true);
+    lastHandlers().onDelta('迟到的副驾帧');
+    expect(activeWorkbench.querySelector('[data-testid="ipd-ai-messages"]')?.textContent).not.toContain('迟到的副驾帧');
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-collapse"]')!.click();
     await flushPromises();
-    expect(
-      bodyQuery('[data-testid="ipd-ai-card-host"] [data-testid="ai-card-gate-precheck"]'),
-    ).toBeTruthy();
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(false);
+    await sendText('副驾继续');
+    expect(streamCalls).toHaveLength(2);
+  });
+
+  it('⑰ 切项目清理旧会话，并丢弃取消后的迟到帧', async () => {
+    await mountAssistant();
+    await sendText('旧项目问题');
+    const oldHandlers = lastHandlers();
+    window.dispatchEvent(new CustomEvent('ipd:active-project-updated', {
+      detail: { projectId: '9007199254740993123' },
+    }));
+    await flushPromises();
+    oldHandlers.onDelta('旧项目的迟到内容');
+    oldHandlers.onDone(doneWith());
+    await flushPromises();
+    expect(bodyQuery('[data-testid="ipd-ai-messages"]')?.textContent).not.toContain('旧项目的迟到内容');
+    await sendText('新项目问题');
+    expect(streamCalls.at(-1)?.projectId).toBe('9007199254740993123');
+  });
+
+  it('⑱ 刷新恢复 AI 布局时保持全屏和可返回副驾', async () => {
+    useIpdAiWorkspace().setMode('ai');
+    await mountAssistant();
+    expect(bodyQuery('[data-testid="ipd-ai-workbench"]')).toBeTruthy();
+    expect(bodyQuery('[data-testid="ipd-ai-agent-unavailable"]')).toBeTruthy();
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-collapse"]')!.click();
+    await flushPromises();
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(false);
   });
 });

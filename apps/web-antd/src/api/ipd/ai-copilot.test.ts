@@ -62,6 +62,47 @@ afterEach(() => {
 });
 
 describe('AI 副驾 API（R215 B3）', () => {
+  it('SSE 已收到 delta 后读流中断：保留增量并通过 onError 报告传输失败', async () => {
+    const onDelta = vi.fn();
+    const onError = vi.fn();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(frame('delta', '已收到')));
+        },
+        pull(controller) {
+          controller.error(new Error('connection lost'));
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    )));
+
+    await expect(streamCopilot({ message: '测试' }, {
+      onDelta, onDone: vi.fn(), onError, onMeta: vi.fn(),
+    })).resolves.toBeUndefined();
+    expect(onDelta).toHaveBeenCalledWith('已收到');
+    expect(onError).toHaveBeenCalledExactlyOnceWith({ code: 'TRANSPORT', message: '响应流中断，请重试' });
+  });
+
+  it('主动取消 SSE 读取时不报告传输故障', async () => {
+    const abort = new AbortController();
+    const onError = vi.fn();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          abort.abort();
+          controller.error(new Error('aborted'));
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    )));
+
+    await expect(streamCopilot({ message: '测试' }, {
+      onDelta: vi.fn(), onDone: vi.fn(), onError, onMeta: vi.fn(),
+    }, abort.signal)).resolves.toBeUndefined();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it('chatCopilot → POST /ai-copilot/chat，body 含 projectId/message/history/docType，视图透传', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope({ ...metaFixture, answer: '解释文本', tokenPrompt: 120, tokenCompletion: 30, latencyMs: 800 }));
     vi.stubGlobal('fetch', fetcher);

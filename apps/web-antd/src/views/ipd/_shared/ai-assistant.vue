@@ -29,17 +29,17 @@
  * 兜底）。单轨红线：不开第二个聊天 UI、不建平行卡片体系、不删文本降级路径；既有四帧
  * 文本/卡片通道零回归。
  *
- * P3-02（2026-09-28 放大工作界面）：抽屉标题栏「放大」→ 全屏工作界面——左侧对话、
- * 右侧展示（卡片三态从消息流移至展示栏）。单状态双布局：messages/cardView 等状态与
- * SSE 通道只此一份，切换仅改 CSS 布局（.is-workbench grid 双栏），零第二对话通道（守
- * 单轨红线）；抽屉形态保持原单栏信息层级（卡片居消息流下、输入框上）。
+ * 工作界面目前只展示目录与占位；独立智能体后端合同未交付前禁用执行。
+ * 切换模式会中止并清空副驾会话，避免两个业务语义共用请求与卡片。
  */
 import {
-  computed,
   nextTick,
   onErrorCaptured,
+  onMounted,
+  onUnmounted,
   ref,
   shallowRef,
+  watch,
   type Component,
 } from 'vue';
 
@@ -68,6 +68,20 @@ import {
   copilotKitAuthHeaders,
   IpdAiCardRenderHost,
 } from './ai-cards/copilotkit-render';
+import IpdAiWorkspace from './ai-workspace/ai-workspace.vue';
+import { useIpdAiWorkspace } from './ai-workspace/use-ai-workspace';
+import type { WorkspaceMode } from './ai-workspace/workspace-mode';
+import { fetchGuideEvents } from '../../../api/ipd/guide-script';
+import { fetchSubStages, type SubStage } from '../../../api/ipd/stage-sub-stages';
+import {
+  buildGuideContextValue,
+  buildGuideSuggestions,
+  extractGuideText,
+  parseGuideSteps,
+} from './ai-guide/guide-script';
+import { IpdGuideScriptHost } from './ai-guide/guide-script-host';
+import GuideSuggestionBar from './ai-guide/guide-suggestion-bar.vue';
+import StageStepNav from './ai-workspace/stage-step-nav.vue';
 import type {
   AiCardData,
   AiCardEnvelope,
@@ -422,10 +436,118 @@ const CURRENT_PROJECT_KEY = 'ipd:current-project';
 const open = ref(false);
 /** P3-02 放大工作界面态：false=右抽屉单栏；true=全屏工作界面（左对话 / 右展示）。 */
 const expanded = ref(false);
+/**
+ * AI 工作界面后端独立执行合同尚未交付。切换时清理副驾会话，工作界面不调用副驾流。
+ */
+const {
+  activeSubStageCode,
+  mode: workspaceMode,
+  pane: workspacePane,
+  setMode,
+} = useIpdAiWorkspace();
+expanded.value = workspaceMode.value === 'ai';
+function applyMode(next: WorkspaceMode) {
+  if (next !== workspaceMode.value) {
+    abort?.abort();
+    runVersion++;
+    sending.value = false;
+    messages.value = [];
+    inputText.value = '';
+    guideRequest++;
+    guideSuggestions.value = [];
+    guideContext.value = buildGuideContextValue('', null);
+    activeSubStageCode.value = null;
+    cardConfirmPayload.value = null;
+    clearCardState();
+  }
+  setMode(next);
+  expanded.value = next === 'ai';
+}
 const inputText = ref('');
 const sending = ref(false);
 const messages = ref<ChatMessage[]>([]);
 const listRef = ref<HTMLElement>();
+const guideSuggestions = ref<string[]>([]);
+const guideContext = ref(buildGuideContextValue('', null));
+const subStages = ref<SubStage[]>([]);
+const subStageError = ref('');
+const subStagesLoaded = ref(false);
+let guideRequest = 0;
+
+async function loadSubStages() {
+  if (subStagesLoaded.value) return;
+  try {
+    const data = await fetchSubStages();
+    if (!Array.isArray(data)) throw new Error('小阶段数据格式错误');
+    subStages.value = data;
+    subStageError.value = '';
+    subStagesLoaded.value = true;
+  } catch (error) {
+    subStageError.value = error instanceof Error ? error.message : '小阶段数据暂不可用';
+  }
+}
+
+watch(workspacePane, (pane) => {
+  if (pane === 'steps') void loadSubStages();
+}, { immediate: true });
+
+function selectSubStage(code: string) {
+  if (!currentProjectId.value) {
+    subStageError.value = '请先选择有权限的项目，再查看小阶段引导';
+    return;
+  }
+  activeSubStageCode.value = code;
+  window.dispatchEvent(new CustomEvent('ipd:guide-sub-stage', {
+    detail: {
+      projectId: currentProjectId.value || undefined,
+      subStageCode: code,
+    },
+  }));
+}
+
+async function onGuideSubStage(event: Event) {
+  const detail = (event as CustomEvent<unknown>).detail;
+  if (!detail || typeof detail !== 'object' || !('subStageCode' in detail)) return;
+  const { subStageCode, projectId } = detail as {
+    projectId?: unknown;
+    subStageCode?: unknown;
+  };
+  if (typeof subStageCode !== 'string' || !subStageCode.trim()) return;
+  if (typeof projectId !== 'string' || !projectId || projectId !== currentProjectId.value) return;
+  const request = ++guideRequest;
+  guideSuggestions.value = [];
+  try {
+    const events = await fetchGuideEvents(
+      subStageCode,
+      projectId,
+    );
+    if (request !== guideRequest) return;
+    const steps = parseGuideSteps(events);
+    guideSuggestions.value = buildGuideSuggestions(steps);
+    guideContext.value = buildGuideContextValue(subStageCode, steps[0] ?? null);
+    const intro = extractGuideText(events);
+    if (intro) {
+      messages.value.push({
+        content: intro,
+        intent: null,
+        role: 'assistant',
+        sources: null,
+        streaming: false,
+      });
+      await scrollToListBottom();
+    }
+  } catch (error) {
+    if (request !== guideRequest) return;
+    guideContext.value = buildGuideContextValue('', null);
+    console.warn('[IPD] 小阶段引导加载失败', error);
+  }
+}
+
+onMounted(() => window.addEventListener('ipd:guide-sub-stage', onGuideSubStage));
+onUnmounted(() => {
+  guideRequest++;
+  window.removeEventListener('ipd:guide-sub-stage', onGuideSubStage);
+});
 
 /** P2-02 卡片分发渲染视图：命中注册表的 (component, data) 对（组件契约 = data prop + confirm emit）。 */
 interface CardView {
@@ -440,9 +562,45 @@ const cardNotice = ref('');
 /** 卡片 confirm hook 载荷暂存（C08 零直写：只收组件 emit，真人提交走既有端点）。 */
 const cardConfirmPayload = shallowRef<AiCardData | null>(null);
 
-const currentProjectId = computed(
-  () => window.localStorage.getItem(CURRENT_PROJECT_KEY) ?? '',
-);
+const currentProjectId = ref(window.localStorage.getItem(CURRENT_PROJECT_KEY) ?? '');
+
+function onActiveProjectUpdated(event: Event) {
+  const detail = (event as CustomEvent<{ projectId?: string }>).detail;
+  const nextId = typeof detail?.projectId === 'string' ? detail.projectId : '';
+  if (nextId === currentProjectId.value) return;
+  currentProjectId.value = nextId;
+  abort?.abort();
+  runVersion++;
+  guideRequest++;
+  sending.value = false;
+  messages.value = [];
+  inputText.value = '';
+  guideSuggestions.value = [];
+  guideContext.value = buildGuideContextValue('', null);
+  activeSubStageCode.value = null;
+  cardConfirmPayload.value = null;
+  clearCardState();
+}
+
+function onProjectStorage(event: StorageEvent) {
+  if (event.key === CURRENT_PROJECT_KEY) {
+    onActiveProjectUpdated(new CustomEvent('ipd:active-project-updated', {
+      detail: { projectId: event.newValue ?? '' },
+    }));
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('ipd:active-project-updated', onActiveProjectUpdated);
+  window.addEventListener('storage', onProjectStorage);
+  onActiveProjectUpdated(new CustomEvent('ipd:active-project-updated', {
+    detail: { projectId: window.localStorage.getItem(CURRENT_PROJECT_KEY) ?? '' },
+  }));
+});
+onUnmounted(() => {
+  window.removeEventListener('ipd:active-project-updated', onActiveProjectUpdated);
+  window.removeEventListener('storage', onProjectStorage);
+});
 
 /** 历史裁剪（后端 SSE 契约支持后启用）：最近 8 轮成对回传，取最近。
 function historyTurns(): CopilotTurn[] {
@@ -469,8 +627,11 @@ function clearCardState() {
 }
 
 let abort: AbortController | null = null;
+let runVersion = 0;
 
 async function send() {
+  // B4/C1 尚无独立 agentId 和可信项目执行口；不能用副驾 SSE 冒充智能体。
+  if (workspaceMode.value === 'ai') return;
   const text = inputText.value.trim();
   if (!text || sending.value) return;
   clearCardState();
@@ -494,16 +655,19 @@ async function send() {
   );
   await scrollToListBottom();
   abort = new AbortController();
+  const version = ++runVersion;
   const assistant = messages.value.at(-1)!;
   try {
     await streamCopilot(
       { message: text, projectId: currentProjectId.value || undefined },
       {
         onDelta: (token) => {
+          if (version !== runVersion) return;
           assistant.content += token;
           scrollToListBottom();
         },
         onDone: (done) => {
+          if (version !== runVersion) return;
           assistant.streaming = false;
           if (!assistant.content) {
             assistant.content = '（模型未返回内容，请换个问法或稍后重试）';
@@ -520,6 +684,7 @@ async function send() {
           handleDoneCard(done);
         },
         onError: (err) => {
+          if (version !== runVersion) return;
           assistant.streaming = false;
           if (!assistant.content) {
             assistant.content = `[${err.code}] ${err.message}`;
@@ -528,6 +693,7 @@ async function send() {
           }
         },
         onMeta: (meta) => {
+          if (version !== runVersion) return;
           assistant.intent = meta.intent;
           assistant.sources = meta.sources;
         },
@@ -536,8 +702,10 @@ async function send() {
     );
   } finally {
     assistant.streaming = false;
-    sending.value = false;
-    abort = null;
+    if (version === runVersion) {
+      sending.value = false;
+      abort = null;
+    }
     await scrollToListBottom();
   }
 }
@@ -596,13 +764,15 @@ function toggleOpen() {
   if (!open.value) abort?.abort();
 }
 
-/** P3-02 放大/还原：只切布局态（expand ↔ collapse），对话流与卡片态原样保留。 */
+/** 切换模式时旧流失效，避免副驾会话与未来项目智能体任务串用。 */
 function toggleExpand() {
-  expanded.value = !expanded.value;
+  applyMode(expanded.value ? 'classic' : 'ai');
 }
 
 function clearConversation() {
   abort?.abort();
+  runVersion++;
+  sending.value = false;
   messages.value = [];
   clearCardState();
   antMessage.info('已开启新会话');
@@ -638,6 +808,7 @@ defineExpose({ clearConversation, send });
     runtime-url="/api/copilotkit"
   >
     <IpdAiCardRenderHost :on-confirm="onCardConfirm" />
+    <IpdGuideScriptHost :value="guideContext" />
 
     <button
       aria-label="AI 副驾"
@@ -653,7 +824,7 @@ defineExpose({ clearConversation, send });
       :open="open"
       :width="expanded ? '100%' : 440"
       data-testid="ipd-ai-drawer"
-      title="AI 副驾"
+      :title="workspaceMode === 'ai' ? '项目 AI 工作界面' : 'AI 副驾'"
       @close="toggleOpen"
     >
       <template #extra>
@@ -687,6 +858,13 @@ defineExpose({ clearConversation, send });
       >
         <div class="chat-col">
           <Alert
+            v-if="workspaceMode === 'ai'"
+            data-testid="ipd-ai-agent-unavailable"
+            message="项目智能体执行暂不可用：服务端独立 agentId、项目权限和任务持久化合同尚未交付。可切回 AI 副驾咨询。"
+            show-icon
+            type="info"
+          />
+          <Alert
             message="AI 生成内容由大模型产出，未经审核、不做内容过滤，仅供参考（BR-AI-04）。"
             show-icon
             type="warning"
@@ -702,8 +880,9 @@ defineExpose({ clearConversation, send });
           </div>
           <div ref="listRef" class="msg-list" data-testid="ipd-ai-messages">
             <div v-if="messages.length === 0" class="empty-hint">
-              你好，我是 IPD AI 副驾。可以问项目待办、推进建议，或任何 IPD
-              流程问题。
+              {{ workspaceMode === 'ai'
+                ? '项目智能体执行入口待服务端合同交付。当前可查看步骤目录和工作区结构。'
+                : '你好，我是 IPD AI 副驾。可以问项目待办、推进建议，或任何 IPD 流程问题。' }}
             </div>
             <div
               v-for="(m, i) in messages"
@@ -722,16 +901,21 @@ defineExpose({ clearConversation, send });
               </div>
             </div>
           </div>
+          <GuideSuggestionBar
+            :suggestions="guideSuggestions"
+            @pick="inputText = $event"
+          />
           <div class="input-row">
             <Input
               v-model:value="inputText"
               :maxlength="2000"
-              :disabled="sending"
+              :disabled="sending || workspaceMode === 'ai'"
               placeholder="输入问题，回车发送（≤2000 字）"
               data-testid="ipd-ai-input"
               @keyup.enter="send"
             />
             <Button
+              :disabled="workspaceMode === 'ai'"
               :loading="sending"
               data-testid="ipd-ai-send"
               type="primary"
@@ -748,40 +932,66 @@ defineExpose({ clearConversation, send });
             </Button>
           </div>
         </div>
-        <aside class="showcase-col" data-testid="ipd-ai-showcase">
-          <div
-            v-if="cardView"
-            class="ipd-ai-card-host"
-            data-testid="ipd-ai-card-host"
-          >
-            <component
-              :is="cardView.component"
-              :data="cardView.data"
-              @confirm="onCardConfirm"
-            />
-          </div>
-          <div
-            v-else-if="cardDegraded"
-            class="ipd-ai-card-degraded"
-            data-testid="ipd-ai-card-degraded"
-          >
-            {{ cardDegraded }}
-          </div>
-          <div
-            v-else-if="cardNotice"
-            class="ipd-ai-card-notice"
-            data-testid="ipd-ai-card-notice"
-          >
-            {{ cardNotice }}
-          </div>
-          <div
-            v-else-if="expanded"
-            class="showcase-empty"
-            data-testid="ipd-ai-showcase-empty"
-          >
-            右侧展示区：对话中产出的结构化建议卡（预审 / 结论 / 章程 /
-            需求草案）会在此展开。
-          </div>
+        <aside
+          :data-mode="workspaceMode"
+          class="showcase-col"
+          data-testid="ipd-ai-showcase"
+        >
+          <IpdAiWorkspace>
+            <template #steps>
+              <Alert
+                v-if="!currentProjectId"
+                message="请先选择有权限的项目，再查看小阶段引导。"
+                show-icon
+                type="info"
+              />
+              <StageStepNav
+                v-else-if="subStages.length"
+                :active-code="activeSubStageCode"
+                :stages="subStages"
+                @select="selectSubStage"
+              />
+              <div v-else class="showcase-empty" data-testid="ipd-ai-step-nav-empty">
+                {{ subStageError || '小阶段数据加载中…' }}
+              </div>
+            </template>
+            <template #cards>
+              <div
+                v-if="cardView"
+                class="ipd-ai-card-host"
+                data-testid="ipd-ai-card-host"
+              >
+                <component
+                  :is="cardView.component"
+                  :data="cardView.data"
+                  @confirm="onCardConfirm"
+                />
+              </div>
+              <div
+                v-else-if="cardDegraded"
+                class="ipd-ai-card-degraded"
+                data-testid="ipd-ai-card-degraded"
+              >
+                {{ cardDegraded }}
+              </div>
+              <div
+                v-else-if="cardNotice"
+                class="ipd-ai-card-notice"
+                data-testid="ipd-ai-card-notice"
+              >
+                {{ cardNotice }}
+              </div>
+              <div
+                v-else-if="expanded"
+                class="showcase-empty"
+                data-testid="ipd-ai-showcase-empty"
+              >
+                右侧工作区：对话中产出的结构化建议卡（预审 / 结论 / 章程 /
+                需求草案）会在此展开；「步骤 / 画布 / 文档」页签依次由
+                B2/B3/B4 落位。
+              </div>
+            </template>
+          </IpdAiWorkspace>
         </aside>
       </div>
     </Drawer>
