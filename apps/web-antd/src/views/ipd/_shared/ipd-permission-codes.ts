@@ -1,7 +1,7 @@
 /**
  * IPD 模块权限码集中常量（前端单一权威源）。
  *
- * 镜像后端 `org.ruoyi.ipd.security.IpdPermissionCode`（93 个 key，92 distinct；STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 共享 'ipd:stage-action:add'（owner 2026-09-27 拍板维持共用，等 instantiate UI 落地后端加独立码再拆）；R215 权限可配置化 +2、GAP-F4/F5 +3、GAP-F10 +1、R234 补镜像后端孤码 +18）。
+ * 镜像后端 `org.ruoyi.ipd.security.IpdPermissionCode`；STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 共享 'ipd:stage-action:add'。
  * 路由表与按钮 v-access:code 引用本文件常量，禁止直接书写字面量。
  *
  * <p>使用方式：
@@ -26,6 +26,11 @@ export const IPD_PERMISSION_CODES = {
   PRODUCT_QUERY: 'ipd:product:query',
   PRODUCT_CREATE: 'ipd:product:add',
   PRODUCT_BIND_PROJECT: 'ipd:product:edit', /* reserved (A23): 产品绑定项目语义与 workspace 切换按钮不一致 */
+  PRODUCT_LINE_LIST: 'ipd:product-line:list',
+  PRODUCT_LINE_APPLY: 'ipd:product-line:apply',
+  PRODUCT_LINE_LEAVE: 'ipd:product-line:leave',
+  PRODUCT_LINE_REVIEW: 'ipd:product-line:review',
+  PRODUCT_LINE_MANAGE: 'ipd:product-line:manage',
 
   // 阶段动作
   STAGE_ACTION_LIST: 'ipd:stage-action:list', /* reserved (A23): 阶段动作列表无独立入口，详情页内联渲染 */
@@ -173,7 +178,7 @@ export const IPD_PERMISSION_CODES = {
 
 export type IpdPermissionCode = (typeof IPD_PERMISSION_CODES)[keyof typeof IPD_PERMISSION_CODES];
 
-/** 全部 93 个 key（92 distinct；用于测试断言、批量校验、初始化菜单树）。 */
+/** 全部权限码，用于测试断言、批量校验与菜单构建。 */
 export const ALL_IPD_PERMISSION_CODES: readonly IpdPermissionCode[] = Object.freeze(
   Object.values(IPD_PERMISSION_CODES),
 );
@@ -185,6 +190,7 @@ export const PAGE_PERMISSIONS: Record<string, readonly IpdPermissionCode[]> = {
   '/ipd/projects/create': [IPD_PERMISSION_CODES.PROJECT_CREATE],
   // 页16-17 产品空间
   '/ipd/products': [IPD_PERMISSION_CODES.PRODUCT_LIST],
+  '/ipd/product-lines': [IPD_PERMISSION_CODES.PRODUCT_LINE_LIST],
   // 页18 国别认证清单
   '/ipd/admin/cert-templates': [IPD_PERMISSION_CODES.CERT_TEMPLATE_LIST],
   // 页19-22 研发招募

@@ -167,6 +167,12 @@ const ipdLayoutRoute: RouteRecordRaw = {
     },
     // ④ 产品空间（原型 /product-space，页16-17；2026-09-06 换挂一比一工作台，接 ProductWorkspaceController）
     {
+      component: () => import('#/views/ipd/product-lines/index.vue'),
+      meta: { access: [...(PAGE_PERMISSIONS['/ipd/product-lines'] ?? [])], activePath: '/ipd/products', hideInMenu: true, title: '产品线团队空间' },
+      name: 'IpdProductLines',
+      path: 'product-lines',
+    },
+    {
       component: () => import('#/views/ipd/product/workspace/index.vue'),
       meta: { access: [...(PAGE_PERMISSIONS['/ipd/products'] ?? [])], icon: 'lucide:package', order: 4, title: '产品空间' },
       name: 'IpdProducts',

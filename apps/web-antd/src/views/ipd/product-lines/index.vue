@@ -1,0 +1,293 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue';
+import { Alert, Button, Card, Input, Popconfirm, Select, Space, message } from 'ant-design-vue';
+
+import type { ProductLine, ProductLineMember, ProductLineProduct, ProductLineProject } from '../../../api/ipd/product-line';
+import {
+  applyToProductLine,
+  appointProductLineLeader,
+  assignProductToLine,
+  createProductLine,
+  deactivateProductLine,
+  leaveProductLine,
+  listDiscoverableProductLines,
+  listPendingProductLineApplications,
+  listProductLineProducts,
+  listProductLineProjects,
+  listProductLines,
+  renameProductLine,
+  reviewProductLineApplication,
+  unassignProductFromLine,
+} from '../../../api/ipd/product-line';
+import type { Product } from '../../../api/ipd/product';
+import { listProducts } from '../../../api/ipd/product';
+import type { PmDirectoryEntry } from '../../../api/ipd/handover';
+import { getPmDirectory } from '../../../api/ipd/handover';
+import { useIpdAuthStore } from '../../../store/ipd-auth';
+import '../_shared/ipd-theme.css';
+
+const auth = useIpdAuthStore();
+const lines = ref<ProductLine[]>([]);
+const discoverableLines = ref<ProductLine[]>([]);
+const selectedId = ref('');
+const products = ref<ProductLineProduct[]>([]);
+const projects = ref<ProductLineProject[]>([]);
+const applications = ref<ProductLineMember[]>([]);
+const loading = ref(false);
+const detailLoading = ref(false);
+const error = ref('');
+const detailError = ref('');
+const createCode = ref('');
+const createName = ref('');
+const creating = ref(false);
+const reviewingId = ref('');
+const acting = ref(false);
+const candidateProducts = ref<Product[]>([]);
+const directory = ref<PmDirectoryEntry[]>([]);
+const assignProductId = ref('');
+const leaderPersonId = ref('');
+const renameName = ref('');
+const adminDataError = ref('');
+const pendingApplyIds = ref(new Set<string>());
+let detailVersion = 0;
+
+const isAdmin = computed(() => auth.identity?.person.personType === 'SUPER_ADMIN');
+const personId = computed(() => auth.identity?.person.id ?? '');
+const selected = computed(() => lines.value.find((line) => line.id === selectedId.value));
+const canReview = computed(() => isAdmin.value || selected.value?.leaderPersonId === personId.value);
+const joinableLines = computed(() => discoverableLines.value.filter((line) =>
+  !lines.value.some((visible) => visible.id === line.id)));
+
+async function loadAdminCandidates() {
+  if (!isAdmin.value) return;
+  adminDataError.value = '';
+  try {
+    const [allProducts, directoryResult, lineProducts] = await Promise.all([
+      listProducts(),
+      getPmDirectory(),
+      Promise.all(lines.value.map((line) => listProductLineProducts(line.id))),
+    ]);
+    const assigned = new Set(lineProducts.flat().map((product) => product.id));
+    candidateProducts.value = allProducts.filter((product) => !assigned.has(product.id));
+    directory.value = directoryResult.directory ?? [];
+  } catch (cause) {
+    candidateProducts.value = [];
+    directory.value = [];
+    adminDataError.value = cause instanceof Error ? cause.message : '管理候选数据加载失败';
+  }
+}
+
+async function loadLines(preferredId?: string) {
+  loading.value = true;
+  error.value = '';
+  try {
+    const [visible, discoverable] = await Promise.all([listProductLines(), listDiscoverableProductLines()]);
+    lines.value = visible;
+    discoverableLines.value = discoverable;
+    selectedId.value = lines.value.some((line) => line.id === preferredId)
+      ? (preferredId ?? '')
+      : (lines.value[0]?.id ?? '');
+    await loadAdminCandidates();
+    await loadDetail();
+  } catch (cause) {
+    lines.value = [];
+    discoverableLines.value = [];
+    selectedId.value = '';
+    error.value = cause instanceof Error ? cause.message : '产品线空间接口暂不可用';
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function loadDetail() {
+  const version = ++detailVersion;
+  const lineId = selectedId.value;
+  products.value = [];
+  projects.value = [];
+  applications.value = [];
+  detailError.value = '';
+  if (!lineId) return;
+  renameName.value = selected.value?.name ?? '';
+  leaderPersonId.value = selected.value?.leaderPersonId ?? '';
+  detailLoading.value = true;
+  try {
+    const [nextProducts, nextProjects, nextApplications] = await Promise.all([
+      listProductLineProducts(lineId),
+      listProductLineProjects(lineId),
+      canReview.value ? listPendingProductLineApplications(lineId) : Promise.resolve([]),
+    ]);
+    if (version !== detailVersion) return;
+    products.value = nextProducts;
+    projects.value = nextProjects;
+    applications.value = nextApplications;
+  } catch (cause) {
+    if (version === detailVersion) detailError.value = cause instanceof Error ? cause.message : '空间目录加载失败';
+  } finally {
+    if (version === detailVersion) detailLoading.value = false;
+  }
+}
+
+async function perform(action: () => Promise<unknown>, success: string, preferredId = selectedId.value) {
+  acting.value = true;
+  try {
+    await action();
+    message.success(success);
+    await loadLines(preferredId);
+  } catch (cause) {
+    message.error(cause instanceof Error ? cause.message : '操作失败');
+  } finally {
+    acting.value = false;
+  }
+}
+
+async function apply(lineId: string) {
+  acting.value = true;
+  try {
+    const result = await applyToProductLine(lineId);
+    if (result.status === 'PENDING') pendingApplyIds.value = new Set([...pendingApplyIds.value, lineId]);
+    message.success(result.status === 'ACTIVE' ? '已是空间成员' : '加入申请已提交');
+    await loadLines(selectedId.value);
+  } catch (cause) {
+    message.error(cause instanceof Error ? cause.message : '申请失败');
+  } finally {
+    acting.value = false;
+  }
+}
+
+async function create() {
+  if (!isAdmin.value || !createCode.value.trim() || !createName.value.trim()) return;
+  creating.value = true;
+  try {
+    const created = await createProductLine(createCode.value.trim(), createName.value.trim());
+    createCode.value = '';
+    createName.value = '';
+    message.success('产品线已创建');
+    await loadLines(created.id);
+  } catch (cause) {
+    message.error(cause instanceof Error ? cause.message : '创建失败');
+  } finally {
+    creating.value = false;
+  }
+}
+
+async function review(application: ProductLineMember, approve: boolean) {
+  if (!canReview.value || !selectedId.value) return;
+  reviewingId.value = application.personId;
+  try {
+    await reviewProductLineApplication(selectedId.value, application.personId, approve);
+    message.success(approve ? '已批准申请' : '已拒绝申请');
+    await loadDetail();
+  } catch (cause) {
+    message.error(cause instanceof Error ? cause.message : '审批失败');
+  } finally {
+    reviewingId.value = '';
+  }
+}
+
+onMounted(() => { void loadLines(); });
+</script>
+
+<template>
+  <main class="ipd-line-page">
+    <header>
+      <h1>产品线团队空间</h1>
+      <p>产品线汇集多个产品；项目权限仍按项目成员单独校验。</p>
+    </header>
+    <Alert v-if="error" type="error" show-icon :message="`空间接口暂不可用：${error}`" />
+    <Alert v-else-if="!loading && lines.length === 0 && !joinableLines.length" type="info" show-icon message="暂无可见或可申请的产品线空间。" />
+    <Card v-if="joinableLines.length" title="申请加入团队空间" size="small">
+      <div v-for="line in joinableLines" :key="line.id" class="ipd-line-application">
+        <span>{{ line.name }}（{{ line.code }}）</span>
+        <Button :disabled="acting || pendingApplyIds.has(line.id)" @click="apply(line.id)">
+          {{ pendingApplyIds.has(line.id) ? '本次申请待审批' : '申请加入' }}
+        </Button>
+      </div>
+      <p>申请状态以服务端审批为准；当前列表接口只返回已加入空间。</p>
+    </Card>
+    <div v-if="isAdmin" class="ipd-line-create">
+      <h2>创建产品线</h2>
+      <Space wrap>
+        <Input v-model:value="createCode" aria-label="产品线编码" placeholder="编码（字母、数字、短横线）" :maxlength="64" />
+        <Input v-model:value="createName" aria-label="产品线名称" placeholder="名称" :maxlength="128" />
+        <Button type="primary" :loading="creating" :disabled="!createCode.trim() || !createName.trim()" @click="create">创建</Button>
+      </Space>
+      <p>管理员可维护当前空间；组长候选从在职人员目录选择，服务端仍校验其空间成员资格。</p>
+    </div>
+    <div v-if="lines.length" class="ipd-line-layout">
+      <nav aria-label="产品线列表" class="ipd-line-list">
+        <button v-for="line in lines" :key="line.id" type="button" :aria-current="selectedId === line.id ? 'page' : undefined" @click="selectedId = line.id; loadDetail()">
+          <strong>{{ line.name }}</strong><small>{{ line.code }}</small>
+        </button>
+      </nav>
+      <section v-if="selected" aria-label="产品线详情" class="ipd-line-detail">
+        <h2>{{ selected.name }}</h2>
+        <p>组长 Person ID：{{ selected.leaderPersonId ?? '未任命' }}</p>
+        <Button v-if="!isAdmin" :disabled="acting" @click="perform(() => leaveProductLine(selectedId), '已退出产品线空间')">退出空间</Button>
+        <Card v-if="isAdmin" title="空间管理" size="small">
+          <div class="ipd-line-controls">
+            <Space wrap>
+              <Input v-model:value="renameName" aria-label="新产品线名称" :maxlength="128" placeholder="产品线名称" />
+              <Button :disabled="acting || !renameName.trim() || renameName.trim() === selected.name" @click="perform(() => renameProductLine(selectedId, renameName.trim()), '名称已更新')">保存名称</Button>
+              <Popconfirm title="确认停用此产品线？停用前需清空关联产品和待审批申请。" @confirm="perform(() => deactivateProductLine(selectedId), '产品线已停用')">
+                <Button danger :disabled="acting || products.length > 0 || applications.length > 0">停用空间</Button>
+              </Popconfirm>
+            </Space>
+            <Space wrap>
+              <Select v-model:value="leaderPersonId" aria-label="选择产品线组长" class="ipd-line-select" :options="directory.map((person) => ({ value: person.id, label: `${person.name}（${person.employeeNo ?? person.id}）` }))" placeholder="选择在职人员" />
+              <Button :disabled="acting || !leaderPersonId || leaderPersonId === selected.leaderPersonId" @click="perform(() => appointProductLineLeader(selectedId, leaderPersonId), '组长已更新')">任命组长</Button>
+            </Space>
+            <Space wrap>
+              <Select v-model:value="assignProductId" aria-label="选择待分配产品" class="ipd-line-select" :options="candidateProducts.map((product) => ({ value: product.id, label: `${product.productName}（${product.productCode}）` }))" placeholder="待分配产品" />
+              <Button :disabled="acting || !assignProductId || !!adminDataError" @click="perform(() => assignProductToLine(selectedId, assignProductId), '产品归属已更新')">分配到此空间</Button>
+            </Space>
+            <Alert v-if="adminDataError" type="warning" show-icon :message="`管理候选暂不可用：${adminDataError}`" />
+          </div>
+        </Card>
+        <Alert v-if="detailError" type="error" show-icon :message="detailError" />
+        <p v-if="detailLoading" role="status">空间目录加载中…</p>
+        <template v-else-if="!detailError">
+          <Card title="产品目录" size="small">
+            <p v-if="!products.length">暂无归属该产品线的产品。</p>
+            <ul v-else><li v-for="product in products" :key="product.id">
+              {{ product.name }}（{{ product.code }}）
+              <Popconfirm v-if="isAdmin" title="确认解除产品线归属？仅停用且无活动项目的产品可解除。" @confirm="perform(() => unassignProductFromLine(selectedId, product.id), '已解除产品线归属')">
+                <Button size="small" danger :disabled="acting">解除归属</Button>
+              </Popconfirm>
+            </li></ul>
+          </Card>
+          <Card title="我有权限的项目" size="small">
+            <p v-if="!projects.length">暂无可访问项目；团队成员资格不授予项目权限。</p>
+            <ul v-else><li v-for="project in projects" :key="project.id"><RouterLink :to="`/ipd/projects/${project.id}/overview`">{{ project.name }}</RouterLink>（{{ project.currentStage ?? '阶段待定' }}）</li></ul>
+          </Card>
+          <Card v-if="canReview" title="待审批加入申请" size="small">
+            <p v-if="!applications.length">暂无待审批申请。</p>
+            <div v-for="application in applications" :key="application.personId" class="ipd-line-application">
+              <span>申请人 Person ID：{{ application.personId }}</span>
+              <Space>
+                <Button size="small" :loading="reviewingId === application.personId" @click="review(application, true)">批准</Button>
+                <Button size="small" danger :disabled="!!reviewingId" @click="review(application, false)">拒绝</Button>
+              </Space>
+            </div>
+          </Card>
+        </template>
+      </section>
+    </div>
+  </main>
+</template>
+
+<style scoped>
+.ipd-line-page { max-width: 1280px; margin: auto; padding: 28px 32px 60px; display: grid; gap: 18px; }
+.ipd-line-page h1 { font-size: 24px; font-weight: 600; }
+.ipd-line-page h2 { font-size: 18px; font-weight: 600; }
+.ipd-line-create, .ipd-line-detail { display: grid; gap: 12px; }
+.ipd-line-controls { display: grid; gap: 12px; }
+.ipd-line-select { min-width: 220px; }
+.ipd-line-create p, .ipd-line-page header p { color: var(--ipd-muted); }
+.ipd-line-layout { display: grid; grid-template-columns: minmax(180px, 250px) minmax(0, 1fr); gap: 20px; }
+.ipd-line-list { display: grid; align-content: start; gap: 8px; }
+.ipd-line-list button { text-align: left; border: 1px solid var(--ipd-line); border-radius: 8px; background: var(--ipd-bg); padding: 12px; cursor: pointer; }
+.ipd-line-list button[aria-current='page'] { outline: var(--ipd-focus-ring-width) solid var(--ipd-focus-ring-color); }
+.ipd-line-list small { display: block; color: var(--ipd-muted); }
+.ipd-line-application { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; }
+@media (max-width: 768px) { .ipd-line-layout { grid-template-columns: 1fr; } .ipd-line-page { padding: 20px 16px; } .ipd-line-select { min-width: 180px; } }
+</style>

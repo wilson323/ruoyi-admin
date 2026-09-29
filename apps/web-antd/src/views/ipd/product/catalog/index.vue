@@ -8,14 +8,16 @@
  * - Excel 导入三步流（/api/admin/products/import-preview|import-confirm）后端未交付：
  *   导入区 UI 一比一复刻，文件可选中，「预校验差异」按钮禁用并提示；
  * - 最近批次（导入批次列表）后端无载荷：展示 0 个空态；
- * - 产品线=产品组名（groupId 映射）；版本/市场PM/最近更新后端无载荷，按原型空值词展示
+ * - 产品线从独立的产品线空间接口回读；不以组织产品组代替。
+ *   接口不可用时显示未知，不把未核实归属写成待分配。
  *   （版本「—」、市场PM「待匹配」、更新「—」）；生命周期按产品状态映射。
 -->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { CloudDownloadOutlined, LockOutlined } from '@ant-design/icons-vue';
 
-import { listProductGroups, listProducts } from '../../../../api/ipd/product';
+import { listProducts } from '../../../../api/ipd/product';
+import { listProductLineProducts, listProductLines } from '../../../../api/ipd/product-line';
 import type { Product } from '../../../../api/ipd/product';
 import AiSuggest from '../../_shared/ai-suggest.vue';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
@@ -25,7 +27,9 @@ const auth = useIpdAuthStore();
 const isSuperAdmin = computed(() => auth.identity?.person.personType === 'SUPER_ADMIN');
 
 const products = ref<Product[]>([]);
-const groups = ref(new Map<string, string>());
+const productLineNames = ref(new Map<string, string>());
+const productLineAvailable = ref(false);
+const productLineError = ref('');
 const loadError = ref('');
 const fileChosen = ref('');
 
@@ -44,8 +48,9 @@ const LIFECYCLE_TONE: Record<string, string> = {
   ON_SALE: 'green',
 };
 
-function groupNameOf(id: null | string): string {
-  return id ? (groups.value.get(id) ?? '') : '—';
+function productLineNameOf(productId: string): string {
+  if (!productLineAvailable.value) return '归属暂不可核实';
+  return productLineNames.value.get(productId) ?? '待分配';
 }
 function lifecycleText(status: string): string {
   return LIFECYCLE_TEXT[status] ?? status;
@@ -69,9 +74,20 @@ onMounted(async () => {
   if (!isSuperAdmin.value) return;
   try {
     products.value = await listProducts();
-    groups.value = new Map((await listProductGroups()).map((g) => [g.id, g.groupName]));
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : '产品主数据加载失败';
+  }
+  try {
+    const lines = await listProductLines();
+    const memberships = await Promise.all(lines.map(async (line) => ({
+      line,
+      products: await listProductLineProducts(line.id),
+    })));
+    productLineNames.value = new Map(memberships.flatMap(({ line, products }) =>
+      products.map((product) => [product.id, line.name] as const)));
+    productLineAvailable.value = true;
+  } catch (error) {
+    productLineError.value = error instanceof Error ? error.message : '产品线归属接口暂不可用';
   }
 });
 </script>
@@ -147,7 +163,8 @@ onMounted(async () => {
           <span>{{ products.length }} 个产品</span>
         </div>
         <p v-if="loadError" class="ipd-cat-error">{{ loadError }}</p>
-        <div v-else class="ipd-cat-table" data-testid="catalog-table">
+        <p v-if="productLineError" role="status" class="ipd-cat-error">产品线归属暂不可核实：{{ productLineError }}</p>
+        <div v-if="!loadError" class="ipd-cat-table" data-testid="catalog-table">
           <div class="ipd-cat-row head">
             <span>型号 / 产品</span>
             <span>产品线</span>
@@ -161,7 +178,7 @@ onMounted(async () => {
               <strong>{{ p.modelCode ?? p.productCode }}</strong>
               <small>{{ p.productName }}</small>
             </span>
-            <span>{{ groupNameOf(p.groupId) }}</span>
+            <span>{{ productLineNameOf(p.id) }}</span>
             <span>—</span>
             <span>待匹配</span>
             <span>

@@ -306,6 +306,7 @@ watch(activeTab, (tab) => {
           {{ spacesState === 'loading' ? '产品空间加载中…' : spacesState === 'empty' ? '暂无产品空间' : '产品空间加载失败' }}
         </span>
       </div>
+      <RouterLink to="/ipd/product-lines">产品线团队空间</RouterLink>
       <button
         type="button"
         class="ipd-wb-continue"
