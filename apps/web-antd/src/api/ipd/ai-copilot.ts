@@ -14,6 +14,9 @@
  * - docType 可空：非空时 RAG 检索限定文档类型（R184 阶段 3）。
  * - pageContext 可空（R232 P2-03 fillContext）：宿主页面注册的填表上下文 JSON，
  *   随 GET query 上送（字段名对齐后端 AiCopilotReq.pageContext，≤4000）。
+ * - P3 取消切片（B↔C 合同 G1，2026-09-29）：stream 首次携客户端生成 runId（query 键 runId），
+ *   POST /ai-copilot/runs/{runId}/cancel 取消在飞 run（服务端 guard 吞晚到帧，ADR-0075 取消先赢）；
+ *   AbortController.abort 时前端自动补发 cancel，调用方零改造。
  */
 import type { AiCardEnvelope } from '../../views/ipd/_shared/ai-cards/types';
 
@@ -210,6 +213,14 @@ export function registerCopilotPageContext(ctx: CopilotPageContext | null): void
 }
 
 /**
+ * P3 取消切片：取消一次在飞 run（仅 run 所有者可取消；未知/非 owner 后端一律 50001）。
+ * 后端 AiCopilotController#cancelRun，响应 {runId,cancelled,firstTime}。
+ */
+export function cancelCopilotRun(runId: string): Promise<{ cancelled: boolean; firstTime: boolean; runId: string }> {
+  return ipdPost(`/ai-copilot/runs/${encodeURIComponent(runId)}/cancel`);
+}
+
+/**
  * SSE 真流式问答：fetch + ReadableStream 逐帧分发。
  * 非 2xx / 非 event-stream 响应与传输异常统一走 onError（后端契约：鉴权失败也推
  * error 帧而非 JSON，二者在前端合并为一处处理）。
@@ -225,6 +236,15 @@ export async function streamCopilot(
   // 显式 input 优先、缺省回落宿主页面注册表，无上下文不送键——与改造前逐字节一致）。
   const pageContext = input.pageContext ?? registeredPageContext;
   if (pageContext) params.set('pageContext', JSON.stringify(pageContext));
+  // P3 取消切片：每次流生成唯一 runId；abort 时补发 cancel（fire-and-forget，失败不阻断断流本身）。
+  const runId =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `run-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  params.set('runId', runId);
+  signal?.addEventListener('abort', () => {
+    cancelCopilotRun(runId).catch(() => undefined);
+  });
   const token = useIpdAuthStore().token;
   const headers: Record<string, string> = { Accept: 'text/event-stream' };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -242,6 +262,11 @@ export async function streamCopilot(
     return;
   }
   if (!response.ok || !response.headers.get('content-type')?.includes('text/event-stream')) {
+    try {
+      await response.body?.cancel();
+    } catch {
+      // 网关错误体仅用于状态判断，取消失败不改变统一错误反馈。
+    }
     handlers.onError({ code: String(response.status), message: 'AI 副驾暂不可用，请稍后重试' });
     return;
   }
@@ -252,6 +277,8 @@ export async function streamCopilot(
     return;
   }
   const decoder = new TextDecoder();
+  let reachedEof = false;
+  let terminalFrame = false;
   try {
     for (;;) {
       let result: ReadableStreamReadResult<Uint8Array>;
@@ -267,16 +294,33 @@ export async function streamCopilot(
         break;
       }
       const { done, value } = result;
-      if (done) break;
+      if (done) {
+        reachedEof = true;
+        break;
+      }
       for (const frame of parse(decoder.decode(value, { stream: true }))) {
         if (frame.event === 'meta') handlers.onMeta(frame.data as CopilotChatView);
         else if (frame.event === 'delta') handlers.onDelta(String(frame.data));
-        else if (frame.event === 'done') handlers.onDone(parseStreamDone(frame.data));
-        else if (frame.event === 'error')
+        else if (frame.event === 'done') {
+          handlers.onDone(parseStreamDone(frame.data));
+          terminalFrame = true;
+        } else if (frame.event === 'error') {
           handlers.onError(frame.data as CopilotStreamError);
+          terminalFrame = true;
+        }
+        if (terminalFrame) break;
       }
+      if (terminalFrame) break;
     }
   } finally {
+    // done/error、读流异常或 handler 抛错时明确关闭未到 EOF 的连接。
+    if (!reachedEof) {
+      try {
+        await reader.cancel();
+      } catch {
+        // 已异常或已中止的流可能拒绝取消，仍需释放 reader 锁。
+      }
+    }
     reader.releaseLock();
   }
 }

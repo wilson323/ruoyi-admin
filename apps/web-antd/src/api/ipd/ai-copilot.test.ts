@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useIpdAuthStore } from '../../store/ipd-auth';
 import type { CopilotStreamDone } from './ai-copilot';
 import {
+  cancelCopilotRun,
   chatCopilot,
   createSseFrameParser,
   parseStreamDone,
@@ -101,6 +102,45 @@ describe('AI 副驾 API（R215 B3）', () => {
       onDelta: vi.fn(), onDone: vi.fn(), onError, onMeta: vi.fn(),
     }, abort.signal)).resolves.toBeUndefined();
     expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('收到终态帧时取消尚未结束的连接，避免 SSE 长连接悬挂', async () => {
+    const cancel = vi.fn();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(frame('done', {
+            status: 'ok', tokenPrompt: 1, tokenCompletion: 1, latencyMs: 1,
+          })));
+        },
+        cancel,
+      }),
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    )));
+    const onDone = vi.fn();
+    await streamCopilot({ message: '测试' }, {
+      onDelta: vi.fn(), onDone, onError: vi.fn(), onMeta: vi.fn(),
+    });
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('渲染 handler 抛错时取消尚未结束的连接并保留原异常', async () => {
+    const cancel = vi.fn();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(frame('delta', '文本')));
+        },
+        cancel,
+      }),
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    )));
+    const failure = new Error('render failed');
+    await expect(streamCopilot({ message: '测试' }, {
+      onDelta: () => { throw failure; }, onDone: vi.fn(), onError: vi.fn(), onMeta: vi.fn(),
+    })).rejects.toBe(failure);
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 
   it('chatCopilot → POST /ai-copilot/chat，body 含 projectId/message/history/docType，视图透传', async () => {
@@ -309,7 +349,9 @@ describe('AI 副驾 API（R215 B3）', () => {
         onMeta: (m) => seen.push(`meta:${m.intent}`),
       },
     );
-    expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/ai-copilot/chat/stream?message=' + encodeURIComponent('我的待办') + '&projectId=9140001');
+    const streamReqUrl = String(fetcher.mock.calls[0]![0]);
+    expect(streamReqUrl.startsWith('/api/v1/ai-copilot/chat/stream?message=' + encodeURIComponent('我的待办') + '&projectId=9140001&runId=')).toBe(true);
+    expect(streamReqUrl.slice(streamReqUrl.indexOf('runId=') + 6)).toMatch(/^[0-9a-f-]{36}$/);
     expect(fetcher.mock.calls[0]![1].headers.Authorization).toBe('Bearer tok-abc');
     expect(fetcher.mock.calls[0]![1].headers.Accept).toBe('text/event-stream');
     expect(seen).toEqual(['meta:TASKS', '你', '好', 'done:ok']);
@@ -326,6 +368,48 @@ describe('AI 副驾 API（R215 B3）', () => {
       onMeta: () => {},
     });
     expect(errors).toEqual([{ code: '403', message: 'AI 副驾暂不可用，请稍后重试' }]);
+  });
+
+  it('cancelCopilotRun → POST /ai-copilot/runs/{runId}/cancel（路径编码 + 包络解包）', async () => {
+    useIpdAuthStore().token = 'tok-abc';
+    const fetcher = vi.fn().mockResolvedValue(envelope({ runId: 'a b', cancelled: true, firstTime: true }));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(cancelCopilotRun('a b')).resolves.toMatchObject({ cancelled: true, firstTime: true });
+    const call = fetcher.mock.calls[0]!;
+    expect(call[0]).toBe('/api/v1/ai-copilot/runs/a%20b/cancel');
+    expect(call[1]?.method).toBe('POST');
+  });
+
+  it('P3 取消切片：abort 断流时自动补发 cancel（fire-and-forget）', async () => {
+    useIpdAuthStore().token = 'tok-abc';
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    const stream = new ReadableStream<Uint8Array>({ start() { /* 永不结束：模拟在飞流 */ } });
+    const fetcher = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      calls.push([String(url), init]);
+      if (String(url).includes('/cancel')) {
+        return Promise.resolve(envelope({ runId: 'x', cancelled: true, firstTime: true }));
+      }
+      return Promise.resolve(
+        new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+      );
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const controller = new AbortController();
+    const pending = streamCopilot(
+      { message: '长回答' },
+      { onDelta: () => {}, onDone: () => {}, onError: () => {}, onMeta: () => {} },
+      controller.signal,
+    );
+    await Promise.resolve();
+    controller.abort();
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+    const streamUrl = calls.find(([u]) => u.includes('/chat/stream'))?.[0] ?? '';
+    const runId = new URL(`http://x${streamUrl}`).searchParams.get('runId');
+    expect(runId).toBeTruthy();
+    const cancel = calls.find(([u]) => u.includes('/cancel'));
+    expect(cancel?.[0]).toBe(`/api/v1/ai-copilot/runs/${runId}/cancel`);
+    expect(cancel?.[1]?.method).toBe('POST');
+    void pending;
   });
 });
 
