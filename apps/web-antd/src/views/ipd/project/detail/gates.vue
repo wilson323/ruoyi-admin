@@ -13,7 +13,7 @@
  * 3. Gate 要素判定（[CONSISTENCY-4]）已落地（GatePanel 内）：countVetoFailures 控提交
  *    按钮 disabled，PASS/FAIL/条件通过 三选一，条件项必填 closeDeadline+responsiblePersonId。
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { Alert, Button, Card, Empty, Input, Table, Tag } from 'ant-design-vue';
 
@@ -38,27 +38,42 @@ const projectId = computed(() => String(route.params.projectId ?? ''));
 const gatesList = ref<ProjectGateItem[]>([]);
 const listLoading = ref(false);
 const listError = ref('');
+let gatesLoadVersion = 0;
 
 async function loadGates(): Promise<void> {
   const id = projectId.value.trim();
-  if (!id) return;
+  const version = ++gatesLoadVersion;
+  gatesList.value = [];
+  if (!id) {
+    listLoading.value = false;
+    listError.value = '';
+    return;
+  }
   listLoading.value = true;
   listError.value = '';
   try {
-    gatesList.value = await listProjectGates(id);
+    const loaded = await listProjectGates(id);
+    if (version === gatesLoadVersion) gatesList.value = loaded;
   } catch (cause) {
-    gatesList.value = [];
-    listError.value = ipdErrorText(cause, { fallback: 'Gate 列表加载失败，请稍后重试' });
+    if (version === gatesLoadVersion) {
+      gatesList.value = [];
+      listError.value = ipdErrorText(cause, { fallback: 'Gate 列表加载失败，请稍后重试' });
+    }
   } finally {
-    listLoading.value = false;
+    if (version === gatesLoadVersion) listLoading.value = false;
   }
 }
-
-onMounted(loadGates);
 
 // ---------- 评审定位：列表选中（主）+ 手输编号（兜底） ----------
 const selectedGateId = ref('');
 const manualGateId = ref('');
+
+watch(projectId, () => {
+  // 项目变化时撤下旧 Gate 和评审面板；loadGates 的版本号隔离晚到的旧响应。
+  selectedGateId.value = '';
+  manualGateId.value = '';
+  void loadGates();
+}, { immediate: true });
 
 /** 当前激活的 Gate 编号：列表选中优先，手输兜底。 */
 const activeGateId = computed(() => selectedGateId.value || manualGateId.value.trim());

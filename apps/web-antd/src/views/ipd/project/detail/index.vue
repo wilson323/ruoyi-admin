@@ -5,7 +5,7 @@
  * documents / changes 两页签由本卡（P0-10.14 / P0-10.25 详情 tab 卡）实现。
  * 壳只负责：项目头部信息（GET /projects/{id}）+ 页签导航，不承载领域逻辑。
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { Alert, Button, Card, Spin } from 'ant-design-vue';
 
@@ -58,6 +58,7 @@ const projectIdValid = computed(() => /^\d+$/.test(projectId.value));
 const loading = ref(false);
 const loadError = ref<null | string>(null);
 const project = ref<null | ProjectSummary>(null);
+let projectLoadVersion = 0;
 
 const activeKey = computed(() => {
   const segments = String(route.path).split('/').filter(Boolean);
@@ -82,15 +83,20 @@ function toSummary(project: Project): ProjectSummary {
 }
 
 async function loadProject() {
+  const id = projectId.value;
+  const version = ++projectLoadVersion;
   loading.value = true;
   loadError.value = null;
   try {
-    project.value = toSummary(await getProject(projectId.value));
+    const loaded = toSummary(await getProject(id));
+    if (version === projectLoadVersion) project.value = loaded;
   } catch (cause) {
-    project.value = null;
-    loadError.value = ipdApiErrorText(cause, '项目信息加载失败，请稍后重试');
+    if (version === projectLoadVersion) {
+      project.value = null;
+      loadError.value = ipdApiErrorText(cause, '项目信息加载失败，请稍后重试');
+    }
   } finally {
-    loading.value = false;
+    if (version === projectLoadVersion) loading.value = false;
   }
 }
 
@@ -98,9 +104,14 @@ function tabPath(key: string): string {
   return `/ipd/projects/${projectId.value}/${key}`;
 }
 
-onMounted(() => {
+watch(projectId, () => {
+  // 同一组件实例切换项目时立即撤下旧项目；旧请求即使后返回也不能覆盖新项目。
+  projectLoadVersion++;
+  project.value = null;
+  loadError.value = null;
+  loading.value = false;
   if (projectIdValid.value) void loadProject();
-});
+}, { immediate: true });
 </script>
 
 <template>

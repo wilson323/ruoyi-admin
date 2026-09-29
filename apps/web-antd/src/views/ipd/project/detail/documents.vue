@@ -9,7 +9,7 @@
  * - POST /api/v1/ai-documents/{id}/versions/{versionId}/review  人工审核通过
  * P1-3 已交付：GET /api/v1/ai-documents?projectId=X → onMounted 自动加载项目下文档链头列表（页14 列表区）。
  */
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   Alert,
@@ -73,8 +73,13 @@ const documents = ref<AiDocument[]>([]);
 const documentsLoading = ref(false);
 const documentsError = ref<null | string>(null);
 const documentsLoaded = ref(false);
+let projectEpoch = 0;
+let documentsRequest = 0;
+let chainRequest = 0;
 
 async function loadProjectDocuments(pid: string) {
+  const epoch = projectEpoch;
+  const request = ++documentsRequest;
   if (!/^\d+$/.test(pid)) {
     documentsLoaded.value = false;
     documentsError.value = '项目 ID 不合法，无法加载文档列表。';
@@ -83,20 +88,19 @@ async function loadProjectDocuments(pid: string) {
   documentsLoading.value = true;
   documentsError.value = null;
   try {
-    documents.value = await listAiDocumentsByProject(pid);
+    const result = await listAiDocumentsByProject(pid);
+    if (epoch !== projectEpoch || request !== documentsRequest) return;
+    documents.value = result.filter((doc) => doc.projectId === pid);
     documentsLoaded.value = true;
   } catch (cause) {
+    if (epoch !== projectEpoch || request !== documentsRequest) return;
     documents.value = [];
     documentsLoaded.value = true;
     documentsError.value = ipdApiErrorText(cause, '文档列表加载失败，请稍后重试');
   } finally {
-    documentsLoading.value = false;
+    if (epoch === projectEpoch && request === documentsRequest) documentsLoading.value = false;
   }
 }
-
-onMounted(() => {
-  if (projectId.value) void loadProjectDocuments(projectId.value);
-});
 
 // 列表区列定义（P1-3）：ID / 标题 / 文档类型 / 当前版本 / 当前状态 / 摘要
 const columns = [
@@ -134,6 +138,7 @@ const tokenPromptModel = tokenModel('tokenPrompt');
 const tokenCompletionModel = tokenModel('tokenCompletion');
 
 async function submitRegister() {
+  if (registerSubmitting.value || !/^\d+$/.test(projectId.value)) return;
   if (!registerForm.title.trim() || registerForm.title.length > 200) {
     registerError.value = '请填写文档标题（不超过 200 字）。';
     return;
@@ -144,22 +149,28 @@ async function submitRegister() {
   }
   registerSubmitting.value = true;
   registerError.value = null;
+  const epoch = projectEpoch;
+  const pid = projectId.value;
   try {
-    registerResult.value = await registerAiDocument({
+    const result = await registerAiDocument({
       content: registerForm.content,
       docType: registerForm.docType || null,
       model: registerForm.model.trim() || null,
-      projectId: projectId.value,
+      projectId: pid,
       title: registerForm.title.trim(),
       tokenCompletion: registerForm.tokenCompletion,
       tokenPrompt: registerForm.tokenPrompt,
     });
+    if (epoch !== projectEpoch) return;
+    registerResult.value = result;
     message.success('AI 输出已登记为版本链首版（v1）');
+    void loadProjectDocuments(pid);
   } catch (cause) {
+    if (epoch !== projectEpoch) return;
     registerResult.value = null;
     registerError.value = ipdApiErrorText(cause);
   } finally {
-    registerSubmitting.value = false;
+    if (epoch === projectEpoch) registerSubmitting.value = false;
   }
 }
 
@@ -186,6 +197,8 @@ function shortSha(doc: AiDocument): string {
 }
 
 async function loadChain(documentId: string) {
+  const epoch = projectEpoch;
+  const request = ++chainRequest;
   const id = documentId.trim();
   if (!/^\d+$/.test(id)) {
     chainLoaded.value = false;
@@ -195,14 +208,20 @@ async function loadChain(documentId: string) {
   chainLoading.value = true;
   chainError.value = null;
   try {
-    chain.value = await listAiDocumentVersions(id);
+    const result = await listAiDocumentVersions(id);
+    if (epoch !== projectEpoch || request !== chainRequest) return;
+    if (result.some((doc) => doc.projectId !== projectId.value)) {
+      throw new Error('该文档不属于当前项目，无法显示版本链。');
+    }
+    chain.value = result;
     chainLoaded.value = true;
   } catch (cause) {
+    if (epoch !== projectEpoch || request !== chainRequest) return;
     chain.value = [];
     chainLoaded.value = true;
     chainError.value = ipdApiErrorText(cause, '版本链加载失败，请稍后重试');
   } finally {
-    chainLoading.value = false;
+    if (epoch === projectEpoch && request === chainRequest) chainLoading.value = false;
   }
 }
 
@@ -214,17 +233,20 @@ function viewChainOfRegistered() {
 const reviewingVersionId = ref<null | string>(null);
 
 async function submitReview(doc: AiDocument) {
-  if (reviewingVersionId.value) return;
+  if (reviewingVersionId.value || doc.projectId !== projectId.value) return;
+  const epoch = projectEpoch;
   reviewingVersionId.value = doc.id;
   try {
     await reviewAiDocumentVersion(doc.id, doc.id);
+    if (epoch !== projectEpoch) return;
     message.success(`v${doc.versionNo} 已审核通过`);
     const anchorId = doc.parentVersionId ?? doc.id;
     await loadChain(anchorId);
   } catch (cause) {
+    if (epoch !== projectEpoch) return;
     message.error(ipdApiErrorText(cause));
   } finally {
-    reviewingVersionId.value = null;
+    if (epoch === projectEpoch) reviewingVersionId.value = null;
   }
 }
 
@@ -243,23 +265,27 @@ function openRevise() {
 }
 
 async function submitRevise() {
-  if (!head.value) return;
+  if (!head.value || reviseSubmitting.value || head.value.projectId !== projectId.value) return;
   if (!reviseForm.content.trim()) {
     reviseError.value = '请填写改版内容。';
     return;
   }
   reviseSubmitting.value = true;
   reviseError.value = null;
+  const epoch = projectEpoch;
+  const baseVersionId = head.value.id;
   try {
-    const next = await reviseAiDocument(head.value.id, {
-      baseVersionId: head.value.id,
+    const next = await reviseAiDocument(baseVersionId, {
+      baseVersionId,
       content: reviseForm.content,
       title: reviseForm.title.trim() || null,
     });
+    if (epoch !== projectEpoch) return;
     reviseOpen.value = false;
     message.success(`人工改版已生成 v${next.versionNo}，原版本保留`);
     await loadChain(next.id);
   } catch (cause) {
+    if (epoch !== projectEpoch) return;
     // 人工改版 HEAD 校验：基准非当前最新版（并发改版）→ 409 50002，给出专属文案并自动刷新链
     if (cause instanceof IpdRequestError && cause.code === 50002) {
       reviseError.value = '基准版本已不是当前最新版（可能已被其他成员改版），请确认后重新提交。';
@@ -269,9 +295,37 @@ async function submitRevise() {
     }
     reviseError.value = ipdApiErrorText(cause);
   } finally {
-    reviseSubmitting.value = false;
+    if (epoch === projectEpoch) reviseSubmitting.value = false;
   }
 }
+
+watch(projectId, (pid) => {
+  projectEpoch++;
+  documentsRequest++;
+  chainRequest++;
+  documents.value = [];
+  documentsLoading.value = false;
+  documentsError.value = null;
+  documentsLoaded.value = false;
+  Object.assign(registerForm, {
+    content: '', docType: 'PRD', model: '', title: '', tokenCompletion: null, tokenPrompt: null,
+  });
+  registerSubmitting.value = false;
+  registerError.value = null;
+  registerResult.value = null;
+  docIdInput.value = '';
+  chain.value = [];
+  chainLoading.value = false;
+  chainError.value = null;
+  chainLoaded.value = false;
+  reviewingVersionId.value = null;
+  reviseOpen.value = false;
+  reviseSubmitting.value = false;
+  reviseError.value = null;
+  reviseForm.content = '';
+  reviseForm.title = '';
+  void loadProjectDocuments(pid);
+}, { immediate: true, flush: 'sync' });
 </script>
 
 <template>

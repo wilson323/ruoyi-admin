@@ -35,8 +35,10 @@ const projects = ref<ProductLineProject[]>([]);
 const applications = ref<ProductLineMember[]>([]);
 const loading = ref(false);
 const detailLoading = ref(false);
+const applicationsLoading = ref(false);
 const error = ref('');
 const detailError = ref('');
+const applicationsError = ref('');
 const createCode = ref('');
 const createName = ref('');
 const creating = ref(false);
@@ -107,27 +109,44 @@ async function loadLines(preferredId?: string) {
   }
 }
 
+async function loadApplications(lineId = selectedId.value, version = detailVersion) {
+  applications.value = [];
+  applicationsError.value = '';
+  applicationsLoading.value = false;
+  if (!lineId || !canReview.value) return;
+  applicationsLoading.value = true;
+  try {
+    const nextApplications = await listPendingProductLineApplications(lineId);
+    if (version === detailVersion) applications.value = nextApplications;
+  } catch (cause) {
+    if (version === detailVersion) {
+      applicationsError.value = cause instanceof Error ? cause.message : '待审批申请加载失败';
+    }
+  } finally {
+    if (version === detailVersion) applicationsLoading.value = false;
+  }
+}
+
 async function loadDetail() {
   const version = ++detailVersion;
   const lineId = selectedId.value;
   products.value = [];
   projects.value = [];
-  applications.value = [];
   detailError.value = '';
+  detailLoading.value = false;
+  void loadApplications(lineId, version);
   if (!lineId) return;
   renameName.value = selected.value?.name ?? '';
   leaderPersonId.value = selected.value?.leaderPersonId ?? '';
   detailLoading.value = true;
   try {
-    const [nextProducts, nextProjects, nextApplications] = await Promise.all([
+    const [nextProducts, nextProjects] = await Promise.all([
       listProductLineProducts(lineId),
       listProductLineProjects(lineId),
-      canReview.value ? listPendingProductLineApplications(lineId) : Promise.resolve([]),
     ]);
     if (version !== detailVersion) return;
     products.value = nextProducts;
     projects.value = nextProjects;
-    applications.value = nextApplications;
   } catch (cause) {
     if (version === detailVersion) detailError.value = cause instanceof Error ? cause.message : '空间目录加载失败';
   } finally {
@@ -277,7 +296,12 @@ onMounted(() => { void loadLines(); });
             <ul v-else><li v-for="project in projects" :key="project.id"><RouterLink :to="`/ipd/projects/${project.id}/overview`">{{ project.name }}</RouterLink>（{{ project.currentStage ?? '阶段待定' }}）</li></ul>
           </Card>
           <Card v-if="canReview" title="待审批加入申请" size="small">
-            <p v-if="!applications.length">暂无待审批申请。</p>
+            <div v-if="applicationsError">
+              <Alert type="error" show-icon :message="`待审批申请暂不可用：${applicationsError}`" />
+              <Button :loading="applicationsLoading" @click="loadApplications()">重试加载申请</Button>
+            </div>
+            <p v-else-if="applicationsLoading" role="status">待审批申请加载中…</p>
+            <p v-else-if="!applications.length">暂无待审批申请。</p>
             <div v-for="application in applications" :key="application.personId" class="ipd-line-application">
               <span>申请人 Person ID：{{ application.personId }}</span>
               <Space>

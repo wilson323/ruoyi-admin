@@ -4,7 +4,7 @@
  *   - 项目 Gate 列表（R30 主路径）：列表选中即评审；空列表 = 真实空态
  *   - 手动定位兜底输入 + 嵌入式 GatePanel（initialGateId 接线）
  */
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
@@ -37,6 +37,64 @@ beforeEach(() => { sessionStorage.clear(); setActivePinia(createPinia()); });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); document.body.innerHTML = ''; });
 
 describe('IpdProjectGates 项目 Gate 评审子页 (P0-10.23)', () => {
+  it('切换项目时立即清空已展示的旧 Gate 列表', async () => {
+    let resolveNew!: (value: Response) => void;
+    const newResponse = new Promise<Response>((resolve) => { resolveNew = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes('/projects/101/gates')) return envelope([
+        { id: '9101', gateCode: '旧项目 Gate', status: 'PENDING', projectId: '101' },
+      ]);
+      if (path.includes('/projects/202/gates')) return newResponse;
+      throw new Error(`unexpected fetch: ${path}`);
+    }));
+    const router = buildRouter();
+    await router.push('/ipd/projects/101/gates');
+    await router.isReady();
+    const wrapper = mount(GatesProjectTab, { global: { plugins: [router] } });
+    await vi.waitFor(() => expect(wrapper.text()).toContain('旧项目 Gate'));
+
+    await router.push('/ipd/projects/202/gates');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).not.toContain('旧项目 Gate');
+    resolveNew(envelope([]));
+    await flushPromises();
+    wrapper.unmount();
+  });
+
+  it('同实例切项目时撤下旧 Gate 选择，并忽略晚到的旧列表', async () => {
+    let resolveOld!: (value: Response) => void;
+    const oldResponse = new Promise<Response>((resolve) => { resolveOld = resolve; });
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes('/projects/101/gates')) return oldResponse;
+      if (path.includes('/projects/202/gates')) return envelope([
+        { id: '9202', gateCode: '新项目 Gate', status: 'PENDING', projectId: '202' },
+      ]);
+      throw new Error(`unexpected fetch: ${path}`);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const router = buildRouter();
+    await router.push('/ipd/projects/101/gates');
+    await router.isReady();
+    const wrapper = mount(GatesProjectTab, { global: { plugins: [router] } });
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('/projects/101/gates'), expect.anything()));
+
+    const input = wrapper.find('input[placeholder*="Gate 编号"]');
+    await input.setValue('9101');
+    expect(wrapper.text()).toContain('Gate 评审面板（嵌入式 GatePanel）');
+
+    await router.push('/ipd/projects/202/gates');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('新项目 Gate'));
+    expect((input.element as HTMLInputElement).value).toBe('');
+    expect(wrapper.text()).toContain('请在上方列表点击「打开评审」');
+
+    resolveOld(envelope([{ id: '9101', gateCode: '旧项目 Gate', status: 'PENDING', projectId: '101' }]));
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('旧项目 Gate');
+    wrapper.unmount();
+  });
+
   it('首屏渲染：项目编号注入 + 列表端点口径 + 拉取 GET /projects/{id}/gates', async () => {
     const fetcher = stubGateList([]);
     vi.stubGlobal('fetch', fetcher);
