@@ -50,6 +50,7 @@ const renameName = ref('');
 const adminDataError = ref('');
 const pendingApplyIds = ref(new Set<string>());
 let detailVersion = 0;
+let lineLoadVersion = 0;
 
 const isAdmin = computed(() => auth.identity?.person.personType === 'SUPER_ADMIN');
 const personId = computed(() => auth.identity?.person.id ?? '');
@@ -58,7 +59,7 @@ const canReview = computed(() => isAdmin.value || selected.value?.leaderPersonId
 const joinableLines = computed(() => discoverableLines.value.filter((line) =>
   !lines.value.some((visible) => visible.id === line.id)));
 
-async function loadAdminCandidates() {
+async function loadAdminCandidates(version: number) {
   if (!isAdmin.value) return;
   adminDataError.value = '';
   try {
@@ -67,10 +68,12 @@ async function loadAdminCandidates() {
       getPmDirectory(),
       Promise.all(lines.value.map((line) => listProductLineProducts(line.id))),
     ]);
+    if (version !== lineLoadVersion) return;
     const assigned = new Set(lineProducts.flat().map((product) => product.id));
     candidateProducts.value = allProducts.filter((product) => !assigned.has(product.id));
     directory.value = directoryResult.directory ?? [];
   } catch (cause) {
+    if (version !== lineLoadVersion) return;
     candidateProducts.value = [];
     directory.value = [];
     adminDataError.value = cause instanceof Error ? cause.message : '管理候选数据加载失败';
@@ -78,24 +81,29 @@ async function loadAdminCandidates() {
 }
 
 async function loadLines(preferredId?: string) {
+  const version = ++lineLoadVersion;
+  ++detailVersion;
   loading.value = true;
   error.value = '';
   try {
     const [visible, discoverable] = await Promise.all([listProductLines(), listDiscoverableProductLines()]);
+    if (version !== lineLoadVersion) return;
     lines.value = visible;
     discoverableLines.value = discoverable;
     selectedId.value = lines.value.some((line) => line.id === preferredId)
       ? (preferredId ?? '')
       : (lines.value[0]?.id ?? '');
-    await loadAdminCandidates();
+    await loadAdminCandidates(version);
+    if (version !== lineLoadVersion) return;
     await loadDetail();
   } catch (cause) {
+    if (version !== lineLoadVersion) return;
     lines.value = [];
     discoverableLines.value = [];
     selectedId.value = '';
     error.value = cause instanceof Error ? cause.message : '产品线空间接口暂不可用';
   } finally {
-    loading.value = false;
+    if (version === lineLoadVersion) loading.value = false;
   }
 }
 
@@ -193,7 +201,10 @@ onMounted(() => { void loadLines(); });
       <h1>产品线团队空间</h1>
       <p>产品线汇集多个产品；项目权限仍按项目成员单独校验。</p>
     </header>
-    <Alert v-if="error" type="error" show-icon :message="`空间接口暂不可用：${error}`" />
+    <div v-if="error">
+      <Alert type="error" show-icon :message="`空间接口暂不可用：${error}`" />
+      <Button :loading="loading" @click="loadLines()">重试加载空间</Button>
+    </div>
     <Alert v-else-if="!loading && lines.length === 0 && !joinableLines.length" type="info" show-icon message="暂无可见或可申请的产品线空间。" />
     <Card v-if="joinableLines.length" title="申请加入团队空间" size="small">
       <div v-for="line in joinableLines" :key="line.id" class="ipd-line-application">
@@ -240,10 +251,16 @@ onMounted(() => { void loadLines(); });
               <Select v-model:value="assignProductId" aria-label="选择待分配产品" class="ipd-line-select" :options="candidateProducts.map((product) => ({ value: product.id, label: `${product.productName}（${product.productCode}）` }))" placeholder="待分配产品" />
               <Button :disabled="acting || !assignProductId || !!adminDataError" @click="perform(() => assignProductToLine(selectedId, assignProductId), '产品归属已更新')">分配到此空间</Button>
             </Space>
-            <Alert v-if="adminDataError" type="warning" show-icon :message="`管理候选暂不可用：${adminDataError}`" />
+            <div v-if="adminDataError">
+              <Alert type="warning" show-icon :message="`管理候选暂不可用：${adminDataError}`" />
+              <Button @click="loadAdminCandidates(lineLoadVersion)">重试加载候选</Button>
+            </div>
           </div>
         </Card>
-        <Alert v-if="detailError" type="error" show-icon :message="detailError" />
+        <div v-if="detailError">
+          <Alert type="error" show-icon :message="detailError" />
+          <Button :loading="detailLoading" @click="loadDetail">重试加载目录</Button>
+        </div>
         <p v-if="detailLoading" role="status">空间目录加载中…</p>
         <template v-else-if="!detailError">
           <Card title="产品目录" size="small">
