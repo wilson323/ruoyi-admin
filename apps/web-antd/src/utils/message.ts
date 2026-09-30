@@ -3,6 +3,7 @@ import { useAppConfig } from '@vben/hooks';
 import { useEventSource, useWebSocket } from '@vueuse/core';
 
 import { useIpdAuthStore } from '#/store/ipd-auth';
+import { shouldRetryIpdWebSocket } from '#/utils/ipd-ws-close';
 
 const { apiURL, clientId, sseEnable, websocketEnable } = useAppConfig(
   import.meta.env,
@@ -90,6 +91,9 @@ export function useWebSocketMessage() {
     : websocketAddr.replace('http://', 'ws://');
   // console.log('websocketUrl: ' + websocketAddr);
 
+  // onclose 里先调用 onDisconnected，再读 explicitlyClosed。
+  // 1007 时同步 close()，才能挡住紧随其后的 autoReconnect。
+  let suppressReconnect: (() => void) | undefined;
   const websocketResponse = useWebSocket(websocketAddr, {
     autoReconnect: {
       // 重连最大次数
@@ -111,10 +115,16 @@ export function useWebSocketMessage() {
     onConnected() {
       console.info('[WS] ipd_websocket 已连接');
     },
-    onDisconnected() {
+    onDisconnected(_ws, event) {
       console.warn('[WS] ipd_websocket 已断开');
+      if (!shouldRetryIpdWebSocket(event.code)) {
+        suppressReconnect?.();
+      }
     },
   });
+  suppressReconnect = () => {
+    websocketResponse.close();
+  };
 
   return websocketResponse;
 }

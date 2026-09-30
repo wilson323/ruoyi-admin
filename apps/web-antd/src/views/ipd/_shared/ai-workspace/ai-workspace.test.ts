@@ -6,6 +6,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import IpdAiWorkspace from './ai-workspace.vue';
 import { useIpdAiWorkspace } from './use-ai-workspace';
+import type { VueWrapper } from '@vue/test-utils';
+
+/** happy-dom 的 isVisible 不认 v-show 写入的 display:none，改读行内样式。 */
+function paneShown(wrapper: VueWrapper, key: string): boolean {
+  const style = (wrapper.get(`[data-testid="ipd-ai-ws-pane-${key}"]`).element as HTMLElement).style.display;
+  return style !== 'none';
+}
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -23,10 +30,10 @@ describe('IpdAiWorkspace', () => {
         doc: '<div data-testid="doc-slot-echo">文档槽</div>',
       },
     });
-    expect(wrapper.find('[data-testid="ipd-ai-ws-pane-cards"]').isVisible()).toBe(true);
+    expect(paneShown(wrapper, 'cards')).toBe(true);
     for (const key of ['steps', 'canvas', 'doc']) {
       expect(wrapper.find(`[data-testid="ipd-ai-ws-pane-${key}"]`).exists()).toBe(true);
-      expect(wrapper.find(`[data-testid="ipd-ai-ws-pane-${key}"]`).isVisible()).toBe(false);
+      expect(paneShown(wrapper, key)).toBe(false);
     }
     expect(wrapper.find('[data-testid="card-slot-echo"]').exists()).toBe(true);
     expect(wrapper.findAll('.ws-tab')).toHaveLength(4);
@@ -38,8 +45,8 @@ describe('IpdAiWorkspace', () => {
     });
     await wrapper.get('[data-testid="ipd-ai-ws-tab-canvas"]').trigger('click');
     expect(useIpdAiWorkspace().pane.value).toBe('canvas');
-    expect(wrapper.find('[data-testid="ipd-ai-ws-pane-canvas"]').isVisible()).toBe(true);
-    expect(wrapper.find('[data-testid="ipd-ai-ws-pane-cards"]').isVisible()).toBe(false);
+    expect(paneShown(wrapper, 'canvas')).toBe(true);
+    expect(paneShown(wrapper, 'cards')).toBe(false);
     expect(wrapper.find('[data-testid="card-slot-echo"]').exists()).toBe(true);
   });
 
@@ -58,8 +65,8 @@ describe('IpdAiWorkspace', () => {
     const wrapper = mount(IpdAiWorkspace, {
       props: { panes: ['cards', 'steps'], titles: { cards: '本次运行' } },
     });
-    expect(wrapper.find('[data-testid="ipd-ai-ws-pane-cards"]').isVisible()).toBe(true);
-    expect(wrapper.find('[data-testid="ipd-ai-ws-pane-steps"]').isVisible()).toBe(false);
+    expect(paneShown(wrapper, 'cards')).toBe(true);
+    expect(paneShown(wrapper, 'steps')).toBe(false);
     expect(wrapper.find('[data-testid="ipd-ai-ws-pane-canvas"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="ipd-ai-ws-tab-cards"]').text()).toBe('本次运行');
   });

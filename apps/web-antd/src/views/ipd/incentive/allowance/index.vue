@@ -127,7 +127,7 @@ async function loadLedger(): Promise<void> {
   }
 }
 
-async function confirmStop(record: AllowanceLedgerRow): Promise<void> {
+async function confirmStop(record: { id?: number | string }): Promise<void> {
   if (!record.id) return;
   try {
     await confirmAllowanceStop(String(record.id));
