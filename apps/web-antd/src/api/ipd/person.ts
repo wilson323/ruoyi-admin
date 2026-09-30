@@ -7,6 +7,9 @@
  * - POST /persons/{id}/wecom/unbind  企微解绑联动（AC-USER-10；HR=SUPER_ADMIN/GROUP_LEADER）
  * - GET  /persons/active             在职人员清单（R118 契约 / R128 P0 #2；供内部角色选择器的在职名册）
  *                                    返回 data.persons[]{id,name,personType,groupId}，id 后端恒字符串（禁 Number()）。
+ *                                    口径=雇佣维度（employment_status=ACTIVE，DISABLED/FROZEN 仍返回）+ MOCK 三重排除；
+ *                                    与 /pm-directory（账户维度富目录，选人下拉用）分工见后端
+ *                                    docs/ipd-系统说明/双轨收敛裁决-persons-active与pm-directory-20260929.md。
  *
  * 状态机（PersonService.java 2026-09 实码）：
  * resign 置 employment=RESIGNED + account=FROZEN_PENDING_HANDOVER → 移交完成终态 DISABLED；
@@ -90,6 +93,7 @@ const normalizeActivePerson = (value: unknown): ActivePersonView => {
 /**
  * 在职人员清单（GET /persons/active；R118 契约 / R128 P0 #2 补端点）。
  * 后端返回 data.persons[]{id,name,personType,groupId}；供内部角色选择器做在职名册。
+ * 口径=雇佣维度轻名册（与 /pm-directory 富目录分工：选人下拉请继续用 pm-directory）。
  * 缺失/非数组归一为空数组（不抛错），调用方无 loading 闪烁。
  */
 export async function listActivePersons(): Promise<ActivePersonView[]> {

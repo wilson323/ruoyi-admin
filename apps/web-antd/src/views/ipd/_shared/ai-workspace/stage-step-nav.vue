@@ -18,17 +18,22 @@ const groups = computed(() => {
     items.push(stage);
     byStage.set(stage.stageCode, items);
   }
-  return [...byStage.entries()].map(([code, items]) => ({ code, items }));
+  // 组内按目录 sortOrder 升序：接口返回顺序不保证有序，编号时间线必须以目录顺序绘制
+  return [...byStage.entries()].map(([code, items]) => ({
+    code,
+    items: [...items].sort((a, b) => a.sortOrder - b.sortOrder),
+  }));
 });
 </script>
 
 <template>
   <div class="stage-nav" data-testid="ipd-ai-step-nav">
+    <p class="stage-hint">选中仅切换视图，不表示已执行或已完成。</p>
     <div v-if="groups.length === 0" class="stage-empty">该浏览阶段暂无可显示的小阶段。</div>
     <section v-for="group in groups" :key="group.code" class="stage-group">
       <h3>{{ group.code }}</h3>
       <button
-        v-for="stage in group.items"
+        v-for="(stage, index) in group.items"
         :key="stage.code"
         :aria-pressed="activeCode === stage.code"
         :data-testid="`ipd-ai-step-${stage.code}`"
@@ -36,6 +41,7 @@ const groups = computed(() => {
         type="button"
         @click="emit('select', stage.code)"
       >
+        <span class="timeline-marker">{{ String(index + 1).padStart(2, '0') }}</span>
         <strong>{{ stage.name }}</strong>
         <span v-if="stage.gateCode">{{ stage.gateCode }} 门禁</span>
         <small>{{ stage.actions.map((action) => action.actionName).join('、') }}</small>
@@ -46,6 +52,8 @@ const groups = computed(() => {
 
 <style scoped>
 .stage-nav { display: grid; gap: 12px; }
+.stage-hint { margin: 0; color: var(--ipd-muted); font-size: 12px; }
+.timeline-marker { color: var(--ipd-muted); font-size: 11px; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
 .stage-empty { padding: 10px; border: 1px dashed var(--ipd-line); border-radius: 8px; color: var(--ipd-muted); font-size: 12px; }
 .stage-group { display: grid; gap: 6px; }
 .stage-group h3 { color: var(--ipd-text); font-size: 13px; }
