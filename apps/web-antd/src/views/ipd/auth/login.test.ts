@@ -22,6 +22,7 @@ type DemoVm = {
   isDev: boolean;
   demoAccounts: ReadonlyArray<{ label: string; username: string }>;
   demoPasswords: Record<string, string>;
+  revealDemoPassword: boolean;
 };
 
 describe('login.vue demo accounts DCE guard', () => {
@@ -44,6 +45,28 @@ describe('login.vue demo accounts DCE guard', () => {
     } finally { wrapper.unmount(); }
   });
 
+  it('keeps the filled demo password masked and reveals it only on demand', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_IPD_DEMO_PASSWORDS', 'ipd-admin=a,ipd-leader=b,ipd-market=c,ipd-rd=d');
+    const wrapper = await mountLogin();
+    try {
+      const vm = wrapper.vm as unknown as DemoVm;
+      expect(vm.revealDemoPassword).toBe(false);
+      await wrapper.findAll('.demo-accounts button')[0]?.trigger('click');
+      const passwordInput = wrapper.findAll('input')[1];
+      // 默认必须是掩码：填进去的值不能常驻明文可见
+      expect(passwordInput?.attributes('type')).toBe('password');
+      const reveal = wrapper.find('.demo-reveal');
+      expect(reveal.attributes('aria-pressed')).toBe('false');
+      await reveal.trigger('click');
+      expect(vm.revealDemoPassword).toBe(true);
+      expect(wrapper.findAll('input')[1]?.attributes('type')).toBe('text');
+      // 再点一次收回，不给截图留明文窗口
+      await wrapper.find('.demo-reveal').trigger('click');
+      expect(wrapper.findAll('input')[1]?.attributes('type')).toBe('password');
+    } finally { wrapper.unmount(); }
+  });
+
   it('drops the demo block and leaks no internal usernames when DEV is false (prod)', async () => {
     vi.stubEnv('DEV', false);
     vi.stubEnv('VITE_IPD_DEMO_PASSWORDS', '');
@@ -54,6 +77,8 @@ describe('login.vue demo accounts DCE guard', () => {
       expect(vm.demoAccounts).toEqual([]);
       expect(vm.demoPasswords).toEqual({});
       expect(wrapper.findAll('.demo-accounts button')).toHaveLength(0);
+      // 揭示控件同样不得出现在 prod bundle（否则等于给公网暴露一个明文开关）
+      expect(wrapper.find('.demo-reveal').exists()).toBe(false);
       for (const username of ['ipd-admin', 'ipd-leader', 'ipd-market', 'ipd-rd']) {
         expect(wrapper.text()).not.toContain(username);
       }

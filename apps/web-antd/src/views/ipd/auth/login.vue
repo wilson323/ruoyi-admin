@@ -16,6 +16,9 @@ const router = useRouter();
 const form = reactive({ username: '', password: '' });
 const mode = ref<'account' | 'wecom'>('account');
 const passwordChanged = ref(false);
+// 演示密码按需揭示：默认掩码，点一下才显形，用完自动收回（替代把密码常驻明文渲染在按钮上，
+// 避免截图 / 录屏 / 共享屏幕把开发库口令带进工单）。生产构建下 isDev 为 false，控件不渲染。
+const revealDemoPassword = ref(false);
 let noticeTimeout: ReturnType<typeof setTimeout> | undefined;
 function clearNotice() {
   clearTimeout(noticeTimeout);
@@ -184,7 +187,7 @@ async function submitWecom() {
             <input
               id="password"
               v-model="form.password"
-              type="password"
+              :type="revealDemoPassword ? 'text' : 'password'"
               name="password"
               autocomplete="current-password"
               :maxlength="72"
@@ -193,6 +196,16 @@ async function submitWecom() {
               required
             />
           </label>
+          <!-- 揭示控件放在 label 之外：interactive content 不得嵌在 label 内（会连带触发label目标），
+               且不能落进 .demo-accounts（该区 button 数有既有断言 4/0 兜 DCE）。 -->
+          <div v-if="isDev" class="demo-reveal-row">
+            <button
+              type="button"
+              class="demo-reveal"
+              :aria-pressed="revealDemoPassword"
+              @click="revealDemoPassword = !revealDemoPassword"
+            >{{ revealDemoPassword ? '隐藏密码' : '显示密码' }}</button>
+          </div>
           <div v-if="passwordChanged" class="form-success" role="status">密码已修改，请使用新密码重新登录。</div>
           <div v-if="auth.error" class="form-error" role="alert">{{ auth.error }}</div>
           <!-- 2026-09-09 蜂群复审 a11y：冷却开始时读屏播报一次（内容插入即播报）；倒计时逐秒变化不重复播报 -->
@@ -535,6 +548,23 @@ async function submitWecom() {
   background: white;
   border: 1px solid #d6dce6;
   border-radius: 4px;
+}
+
+.demo-reveal-row {
+  display: flex;
+  justify-content: flex-end;
+  /* 抵消 .login-entry label 的 18px 下边距，让揭示按钮贴住密码框右下方 */
+  margin: -10px 0 0;
+}
+
+.demo-reveal {
+  padding: 2px 6px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  text-decoration: underline;
 }
 
 .form-error {
