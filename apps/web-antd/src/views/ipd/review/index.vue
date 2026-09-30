@@ -21,7 +21,7 @@
   6. 五大关键联合 Gate：后端 GateReviewController 双签轮次链已交付（/api/v1/gates/
      {gateId}/review|sign|reopen|extend-deadline|arbitrate|final-ruling，P2-5.2/5.4），
      由 gate-panel.vue 承接（Gate 编号定位 + 盲签视图 + 签署/重开/仲裁/终裁/延期）；
-     原型材料归档与五节点链仍为真缺口，在面板内登记。
+     原型材料归档与协作决策链仍为真缺口，在面板内登记。
 -->
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
@@ -238,11 +238,11 @@ async function submitStage(): Promise<void> {
           </div>
           <div class="empty-state">
             <div><SafetyOutlined /></div>
-            <strong>暂无五节点决策</strong>
-            <p>阶段或变更提交后，系统按顺序把任务投递给双PM、双组长和超级管理员。</p>
+            <strong>暂无并行双签决策</strong>
+            <p>需求变更提交后，系统并行把签署任务投递给双PM（盲签互不可见，任一驳回即整单否决）。</p>
           </div>
           <div class="rev-pending">
-            五节点签署链（协作决策 /api/collaboration）后端未交付，当前仅呈现原型结构，不做假数据。
+            并行双签协作链（协作决策 /api/collaboration）后端未交付（旧「五节点顺序签署链」口径已由 DOC-06 废止），当前仅呈现原型结构，不做假数据。
           </div>
         </section>
 

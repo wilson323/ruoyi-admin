@@ -8,7 +8,7 @@
  * R30 生产就绪补齐（2026-09-11）：
  * 1. 项目维度 Gate 列表（GET /projects/{id}/gates，ProjectController）已交付——列表选中
  *    即评审，不再依赖手输 Gate 编号（手输保留为兜底定位）。
- * 2. 真缺口登记（维持）：材料归档（会议纪要/评审材料 FormData 上传）与五节点顺序签署链
+ * 2. 真缺口登记（维持）：材料归档（会议纪要/评审材料 FormData 上传）与协作决策链（旧五节点口径已废止）
  *    后端未交付，维持真缺口登记，不做假数据。
  * 3. Gate 要素判定（[CONSISTENCY-4]）已落地（GatePanel 内）：countVetoFailures 控提交
  *    按钮 disabled，PASS/FAIL/条件通过 三选一，条件项必填 closeDeadline+responsiblePersonId。
@@ -169,7 +169,7 @@ function fmtDate(value: null | number | string | undefined): string {
     <div class="mt-2 text-xs text-gray-500">
       双签盲签视图（在途互盲仅"对方已提交"）、签署（每方每轮一条，任一 REJECT ⇒ REJECTED）、
       reopen（round+1，第 3 轮组长列席）、超管延期（最多 3 次）、组长仲裁、超管终裁——按 GateReviewController 契约 1:1 渲染。
-      材料归档（FormData）与五节点顺序签署链为后端真缺口，未做假数据。
+      材料归档（FormData）与协作决策链（旧五节点口径已废止）为后端真缺口，未做假数据。
     </div>
 
     <BackendPending class="mt-4" />

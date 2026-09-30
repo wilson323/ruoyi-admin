@@ -18,7 +18,7 @@
   5. 决策按钮：DRAFT→提交双签；PENDING_SIGN→拒绝/同意签署（服务端校验 MARKET_PM/RD_PM）。
      E5 修复（2026-09-27，裁决 A）：决策按钮补 v-access:code 权限码显隐（REQUIREMENT_CHANGE_SUBMIT/SIGN）
      + actionBusy 行级 in-flight 锁（disabled +「提交中…/签署中…」文案，杜绝双发）；loading 接列表空态短路。
-  6. 「需求变更五节点链」面板：本仓为双PM两节点模型，五节点协作链（/api/collaboration）
+  6. 「需求变更并行双签链」面板：本仓为双PM并行双签模型，协作决策链（/api/collaboration；旧「五节点顺序签署链」口径已由 DOC-06 废止）
      后端未交付，按原型渲染外壳与空态并如实登记，不做假数据。
 -->
 <script setup lang="ts">
@@ -375,16 +375,16 @@ async function createChange(): Promise<void> {
 
     <section class="surface decision-chain-panel">
       <div class="section-title">
-        <h2>需求变更五节点链</h2>
-        <span>市场PM → 研发PM → 市场组长 → 研发组长 → 超级管理员</span>
+        <h2>需求变更并行双签链</h2>
+        <span>市场PM ∥ 研发PM 并行签署（盲签互不可见，任一驳回即整单否决）</span>
       </div>
       <div class="empty-state">
         <div><SyncOutlined /></div>
-        <strong>暂无五节点决策</strong>
-        <p>阶段或变更提交后，系统按顺序把任务投递给双PM、双组长和超级管理员。</p>
+        <strong>暂无并行双签决策</strong>
+        <p>需求变更提交后，系统并行把签署任务投递给双PM（盲签互不可见，任一驳回即整单否决）。</p>
       </div>
       <div class="chg-pending">
-        本仓变更模型为双PM双签两节点（BR-GATE-07，见上方卡片签署格）；五节点协作链
+        本仓变更模型为双PM并行双签（BR-GATE-07，见上方卡片签署格）；协作决策链
         （/api/collaboration）后端未交付，此处仅呈现原型结构，不做假数据。
       </div>
     </section>

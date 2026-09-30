@@ -75,9 +75,9 @@ describe('IPD review page (prototype StageConfirmPage)', () => {
     expect(wrapper.text()).toContain('确认条件');
     expect(wrapper.text()).toContain('顺序控制');
     expect(wrapper.text()).toContain('还缺 1 个动作');
-    // 后置面板：五节点链 / 关键 Gate / 豁免如实登记；CONCEPT 阶段不渲染双周评审
+    // 后置面板：协作决策链 / 关键 Gate / 豁免如实登记；CONCEPT 阶段不渲染双周评审
     expect(wrapper.text()).toContain('双PM阶段确认链');
-    expect(wrapper.text()).toContain('暂无五节点决策');
+    expect(wrapper.text()).toContain('暂无并行双签决策');
     expect(wrapper.text()).toContain('五大关键联合 Gate');
     expect(wrapper.text()).toContain('例外豁免');
     expect(wrapper.text()).not.toContain('开发双周评审');

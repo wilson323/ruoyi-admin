@@ -233,7 +233,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
       ],
     },
     // ⑥ 变更管理（原型 /changes，一级入口；2026-09-06 复刻 ChangesPage：接 RequirementChangeController
-    //    P2-6.1 双签否决，创建/提交/签署真实；五节点协作链后端未交付在页内如实登记）
+    //    P2-6.1 双签否决，创建/提交/签署真实；协作决策链（旧五节点口径已废止）后端未交付在页内如实登记）
     {
       component: () => import('#/views/ipd/change/index.vue'),
       meta: { icon: 'lucide:arrow-left-right', order: 6, title: '变更管理' },

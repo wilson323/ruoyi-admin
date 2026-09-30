@@ -161,9 +161,9 @@ describe('IPD change page (prototype ChangesPage)', () => {
     expect(wrapper.text()).toContain('变更影响快照（范围/成本/时限/质量四维度）');
     expect(wrapper.text()).toContain('未命名变更');
     expect(wrapper.text()).toContain('关联需求 #—');
-    // 五节点链面板外壳如实登记，无假数据
-    expect(wrapper.text()).toContain('需求变更五节点链');
-    expect(wrapper.text()).toContain('本仓变更模型为双PM双签两节点');
+    // 协作决策链面板外壳如实登记，无假数据
+    expect(wrapper.text()).toContain('需求变更并行双签链');
+    expect(wrapper.text()).toContain('本仓变更模型为双PM并行双签');
     wrapper.unmount();
   });
 

@@ -12,7 +12,7 @@
  *
  * R30 生产就绪补齐（2026-09-11）：GET /projects/{projectId}/gates（ProjectController）
  * 项目维度 Gate 列表已交付，前端不再依赖手输 Gate 编号。
- * 与原型 /api/key-gates 的剩余差异（逐条登记）：材料归档（FormData）与五节点顺序签署链
+ * 与原型 /api/key-gates 的剩余差异（逐条登记）：材料归档（FormData）与协作决策链（旧「五节点顺序签署链」口径已废止）
  * 后端未交付，维持真缺口登记，不造假数据。
  */
 import { ipdGet, ipdPost } from './http';

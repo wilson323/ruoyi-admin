@@ -8,7 +8,7 @@
   必要适配（原型 /api/key-gates 与后端 /api/v1/gates/{gateId} 不同构，逐条登记）：
   1. 原型为项目维度 Gate 列表（/api/key-gates?projectId=）；后端无项目级 Gate 列表
      端点，Gate 评审经 Gate 编号定位（审计/通知侧提供编号）。
-  2. 原型材料归档（会议纪要/评审材料 FormData 上传）与五节点顺序签署链后端未交付，
+  2. 原型材料归档（会议纪要/评审材料 FormData 上传）与协作决策链（旧「五节点顺序签署链」口径已废止）后端未交付，
      维持真缺口登记，不做假数据。
   3. 后端双签轮次制已交付：盲签视图（在途互盲仅"对方已提交"）、签署（每方每轮一条，
      任一 REJECT ⇒ REJECTED）、reopen（round+1，第 3 轮组长列席）、超管延期（最多 3 次）、
@@ -418,7 +418,7 @@ function finalRuling(decision: GateDecision): void {
       </button>
     </div>
     <div class="rev-pending">
-      原型材料归档（会议纪要/评审材料上传）与五节点顺序签署链后端未交付，维持真缺口登记；Gate
+      原型材料归档（会议纪要/评审材料上传）与协作决策链（旧五节点口径已废止）后端未交付，维持真缺口登记；Gate
       双签轮次评审链已交付，经 Gate 编号定位后在本面板办理。
     </div>
 
