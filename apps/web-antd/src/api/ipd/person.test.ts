@@ -10,7 +10,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IpdRequestError } from './auth';
-import { rehirePerson, resignPerson, unbindWecom } from './person';
+import { listActivePersons, rehirePerson, resignPerson, unbindWecom } from './person';
 
 const envelope = (data: unknown, status = 200, code = 0): Response =>
   new Response(
@@ -136,5 +136,49 @@ describe('人员复职（R215 GAP-F3 · PersonController#rehire AC-USER-09）', 
     const cause = await rehirePerson('900101').catch((e: unknown) => e);
     expect(cause).toBeInstanceOf(IpdRequestError);
     expect((cause as IpdRequestError).code).toBe(50002);
+  });
+});
+
+describe('在职人员清单（R118 契约 / R128 P0 #2 · PersonController#listActive GET /persons/active）', () => {
+  it('listActivePersons() → GET /api/v1/persons/active，解包 data.persons[] 逐项归一化', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({
+      persons: [
+        { id: '2096266884247736321', name: '张三', personType: 'GROUP_LEADER', groupId: '100' },
+        { id: '2096266884247736322', name: '李四', personType: 'MEMBER', groupId: null },
+      ],
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    const r = await listActivePersons();
+    const call = fetcher.mock.calls[0]!;
+    expect(call[0]).toBe('/api/v1/persons/active');
+    expect(call[1]?.method).toBe('GET');
+    expect(r).toHaveLength(2);
+    expect(r[0]).toEqual({ id: '2096266884247736321', name: '张三', personType: 'GROUP_LEADER', groupId: '100' });
+    expect(r[1]?.groupId).toBeNull();
+  });
+
+  it('19 位雪花 id 逐字符无损（字符串透传，禁 Number 塌缩）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({
+      persons: [{ id: '2096266884247736321', name: '张三', personType: 'MEMBER', groupId: '100' }],
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    const r = await listActivePersons();
+    expect(r[0]?.id).toBe('2096266884247736321');
+    expect(typeof r[0]?.id).toBe('string');
+  });
+
+  it('缺省 persons / 非数组 / 字段缺失 → 归一为空数组或安全默认（不抛错）', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(envelope({})));
+    expect(await listActivePersons()).toEqual([]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(envelope({ persons: 'oops' })));
+    expect(await listActivePersons()).toEqual([]);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(envelope({ persons: [{ id: 900101 }] })));
+    const r = await listActivePersons();
+    expect(r[0]).toEqual({ id: '900101', name: '', personType: '', groupId: null });
+  });
+
+  it('权限负例：外部/游客 403 → IpdRequestError（requireInternal）不吞', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(envelope(null, 403, 30001)));
+    await expect(listActivePersons()).rejects.toBeInstanceOf(IpdRequestError);
   });
 });

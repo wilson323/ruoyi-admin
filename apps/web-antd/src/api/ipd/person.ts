@@ -5,6 +5,8 @@
  * - POST /persons/{id}/resign        离职冻结（AC-USER-08；HR 或本人）
  * - POST /persons/{id}/rehire        复职（AC-USER-09；R215 GAP-F3 补线，HR=SUPER_ADMIN/GROUP_LEADER）
  * - POST /persons/{id}/wecom/unbind  企微解绑联动（AC-USER-10；HR=SUPER_ADMIN/GROUP_LEADER）
+ * - GET  /persons/active             在职人员清单（R118 契约 / R128 P0 #2；供内部角色选择器的在职名册）
+ *                                    返回 data.persons[]{id,name,personType,groupId}，id 后端恒字符串（禁 Number()）。
  *
  * 状态机（PersonService.java 2026-09 实码）：
  * resign 置 employment=RESIGNED + account=FROZEN_PENDING_HANDOVER → 移交完成终态 DISABLED；
@@ -18,7 +20,7 @@
  *   且 DISABLED 后再 resign 会被 50002 拒（状态机互斥：unbind 先行会阻塞 resign）；
  * - reason 均 @NotBlank @Size(max=200)。
  */
-import { ipdPost } from './http';
+import { ipdGet, ipdPost } from './http';
 
 /** 离职冻结结果（PersonController.ResignView）。 */
 export interface ResignResultView {
@@ -45,6 +47,16 @@ export interface PersonOperationView {
   wecomUserId: null | string;
 }
 
+/** 在职人员轻量项（PersonController.ActivePersonView；供内部角色选择器分组）。 */
+export interface ActivePersonView {
+  /** 雪花 ID 字符串透传（后端 String.valueOf，禁 Number() 转换）。 */
+  id: string;
+  name: string;
+  personType: string;
+  /** 分组 ID（可空）。 */
+  groupId: null | string;
+}
+
 /** 离职冻结（POST /persons/{id}/resign；HR 或本人；reason 必填 1~200 字）。 */
 export function resignPerson(personId: string, reason: string): Promise<ResignResultView> {
   return ipdPost<ResignResultView>(`/persons/${encodeURIComponent(personId)}/resign`, { reason });
@@ -62,4 +74,25 @@ export function unbindWecom(personId: string, reason: string): Promise<PersonOpe
  */
 export function rehirePerson(personId: string, note?: string): Promise<PersonOperationView> {
   return ipdPost<PersonOperationView>(`/persons/${encodeURIComponent(personId)}/rehire`, note ? { note } : {});
+}
+
+/** 在职人员轻量项归一（id 纯字符串透传；groupId 可空 → null）。 */
+const normalizeActivePerson = (value: unknown): ActivePersonView => {
+  const record = (value ?? {}) as Record<string, unknown>;
+  return {
+    id: String(record.id ?? ''),
+    name: typeof record.name === 'string' ? record.name : '',
+    personType: typeof record.personType === 'string' ? record.personType : '',
+    groupId: typeof record.groupId === 'string' ? record.groupId : null,
+  };
+};
+
+/**
+ * 在职人员清单（GET /persons/active；R118 契约 / R128 P0 #2 补端点）。
+ * 后端返回 data.persons[]{id,name,personType,groupId}；供内部角色选择器做在职名册。
+ * 缺失/非数组归一为空数组（不抛错），调用方无 loading 闪烁。
+ */
+export async function listActivePersons(): Promise<ActivePersonView[]> {
+  const data = await ipdGet<{ persons?: unknown }>('/persons/active');
+  return Array.isArray(data?.persons) ? data.persons.map(normalizeActivePerson) : [];
 }
