@@ -38,8 +38,6 @@ import {
 import { IpdRequestError } from '../../../../api/ipd/auth';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { formatDateTime, PENDING_TEXT } from '../../_shared/format';
-import BackendPending from '../../_shared/backend-pending.vue';
-
 defineOptions({ name: 'IpdChangeDetail', meta: { ipdBackend: 'RequirementChangeController 已交付（P2-6.1）：GET /requirement-changes/{id}、POST /requirement-changes/{id}/submit、POST /requirement-changes/{id}/sign。', ipdCard: 'P0-10.25' } });
 
 const route = useRoute();
@@ -324,6 +322,5 @@ const empty = computed(() => !loading.value && !errorMsg.value && !detail.value)
       </Timeline>
     </Card>
 
-    <BackendPending class="mt-4" />
   </div>
 </template>

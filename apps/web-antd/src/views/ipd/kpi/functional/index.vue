@@ -51,8 +51,6 @@ import { listProjects, type Project } from '../../../../api/ipd/project';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { ipdErrorText, isTransportError } from '../../_shared/ipd-error-text';
 import { PENDING_TEXT } from '../../_shared/format';
-import BackendPending from '../../_shared/backend-pending.vue';
-
 defineOptions({ name: 'IpdKpiFunctional', meta: { ipdBackend: 'KpiRecordController GET /kpi/functional 已交付；FunctionalMetricController（A2 P1 + ORPHAN-A6）GET/PUT/DELETE /kpi/functional-metrics、GET /kpi/functional-metrics/codes 已交付。', ipdCard: 'P0-10.29' } });
 
 const auth = useIpdAuthStore();
@@ -522,6 +520,5 @@ const metricEmptyText = computed(() => {
 
     <div v-if="errorMsg && !isTransportError({ message: errorMsg })" class="mt-2 text-xs text-red-600">{{ errorMsg }}</div>
 
-    <BackendPending class="mt-4" />
   </div>
 </template>

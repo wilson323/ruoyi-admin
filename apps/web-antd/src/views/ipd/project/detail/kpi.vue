@@ -42,8 +42,6 @@ import {
 } from '../../../../api/ipd/post-launch-review';
 import { IpdRequestError } from '../../../../api/ipd/auth';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
-import BackendPending from '../../_shared/backend-pending.vue';
-
 defineOptions({ name: 'IpdProjectKpi', meta: { ipdBackend: 'KpiRecordController 已交付：GET /kpi/performance、GET /kpi/functional、GET /kpi/trend；PostLaunchReviewController（ORPHAN-A9）GET /post-launch-reviews/pending、POST /{id}/complete。', ipdCard: 'P0-10.32' } });
 
 const route = useRoute();
@@ -335,7 +333,6 @@ const trendColumns = [
       等级说明：L1 基数 1000 · L2 基数 1500 · L3 基数 2000 · L4 基数 2500 · L5 基数 3000（× 绑定项目数，封顶 2 倍）。
     </div>
 
-    <BackendPending class="mt-4" />
   </div>
 </template>
 

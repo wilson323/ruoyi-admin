@@ -34,6 +34,14 @@ import type {
 } from '../../../api/ipd/ai-copilot';
 import { streamCopilot } from '../../../api/ipd/ai-copilot';
 import { fetchGuideEvents } from '../../../api/ipd/guide-script';
+import {
+  cancelAgentRun,
+  createProjectAgentRun,
+  fetchAgentRun,
+  fetchAgentRunEvents,
+  fetchProjectAgentCapabilities,
+  listProjectAgentRuns,
+} from '../../../api/ipd/project-agent';
 import { fetchSubStages } from '../../../api/ipd/stage-sub-stages';
 import AiAssistant from './ai-assistant.vue';
 import type { AiCardEnvelope } from './ai-cards/types';
@@ -44,7 +52,42 @@ vi.mock('../../../api/ipd/ai-copilot', async (importOriginal) => {
   return { ...actual, streamCopilot: vi.fn() };
 });
 vi.mock('../../../api/ipd/guide-script', () => ({ fetchGuideEvents: vi.fn() }));
+vi.mock('../../../api/ipd/project', () => ({
+  listProjects: vi.fn(async () => [
+    { id: 'P-1', name: '示例项目', code: 'P-1' },
+    { id: 'P-2', name: '另一项目', code: 'P-2' },
+  ]),
+}));
 vi.mock('../../../api/ipd/stage-sub-stages', () => ({ fetchSubStages: vi.fn() }));
+vi.mock('../../../api/ipd/project-agent', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../api/ipd/project-agent')>()),
+  cancelAgentRun: vi.fn(),
+  createProjectAgentRun: vi.fn(),
+  fetchAgentRun: vi.fn(),
+  fetchAgentRunEvents: vi.fn(),
+  fetchProjectAgentCapabilities: vi.fn(),
+  listProjectAgentRuns: vi.fn(),
+  saveAiFeedback: vi.fn(),
+}));
+
+/** 单包单模型：面板自动选中，主发送可走 createProjectAgentRun。 */
+const AGENT_CAPS = {
+  packs: [
+    {
+      code: 'ipd.market',
+      version: '1.2.0',
+      name: '市场分析',
+      description: '',
+      stages: [],
+      actionCodes: [],
+      available: true,
+      unavailableReason: null,
+      skills: [{ name: 'swot', version: '1', sha256: 's', available: true, reason: null }],
+      tools: [{ id: '0007', name: '检索', readOnly: true, available: true, reason: null }],
+    },
+  ],
+  models: [{ id: '0012', name: '通用模型', available: true, reason: null }],
+};
 
 /** sourceRefs 构造（信封值面 number|string|string[]，测试引用 id 集用 number[] 表达后收窄断言）。 */
 function sourceRefsOf(refs: Record<string, unknown>): AiCardEnvelope['sourceRefs'] {
@@ -239,6 +282,33 @@ beforeEach(() => {
   vi.mocked(streamCopilot).mockReset();
   vi.mocked(streamCopilot).mockImplementation(async (input, handlers) => {
     streamCalls.push({ handlers, message: input.message, projectId: input.projectId });
+  });
+  vi.mocked(fetchProjectAgentCapabilities).mockReset();
+  vi.mocked(cancelAgentRun).mockReset();
+  vi.mocked(createProjectAgentRun).mockReset();
+  vi.mocked(fetchAgentRun).mockReset();
+  vi.mocked(fetchAgentRunEvents).mockReset();
+  vi.mocked(fetchProjectAgentCapabilities).mockResolvedValue(AGENT_CAPS);
+  vi.mocked(cancelAgentRun).mockResolvedValue({ runId: 'run-1', status: 'CANCEL_REQUESTED' });
+  vi.mocked(createProjectAgentRun).mockResolvedValue({ runId: 'run-1', status: 'PENDING' });
+  vi.mocked(fetchAgentRunEvents).mockResolvedValue({ events: [], nextSeq: 0, terminal: false });
+  vi.mocked(listProjectAgentRuns).mockResolvedValue([]);
+  vi.mocked(fetchAgentRun).mockResolvedValue({
+    runId: 'run-1',
+    projectId: 'P-1',
+    agentId: 'a-1',
+    status: 'PENDING',
+    actionCode: null,
+    configSnapshot: {
+      capabilityPackCode: 'ipd.market',
+      capabilityPackVersion: '1.2.0',
+      modelConfigId: '0012',
+      skills: [],
+      toolIds: [],
+    },
+    errorCode: null,
+    createdAt: 'x',
+    finishedAt: null,
   });
 });
 
@@ -801,19 +871,20 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     expect(streamCalls).toHaveLength(1);
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-project"]')!.click();
     await flushPromises();
-    expect(bodyQuery('[data-testid="ipd-ai-agent-unavailable"]')).toBeTruthy();
+    expect(bodyQuery('[data-testid="ipd-ai-agent-unavailable"]')).toBeNull();
+    expect(bodyQuery('[data-testid="project-agent-panel"]')).toBeTruthy();
     expect(bodyQuery('[data-testid="ipd-ai-runs"]')).toBeTruthy();
     expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-project"]')?.getAttribute('aria-pressed')).toBe('true');
     const activeWorkbench = bodyQuery('[data-testid="ipd-ai-workbench"]')!;
     expect(activeWorkbench.querySelector('[data-testid="ipd-ai-card-host"]')).toBeNull();
     expect(activeWorkbench.querySelector('[data-testid="ipd-ai-messages"]')?.textContent).not.toContain('已生成预审建议');
-    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(true);
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(false);
     lastHandlers().onDelta('迟到的副驾帧');
     expect(activeWorkbench.querySelector('[data-testid="ipd-ai-messages"]')?.textContent).not.toContain('迟到的副驾帧');
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-collapse"]')!.click();
     await flushPromises();
     expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-project"]')?.getAttribute('aria-pressed')).toBe('true');
-    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(true);
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(false);
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-classic"]')!.click();
     await flushPromises();
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-fab"]')!.click();
@@ -843,10 +914,11 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     useIpdAiWorkspace().setMode('ai');
     await mountAssistant();
     expect(bodyQuery('[data-testid="ipd-ai-workbench"]')).toBeTruthy();
-    expect(bodyQuery('[data-testid="ipd-ai-agent-unavailable"]')).toBeTruthy();
+    expect(bodyQuery('[data-testid="ipd-ai-agent-unavailable"]')).toBeNull();
+    expect(bodyQuery('[data-testid="project-agent-panel"]')).toBeTruthy();
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-collapse"]')!.click();
     await flushPromises();
-    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(true);
+    expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(false);
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-classic"]')!.click();
     await flushPromises();
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-fab"]')!.click();
@@ -883,11 +955,282 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     await flushPromises();
     expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-stage-DEV"]')?.getAttribute('aria-pressed')).toBe('true');
     expect(bodyQuery('[data-testid="ipd-ai-showcase"]')?.textContent).toContain('正在浏览：开发阶段');
+    expect(bodyQuery('[data-testid="ipd-ai-stage-nav"]')?.textContent).toContain('概念');
+    expect(bodyQuery('[data-testid="ipd-ai-run-readout"]')).toBeTruthy();
+    expect(bodyQuery('[data-testid="agent-run-history"]')?.textContent).toContain('没有匹配的运行');
+    expect(bodyQuery('[data-testid="agent-run-history"]')?.textContent).not.toContain('更早的运行没有列表接口');
+    const controls = bodyQuery('[data-testid="ipd-ai-agent-controls"]');
+    expect(controls?.closest('[data-testid="ipd-ai-composer"]')).toBeTruthy();
+    expect(controls?.hasAttribute('hidden')).toBe(true);
+    expect(controls?.querySelector('[data-testid="agent-capability-picker"]')).toBeTruthy();
+    expect(bodyQuery('[data-testid="ipd-ai-runs"]')?.querySelector('[data-testid="agent-capability-picker"]')).toBeNull();
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-plus"]')!.click();
+    await flushPromises();
+    expect(controls?.hasAttribute('hidden')).toBe(false);
+    expect(bodyQuery('[data-testid="ipd-ai-runs"]')?.querySelector('[data-testid="panel-message"]')).toBeNull();
+    expect(controls?.textContent).toContain('市场上还没纳入这个能力包的');
+    expect(bodyQuery('[data-testid="agent-run-artifacts"]')).toBeTruthy();
+    expect(bodyQuery('[data-testid="ipd-ai-showcase"]')?.textContent).not.toContain('B3 落位');
     expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-stage-PLAN"]')?.textContent).toContain('当前进度');
-    expect(bodyQuery('[data-testid="ipd-ai-ctx"]')?.textContent).toContain('执行未启用');
+    expect(bodyQuery('[data-testid="ipd-ai-project-select"]')?.textContent).toContain('示例项目');
+    expect(bodyQuery('[data-testid="ipd-ai-ctx"]')?.textContent).toContain('当前项目：#P-1');
     expect(bodyQuery('[data-testid="ipd-ai-ctx"]')?.textContent).not.toContain('已注入');
+    expect(bodyQuery('[data-testid="ipd-ai-ctx"]')?.textContent).not.toContain('执行未启用');
+    expect(bodyQuery('[data-testid="project-agent-panel"]')).toBeTruthy();
     expect(bodyQuery('[data-testid="ipd-ai-new"]')).toBeNull();
     expect(streamCalls).toHaveLength(0);
+
+    await sendText('分析竞品');
+    expect(streamCalls).toHaveLength(0);
+    expect(createProjectAgentRun).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createProjectAgentRun).mock.calls[0]?.[0]).toBe('P-1');
+    expect(vi.mocked(createProjectAgentRun).mock.calls[0]?.[1]).toMatchObject({ message: '分析竞品' });
+  });
+
+  it('㉕ 意图卡只挂本次运行，发送后从步骤页切到本次运行', async () => {
+    window.localStorage.setItem('ipd:current-project', 'P-1');
+    useIpdAiWorkspace().setMode('ai');
+    useIpdAiWorkspace().setPane('steps');
+    vi.mocked(listProjectAgentRuns).mockResolvedValue([{
+      runId: '9007199254740993',
+      status: 'SUCCEEDED',
+      actionCode: 'C02',
+      capabilityPackCode: 'ipd.market',
+      capabilityPackVersion: '1.0.0',
+      createdAt: '2026-09-30T01:00:00Z',
+      finishedAt: null,
+      inputChars: 8,
+      artifactTitles: ['竞品报告'],
+      artifactExcerpt: '摘录不是提问',
+    }]);
+    vi.mocked(fetchAgentRunEvents).mockResolvedValue({
+      events: [{
+        seq: 1,
+        type: 'STEP',
+        payload: {
+          kind: 'INTENT',
+          title: '意图判断',
+          detail: '范围还没定，先澄清，不进入执行。',
+          needsPlan: true,
+          needsClarification: true,
+          questions: ['范围还没定'],
+          steps: ['核对功能'],
+        },
+        createdAt: '2026-01-01T00:00:00Z',
+      }],
+      nextSeq: 2,
+      terminal: true,
+    });
+    await mountAssistant({
+      projectCurrentStage: 'PLAN',
+      stages: [{ code: 'PLAN', name: '计划' }],
+    });
+    expect(useIpdAiWorkspace().pane.value).toBe('steps');
+    const history = bodyQuery('[data-testid="agent-run-history"]');
+    expect(history?.textContent).toContain('C02');
+    expect(history?.textContent).toContain('竞品报告');
+    expect(history?.textContent).not.toContain('更早的运行没有列表接口');
+    expect(history?.textContent).not.toContain('摘录不是提问');
+    expect(bodyQuery('[data-testid="ipd-ai-stage-PLAN"]')?.textContent).toContain('当前进度');
+    await sendText('分析竞品');
+    expect(useIpdAiWorkspace().pane.value).toBe('cards');
+    expect(bodyQuery('[data-testid="ipd-ai-stage-PLAN"]')?.getAttribute('aria-pressed')).toBe('true');
+    const card = bodyQuery('[data-testid="ipd-ai-run-readout"] [data-testid="agent-intent-card"]');
+    expect(card?.textContent).toContain('范围还没定');
+    expect(card?.textContent).toContain('核对功能');
+    expect(bodyQuery('[data-testid="ipd-ai-msg-assistant"] [data-testid="agent-intent-card"]')).toBeNull();
+  });
+
+  it('㉗ 点澄清选项仍走创建运行，并切到本次运行', async () => {
+    window.localStorage.setItem('ipd:current-project', 'P-1');
+    useIpdAiWorkspace().setMode('ai');
+    useIpdAiWorkspace().setPane('steps');
+    const question = '这句话里有未选定的方向：「轻量」还是「完整」。请指定其中一个后再执行。';
+    vi.mocked(fetchAgentRunEvents).mockResolvedValue({
+      events: [{
+        seq: 1,
+        type: 'STEP',
+        payload: {
+          kind: 'INTENT',
+          title: '意图判断',
+          detail: '范围还没定，先澄清，不进入执行。',
+          needsPlan: false,
+          needsClarification: true,
+          questions: [question],
+          steps: [],
+        },
+        createdAt: '2026-01-01T00:00:00Z',
+      }, {
+        seq: 2,
+        type: 'STEP',
+        payload: { kind: 'AWAIT_USER', reason: 'CLARIFICATION', title: '等待澄清' },
+        createdAt: '2026-01-01T00:00:01Z',
+      }],
+      nextSeq: 3,
+      terminal: false,
+    });
+    vi.mocked(fetchAgentRun).mockResolvedValue({
+      runId: 'run-1',
+      projectId: 'P-1',
+      agentId: 'a-1',
+      status: 'WAITING_APPROVAL',
+      actionCode: null,
+      configSnapshot: {
+        capabilityPackCode: 'ipd.market',
+        capabilityPackVersion: '1.2.0',
+        modelConfigId: '0012',
+        skills: [],
+        toolIds: [],
+      },
+      errorCode: null,
+      createdAt: 'x',
+      finishedAt: null,
+    });
+    await mountAssistant();
+    await sendText('先分析再出报告');
+    expect(createProjectAgentRun).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(bodyQuery('[data-testid="ipd-ai-run-readout"] [data-testid="intent-option"]')).toBeTruthy();
+    });
+    const options = Array.from(
+      document.body.querySelectorAll<HTMLButtonElement>(
+        '[data-testid="ipd-ai-run-readout"] [data-testid="intent-option"]',
+      ),
+    );
+    expect(options.map((button) => button.textContent?.replace(/\s+/g, '') )).toEqual(['A轻量', 'B完整']);
+    options[1]!.click();
+    await flushPromises();
+    await vi.waitFor(() => {
+      expect(createProjectAgentRun).toHaveBeenCalledTimes(2);
+    });
+    expect(vi.mocked(createProjectAgentRun).mock.calls[1]?.[1]).toMatchObject({
+      message: expect.stringMatching(/^已选：完整。/),
+    });
+    expect(useIpdAiWorkspace().pane.value).toBe('cards');
+    expect(bodyQuery('[data-testid="ipd-ai-messages"] [data-testid="agent-intent-card"]')).toBeNull();
+  });
+
+  it('㉓ 项目模式对话栏展示模型回答，思考标签不进正文', async () => {
+    window.localStorage.setItem('ipd:current-project', 'P-1');
+    useIpdAiWorkspace().setMode('ai');
+    vi.mocked(fetchAgentRunEvents).mockResolvedValue({
+      events: [{
+        seq: 1,
+        type: 'TEXT_DELTA',
+        payload: { text: '<think>三个主题未检索到</think>无法输出项目介绍' },
+        createdAt: '2026-01-01T00:00:00Z',
+      }],
+      nextSeq: 2,
+      terminal: true,
+    });
+    vi.mocked(fetchAgentRun).mockResolvedValue({
+      runId: 'run-1',
+      projectId: 'P-1',
+      agentId: 'a-1',
+      status: 'SUCCEEDED',
+      actionCode: null,
+      configSnapshot: {
+        capabilityPackCode: 'ipd.market',
+        capabilityPackVersion: '1.2.0',
+        modelConfigId: '0012',
+        skills: [],
+        toolIds: [],
+      },
+      errorCode: null,
+      createdAt: 'x',
+      finishedAt: 'y',
+    });
+    await mountAssistant();
+    await sendText('介绍这个项目');
+    const messages = bodyQuery('[data-testid="ipd-ai-messages"]');
+    expect(messages?.textContent).toContain('介绍这个项目');
+    await vi.waitFor(() => {
+      const answer = bodyQuery('[data-testid="ipd-ai-msg-assistant"] [data-testid="assistant-answer"]');
+      expect(answer?.textContent).toContain('无法输出项目介绍');
+    });
+    const answer = bodyQuery('[data-testid="ipd-ai-msg-assistant"] [data-testid="assistant-answer"]');
+    expect(answer?.textContent).not.toContain('<think>');
+    expect(bodyQuery('[data-testid="ipd-ai-msg-assistant"] [data-testid="assistant-think"]')?.textContent)
+      .toContain('三个主题未检索到');
+  });
+
+  it('㉖ 意图卡短句与思考区分块：C02 执行规约不进意图卡，摘要只留思考', async () => {
+    window.localStorage.setItem('ipd:current-project', 'P-1');
+    useIpdAiWorkspace().setMode('ai');
+    const c02Rule =
+      '按 C02 竞品分析 skill 的执行规约，先对考勤智能体的产品定位、候选竞品、区域准入与需求差异四类事实源做并行检索；检索不到的资料一律标"未取得"';
+    vi.mocked(fetchAgentRunEvents).mockResolvedValue({
+      events: [
+        {
+          seq: 1,
+          type: 'STEP',
+          payload: {
+            kind: 'SKILL_LOADED',
+            name: 'c02-competitor',
+            detail: c02Rule,
+          },
+          createdAt: '2026-01-01T00:00:00Z',
+        },
+        {
+          seq: 2,
+          type: 'STEP',
+          payload: {
+            kind: 'INTENT',
+            title: '意图判断',
+            detail: '可以直接回答，不单独列计划。',
+            needsPlan: false,
+            needsClarification: false,
+            questions: [],
+            steps: [],
+          },
+          createdAt: '2026-01-01T00:00:01Z',
+        },
+        {
+          seq: 3,
+          type: 'TEXT_DELTA',
+          payload: { text: `<think>${c02Rule}</think>` },
+          createdAt: '2026-01-01T00:00:02Z',
+        },
+      ],
+      nextSeq: 4,
+      terminal: true,
+    });
+    vi.mocked(fetchAgentRun).mockResolvedValue({
+      runId: 'run-1',
+      projectId: 'P-1',
+      agentId: 'a-1',
+      status: 'SUCCEEDED',
+      actionCode: null,
+      configSnapshot: {
+        capabilityPackCode: 'ipd.market',
+        capabilityPackVersion: '1.2.0',
+        modelConfigId: '0012',
+        skills: [],
+        toolIds: [],
+      },
+      errorCode: null,
+      createdAt: 'x',
+      finishedAt: 'y',
+    });
+    await mountAssistant();
+    await sendText('区域市场准入与需求差异调研，生成考勤智能体的市场洞察调研报告');
+    const card = bodyQuery('[data-testid="ipd-ai-run-readout"] [data-testid="agent-intent-card"]');
+    expect(card?.textContent).toContain('不要计划');
+    expect(card?.textContent).toContain('不要澄清');
+    expect(card?.textContent).toContain('可以直接回答，不单独列计划。');
+    expect(card?.textContent).not.toContain('C02 竞品分析');
+    expect(card?.textContent).not.toContain('执行规约');
+    expect(bodyQuery('[data-testid="ipd-ai-msg-assistant"] [data-testid="agent-intent-card"]')).toBeNull();
+    await vi.waitFor(() => {
+      expect(bodyQuery('[data-testid="ipd-ai-msg-assistant"] [data-testid="assistant-think"]')).toBeTruthy();
+    });
+    const summary = bodyQuery('[data-testid="assistant-think-summary"]');
+    expect(summary?.textContent?.replace(/\s+/g, '')).toContain('思考');
+    expect(summary?.textContent).not.toContain('执行规约');
+    expect(bodyQuery('[data-testid="assistant-think-body"]')?.textContent).toContain('C02 竞品分析');
+    expect(bodyQuery('[data-testid="assistant-answer"]')).toBeNull();
+    const think = bodyQuery('[data-testid="assistant-think"]');
+    expect(think?.hasAttribute('open')).toBe(false);
   });
 
   it('㉑ 项目占位模式阻断旧副驾引导事件，切回副驾后恢复引导', async () => {
@@ -895,7 +1238,11 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     useIpdAiWorkspace().setPane('steps');
     useIpdAiWorkspace().setMode('ai');
     vi.mocked(fetchSubStages).mockResolvedValue([{
-      actions: [], code: 'S1', gateCode: null, id: '1', isGate: 'N',
+      actions: [{
+        actionCode: 'A-01', actionName: '竞品分析', skillNames: ['swot'],
+        sortOrder: 1, subStageCode: 'S1',
+      }],
+      code: 'S1', gateCode: null, id: '1', isGate: 'N',
       name: '概念小阶段', ownerRole: 'MARKET_PM', skillHint: null,
       sortOrder: 1, stageCode: 'CONCEPT',
     }]);
@@ -909,6 +1256,9 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     await flushPromises();
     expect(emitted).toHaveLength(1); // 只计测试显式派发；项目模式点击不派发。
     expect(fetchGuideEvents).not.toHaveBeenCalled();
+    expect(bodyQuery('[data-testid="ipd-ai-step-actions"]')?.textContent).toContain('概念小阶段');
+    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-step-action-A-01"]')!.click();
+    expect(fetchGuideEvents).not.toHaveBeenCalled();
 
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-classic"]')!.click();
     await flushPromises();
@@ -917,5 +1267,19 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-step-S1"]')!.click();
     await flushPromises();
     expect(fetchGuideEvents).toHaveBeenCalledWith('S1', 'P-1');
+  });
+
+  it('㉒ 对话栏可以切换项目，并同步全局当前项目', async () => {
+    window.localStorage.setItem('ipd:current-project', 'P-1');
+    await mountAssistant();
+    const select = bodyQuery<HTMLSelectElement>('[data-testid="ipd-ai-project-select"]');
+    expect(select?.value).toBe('P-1');
+    const synced = trackEvents('ipd:current-project-changed');
+    select!.value = 'P-2';
+    select!.dispatchEvent(new Event('change'));
+    await flushPromises();
+    expect(window.localStorage.getItem('ipd:current-project')).toBe('P-2');
+    expect(synced).toHaveLength(1);
+    expect(bodyQuery('[data-testid="ipd-ai-ctx"]')?.textContent).toContain('#P-2');
   });
 });

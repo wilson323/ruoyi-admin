@@ -86,6 +86,11 @@ export function listAllowances(period: string, personId?: string): Promise<Allow
  * ✅ W4-D 已交付：`GET /api/v1/allowance/pending-stop`（AllowanceLedgerService.pendingStop）。
  * 权限：ipd:kpi:query。后端按 `stopReason IS NOT NULL` 过滤。
  */
+/** 确认停发：终额置 0。已确认时原样返回。 */
+export function confirmAllowanceStop(ledgerId: string): Promise<AllowanceLedger> {
+  return ipdPost<AllowanceLedger>(`/allowance/ledgers/${encodeURIComponent(ledgerId)}/confirm-stop`);
+}
+
 export function getAllowancePendingStop(period: string): Promise<AllowanceLedger[]> {
   return ipdGet<AllowanceLedger[]>('/allowance/pending-stop', { period });
 }

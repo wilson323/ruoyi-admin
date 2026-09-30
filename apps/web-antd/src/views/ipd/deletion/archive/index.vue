@@ -4,8 +4,8 @@
  * BR-DEL-03：两级通过后软删除进入归档区；「彻底清除」为不可恢复的物理清除，
  * 仅对已删除记录开放，二次确认后执行；删除动作本身写入审计链。
  */
-import { computed, onMounted } from 'vue';
-import { Alert, Button, Card, Popconfirm, Table } from 'ant-design-vue';
+import { computed, onMounted, ref } from 'vue';
+import { Alert, Button, Card, Form, Input, Modal, Table, message } from 'ant-design-vue';
 
 import {
   listDeletionArchive,
@@ -31,14 +31,26 @@ const { busyId: purgingId, load, rows, runRowAction, loading } = useApprovalQueu
   loadErrorFallback: '加载归档区失败',
 });
 
+const purgeTarget = ref<Record<string, any> | null>(null);
+const clearedReason = ref('');
+
 /** 表格 slot 的 record 是宽松对象；composable 内经 getId 收敛为 string id。 */
-async function purge(record: Record<string, any>) {
+async function purge() {
+  const record = purgeTarget.value;
+  const reason = clearedReason.value.trim();
+  if (!record) return;
+  if (!reason) {
+    message.warning('请填写清除原因');
+    return Promise.reject(new Error('missing-reason'));
+  }
   await runRowAction({
-    action: (id) => purgeDeletionRequest(id),
+    action: (id) => purgeDeletionRequest(id, reason),
     errorFallback: '清除失败',
     row: record,
     successText: '已彻底清除，该记录不可恢复',
   });
+  purgeTarget.value = null;
+  clearedReason.value = '';
 }
 
 onMounted(load);
@@ -73,16 +85,14 @@ const columns = [
           <template v-else-if="column.key === 'executedAt'">{{ formatDateTime(record.executedAt) }}</template>
           <template v-else-if="column.key === 'createTime'">{{ formatDateTime(record.createTime) }}</template>
           <template v-else-if="column.key === 'actions'">
-            <Popconfirm
+            <Button
               v-access:code="IPD_PERMISSION_CODES.DELETION_REQUEST_PURGE"
-              title="彻底清除不可恢复，确认执行？"
-              ok-text="确认清除"
-              ok-type="danger"
-              cancel-text="取消"
-              @confirm="purge(record)"
-            >
-              <Button danger :loading="purgingId === record.id" size="small" type="link">彻底清除</Button>
-            </Popconfirm>
+              danger
+              :loading="purgingId === record.id"
+              size="small"
+              type="link"
+              @click="purgeTarget = record; clearedReason = ''"
+            >彻底清除</Button>
           </template>
         </template>
       </Table>
@@ -90,5 +100,21 @@ const columns = [
     <Card v-else>
       <Alert message="归档区仅超级管理员可见（BR-ORG-06）。" show-icon type="warning" />
     </Card>
+    <Modal
+      :open="purgeTarget !== null"
+      title="彻底清除需二次确认"
+      ok-text="确认清除"
+      ok-type="danger"
+      cancel-text="取消"
+      @ok="purge"
+      @cancel="purgeTarget = null"
+    >
+      <p>确认尾号将按申请编号 {{ purgeTarget?.id }} 提交。清除不可恢复。</p>
+      <Form layout="vertical">
+        <Form.Item label="清除原因" required>
+          <Input v-model:value="clearedReason" placeholder="填写清除原因" />
+        </Form.Item>
+      </Form>
+    </Modal>
   </div>
 </template>

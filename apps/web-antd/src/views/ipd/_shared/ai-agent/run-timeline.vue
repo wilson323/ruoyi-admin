@@ -1,0 +1,403 @@
+<script lang="ts" setup>
+/**
+ * 项目智能体运行时间线。
+ *
+ * <p>只渲染后端真实事件（经 timeline-model 折叠）：步骤、工具调用 / 结果、来源、文本增量、
+ * 产物、错误、完成。没有事件时不显示任何虚构步骤。
+ *
+ * <p>三态区分：
+ * - 未发起：hasRun=false → 引导文案；
+ * - 加载：已发起、尚无事件且仍在轮询 → role=status「正在等待智能体事件」；
+ * - 失败：errorText 非空 → Alert（文案走 description prop，重试按钮放在 Alert 外，
+ *   见 CLAUDE.md F8：description prop 与插槽同供时插槽被吞）；已收到的事件继续保留展示。
+ *
+ * <p>ARTIFACT：仅当 payload 带持久 artifactId 且本组件收到 runId 时展示「工作成果定档」
+ * （调用已有 applyAgentRunArtifact，回填本项目文档链）。知识库是否入库只展示回执
+ * indexStatus，NOT_INDEXED 不得写成已入库。定档用逻辑 artifactId。产物点赞只在
+ * payload 带字符串 versionId 时渲染，旧事件没有 versionId 就不打点赞。
+ *
+ * <p>防注入：全部 {{ }} 插值，禁 v-html；来源链接仅 http/https。
+ */
+import { computed, reactive } from 'vue';
+import { Alert, Button, Tag } from 'ant-design-vue';
+
+import AiLoadingState from '../ai-loading-state.vue';
+
+import {
+  agentRunStatusMeta,
+  applyAgentRunArtifact,
+  type AgentRunEvent,
+} from '../../../../api/ipd/project-agent';
+import { ipdErrorText } from '../ipd-error-text';
+import AssistantTurn from '../assistant-turn.vue';
+import { archiveResultText } from './artifact-archive';
+import type { ClarificationChoice } from './clarification-choices';
+import FeedbackBar from './feedback-bar.vue';
+import IntentCard from './intent-card.vue';
+import ToolCallCard from './tool-call-card.vue';
+import { foldTimelineRows } from './tool-call-rows';
+import { buildTimelineItems, type TimelineItem } from './timeline-model';
+
+/** 单条产物「工作成果定档」的交互态。 */
+interface ArtifactApplyState {
+  applied: boolean;
+  errorText: string;
+  loading: boolean;
+  /** 定档成功后的回执说明（文档编号、状态、知识库索引）。 */
+  receiptText: string;
+}
+
+/** 组件 props。 */
+interface Props {
+  /** 已去重、升序的真实事件。 */
+  events: readonly AgentRunEvent[];
+  /** 是否已发起运行。 */
+  hasRun: boolean;
+  /** 当前运行 ID；空时不渲染「工作成果定档」（路径需要 runId）。 */
+  runId?: null | string;
+  /** 是否仍在轮询事件。 */
+  loading?: boolean;
+  /** 已转成中文的错误文案；空串表示无错误。 */
+  errorText?: string;
+  /** 为 false 时不渲染定档按钮（定档留在左侧产物列，避免两处各写一次）。 */
+  showArchive?: boolean;
+  /** artifacts 只保留产物事件，供左侧定档列使用。 */
+  variant?: 'artifacts' | 'full';
+  /** 当前运行的动作码。空表示未绑定，计划确认卡据此决定要不要按钮。 */
+  actionCode?: null | string;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  actionCode: null,
+  errorText: '',
+  loading: false,
+  runId: null,
+  showArchive: true,
+  variant: 'full',
+});
+
+const emit = defineEmits<{
+  choose: [choice: ClarificationChoice];
+  execute: [steps: string[]];
+  retry: [];
+  revise: [];
+}>();
+
+const shownEvents = computed(() =>
+  props.variant === 'artifacts' ? props.events.filter((event) => event.type === 'ARTIFACT') : props.events,
+);
+const items = computed(() => buildTimelineItems(shownEvents.value));
+const rows = computed(() => foldTimelineRows(items.value, props.loading));
+/** 只有最后一段正文显示输入光标，避免前面已经写完的段落一起闪。 */
+const liveTextKey = computed(() => {
+  if (!props.loading) return '';
+  for (let index = rows.value.length - 1; index >= 0; index -= 1) {
+    const row = rows.value[index];
+    if (row?.kind === 'plain' && row.item.kind === 'text') return row.item.key;
+  }
+  return '';
+});
+const isWaiting = computed(() => props.hasRun && items.value.length === 0 && props.loading && !props.errorText);
+const isEmptyRun = computed(() => props.hasRun && items.value.length === 0 && !props.loading && !props.errorText);
+
+/** 按 artifactId 记录应用态（仅内存，不跨运行持久化）。 */
+const applyByArtifact = reactive<Record<string, ArtifactApplyState>>({});
+
+/** 条目类型 → 中文标签。 */
+const KIND_LABEL: Record<TimelineItem['kind'], string> = {
+  'artifact': '产物',
+  'error': '错误',
+  'intent': '意图',
+  'run-finished': '运行结束',
+  'run-started': '运行开始',
+  'source': '来源',
+  'step': '步骤',
+  'text': '输出',
+  'tool-call': '调用工具',
+  'tool-result': '工具结果',
+};
+
+/** 运行结束条目的状态标签（状态缺失时不编造）。 */
+function finishedLabel(item: Extract<TimelineItem, { kind: 'run-finished' }>): string {
+  return item.status ? agentRunStatusMeta(item.status).label : '';
+}
+
+/** 仅非空字符串视为可调用 apply 的 runId。 */
+function persistentRunId(): null | string {
+  return typeof props.runId === 'string' && props.runId.trim() !== '' ? props.runId : null;
+}
+
+/**
+ * 将产物定档回填到本项目文档（复用 api/ipd/project-agent.applyAgentRunArtifact）。
+ *
+ * 不另开文档写入。知识库索引状态只转述回执，审核前保持未入库。
+ *
+ * @param artifactId 事件 payload 中的持久产物 ID
+ */
+async function onApplyArtifact(artifactId: string): Promise<void> {
+  const run = persistentRunId();
+  if (!run || !artifactId) return;
+  const prev = applyByArtifact[artifactId];
+  if (prev?.loading || prev?.applied) return;
+  applyByArtifact[artifactId] = { loading: true, errorText: '', applied: false, receiptText: '' };
+  try {
+    const receipt = await applyAgentRunArtifact(run, artifactId);
+    if (persistentRunId() !== run) return;
+    const receiptText = archiveResultText(receipt);
+    applyByArtifact[artifactId] = {
+      loading: false,
+      errorText: receiptText ? '' : '产物未能回填项目文档，请稍后重试',
+      applied: receiptText !== '',
+      receiptText,
+    };
+  } catch (error) {
+    if (persistentRunId() !== run) return;
+    applyByArtifact[artifactId] = {
+      loading: false,
+      applied: false,
+      receiptText: '',
+      errorText: ipdErrorText(error, { fallback: '工作成果定档失败，请稍后重试' }),
+    };
+  }
+}
+</script>
+
+<template>
+  <section class="ipd-agent-timeline" aria-label="智能体运行时间线" data-testid="agent-run-timeline">
+    <Alert
+      v-if="errorText"
+      type="error"
+      show-icon
+      message="运行事件获取失败"
+      :description="errorText"
+      data-testid="timeline-error"
+    />
+    <Button v-if="errorText" size="small" class="timeline-retry" data-testid="timeline-retry" @click="emit('retry')">
+      重新拉取事件
+    </Button>
+
+    <p v-if="!hasRun" class="timeline-hint" data-testid="timeline-idle">
+      尚未发起运行，发起后这里按智能体的真实事件逐条展示。
+    </p>
+    <AiLoadingState
+      v-else-if="isWaiting"
+      data-testid="timeline-waiting"
+      label="正在等待智能体事件"
+    />
+    <p v-else-if="isEmptyRun" class="timeline-hint" data-testid="timeline-empty">本次运行暂无事件。</p>
+
+    <ol v-if="items.length > 0" class="timeline-list" aria-live="polite" aria-relevant="additions">
+      <li
+        v-for="row in rows"
+        :key="row.kind === 'tool' ? row.card.key : row.item.key"
+        :class="['timeline-item', row.kind === 'tool' ? 'is-tool-call' : `is-${row.item.kind}`]"
+        :data-kind="row.kind === 'tool' ? 'tool-call' : row.item.kind"
+        data-testid="timeline-item"
+      >
+        <template v-if="row.kind === 'tool'">
+          <span class="item-kind">调用工具</span>
+          <ToolCallCard
+            :name="row.card.name"
+            :state="row.card.state"
+            :input="row.card.input"
+            :output="row.card.output"
+            :error="row.card.error"
+          />
+        </template>
+        <template v-else>
+        <span class="item-kind">{{ KIND_LABEL[row.item.kind] }}</span>
+        <div class="item-body">
+          <template v-if="row.item.kind === 'intent'">
+            <IntentCard
+              :events="shownEvents"
+              :intent="row.item"
+              :action-code="actionCode"
+              @choose="emit('choose', $event)"
+              @execute="emit('execute', $event)"
+              @revise="emit('revise')"
+            />
+          </template>
+          <template v-else-if="row.item.kind === 'step'">
+            <strong v-if="row.item.title">{{ row.item.title }}</strong>
+            <span v-if="row.item.detail" class="item-detail">{{ row.item.detail }}</span>
+          </template>
+          <template v-else-if="row.item.kind === 'source'">
+            <a v-if="row.item.url" :href="row.item.url" target="_blank" rel="noopener noreferrer">
+              {{ row.item.title || row.item.url }}
+            </a>
+            <span v-else>{{ row.item.title || row.item.reference }}</span>
+          </template>
+          <template v-else-if="row.item.kind === 'text'">
+            <AssistantTurn
+              pace
+              :content="row.item.text"
+              :streaming="row.item.key === liveTextKey"
+            />
+          </template>
+          <template v-else-if="row.item.kind === 'artifact'">
+            <strong>{{ row.item.title || '未命名产物' }}</strong>
+            <Tag v-if="row.item.artifactType">{{ row.item.artifactType }}</Tag>
+            <pre
+              v-if="row.item.artifactId && row.item.preview"
+              class="item-preview"
+              data-testid="artifact-preview"
+            >{{ row.item.preview }}</pre>
+            <div v-if="showArchive && row.item.artifactId && persistentRunId()" class="item-apply" data-testid="artifact-apply">
+              <p class="item-apply-note" data-testid="artifact-archive-note">
+                定档回填本项目文档链。知识库须审核后入库，不会标成已索引。
+              </p>
+              <Button
+                size="small"
+                type="primary"
+                :loading="applyByArtifact[row.item.artifactId]?.loading === true"
+                :disabled="applyByArtifact[row.item.artifactId]?.applied === true"
+                data-testid="artifact-apply-btn"
+                @click="onApplyArtifact(row.item.artifactId)"
+              >
+                工作成果定档
+              </Button>
+              <span
+                v-if="applyByArtifact[row.item.artifactId]?.applied"
+                class="item-apply-ok"
+                role="status"
+                data-testid="artifact-apply-ok"
+              >
+                {{ applyByArtifact[row.item.artifactId]?.receiptText }}
+              </span>
+              <p
+                v-if="applyByArtifact[row.item.artifactId]?.errorText"
+                class="item-apply-error"
+                role="alert"
+                data-testid="artifact-apply-error"
+              >
+                {{ applyByArtifact[row.item.artifactId]?.errorText }}
+              </p>
+            </div>
+            <FeedbackBar
+              v-if="row.item.versionId"
+              target-type="ARTIFACT_VERSION"
+              :target-id="row.item.versionId"
+              :label="`产物${row.item.title ? `：${row.item.title}` : ''}`"
+            />
+          </template>
+          <template v-else-if="row.item.kind === 'error'">
+            <span class="item-error" role="alert">
+              {{ row.item.message || '智能体返回错误' }}<template v-if="row.item.code">（{{ row.item.code }}）</template>
+            </span>
+          </template>
+          <template v-else-if="row.item.kind === 'run-finished'">
+            <span>{{ finishedLabel(row.item) }}</span>
+          </template>
+        </div>
+        </template>
+      </li>
+    </ol>
+  </section>
+</template>
+
+<style scoped>
+.ipd-agent-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--ipd-font, inherit);
+  color: var(--ipd-text);
+}
+.timeline-retry {
+  align-self: flex-start;
+}
+.timeline-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ipd-muted);
+}
+.timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.timeline-item {
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--ipd-surface);
+  border: 1px solid var(--ipd-line);
+  border-radius: 6px;
+}
+.timeline-item.is-error {
+  border-color: var(--ipd-red);
+}
+.item-kind {
+  flex: 0 0 64px;
+  font-size: 12px;
+  color: var(--ipd-muted);
+}
+.item-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+  min-width: 0;
+}
+.item-detail {
+  color: var(--ipd-muted);
+}
+.item-code {
+  max-width: 100%;
+  font-size: 12px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+.item-text {
+  margin: 0;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.item-preview {
+  flex: 1 1 100%;
+  max-height: 160px;
+  padding: 8px;
+  margin: 0;
+  overflow: auto;
+  font-size: 12px;
+  font-family: var(--ipd-font, inherit);
+  line-height: 1.45;
+  color: var(--ipd-text);
+  word-break: break-word;
+  white-space: pre-wrap;
+  background: var(--ipd-bg);
+  border: 1px solid var(--ipd-line);
+  border-radius: 4px;
+}
+.item-apply {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.item-apply-note {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--ipd-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.item-apply-ok {
+  font-size: 12px;
+  color: var(--ipd-green);
+}
+.item-apply-error {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 12px;
+  color: var(--ipd-red);
+}
+.item-error {
+  color: var(--ipd-red);
+}
+</style>

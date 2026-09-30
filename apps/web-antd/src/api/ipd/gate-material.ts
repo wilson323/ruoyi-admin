@@ -8,7 +8,7 @@
  * 注意事项：当前 stub 后端返回固定 {total:0, uploaded:0, missing:0, isReady:true, items:[]}——
  * 由兄弟流补真 SQL 后契约不变。
  */
-import { ipdGet } from './http';
+import { ipdGet, ipdUpload } from './http';
 
 export interface GateMaterialItem {
   actionCode: string;
@@ -28,6 +28,13 @@ export interface GateMaterialStatus {
 }
 
 /** Gate 材料齐套性视图（GET /api/v1/gates/{gateId}/materials?projectId=）。 */
+/** 上传评审材料或会议纪要，返回服务端 ossId。 */
+export function uploadGateMaterial(gateId: string, file: File): Promise<{ fileName: string; gateId: string; ossId: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  return ipdUpload(`/gates/${encodeURIComponent(gateId)}/materials/upload`, form);
+}
+
 export function getGateMaterialStatus(gateId: number, projectId: number): Promise<GateMaterialStatus> {
   return ipdGet<GateMaterialStatus>(`/gates/${gateId}/materials`, { projectId });
 }

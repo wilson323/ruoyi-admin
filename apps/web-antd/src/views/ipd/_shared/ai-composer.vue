@@ -1,5 +1,5 @@
 <template>
-  <div class="ai-composer" data-testid="ipd-ai-composer">
+  <div :class="['ai-composer', { 'is-prompt': promptShell }]" data-testid="ipd-ai-composer">
     <div v-if="attachments.length" class="composer-files" data-testid="ipd-ai-attachments">
       <span v-for="(file, index) in attachments" :key="`${file.name}-${index}`" class="file-chip">
         {{ file.name }} <small>{{ formatAttachmentSize(file.size) }}</small>
@@ -15,19 +15,50 @@
       </span>
       <p class="file-note">附件以清单随消息发送（后端文件通道未开放，不上传文件内容）</p>
     </div>
-    <textarea
-      ref="textareaRef"
-      :disabled="disabled"
-      :maxlength="2000"
-      :placeholder="placeholder"
-      :value="modelValue"
-      class="composer-textarea"
-      data-testid="ipd-ai-input"
-      rows="1"
-      @input="onInput"
-      @keydown.enter="onEnter"
-    />
+    <div class="composer-field">
+      <span
+        v-if="showRotatingPlaceholder"
+        aria-hidden="true"
+        class="composer-placeholder"
+        data-testid="ipd-ai-placeholder"
+      >{{ rotatingPhrase }}</span>
+      <textarea
+        ref="textareaRef"
+        :disabled="disabled"
+        :maxlength="2000"
+        placeholder=""
+        :value="modelValue"
+        class="composer-textarea"
+        data-testid="ipd-ai-input"
+        rows="1"
+        @blur="focused = false"
+        @focus="focused = true"
+        @input="onInput"
+        @keydown.enter="onEnter"
+      />
+    </div>
     <div class="composer-toolbar">
+      <div v-if="capabilityMenu" class="plus-wrap">
+        <button
+          :aria-expanded="plusOpen"
+          aria-controls="ipd-ai-agent-controls"
+          aria-label="选择能力包、模型、技能和工具"
+          :class="['tool-btn', 'plus-btn', { 'is-open': plusOpen }]"
+          data-testid="ipd-ai-plus"
+          type="button"
+          @click="plusOpen = !plusOpen"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M5 12h14" /><path d="M12 5v14" />
+          </svg>
+        </button>
+        <div
+          id="ipd-ai-agent-controls"
+          :hidden="!plusOpen"
+          class="plus-menu"
+          data-testid="ipd-ai-agent-controls"
+        />
+      </div>
       <button
         :aria-label="voiceAriaLabel"
         :aria-pressed="speech.listening.value"
@@ -38,7 +69,12 @@
         type="button"
         @click="toggleVoice"
       >
-        {{ speech.listening.value ? '停止' : '语音' }}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+          <line x1="12" x2="12" y1="19" y2="22" />
+        </svg>
+        <span class="sr-only">{{ speech.listening.value ? '停止' : '语音' }}</span>
       </button>
       <button
         :disabled="disabled"
@@ -48,7 +84,10 @@
         type="button"
         @click="pickFile"
       >
-        附件
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.9 8.76l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+        </svg>
+        <span class="sr-only">附件</span>
       </button>
       <span
         aria-live="polite"
@@ -59,15 +98,21 @@
         {{ voiceHint }}
       </span>
       <span class="toolbar-spacer" />
-      <Button
-        :disabled="disabled"
-        :loading="sending"
+      <button
+        :aria-label="sending ? '正在发送' : '发送'"
+        :disabled="disabled || sending"
+        class="composer-send"
         data-testid="ipd-ai-send"
-        type="primary"
+        type="button"
         @click="trySend"
       >
-        发送
-      </Button>
+        <svg v-if="sending" class="is-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
+        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="m5 12 7-7 7 7" /><path d="M12 19V5" />
+        </svg>
+      </button>
       <Button
         v-if="showReset"
         :disabled="disabled"
@@ -121,8 +166,8 @@ export function formatAttachmentSize(size: number): string {
  *   （对齐原版 MicButton / VoiceModeBadge 的可访问性面）；
  * - 录音态脉冲动画包在 prefers-reduced-motion: no-preference 内（对齐原版
  *   usePrefersReducedMotion 降级）。
- * <p>刻意不移植：rotating placeholder、模型选择器、framer-motion/lucide 依赖
- * （原型无此需求 + design.json avoid 清单禁新依赖，避免过度设计）。
+ * <p>视觉壳对齐 21st AiPromptInput：圆角浮动卡片、无边框输入区、底栏工具、
+ * 右侧圆形发送。不引入 framer-motion / lucide，也不使用原版写死的模型名。
  *
  * <p>能力边界与诚实呈现：
  * - 语音输入走 use-speech-input（Web Speech API）：只做语音→文本转写回填，
@@ -131,21 +176,26 @@ export function formatAttachmentSize(size: number): string {
  *   后端 /ai-copilot 契约无文件通道，UI 明示「不上传文件内容」，不伪造上传；
  * - Enter 发送 / Shift+Enter 换行，IME 组合期（中文输入法选词）回车不误发。
  */
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { Button } from 'ant-design-vue';
 
 import { useSpeechInput } from './use-speech-input';
 
 const props = withDefaults(
   defineProps<{
+    capabilityMenu?: boolean;
     disabled?: boolean;
+    /** 为 true 时使用 21st 提示框外壳，仅项目智能体打开。 */
+    promptShell?: boolean;
     modelValue: string;
     placeholder?: string;
     sending?: boolean;
     showReset?: boolean;
   }>(),
   {
+    capabilityMenu: false,
     disabled: false,
+    promptShell: false,
     placeholder: '输入问题，回车发送（Shift+回车换行，≤2000 字）',
     sending: false,
     showReset: true,
@@ -158,10 +208,20 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void;
 }>();
 
+const PROMPT_PHRASES = [
+  '描述这次要完成的任务',
+  '说明要对照的阶段和文档',
+  '指出需要回填的成果',
+] as const;
+
 const attachments = ref<ComposerAttachment[]>([]);
 const fileRef = ref<HTMLInputElement>();
+const focused = ref(false);
 const interim = ref('');
+const phraseIndex = ref(0);
+const plusOpen = ref(false);
 const textareaRef = ref<HTMLTextAreaElement>();
+let phraseTimer: number | null = null;
 
 /** 输入框自动增高的上下界（与 .composer-textarea 的 min/max-height 同源）。 */
 const MIN_HEIGHT = 34;
@@ -176,6 +236,14 @@ const speech = useSpeechInput({
     interim.value = text;
   },
 });
+
+const rotatingPhrase = computed(() => {
+  const phrases = [props.placeholder, ...PROMPT_PHRASES];
+  return phrases[phraseIndex.value % phrases.length] ?? props.placeholder;
+});
+const showRotatingPlaceholder = computed(
+  () => props.modelValue.length === 0 && !focused.value && !speech.listening.value,
+);
 
 const voiceHint = computed(() => {
   if (speech.listening.value) {
@@ -203,7 +271,19 @@ function autoGrow() {
   el.style.overflowY = el.scrollHeight > MAX_HEIGHT ? 'auto' : 'hidden';
 }
 
-onMounted(autoGrow);
+onMounted(() => {
+  autoGrow();
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  if (reduce) return;
+  phraseTimer = window.setInterval(() => {
+    phraseIndex.value = (phraseIndex.value + 1) % (PROMPT_PHRASES.length + 1);
+  }, 3200);
+});
+
+onUnmounted(() => {
+  if (phraseTimer !== null) window.clearInterval(phraseTimer);
+});
+
 watch(
   () => props.modelValue,
   () => void nextTick(autoGrow),
@@ -262,30 +342,63 @@ function trySend() {
 <style scoped>
 /* 色板：只用全局 --ipd-* token（Global Constraint #21），禁 hex */
 .ai-composer {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid var(--ipd-line);
-  border-radius: 8px;
+  gap: 6px;
+  padding: 12px 12px 8px;
+  overflow: visible;
+  color: var(--ipd-text);
   background: var(--ipd-surface);
+  border: 1px solid var(--ipd-line);
+  border-radius: 18px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ipd-navy) 8%, transparent);
 }
 .ai-composer:focus-within {
   border-color: var(--ipd-blue);
-  box-shadow: 0 0 0 var(--ipd-focus-ring-width) color-mix(in srgb, var(--ipd-blue) 18%, transparent);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--ipd-blue) 16%, transparent);
+}
+.ai-composer.is-prompt {
+  gap: 0;
+  padding: 14px;
+  border-width: 2px;
+  border-radius: 28px;
+  box-shadow:
+    0 0 0 1px rgb(8 8 8 / 4%),
+    0 2px 2px rgb(8 8 8 / 3%),
+    0 8px 8px -8px rgb(8 8 8 / 4%);
+}
+.ai-composer.is-prompt:focus-within {
+  border-color: color-mix(in srgb, var(--ipd-text) 28%, var(--ipd-line));
+  box-shadow:
+    0 0 0 1px rgb(8 8 8 / 6%),
+    0 4px 8px rgb(8 8 8 / 4%),
+    0 12px 16px -12px rgb(8 8 8 / 8%);
+}
+.composer-field {
+  position: relative;
+}
+.composer-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: var(--ipd-muted);
+  font-size: 15px;
+  line-height: 1.75;
+  pointer-events: none;
 }
 .composer-textarea {
   width: 100%;
   min-height: 34px;
   max-height: 120px;
-  padding: 7px 8px;
-  border: 1px solid var(--ipd-line);
-  border-radius: 6px;
-  background: var(--ipd-bg);
+  padding: 4px 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--ipd-text);
-  font-size: 13px;
+  font-size: 14px;
   font-family: inherit;
-  line-height: 1.7;
+  line-height: 1.6;
   /* 高度由 autoGrow() 接管（对齐 21st AiPromptInput 自适应方案），禁手动拉伸避免双轨 */
   resize: none;
   overflow-y: hidden;
@@ -303,17 +416,120 @@ function trySend() {
   align-items: center;
   gap: 8px;
 }
+.ai-composer.is-prompt .composer-textarea {
+  min-height: 52px;
+  max-height: 192px;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1.75;
+}
+.ai-composer.is-prompt .composer-toolbar {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--ipd-line) 70%, transparent);
+}
 .toolbar-spacer {
   flex: 1;
 }
 .tool-btn {
-  padding: 4px 12px;
-  border: 1px solid var(--ipd-line);
-  border-radius: 6px;
-  background: var(--ipd-surface);
-  color: var(--ipd-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ipd-muted);
   font-size: 12px;
   cursor: pointer;
+}
+.ai-composer.is-prompt .tool-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 12px;
+}
+.composer-send {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--ipd-surface);
+  cursor: pointer;
+  background: var(--ipd-blue);
+  border: 0;
+  border-radius: 999px;
+}
+.ai-composer.is-prompt .composer-send {
+  width: 40px;
+  height: 40px;
+  background: var(--ipd-navy);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 16%),
+    0 1px 2px rgb(8 8 8 / 24%);
+}
+.composer-send:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.composer-send:focus-visible {
+  outline: var(--ipd-focus-ring-width) solid var(--ipd-focus-ring-color);
+  outline-offset: var(--ipd-focus-ring-offset);
+}
+.tool-btn svg,
+.composer-send svg,
+.plus-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.plus-wrap {
+  position: relative;
+}
+.plus-btn.is-open {
+  color: var(--ipd-text);
+  background: color-mix(in srgb, var(--ipd-line) 55%, transparent);
+}
+.plus-btn.is-open svg {
+  transform: rotate(45deg);
+}
+.plus-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  width: min(360px, 70vw);
+  max-height: 320px;
+  padding: 10px 6px 10px 12px;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--ipd-muted) 45%, transparent) transparent;
+  background: var(--ipd-surface);
+  border: 2px solid var(--ipd-line);
+  border-radius: 16px;
+  box-shadow: 0 8px 30px -8px rgb(8 8 8 / 18%);
+}
+.plus-menu::-webkit-scrollbar {
+  width: 6px;
+}
+.plus-menu::-webkit-scrollbar-track {
+  margin: 10px 0;
+  background: transparent;
+}
+.plus-menu::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ipd-muted) 38%, transparent);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+.plus-menu::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ipd-muted) 62%, transparent);
+  background-clip: padding-box;
+}
+.plus-menu[hidden] {
+  display: none;
 }
 .tool-btn:hover:not(:disabled) {
   background: var(--ipd-blue-soft);

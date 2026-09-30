@@ -97,8 +97,14 @@ export function listDeletionArchive(): Promise<DeletionRequest[]> {
   return ipdGet('/deletion-requests/archive');
 }
 
-export function purgeDeletionRequest(id: string): Promise<DeletionRequest> {
-  return ipdPost(`/deletion-requests/${id}/purge`);
+/**
+ * 彻底清除。confirmTail 必须等于申请编号，clearedReason 由操作者填写。
+ */
+export function purgeDeletionRequest(id: string, clearedReason: string): Promise<DeletionRequest> {
+  return ipdPost(`/deletion-requests/${id}/purge`, {
+    confirmTail: id,
+    clearedReason,
+  });
 }
 
 export function escalateOverdueLeaderReview(): Promise<{ escalated: number }> {

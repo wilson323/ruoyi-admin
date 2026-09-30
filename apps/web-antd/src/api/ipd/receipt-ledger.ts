@@ -12,7 +12,7 @@
  * 查询同 ipd:bonus-pool:query。ID 一律字符串化（19 位雪花 ID 不走 JSON number）；
  * 金额经 Jackson ToStringSerializer 以字符串下发，前端按 string 原样展示。
  */
-import { ipdGet, ipdPost } from './http';
+import { ipdGet, ipdPost, ipdUpload } from './http';
 
 /** 回款台账行（后端 ReceiptLedger domain；netAmount/inWindow 为只读生成列，可能为 null）。 */
 export interface ReceiptLedger {
@@ -45,8 +45,8 @@ export interface ReceiptLedger {
 
 /**
  * 月度录入入参（后端 ReceiptLedgerCreateReq 真值）：
- * receiptAmount ≥ 0.01；refundAmount 可空（≥0）；voucherUrl ≤500 字符可空；
- * voucherHash 由凭证文件哈希产生，前端表单不采集（可选不传）。
+ * receiptAmount ≥ 0.01；refundAmount 可空（≥0）；凭证可空。
+ * 有凭证时 voucherUrl / voucherHash 必须来自 uploadReceiptVoucher 的服务端回读，不要手填地址。
  */
 export interface CreateReceiptLedgerReq {
   projectId: string;
@@ -55,6 +55,15 @@ export interface CreateReceiptLedgerReq {
   receiptAmount: number | string;
   refundAmount?: number | string;
   voucherUrl?: string;
+  /** 服务端 SHA-256。未上传凭证时不传。 */
+  voucherHash?: string;
+}
+
+/** 凭证上传结果（POST /receipt-ledgers/projects/{projectId}/voucher）。 */
+export interface ReceiptVoucherUpload {
+  fileName: string;
+  voucherHash: string;
+  voucherUrl: string;
 }
 
 /** 退款冲减入参（后端 ReceiptRefundReq：窗口内当期冲减，窗口外后端拒绝）。 */
@@ -73,6 +82,22 @@ export function listReceiptLedgersByProject(projectId: string): Promise<ReceiptL
 /** 月度回款录入（POST /receipt-ledgers；仅超管，adminOnly 审计 RECEIPT_CREATE）。 */
 export function createReceiptLedger(req: CreateReceiptLedgerReq): Promise<ReceiptLedger> {
   return ipdPost<ReceiptLedger>('/receipt-ledgers', req);
+}
+
+/**
+ * 上传回款凭证（AC-INC-16c）。仅超管。
+ *
+ * @param projectId 项目编号
+ * @param file 凭证文件（pdf/jpg/jpeg/png/webp，≤20MB）
+ * @returns 服务端 URL、SHA-256 与原文件名
+ */
+export function uploadReceiptVoucher(projectId: string, file: File): Promise<ReceiptVoucherUpload> {
+  const form = new FormData();
+  form.append('file', file);
+  return ipdUpload<ReceiptVoucherUpload>(
+    `/receipt-ledgers/projects/${encodeURIComponent(projectId)}/voucher`,
+    form,
+  );
 }
 
 /** 退款冲减（POST /receipt-ledgers/{projectId}/refunds；仅超管，审计 RECEIPT_REFUND）。 */

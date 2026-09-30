@@ -5,7 +5,7 @@
  * 2026-09-08 契约对齐：查询改 GET /negative-feedbacks?projectId=&status=
  * （projectId 必填；原 /list 会被后端 {id} 路由捕获转 Long 失败 → 500）。
  */
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { Alert, Button, Card, Empty, Input, Modal, Select, Table, Tag } from 'ant-design-vue';
 
 import {
@@ -13,15 +13,15 @@ import {
   type NegativeFeedback,
   type NegativeStatus,
   type NegativeTriggerType,
+  createNegativeFeedback,
   decideNegativeFeedback,
   liftNegativeFeedback,
   listNegativeFeedback,
   submitNegativeFeedback,
 } from '../../../../api/ipd/negative-feedback';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
-import BackendPending from '../../_shared/backend-pending.vue';
-
-defineOptions({ name: 'IpdNegativeFeedback', meta: { ipdBackend: 'NegativeFeedbackController 已交付：GET /negative-feedbacks?projectId&status、POST /{id}/submit、POST /{id}/decide、POST /{id}/lift。', ipdCard: 'P0-10.36' } });
+import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
+defineOptions({ name: 'IpdNegativeFeedback', meta: { ipdBackend: 'NegativeFeedbackController 已交付：GET /negative-feedbacks?projectId&status、POST /negative-feedbacks、PUT /{id}/submit、PUT /{id}/decide、PUT /{id}/lift。', ipdCard: 'P0-10.36' } });
 
 const projectId = ref('');
 const status = ref<'' | NegativeStatus>('');
@@ -106,6 +106,58 @@ async function load(): Promise<void> {
 
 const isEmpty = computed(() => loaded.value && !errorMsg.value && items.value.length === 0);
 
+const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+const triggerOptions = (Object.keys(triggerText) as NegativeTriggerType[]).map((value) => ({
+  label: triggerText[value],
+  value,
+}));
+const createForm = reactive({
+  recoveryMonth: '',
+  triggerEvidence: '',
+  triggerMonth: '',
+  triggerType: undefined as NegativeTriggerType | undefined,
+});
+const creating = ref(false);
+const createMsg = ref('');
+
+const canCreateFeedback = computed(() => {
+  const recovery = createForm.recoveryMonth.trim();
+  return (
+    projectId.value.trim() !== ''
+    && !!createForm.triggerType
+    && MONTH_PATTERN.test(createForm.triggerMonth.trim())
+    && (recovery === '' || MONTH_PATTERN.test(recovery))
+    && createForm.triggerEvidence.length <= 1000
+    && !creating.value
+  );
+});
+
+/**
+ * 录入负反馈草稿。主责、连带和执行动作由 triggerType 在服务端推导。
+ */
+async function submitCreate(): Promise<void> {
+  if (!canCreateFeedback.value || !createForm.triggerType) return;
+  creating.value = true;
+  createMsg.value = '';
+  errorMsg.value = '';
+  try {
+    await createNegativeFeedback({
+      projectId: projectId.value.trim(),
+      triggerMonth: createForm.triggerMonth.trim(),
+      triggerType: createForm.triggerType,
+      ...(createForm.triggerEvidence.trim() ? { triggerEvidence: createForm.triggerEvidence.trim() } : {}),
+      ...(createForm.recoveryMonth.trim() ? { recoveryMonth: createForm.recoveryMonth.trim() } : {}),
+    });
+    createMsg.value = '负反馈已录入为草稿，可在列表中提交认定';
+    createForm.triggerEvidence = '';
+    await load();
+  } catch (cause) {
+    fail('负反馈录入失败', cause);
+  } finally {
+    creating.value = false;
+  }
+}
+
 // ---------- P0-5 补齐：状态机操作（submit / decide / lift） ----------
 
 const actingId = ref('');
@@ -180,7 +232,7 @@ async function liftAction(rawRecord: Record<string, any>): Promise<void> {
   <div class="p-4">
     <Alert
       class="mb-4"
-      message="负反馈：主责停发 / 连带减半 / 双 PM 共同担责（错过市场窗口无主次之分）；重复事件不重复扣减；录入与认定操作走待办/超管入口。"
+      message="负反馈：主责停发 / 连带减半 / 双 PM 共同担责（错过市场窗口无主次之分）；重复事件不重复扣减。本页可录入草稿，认定与解除仍按角色权限执行。"
       show-icon
       type="info"
     />
@@ -205,6 +257,43 @@ async function liftAction(rawRecord: Record<string, any>): Promise<void> {
           查询负反馈
         </button>
       </div>
+    </Card>
+
+    <Card class="mb-4" title="录入负反馈">
+      <div class="flex flex-wrap items-end gap-3">
+        <div>
+          <div class="mb-1 text-xs text-gray-500">触发情形</div>
+          <Select
+            v-model:value="createForm.triggerType"
+            :options="triggerOptions"
+            data-testid="nf-trigger-type"
+            placeholder="四选一"
+            style="width: 180px"
+          />
+        </div>
+        <div>
+          <div class="mb-1 text-xs text-gray-500">触发月份</div>
+          <Input v-model:value="createForm.triggerMonth" data-testid="nf-trigger-month" placeholder="触发月份 YYYY-MM" style="width: 160px" />
+        </div>
+        <div>
+          <div class="mb-1 text-xs text-gray-500">恢复月份（可空）</div>
+          <Input v-model:value="createForm.recoveryMonth" placeholder="恢复月份 YYYY-MM" style="width: 160px" />
+        </div>
+        <div class="min-w-[240px] flex-1">
+          <div class="mb-1 text-xs text-gray-500">触发证据（可空，≤1000 字）</div>
+          <Input v-model:value="createForm.triggerEvidence" data-testid="nf-evidence" placeholder="文字证据，不上传附件" />
+        </div>
+        <Button
+          v-access:code="IPD_PERMISSION_CODES.NEGATIVE_FEEDBACK_CREATE"
+          :disabled="!canCreateFeedback"
+          :loading="creating"
+          type="primary"
+          @click="submitCreate"
+        >
+          录入负反馈
+        </Button>
+      </div>
+      <p v-if="createMsg" class="mt-3 text-sm text-green-700">{{ createMsg }}</p>
     </Card>
 
     <Card title="负反馈列表">
@@ -262,7 +351,6 @@ async function liftAction(rawRecord: Record<string, any>): Promise<void> {
       </Table>
     </Card>
 
-    <BackendPending class="mt-4" />
   </div>
 </template>
 

@@ -120,7 +120,11 @@ export type IpdAuthenticatedPath =
   | '/auth/logout'
   | '/auth/me'
   | '/auth/platform-token';
-export type IpdRequestOptions = { body?: object; method?: 'DELETE' | 'GET' | 'POST' | 'PUT' };
+export type IpdRequestOptions = {
+  body?: object;
+  formData?: FormData;
+  method?: 'DELETE' | 'GET' | 'POST' | 'PUT';
+};
 
 /** IPD has its own code=0 envelope and keeps IDs/decimal strings unchanged. */
 export async function requestIpd(
@@ -131,10 +135,10 @@ export async function requestIpd(
   const timer = setTimeout(() => abort.abort(), 15_000);
   try {
     const headers: Record<string, string> = { Accept: 'application/json' };
-    if (options.body) headers['Content-Type'] = 'application/json';
+    if (options.body && !options.formData) headers['Content-Type'] = 'application/json';
     if (options.token) headers.Authorization = `Bearer ${options.token}`;
     const response = await fetch(`/api/v1${path}`, {
-      body: options.body ? JSON.stringify(options.body) : undefined,
+      body: options.formData ?? (options.body ? JSON.stringify(options.body) : undefined),
       credentials: 'omit',
       headers,
       method: options.method ?? 'GET',

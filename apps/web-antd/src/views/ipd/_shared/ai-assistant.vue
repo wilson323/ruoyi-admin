@@ -29,7 +29,8 @@
  * 兜底）。单轨红线：不开第二个聊天 UI、不建平行卡片体系、不删文本降级路径；既有四帧
  * 文本/卡片通道零回归。
  *
- * 工作界面目前只展示目录与占位；独立智能体后端合同未交付前禁用执行。
+ * AI 模式主发送走 ProjectAgentPanel.submitText（createProjectAgentRun），
+ * 不回落 streamCopilot；副驾模式仍走 streamCopilot。
  * 业务模式与抽屉尺寸是两种独立状态；切换业务模式会中止并清空旧会话，
  * 避免副驾与项目智能体共用请求与卡片。
  */
@@ -64,6 +65,8 @@ import {
 } from '../../../api/ipd/ai-copilot';
 
 import { getCardType } from './ai-cards/card-registry';
+import AssistantTurn from './assistant-turn.vue';
+import AiLoadingState from './ai-loading-state.vue';
 import AiComposer, {
   formatAttachmentSize,
   type ComposerAttachment,
@@ -74,9 +77,10 @@ import {
 } from './ai-cards/copilotkit-render';
 import IpdAiWorkspace from './ai-workspace/ai-workspace.vue';
 import { useIpdAiWorkspace } from './ai-workspace/use-ai-workspace';
-import type { WorkspaceMode } from './ai-workspace/workspace-mode';
+import type { WorkspaceMode, WorkspacePane } from './ai-workspace/workspace-mode';
 import { fetchGuideEvents } from '../../../api/ipd/guide-script';
-import { fetchSubStages, type SubStage } from '../../../api/ipd/stage-sub-stages';
+import { listProjects, type Project } from '../../../api/ipd/project';
+import { fetchSubStages, type SubStage, type SubStageAction } from '../../../api/ipd/stage-sub-stages';
 import {
   buildGuideContextValue,
   buildGuideSuggestions,
@@ -86,6 +90,10 @@ import {
 import { IpdGuideScriptHost } from './ai-guide/guide-script-host';
 import { IpdSwarmProgressHost } from './ai-swarm/swarm-progress-host';
 import GuideSuggestionBar from './ai-guide/guide-suggestion-bar.vue';
+import ProjectAgentPanel from './ai-agent/project-agent-panel.vue';
+import { clarificationSendText, type ClarificationChoice } from './ai-agent/clarification-choices';
+import { timelineTranscript } from './ai-agent/timeline-model';
+import type { AgentRunEvent } from '../../../api/ipd/project-agent';
 import StageStepNav from './ai-workspace/stage-step-nav.vue';
 import { ipdErrorText } from './ipd-error-text';
 import type {
@@ -438,12 +446,16 @@ interface ChatMessage {
 
 /** 与 layouts/ipd.vue 同 key：AI 上下文自动跟随全局当前项目。 */
 const CURRENT_PROJECT_KEY = 'ipd:current-project';
+/** 与顶栏同一事件：对话里切换只改选中项，不整页刷新。 */
+const PROJECT_SYNC_EVENT = 'ipd:current-project-changed';
 
 const props = defineProps<{
   projectCurrentStage?: null | string;
   stages?: Array<{ code: string; name: string }>;
 }>();
 /** 浏览阶段只影响工作区视图，不推进项目的服务端 currentStage。 */
+/** 项目模式中间栏只留本次运行和步骤；画布、文档未接线时不占位。 */
+const projectWorkspacePanes: WorkspacePane[] = ['cards', 'steps'];
 const viewStageCode = ref(props.projectCurrentStage || props.stages?.[0]?.code || 'CONCEPT');
 const viewStageName = computed(
   () => props.stages?.find((stage) => stage.code === viewStageCode.value)?.name ?? viewStageCode.value,
@@ -459,7 +471,7 @@ const open = ref(false);
 /** 展示尺寸：false=右抽屉；true=全屏工作界面，不决定业务模式。 */
 const expanded = ref(false);
 /**
- * AI 工作界面后端独立执行合同尚未交付。切换时清理旧模式会话，工作界面不调用副驾流。
+ * 业务模式切换会中止并清空旧会话；AI 模式发送走项目智能体面板，不调用副驾流。
  */
 const {
   activeSubStageCode,
@@ -528,11 +540,26 @@ watch([workspacePane, open], ([_pane, visible]) => {
   if (visible) void loadSubStages();
 }, { immediate: true });
 
+const sessionActionCode = ref('');
+const selectedSubStage = computed(() =>
+  subStages.value.find((stage) => stage.code === activeSubStageCode.value) ?? null,
+);
+const sessionAction = computed((): SubStageAction | null =>
+  selectedSubStage.value?.actions.find((action) => action.actionCode === sessionActionCode.value) ?? null,
+);
+
+/** 把步骤上的动作带进下一次项目智能体运行，而不是只高亮导航。 */
+function selectStepAction(action: SubStageAction) {
+  sessionActionCode.value = action.actionCode;
+  if (!inputText.value.trim()) inputText.value = action.actionName;
+}
+
 function selectSubStage(code: string) {
   if (!currentProjectId.value) {
     subStageError.value = '请先选择有权限的项目，再查看小阶段引导';
     return;
   }
+  if (code !== activeSubStageCode.value) sessionActionCode.value = '';
   activeSubStageCode.value = code;
   if (workspaceMode.value !== 'classic') return;
   window.dispatchEvent(new CustomEvent('ipd:guide-sub-stage', {
@@ -602,6 +629,21 @@ const cardNotice = ref('');
 const cardConfirmPayload = shallowRef<AiCardData | null>(null);
 
 const currentProjectId = ref(window.localStorage.getItem(CURRENT_PROJECT_KEY) ?? '');
+const conversationProjects = ref<Project[]>([]);
+
+/** 对话栏项目选项：名称加编号；没有编号时只显示名称。 */
+function projectOptionLabel(project: Project): string {
+  return project.code ? `${project.name} · ${project.code}` : project.name;
+}
+
+/** 拉取可选项目。失败时保留空列表，不编造项目。 */
+async function loadConversationProjects(): Promise<void> {
+  try {
+    conversationProjects.value = await listProjects();
+  } catch {
+    conversationProjects.value = [];
+  }
+}
 
 function onActiveProjectUpdated(event: Event) {
   const detail = (event as CustomEvent<{ projectId?: string }>).detail;
@@ -629,9 +671,21 @@ function onProjectStorage(event: StorageEvent) {
   }
 }
 
+/**
+ * 在对话栏切换项目：写入全局当前项目并清空本轮会话。
+ * 不调用 location.reload，避免抽屉被整页刷新关掉。
+ */
+function switchConversationProject(id: string): void {
+  if (!id || id === currentProjectId.value) return;
+  window.localStorage.setItem(CURRENT_PROJECT_KEY, id);
+  window.dispatchEvent(new CustomEvent(PROJECT_SYNC_EVENT, { detail: { projectId: id } }));
+  onActiveProjectUpdated(new CustomEvent('ipd:active-project-updated', { detail: { projectId: id } }));
+}
+
 onMounted(() => {
   window.addEventListener('ipd:active-project-updated', onActiveProjectUpdated);
   window.addEventListener('storage', onProjectStorage);
+  void loadConversationProjects();
   onActiveProjectUpdated(new CustomEvent('ipd:active-project-updated', {
     detail: { projectId: window.localStorage.getItem(CURRENT_PROJECT_KEY) ?? '' },
   }));
@@ -677,15 +731,143 @@ function attachmentManifest(attachments: ComposerAttachment[]): string {
   return `\n\n[附件清单（文件内容未上传，仅随消息声明）] ${list}`;
 }
 
+/** 项目智能体面板：主输入框把文字交给同一条 createProjectAgentRun 路径。 */
+type ProjectAgentSubmitResult = 'busy' | 'failed' | 'need-project' | 'need-selection' | 'started';
+const projectAgentPanelRef = ref<{
+  active: boolean;
+  answerClarification: (text: string) => Promise<ProjectAgentSubmitResult>;
+  confirmPlan: (steps: readonly string[]) => Promise<void>;
+  events: AgentRunEvent[];
+  focusTaskInput: () => void;
+  lastTask: string;
+  runActionCode: null | string;
+  submitText: (text: string) => Promise<ProjectAgentSubmitResult>;
+  syncReadoutTarget: () => void;
+} | null>(null);
+
+/** 项目智能体本轮任务与模型正文（与中间回读同一段事件，不另开一条生成）。 */
+const agentEvents = computed(() => projectAgentPanelRef.value?.events ?? []);
+const agentTask = computed(() => projectAgentPanelRef.value?.lastTask ?? '');
+const agentReply = computed(() => timelineTranscript(agentEvents.value));
+const agentStreaming = computed(() => projectAgentPanelRef.value?.active === true);
+
+/** 对话栏和中间回读是否仍贴在底部。用户往上翻之后不再抢滚动。 */
+const streamPinned = { chat: true, readout: true };
+
+/**
+ * 流式增长时立刻滚到底，不用 smooth。
+ * smooth 会把上一次动画还没走完的滚动排队，字越快越觉得顿。
+ */
+function followStream(el: HTMLElement | null | undefined, slot: 'chat' | 'readout') {
+  if (!el || !streamPinned[slot]) return;
+  const previous = el.style.scrollBehavior;
+  el.style.scrollBehavior = 'auto';
+  el.scrollTop = el.scrollHeight;
+  el.style.scrollBehavior = previous;
+}
+
+function readoutScroller(): HTMLElement | null {
+  return document.getElementById('ipd-ai-run-readout')?.closest('.ws-body') ?? null;
+}
+
+watch(listRef, (el, _previous, onCleanup) => {
+  if (!el) return;
+  const onScroll = () => {
+    streamPinned.chat = el.scrollHeight - el.scrollTop - el.clientHeight <= 80;
+  };
+  el.addEventListener('scroll', onScroll, { passive: true });
+  onCleanup(() => el.removeEventListener('scroll', onScroll));
+});
+
+watch(agentReply, async () => {
+  await nextTick();
+  followStream(listRef.value, 'chat');
+  const readout = readoutScroller();
+  if (readout && readout.dataset.streamFollow !== '1') {
+    readout.dataset.streamFollow = '1';
+    readout.addEventListener('scroll', () => {
+      streamPinned.readout = readout.scrollHeight - readout.scrollTop - readout.clientHeight <= 80;
+    }, { passive: true });
+  }
+  followStream(readout, 'readout');
+});
+
+watch(workspaceMode, () => {
+  void nextTick(() => projectAgentPanelRef.value?.syncReadoutTarget());
+});
+
+/**
+ * 把创建运行的结果说给用户，成功时切到本次运行。
+ *
+ * @param result 面板已有的提交结果
+ */
+function presentProjectAgentResult(result: ProjectAgentSubmitResult | undefined): void {
+  switch (result) {
+    case 'started':
+      focusPane('cards');
+      return;
+    case 'need-project':
+    case undefined:
+      antMessage.warning('请先选择有权限的项目');
+      return;
+    case 'need-selection':
+      antMessage.warning('请先点输入框里的加号，选择能力包和模型');
+      return;
+    case 'busy':
+      antMessage.warning('当前已有进行中的智能体运行');
+      return;
+    case 'failed':
+      antMessage.warning('项目智能体未能发起运行，请查看面板提示后重试');
+      return;
+    default: {
+      const _exhaustive: never = result;
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * AI 模式主发送：调用已有面板 submitText，不新建客户端、不回落副驾 SSE。
+ *
+ * @param text 任务说明（含附件清单后缀）
+ */
+async function sendViaProjectAgent(text: string): Promise<void> {
+  const result = await projectAgentPanelRef.value?.submitText(text);
+  presentProjectAgentResult(result);
+}
+
+/**
+ * 点澄清选项：选项原文留在输入框，发送文写成「已选：…。」并走已有创建运行。
+ *
+ * @param choice 被点中的那一项，不是问题列表里的第一项
+ */
+async function chooseClarification(choice: ClarificationChoice): Promise<void> {
+  inputText.value = choice.option;
+  const result = await projectAgentPanelRef.value?.answerClarification(
+    clarificationSendText(choice.option, choice.question),
+  );
+  if (result === 'started') inputText.value = '';
+  presentProjectAgentResult(result);
+}
+
 /** 输入框发送入口（AiComposer send 事件：文本 + 附件清单）。 */
 function onComposerSend(payload: { attachments: ComposerAttachment[]; text: string }): void {
   void send(payload.text, payload.attachments);
 }
 
 async function send(text: string = inputText.value.trim(), attachments: ComposerAttachment[] = []) {
-  // B4/C1 尚无独立 agentId 和可信项目执行口；不能用副驾 SSE 冒充智能体。
-  if (workspaceMode.value === 'ai') return;
   const body = text + attachmentManifest(attachments);
+  if (workspaceMode.value === 'ai') {
+    if ((!text && attachments.length === 0) || sending.value) return;
+    inputText.value = '';
+    sending.value = true;
+    try {
+      await sendViaProjectAgent(body);
+    } finally {
+      sending.value = false;
+    }
+    return;
+  }
   if ((!text && attachments.length === 0) || sending.value) return;
   clearCardState();
   inputText.value = '';
@@ -956,21 +1138,40 @@ defineExpose({ clearConversation, send });
           </button>
         </nav>
         <aside
-          v-if="expanded && workspaceMode === 'ai'"
+          v-if="workspaceMode === 'ai'"
           class="ipd-ai-runs-col"
           data-testid="ipd-ai-runs"
         >
-          <h3>项目运行</h3>
-          <p>运行记录将在项目智能体的持久化服务接入后显示。</p>
+          <ProjectAgentPanel
+            ref="projectAgentPanelRef"
+            controls-external
+            :action-code="sessionAction?.actionCode"
+            :action-skill-names="sessionAction?.skillNames ?? []"
+            :project-id="currentProjectId || null"
+            @choose="chooseClarification"
+          />
         </aside>
         <div class="chat-col">
-          <Alert
-            v-if="workspaceMode === 'ai'"
-            data-testid="ipd-ai-agent-unavailable"
-            message="项目智能体执行暂不可用：服务端独立 agentId、项目权限和任务持久化合同尚未交付。可切回 AI 副驾咨询。"
-            show-icon
-            type="info"
-          />
+          <label class="chat-project" data-testid="ipd-ai-project-switch">
+            <span>项目</span>
+            <select
+              data-testid="ipd-ai-project-select"
+              name="ipd_ai_project_id"
+              :value="currentProjectId"
+              @change="switchConversationProject(($event.target as HTMLSelectElement).value)"
+            >
+              <option v-if="!currentProjectId" disabled value="">选择项目</option>
+              <option v-for="project in conversationProjects" :key="project.id" :value="project.id">
+                {{ projectOptionLabel(project) }}
+              </option>
+              <option
+                v-if="currentProjectId && !conversationProjects.some((project) => project.id === currentProjectId)"
+                :value="currentProjectId"
+              >
+                当前项目 #{{ currentProjectId }}
+              </option>
+            </select>
+          </label>
           <Alert
             message="AI 生成内容由大模型产出，未经审核、不做内容过滤，仅供参考（BR-AI-04）。"
             show-icon
@@ -984,22 +1185,69 @@ defineExpose({ clearConversation, send });
             <template v-if="workspaceMode === 'classic'">
               已注入当前项目上下文（#{{ currentProjectId }}）：问「我的待办」「项目风险」试试
             </template>
-            <template v-else>当前项目：#{{ currentProjectId }}（执行未启用）</template>
+            <template v-else>当前项目：#{{ currentProjectId }}</template>
+          </div>
+          <div
+            v-else-if="workspaceMode === 'ai'"
+            class="ctx-chip"
+            data-testid="ipd-ai-ctx"
+          >
+            请先选择有权限的项目，再发起项目智能体运行
           </div>
           <div ref="listRef" class="msg-list" data-testid="ipd-ai-messages">
-            <div v-if="messages.length === 0" class="empty-hint">
+            <div
+              v-if="workspaceMode === 'ai' && selectedSubStage"
+              class="step-actions"
+              data-testid="ipd-ai-step-actions"
+            >
+              <p>当前步骤：{{ selectedSubStage.name }}。点选动作后再发送，本次运行才绑定该动作。</p>
+              <button
+                v-for="action in selectedSubStage.actions"
+                :key="action.actionCode"
+                type="button"
+                :aria-pressed="sessionActionCode === action.actionCode"
+                :data-testid="`ipd-ai-step-action-${action.actionCode}`"
+                @click="selectStepAction(action)"
+              >
+                {{ action.actionName }}
+              </button>
+            </div>
+            <div v-if="workspaceMode === 'ai' ? !agentTask : messages.length === 0" class="empty-hint">
               {{ workspaceMode === 'ai'
-                ? '项目智能体执行入口待服务端合同交付。当前可查看步骤目录和工作区结构。'
+                ? '描述任务后发送，将按当前项目发起智能体运行。过程在中间回读，产物在左侧定档。'
                 : '你好，我是 IPD AI 副驾。可以问项目待办、推进建议，或任何 IPD 流程问题。' }}
             </div>
+            <template v-if="workspaceMode === 'ai' && agentTask">
+              <div class="msg user" data-testid="ipd-ai-msg-user">
+                <div class="bubble">{{ agentTask }}</div>
+              </div>
+              <div
+                v-if="agentReply || agentStreaming"
+                class="msg assistant"
+                data-testid="ipd-ai-msg-assistant"
+              >
+                <AssistantTurn
+                  class="assistant-turn-block"
+                  pace
+                  :content="agentReply"
+                  :streaming="agentStreaming"
+                />
+              </div>
+            </template>
             <div
               v-for="(m, i) in messages"
+              v-if="workspaceMode !== 'ai'"
               :key="i"
               :class="['msg', m.role]"
               :data-testid="`ipd-ai-msg-${m.role}`"
             >
               <div class="bubble">
-                {{ m.content }}<span v-if="m.streaming" class="cursor">▍</span>
+                <AssistantTurn
+                  v-if="m.role === 'assistant'"
+                  :content="m.content"
+                  :streaming="m.streaming"
+                />
+                <template v-else>{{ m.content }}</template>
               </div>
               <div
                 v-if="m.role === 'assistant' && m.sources?.length"
@@ -1008,6 +1256,7 @@ defineExpose({ clearConversation, send });
                 来源：{{ m.sources.join('；') }}
               </div>
             </div>
+            <AiLoadingState v-if="sending" data-testid="ipd-ai-loading" label="正在生成" />
           </div>
           <GuideSuggestionBar
             v-if="workspaceMode === 'classic'"
@@ -1016,7 +1265,9 @@ defineExpose({ clearConversation, send });
           />
           <AiComposer
             v-model="inputText"
-            :disabled="sending || workspaceMode === 'ai'"
+            :capability-menu="workspaceMode === 'ai'"
+            :prompt-shell="workspaceMode === 'ai'"
+            :disabled="sending"
             :sending="sending"
             :show-reset="workspaceMode === 'classic'"
             @reset="clearConversation"
@@ -1031,7 +1282,11 @@ defineExpose({ clearConversation, send });
           <div v-if="expanded && workspaceMode === 'ai'" class="ipd-ai-view-stage">
             正在浏览：{{ viewStageName }}阶段 <span>仅切换视图，不推进项目</span>
           </div>
-          <IpdAiWorkspace>
+          <IpdAiWorkspace
+            :hints="workspaceMode === 'ai' ? { cards: '正文、工具和步骤按本次运行事件回读' } : undefined"
+            :panes="workspaceMode === 'ai' ? projectWorkspacePanes : undefined"
+            :titles="workspaceMode === 'ai' ? { cards: '本次运行' } : undefined"
+          >
             <template #steps>
               <Alert
                 v-if="!currentProjectId"
@@ -1042,6 +1297,7 @@ defineExpose({ clearConversation, send });
               <StageStepNav
                 v-else-if="subStages.length"
                 :active-code="activeSubStageCode"
+                :binds-session="workspaceMode === 'ai'"
                 :stage-code="workspaceMode === 'ai' ? viewStageCode : undefined"
                 :stages="subStages"
                 @select="selectSubStage"
@@ -1052,7 +1308,12 @@ defineExpose({ clearConversation, send });
             </template>
             <template #cards>
               <div
-                v-if="cardView"
+                v-if="workspaceMode === 'ai'"
+                id="ipd-ai-run-readout"
+                data-testid="ipd-ai-run-readout"
+              />
+              <div
+                v-else-if="cardView"
                 class="ipd-ai-card-host"
                 data-testid="ipd-ai-card-host"
               >
@@ -1253,7 +1514,9 @@ defineExpose({ clearConversation, send });
 .ipd-ai-runs-col {
   grid-column: 1;
   grid-row: 3;
-  padding: 14px;
+  min-height: 0;
+  padding: 8px;
+  overflow: auto;
   border: 1px solid var(--ipd-line);
   border-radius: 10px;
   background: var(--ipd-surface);
@@ -1346,6 +1609,24 @@ defineExpose({ clearConversation, send });
 .ipd-ai-size-btn:hover {
   filter: brightness(1.05);
 }
+.chat-project {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  color: var(--ipd-muted);
+  font-size: 12px;
+}
+.chat-project select {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  color: var(--ipd-text);
+  background: var(--ipd-surface);
+  border: 1px solid var(--ipd-line);
+  border-radius: 8px;
+}
 .ctx-chip {
   padding: 6px 10px;
   border-radius: 6px;
@@ -1363,6 +1644,34 @@ defineExpose({ clearConversation, send });
   gap: 12px;
   padding: 4px 2px;
 }
+.step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--ipd-line);
+  border-radius: 8px;
+  background: var(--ipd-surface);
+}
+.step-actions p {
+  flex: 1 0 100%;
+  margin: 0;
+  color: var(--ipd-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.step-actions button {
+  padding: 4px 8px;
+  border: 1px solid var(--ipd-line);
+  border-radius: 6px;
+  background: var(--ipd-bg);
+  color: var(--ipd-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.step-actions button[aria-pressed='true'] {
+  border-color: var(--ipd-blue);
+}
 .empty-hint {
   color: var(--ipd-muted);
   font-size: 13px;
@@ -1373,7 +1682,11 @@ defineExpose({ clearConversation, send });
   align-self: flex-end;
 }
 .msg.assistant {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   align-self: flex-start;
+  width: 100%;
   max-width: 100%;
 }
 .msg .bubble {
@@ -1384,20 +1697,55 @@ defineExpose({ clearConversation, send });
   white-space: pre-wrap;
   word-break: break-word;
 }
+.is-project-mode .msg .bubble {
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 15px;
+  line-height: 1.75;
+}
 .msg.user .bubble {
   background: var(--ipd-blue);
   color: hsl(var(--primary-foreground));
-  border-bottom-right-radius: 2px;
+  border-radius: 16px 16px 4px 16px;
+}
+.is-project-mode .msg.user .bubble {
+  background: var(--ipd-navy);
+  color: var(--ipd-surface);
+}
+/* 思考区与回答气泡分开：只有 .answer 走气泡样式，意图卡独立成块 */
+.msg.assistant :deep(.assistant-turn-block) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.msg.assistant :deep(.answer) {
+  padding: 8px 12px;
+  border: 1px solid var(--ipd-line);
+  border-radius: 16px 16px 16px 4px;
+  background: var(--ipd-surface);
+  color: var(--ipd-text);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--ipd-navy) 6%, transparent);
+}
+.is-project-mode .msg.assistant :deep(.answer) {
+  padding: 10px 14px;
+  font-size: 15px;
+  line-height: 1.75;
 }
 :global(html.dark) .ipd-ai-fab,
-:global(html.dark) .msg.user .bubble {
+:global(html.dark) .ipd-ai-panel:not(.is-project-mode) .msg.user .bubble {
   color: var(--ipd-navy);
 }
 .msg.assistant .bubble {
   background: var(--ipd-surface);
   border: 1px solid var(--ipd-line);
   color: var(--ipd-text);
-  border-bottom-left-radius: 2px;
+  border-radius: 16px 16px 16px 4px;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--ipd-navy) 6%, transparent);
 }
 .msg .sources {
   margin-top: 4px;

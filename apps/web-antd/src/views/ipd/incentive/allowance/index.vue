@@ -25,6 +25,7 @@ import { computed, onMounted, ref } from 'vue';
 import { Alert, Button, Card, Empty, Input, Table, Tag, message } from 'ant-design-vue';
 
 import {
+  confirmAllowanceStop,
   getAllowancePendingStop,
   listAllowances,
   triggerAllowanceAutoScan,
@@ -38,8 +39,6 @@ import {
   ZK_RULE_LONG_NO_OUTPUT_ALERT,
   ZK_RULE_SCORE_BELOW_60_STOP,
 } from '../../_shared/zk-ipd-rules';
-import BackendPending from '../../_shared/backend-pending.vue';
-
 defineOptions({
   name: 'IpdAllowance',
   meta: {
@@ -128,6 +127,17 @@ async function loadLedger(): Promise<void> {
   }
 }
 
+async function confirmStop(record: AllowanceLedgerRow): Promise<void> {
+  if (!record.id) return;
+  try {
+    await confirmAllowanceStop(String(record.id));
+    message.success('已确认停发，终额置 0');
+    await loadPending();
+  } catch (cause) {
+    message.error(ipdErrorText(cause));
+  }
+}
+
 async function loadPending(): Promise<void> {
   if (!canQuery.value || pendingLoading.value) return;
   pendingLoading.value = true;
@@ -182,6 +192,7 @@ const pendingColumns = [
   { title: '锁定评级', dataIndex: 'lockedLevel', key: 'lockedLevel', width: 100 },
   { title: '停发原因', key: 'stopReason', width: 200 },
   { title: '生成时间', key: 'createTime', width: 160 },
+  { title: '操作', key: 'confirm', width: 120 },
 ];
 
 const ledgerEmpty = computed(
@@ -302,6 +313,14 @@ onMounted(() => {
             </Tag>
           </template>
           <template v-else-if="column.key === 'createTime'">{{ formatDateTime(record.createTime) }}</template>
+          <template v-else-if="column.key === 'confirm'">
+            <Button
+              v-if="String(record.finalAmount ?? '') !== '0'"
+              size="small"
+              type="link"
+              @click="confirmStop(record)"
+            >确认停发</Button>
+          </template>
         </template>
         <template #emptyText>
           <Empty :description="pendingErrorMsg || (pendingEmpty ? '当前月份无待停发人员' : '加载中…')" />
@@ -309,6 +328,5 @@ onMounted(() => {
       </Table>
     </Card>
 
-    <BackendPending class="mt-4" />
   </div>
 </template>

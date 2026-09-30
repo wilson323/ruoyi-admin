@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   closeGateElementResult,
   countVetoFailures,
+  storedElementResult,
   listGateElementViews,
   listGateLegacyItems,
   submitGateElementResult,
@@ -102,5 +103,13 @@ describe('countVetoFailures hardblock', () => {
 
   it('returns 0 when no veto failures', () => {
     expect(countVetoFailures([{ elementId: '1', isVeto: true } as any], new Map())).toBe(0);
+  });
+});
+
+describe('storedElementResult', () => {
+  it('maps backend CONDITIONAL onto the page condition result', () => {
+    expect(storedElementResult('CONDITIONAL')).toBe('PASS_WITH_CONDITION');
+    expect(storedElementResult('FAIL')).toBe('FAIL');
+    expect(storedElementResult(null)).toBeNull();
   });
 });

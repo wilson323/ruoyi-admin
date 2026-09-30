@@ -16,6 +16,7 @@ import {
   createReceiptLedger,
   listReceiptLedgersByProject,
   refundReceiptLedger,
+  uploadReceiptVoucher,
 } from './receipt-ledger';
 
 const envelope = (data: unknown, status = 200, code = 0, message = 'ok'): Response =>
@@ -69,7 +70,7 @@ describe('回款台账 API（ORPHAN-A5）', () => {
     expect((call[1] as RequestInit).method).toBe('POST');
     const body = JSON.parse((call[1] as RequestInit).body as string);
     expect(body).toEqual({ projectId: '9140001', receiptMonth: '2026-08', receiptAmount: 1_500_000 });
-    expect(body).not.toHaveProperty('voucherHash'); // 前端不采集哈希
+    expect(body).not.toHaveProperty('voucherHash'); // 未上传凭证时不传哈希
     expect(body).not.toHaveProperty('source'); // 服务端定死 RECEIPT
   });
 
@@ -84,6 +85,23 @@ describe('回款台账 API（ORPHAN-A5）', () => {
       projectId: '9140001', receiptMonth: '2026-08', receiptAmount: 1_500_000,
       refundAmount: 200, voucherUrl: 'https://oss.example/voucher/2026-08.pdf',
     });
+  });
+
+  it('uploadReceiptVoucher → POST multipart /receipt-ledgers/projects/{id}/voucher', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({
+      fileName: '回单.pdf',
+      voucherHash: 'abc',
+      voucherUrl: 'http://oss/receipt/1.pdf',
+    }));
+    vi.stubGlobal('fetch', fetcher);
+    const file = new File(['voucher'], '回单.pdf', { type: 'application/pdf' });
+    const uploaded = await uploadReceiptVoucher('9140001', file);
+    const call = fetcher.mock.calls[0]!;
+    expect(call[0]).toBe('/api/v1/receipt-ledgers/projects/9140001/voucher');
+    expect((call[1] as RequestInit).method).toBe('POST');
+    expect((call[1] as RequestInit).body).toBeInstanceOf(FormData);
+    expect(uploaded.voucherUrl).toBe('http://oss/receipt/1.pdf');
+    expect(uploaded.voucherHash).toBe('abc');
   });
 
   it('refundReceiptLedger → POST /receipt-ledgers/{projectId}/refunds，body {month, refundAmount}', async () => {

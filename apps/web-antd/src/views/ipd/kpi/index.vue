@@ -19,7 +19,6 @@ import { message } from 'ant-design-vue';
 import { FundOutlined, LineChartOutlined, ProfileOutlined, RiseOutlined, TableOutlined } from '@ant-design/icons-vue';
 
 import AiSuggest from '../_shared/ai-suggest.vue';
-import BackendPending from '../_shared/backend-pending.vue';
 import { formatMoney } from '../_shared/format';
 import { ipdErrorText } from '../_shared/ipd-error-text';
 import {
@@ -336,7 +335,6 @@ onMounted(() => { void load(); });
       </ul>
     </section>
 
-    <BackendPending class="mt-4" />
   </div>
 </template>
 

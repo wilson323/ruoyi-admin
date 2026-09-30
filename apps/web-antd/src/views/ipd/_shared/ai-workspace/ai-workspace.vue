@@ -1,30 +1,32 @@
 <template>
   <div class="ipd-ai-workspace" data-testid="ipd-ai-workspace">
-    <div class="ws-anchors" role="tablist" aria-label="工作区分区锚点（全部常驻渲染，点击仅定位）">
+    <div class="ws-anchors" role="tablist" aria-label="工作区分区">
       <button
-        v-for="tab in tabs"
+        v-for="tab in visibleTabs"
         :key="tab.key"
-        :aria-selected="pane === tab.key"
-        :class="['ws-tab', { 'is-active': pane === tab.key }]"
+        :aria-selected="activeKey === tab.key"
+        :class="['ws-tab', { 'is-active': activeKey === tab.key }]"
         :data-testid="`ipd-ai-ws-tab-${tab.key}`"
         role="tab"
         type="button"
         @click="jumpTo(tab.key)"
       >
-        {{ tab.label }}
+        {{ titleOf(tab.key) }}
       </button>
     </div>
     <div ref="bodyRef" class="ws-body">
       <section
-        v-for="tab in tabs"
+        v-for="tab in visibleTabs"
         :key="tab.key"
+        v-show="activeKey === tab.key"
         :ref="(el) => setSectionRef(tab.key, el)"
-        :class="['ws-section', { 'is-active': pane === tab.key }]"
+        :class="['ws-section', { 'is-active': activeKey === tab.key }]"
         :data-testid="`ipd-ai-ws-pane-${tab.key}`"
+        role="tabpanel"
       >
         <header class="ws-section-head">
-          <h4>{{ tab.label }}</h4>
-          <small>{{ tab.hint }}</small>
+          <h4>{{ titleOf(tab.key) }}</h4>
+          <small>{{ hintOf(tab.key) }}</small>
         </header>
         <div class="ws-pane">
           <slot :name="tab.key">
@@ -40,22 +42,26 @@
 /**
  * AI 工作区（Artifact 面板）· 四区自动渲染版。
  *
- * <p>形态裁决（2026-09-29，参考 21st.dev 书签 AI Prompt Input / Assistant Tabs /
- * Thinking 等交互范式后按本仓规约移植）：「建议卡 / 步骤 / 画布 / 文档」四区
- * **全部常驻挂载、堆叠呈现**，AI 产出即渲染，无需切页签；顶部条只做锚点定位
- * （jumpTo 滚动 + 记录 pane 偏好），互斥 v-if 切换已移除——切页丢状态的问题
- * 从结构上消除。
- *
- * <p>自动定位：useIpdAiWorkspace().focusPane（如建议卡出卡时）递增 focusTick，
- * 本组件监听后把对应区滚动进视口。空态文案由 slot 供内容方接管，默认槽给兜底。
+ * <p>分区用页签切换：同一时间只显示当前 pane。内容用 v-show 隐藏而不是拆掉，
+ * 切走再切回时运行回读和小阶段选中还在。当前 pane 不在本次挂载列表里时，
+ * 显示列表中的第一项，不改已保存的偏好。
  */
-import { onBeforeUpdate, ref, watch } from 'vue';
+import { computed, onBeforeUpdate, ref, watch } from 'vue';
 
 import {
   useIpdAiWorkspace,
   type IpdAiWorkspace as WorkspaceState,
 } from './use-ai-workspace';
 import type { WorkspacePane } from './workspace-mode';
+
+const props = defineProps<{
+  /** 要挂载的分区；缺省四区都在。项目模式只留本次运行和步骤。 */
+  panes?: WorkspacePane[];
+  /** 分区标题覆盖；未给出的键仍用默认标题。 */
+  titles?: Partial<Record<WorkspacePane, string>>;
+  /** 分区说明覆盖。 */
+  hints?: Partial<Record<WorkspacePane, string>>;
+}>();
 
 const { focusTick, pane, setPane }: WorkspaceState = useIpdAiWorkspace();
 
@@ -91,6 +97,28 @@ const tabs = [
   label: string;
 }>;
 
+const visibleTabs = computed(() => {
+  if (!props.panes) return tabs;
+  const allowed = new Set<WorkspacePane>(props.panes);
+  return tabs.filter((tab) => allowed.has(tab.key));
+});
+
+/** 当前要显示的分区。保存的 pane 不在本次列表中时，落到第一项。 */
+const activeKey = computed(() => {
+  const keys = visibleTabs.value.map((tab) => tab.key);
+  return keys.includes(pane.value) ? pane.value : (keys[0] ?? 'cards');
+});
+
+/** 分区标题：调用方覆盖优先，否则用默认名。 */
+function titleOf(key: WorkspacePane): string {
+  return props.titles?.[key] ?? tabs.find((tab) => tab.key === key)?.label ?? key;
+}
+
+/** 分区说明：调用方覆盖优先，否则用默认说明。 */
+function hintOf(key: WorkspacePane): string {
+  return props.hints?.[key] ?? tabs.find((tab) => tab.key === key)?.hint ?? '';
+}
+
 const bodyRef = ref<HTMLElement>();
 const sectionRefs = new Map<WorkspacePane, unknown>();
 
@@ -104,10 +132,9 @@ function setSectionRef(key: WorkspacePane, el: unknown) {
 
 onBeforeUpdate(() => sectionRefs.clear());
 
-/** 锚点定位：四区常驻，点击只滚动到对应区并记录偏好（不隐藏其它区）。 */
+/** 切换到指定分区。其它分区仍挂着，只是不显示。 */
 function jumpTo(key: WorkspacePane) {
   setPane(key);
-  scrollToSection(key);
 }
 
 function scrollToSection(key: WorkspacePane) {

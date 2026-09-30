@@ -93,7 +93,7 @@ describe('IpdProjectIncent 激励台账子页签 (P0-10.37)', () => {
     wrapper.unmount();
   });
 
-  it('顶部 Alert 展示项目编号 + 跳转「奖金池核算」引导 + 底部 BackendPending 占位', async () => {
+  it('顶部 Alert 展示项目编号 + 跳转「奖金池核算」引导，且不再挂整页未交付占位', async () => {
     stubApi();
     const router = buildRouter();
     await router.push('/ipd/projects/9140004/incentive');
@@ -104,10 +104,7 @@ describe('IpdProjectIncent 激励台账子页签 (P0-10.37)', () => {
     expect(text).toContain('9140004');
     expect(text).toContain('奖金池核算');
     expect(text).toContain('完整操作');
-    // 底部 BackendPending 占位（W11 收口）：从 route.meta 读 ipdCard / ipdBackend
-    expect(text).toContain('该页面已登记，后端接口尚未交付');
-    expect(text).toContain('看板卡');
-    expect(text).toContain('后端依赖');
+    expect(text).not.toContain('该页面已登记，后端接口尚未交付');
     wrapper.unmount();
   });
 

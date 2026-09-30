@@ -29,6 +29,12 @@ export async function ipdPost<T = unknown>(path: string, body?: object, query?: 
   return (await auth.authenticatedRequest(`${path}${buildQuery(query)}`, { method: 'POST', body })) as T;
 }
 
+/** multipart 上传。不手写 Content-Type，让浏览器带 boundary。 */
+export async function ipdUpload<T = unknown>(path: string, formData: FormData): Promise<T> {
+  const auth = useIpdAuthStore();
+  return (await auth.authenticatedRequest(path, { method: 'POST', formData })) as T;
+}
+
 export async function ipdPut<T = unknown>(path: string, body?: object): Promise<T> {
   const auth = useIpdAuthStore();
   return (await auth.authenticatedRequest(path, { method: 'PUT', body })) as T;

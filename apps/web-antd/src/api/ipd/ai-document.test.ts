@@ -340,4 +340,27 @@ describe('AI 文档版本链接口', () => {
     expect(diff.fields).toHaveLength(1);
     expect(diff.fields[0]?.field).toBe('title');
   });
+
+  it('diff 接受后端 differences/fromValue/toValue，空列表合法，缺列表则拒绝', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response({
+        differences: [
+          { field: 'content', fromValue: '旧正文', toValue: '新正文', fromSha256: null, toSha256: null },
+          { field: 'title', fromValue: null, toValue: 'PRD', fromSha256: null, toSha256: null },
+        ],
+        fromVersionId: '9007199254740993',
+        toVersionId: '9007199254740994',
+      }))
+      .mockResolvedValueOnce(response({ differences: [], fromVersionId: '1', toVersionId: '2' }))
+      .mockResolvedValueOnce(response({ fromVersionId: '1', toVersionId: '2' }));
+    vi.stubGlobal('fetch', fetcher);
+    const diff = await getAiDocumentDiff('1', '9007199254740993', '9007199254740994');
+    expect(diff.fields).toEqual([
+      { changeType: 'modified', field: 'content', from: '旧正文', to: '新正文' },
+      { changeType: 'added', field: 'title', from: null, to: 'PRD' },
+    ]);
+    const empty = await getAiDocumentDiff('1', '1', '2');
+    expect(empty.fields).toEqual([]);
+    await expect(getAiDocumentDiff('1', '1', '2')).rejects.toThrow(IpdRequestError);
+  });
 });

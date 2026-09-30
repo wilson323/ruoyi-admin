@@ -39,7 +39,6 @@ import {
   type DeletionEntityType,
   type DeletionRequest,
 } from '../../../../api/ipd/deletion';
-import BackendPending from '../../_shared/backend-pending.vue';
 import { formatDateTime } from '../../_shared/format';
 import { DELETION_STATUS_TEXT } from '../../_shared/ipd-enums';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
@@ -278,6 +277,5 @@ const myRequestColumns = [
       </div>
     </div>
 
-    <BackendPending class="mt-4" />
   </div>
 </template>

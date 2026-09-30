@@ -49,11 +49,13 @@ import {
   getFallbackGateElements,
   isFallbackElement,
   listGateElementViews,
+  storedElementResult,
   submitGateElementResult,
   submitGateReview,
   type GateElementResult,
   type IpdGateElementView,
 } from '../../../api/ipd/gate-element-result';
+import { uploadGateMaterial } from '../../../api/ipd/gate-material';
 import {
   runArbitrationDivergences,
   runGatePrecheck,
@@ -313,6 +315,13 @@ async function loadElements(gateId: string): Promise<void> {
     } else {
       elements.value = fetched;
     }
+    for (const key of Object.keys(committedResults)) delete committedResults[key];
+    if (!elementsIsFallback.value) {
+      for (const el of fetched) {
+        const stored = storedElementResult(el.result);
+        if (stored) committedResults[el.elementId] = stored;
+      }
+    }
     // 为每个要素初始化草稿
     for (const el of elements.value) ensureDraft(el.elementId);
   } catch (cause) {
@@ -322,6 +331,22 @@ async function loadElements(gateId: string): Promise<void> {
     for (const el of elements.value) ensureDraft(el.elementId);
   } finally {
     elementsLoading.value = false;
+  }
+}
+
+/** 上传材料或纪要后回填数字 ossId，提交体仍走既有两个字段。 */
+async function uploadOutput(kind: 'materials' | 'minutes', event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  const gateId = gateIdInput.value.trim();
+  if (!file || !gateId) return;
+  try {
+    const uploaded = await uploadGateMaterial(gateId, file);
+    if (kind === 'materials') materialsOssId.value = uploaded.ossId;
+    else meetingMinutesOssId.value = uploaded.ossId;
+    message.success(kind === 'materials' ? '评审材料已上传' : '会议纪要已上传');
+  } catch (cause) {
+    message.error(ipdErrorText(cause, { fallback: '材料上传失败' }));
   }
 }
 
@@ -726,6 +751,12 @@ function finalRuling(decision: GateDecision): void {
               placeholder="评审材料 OSS ID（必填数字）"
             />
             <input
+              type="file"
+              aria-label="上传评审材料"
+              data-testid="gate-upload-materials"
+              @change="uploadOutput('materials', $event)"
+            />
+            <input
               id="gate-meeting-minutes-oss-input"
               v-model="meetingMinutesOssId"
               name="meeting_minutes_oss_id"
@@ -734,6 +765,12 @@ function finalRuling(decision: GateDecision): void {
               data-testid="gate-submit-minutes-oss"
               inputmode="numeric"
               placeholder="会议纪要 OSS ID（必填数字）"
+            />
+            <input
+              type="file"
+              aria-label="上传会议纪要"
+              data-testid="gate-upload-minutes"
+              @change="uploadOutput('minutes', $event)"
             />
           </div>
           <button

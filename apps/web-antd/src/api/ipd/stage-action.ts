@@ -19,7 +19,7 @@
  * 业务编号自适配：路由/页面常承载业务编号（"PRJ-2026-001"），但后端 @RequestParam Long
  * projectId 期望雪花 id。listStageActions 内部走 project.codeToId 翻译；调用方零改动。
  */
-import { ipdGet, ipdPost } from './http';
+import { ipdGet, ipdPost, ipdUpload } from './http';
 import { codeToId } from './project';
 
 /** 管理类型 BR-IPD-03/04；stageActionService.transit 按 depth 分支校验。 */
@@ -182,6 +182,16 @@ export function recordStageActionFields(id: string, body: StageActionFieldsBody)
  * - ossId 类型契约：后端 Long；前端以 string 拼 query（URLSearchParams 接受 string），
  *   Spring 反序列化时自动 toString→Long；测试中已用 string '9001' 验证契约。
  */
+/**
+ * 深管交付物真实上传（POST /api/v1/deliverables/upload）。
+ * 服务端产生 ossId 并登记，页面不再手填对象存储编号。
+ */
+export function uploadStageActionDeliverable(actionId: string, file: File): Promise<unknown> {
+  const form = new FormData();
+  form.append('file', file);
+  return ipdUpload(`/deliverables/upload?actionId=${encodeURIComponent(actionId)}`, form);
+}
+
 export function addStageActionDeliverable(id: string, fileName: string, ossId: string): Promise<unknown> {
   const params = new URLSearchParams();
   params.set('fileName', fileName);

@@ -44,7 +44,7 @@ import type {
   StageActionStatus,
 } from '../../../../api/ipd/stage-action';
 import {
-  addStageActionDeliverable,
+  uploadStageActionDeliverable,
   aiExecuteStageAction,
   listStageActions,
   recordStageActionFields,
@@ -176,10 +176,9 @@ const showFarFrr = computed(() => needsFarFrr.value);
 /** V02/P10：certNo/certPassedAt 例外字段；非例外动作不展示。 */
 const showCert = computed(() => needsCert.value);
 
-/** 深管交付物登记弹窗（不实现 OSS 上传；前端封装 /deliverables?fileName=&ossId=）。 */
+/** 深管交付物：POST /deliverables/upload 由服务端登记 ossId。 */
 const deliverableModalOpen = ref(false);
-const deliverableFileName = ref('');
-const deliverableOssId = ref('');
+const deliverableFile = ref<File | null>(null);
 
 async function load(): Promise<void> {
   if (!projectId.value || !actionId.value) {
@@ -270,28 +269,29 @@ async function confirmTransit(): Promise<void> {
 
 function openDeliverable(): void {
   if (!isDeep.value) return;
-  deliverableFileName.value = '';
-  deliverableOssId.value = '';
+  deliverableFile.value = null;
   deliverableModalOpen.value = true;
+}
+
+function onDeliverableFile(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  deliverableFile.value = input.files?.[0] ?? null;
 }
 
 async function submitDeliverable(): Promise<void> {
   if (!action.value) return;
-  if (!deliverableFileName.value.trim()) {
-    message.warning('请填写交付物文件名');
-    return;
+  if (!deliverableFile.value) {
+    message.warning('请选择要上传的文件');
+    return Promise.reject(new Error('missing-file'));
   }
   busyAction.value = 'saveFields';
   try {
-    await addStageActionDeliverable(
-      action.value.id,
-      deliverableFileName.value.trim(),
-      deliverableOssId.value.trim(),
-    );
-    message.success('交付物已登记（OSS 上传需走 /api/v1/attachments 流程，UI 不实现）');
+    await uploadStageActionDeliverable(action.value.id, deliverableFile.value);
+    message.success('交付物已上传');
     deliverableModalOpen.value = false;
   } catch (cause) {
     submitError.value = cause;
+    return Promise.reject(cause instanceof Error ? cause : new Error('upload-failed'));
   } finally {
     busyAction.value = '';
   }
@@ -484,7 +484,7 @@ onUnmounted(() => {
             class="mb-4"
             type="info"
             show-icon
-            message="深管动作：状态流转与字段录入走 /transit 与 /fields；交付物需先经 /api/v1/attachments 上传 OSS 拿到 ossId，再登记到本动作。SOP 模板与 AI 面板等待后端支撑接入。"
+            message="深管动作：状态流转与字段录入走 /transit 与 /fields；交付物走 POST /deliverables/upload，由服务端登记对象存储编号。"
           />
 
           <Alert
@@ -677,11 +677,8 @@ onUnmounted(() => {
       @ok="submitDeliverable"
     >
       <Form layout="vertical">
-        <Form.Item label="文件名" required>
-          <Input v-model:value="deliverableFileName" placeholder="例如：算法验证报告 v1.pdf" />
-        </Form.Item>
-        <Form.Item label="OSS 文件 ID（选填）" extra="需先经 /api/v1/attachments 上传拿到 ossId；UI 不实现上传流程。">
-          <Input v-model:value="deliverableOssId" placeholder="OSS 对象 ID；无 ossId 仍可登记文件名" />
+        <Form.Item label="交付物文件" required>
+          <input type="file" data-testid="deliverable-file" @change="onDeliverableFile" />
         </Form.Item>
       </Form>
     </Modal>

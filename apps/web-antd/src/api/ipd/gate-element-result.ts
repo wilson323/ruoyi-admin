@@ -127,6 +127,16 @@ export function submitGateReview(gateId: string, outputs: IpdGateSubmitOutputs):
   });
 }
 
+/**
+ * 把后端已落库的判定读回前端枚举。
+ * 后端 CONDITIONAL 对应页面「条件通过」。
+ */
+export function storedElementResult(raw: string | null | undefined): GateElementResult | null {
+  if (raw === 'FAIL' || raw === 'PASS' || raw === 'PASS_WITH_CONDITION') return raw;
+  if (raw === 'CONDITIONAL') return 'PASS_WITH_CONDITION';
+  return null;
+}
+
 /** 硬阻断检查：要素列表中 is_veto=true 且 result=FAIL 的条目数 > 0 ⇒ 提交按钮置灰。 */
 export function countVetoFailures(elements: IpdGateElementView[], results: Map<string, GateElementResult>): number {
   return elements.filter((el) => el.isVeto && results.get(el.elementId) === 'FAIL').length;

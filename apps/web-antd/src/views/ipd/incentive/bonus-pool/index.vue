@@ -53,6 +53,7 @@ import {
   createReceiptLedger,
   listReceiptLedgersByProject,
   refundReceiptLedger,
+  uploadReceiptVoucher,
 } from '../../../../api/ipd/receipt-ledger';
 import { IpdRequestError } from '../../../../api/ipd/auth';
 import { listProjectItems } from '../../../../api/ipd/project';
@@ -61,8 +62,6 @@ import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 import { ZK_RULE_BONUS_POOL_FORMULA, renderRulesDescription } from '../../_shared/zk-ipd-rules';
 import { bonusStateLabel, bonusStateTone, STATUS_TONE } from '../../_shared/ipd-enums';
 import AiSuggest from '../../_shared/ai-suggest.vue';
-import BackendPending from '../../_shared/backend-pending.vue';
-
 /** 与 layouts/ipd.vue 阶段轨道全局项目下拉共用同一持久化键。 */
 const CURRENT_PROJECT_KEY = 'ipd:current-project';
 /** 表单内选项目后通知顶栏同步（避免用户以为顶部下拉无效）。 */
@@ -364,7 +363,10 @@ const ledgerForm = reactive({
   receiptAmount: undefined as number | undefined,
   refundAmount: undefined as number | undefined,
   voucherUrl: '',
+  voucherHash: '',
+  voucherName: '',
 });
+const voucherUploading = ref(false);
 const canRecordReceipt = computed(
   () =>
     form.projectId.trim() !== '' &&
@@ -418,14 +420,45 @@ async function onRecordReceipt() {
       ...(ledgerForm.refundAmount != null && ledgerForm.refundAmount !== 0
         ? { refundAmount: Number(ledgerForm.refundAmount) }
         : {}),
-      ...(ledgerForm.voucherUrl.trim() ? { voucherUrl: ledgerForm.voucherUrl.trim() } : {}),
+      ...(ledgerForm.voucherUrl && ledgerForm.voucherHash
+        ? { voucherHash: ledgerForm.voucherHash, voucherUrl: ledgerForm.voucherUrl }
+        : {}),
     });
+    ledgerForm.voucherUrl = '';
+    ledgerForm.voucherHash = '';
+    ledgerForm.voucherName = '';
     message.success(`回款已录入：${created.receiptMonth ?? ledgerForm.receiptMonth.trim()} ¥ ${formatMoney(created.receiptAmount ?? null)}`);
     await loadLedgers();
   } catch (cause) {
     message.error(rejectText(cause));
   } finally {
     recording.value = false;
+  }
+}
+
+/**
+ * 选择凭证后立即上传。成功才把服务端 URL 与哈希放进待录入表单。
+ *
+ * @param event 文件输入的 change 事件
+ */
+async function onVoucherFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  ledgerForm.voucherUrl = '';
+  ledgerForm.voucherHash = '';
+  ledgerForm.voucherName = '';
+  if (!file || !form.projectId.trim()) return;
+  voucherUploading.value = true;
+  try {
+    const uploaded = await uploadReceiptVoucher(form.projectId.trim(), file);
+    ledgerForm.voucherUrl = uploaded.voucherUrl;
+    ledgerForm.voucherHash = uploaded.voucherHash;
+    ledgerForm.voucherName = uploaded.fileName;
+  } catch (cause) {
+    message.error(rejectText(cause));
+    input.value = '';
+  } finally {
+    voucherUploading.value = false;
   }
 }
 
@@ -685,8 +718,17 @@ const columns = [
         <FormItem label="同步冲减（元）">
           <InputNumber v-model:value="ledgerForm.refundAmount" :min="0" :precision="2" class="w-full" placeholder="可空；退款也可在录入后单独冲减" />
         </FormItem>
-        <FormItem label="凭证地址">
-          <Input v-model:value="ledgerForm.voucherUrl" class="w-full" placeholder="银行回单/对账单 URL（可空，≤500 字符）" />
+        <FormItem label="凭证附件">
+          <input
+            accept=".pdf,.jpg,.jpeg,.png,.webp"
+            data-testid="receipt-voucher"
+            :disabled="!form.projectId.trim() || voucherUploading"
+            type="file"
+            @change="onVoucherFile"
+          />
+          <p class="text-muted-foreground mt-1 text-xs">
+            {{ voucherUploading ? '正在上传凭证…' : (ledgerForm.voucherName ? `已上传 ${ledgerForm.voucherName}` : '可空。pdf / jpg / png / webp，单份不超过 20MB，由服务端登记地址与哈希。') }}
+          </p>
         </FormItem>
         <FormItem label="退款冲减（事后）">
           <Input v-model:value="refundForm.month" class="w-full" placeholder="冲减月份 YYYY-MM（仅 6 自然月窗口内当期冲减，窗外拒绝回溯）" />
@@ -813,6 +855,5 @@ const columns = [
       </Table>
     </Card>
 
-    <BackendPending class="mt-4" />
   </div>
 </template>

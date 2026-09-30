@@ -174,25 +174,36 @@ export function parseAiDocument(data: unknown): AiDocument {
   };
 }
 
-function isDiffField(value: unknown): value is AiDocumentDiffField {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  return typeof record.field === 'string'
-    && (record.changeType === 'added'
-      || record.changeType === 'modified'
-      || record.changeType === 'removed'
-      || record.changeType === 'unchanged')
-    && (record.from === null || record.from === undefined || typeof record.from === 'string')
-    && (record.to === null || record.to === undefined || typeof record.to === 'string');
+function isChangeType(value: unknown): value is AiDocumentDiffField['changeType'] {
+  return value === 'added' || value === 'modified' || value === 'removed' || value === 'unchanged';
 }
 
-function parseDiffField(record: Record<string, unknown>): AiDocumentDiffField {
-  return {
-    changeType: record.changeType as AiDocumentDiffField['changeType'],
-    field: typeof record.field === 'string' ? record.field : String(record.field ?? ''),
-    from: typeof record.from === 'string' ? record.from : null,
-    to: typeof record.to === 'string' ? record.to : null,
-  };
+function textOrNull(value: unknown): null | string {
+  return typeof value === 'string' ? value : null;
+}
+
+/**
+ * 把后端 FieldDiff（differences/fromValue/toValue）或旧 fields 契约收成同一条。
+ * 非法 changeType、非字符串 from/to 直接丢掉，不把坏行当成差异。
+ */
+function toDiffField(value: unknown): AiDocumentDiffField | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.field !== 'string' || record.field.length === 0) return null;
+  if (isChangeType(record.changeType)) {
+    const fromOk = record.from === null || record.from === undefined || typeof record.from === 'string';
+    const toOk = record.to === null || record.to === undefined || typeof record.to === 'string';
+    if (!fromOk || !toOk) return null;
+    return { changeType: record.changeType, field: record.field, from: textOrNull(record.from), to: textOrNull(record.to) };
+  }
+  if (!('fromValue' in record) && !('toValue' in record)) return null;
+  const from = textOrNull(record.fromValue);
+  const to = textOrNull(record.toValue);
+  let changeType: AiDocumentDiffField['changeType'] = 'modified';
+  if (from == null && to != null) changeType = 'added';
+  else if (from != null && to == null) changeType = 'removed';
+  else if (from === to) changeType = 'unchanged';
+  return { changeType, field: record.field, from, to };
 }
 
 /**
@@ -331,8 +342,13 @@ export async function getAiDocumentDiff(documentId: string, fromVersionId: strin
     ? (data as Record<string, unknown>)
     : null;
   if (!record) throw new IpdRequestError('Diff 响应数据格式异常');
-  const fieldsRaw = Array.isArray(record.fields) ? record.fields : [];
-  const fields = fieldsRaw.filter(isDiffField).map((field): AiDocumentDiffField => parseDiffField(field as unknown as Record<string, unknown>));
+  const rows = Array.isArray(record.differences)
+    ? record.differences
+    : Array.isArray(record.fields)
+      ? record.fields
+      : null;
+  if (!rows) throw new IpdRequestError('Diff 响应缺少差异列表');
+  const fields = rows.map(toDiffField).filter((field): field is AiDocumentDiffField => field !== null);
   return {
     fields,
     fromVersionId: typeof record.fromVersionId === 'string' ? record.fromVersionId : fromVersionId,

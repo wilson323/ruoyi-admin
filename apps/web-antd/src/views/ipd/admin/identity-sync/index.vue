@@ -32,8 +32,6 @@ import { rehirePerson, resignPerson, unbindWecom } from '../../../../api/ipd/per
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { formatDateTime, PENDING_TEXT } from '../../_shared/format';
-import BackendPending from '../../_shared/backend-pending.vue';
-
 defineOptions({ name: 'IpdIdentitySync', meta: { ipdBackend: 'PmDirectoryController 已交付：GET /pm-directory（在职目录只读视图）；identity-source Controller 待补（同步源类型/来源实例/最近同步时间三个维度未交付）。', ipdCard: 'P0-10.44' } });
 
 const auth = useIpdAuthStore();
@@ -373,6 +371,5 @@ async function confirmPersonAction(): Promise<void> {
       <div v-if="actionResult" class="mt-2 text-xs" :class="actionOpen ? 'text-gray-400' : 'text-green-600'">{{ actionResult }}</div>
     </Modal>
 
-    <BackendPending class="mt-4" />
   </div>
 </template>

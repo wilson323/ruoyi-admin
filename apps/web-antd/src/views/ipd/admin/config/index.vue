@@ -37,6 +37,7 @@ import {
   listSystemConfigVersions,
   listSystemConfigs,
   resolveSystemConfigAsOf,
+  revertSystemConfig,
   updateSystemConfig,
 } from '../../../../api/ipd/system-config';
 import { IpdRequestError } from '../../../../api/ipd/auth';
@@ -249,6 +250,16 @@ async function saveModal() {
   }
 }
 
+async function revertConfig(record: IpdSystemConfig) {
+  try {
+    const result = await revertSystemConfig(record.configKey);
+    antMessage.success(`已回滚 ${record.configKey} 到上一版本：${result.value}`);
+    await load();
+  } catch (cause) {
+    antMessage.error(rejectText(cause));
+  }
+}
+
 async function openVersions(record: IpdSystemConfig) {
   versionsKey.value = record.configKey;
   versionsOpen.value = true;
@@ -414,6 +425,7 @@ function reload() {
               <template v-else-if="column.key === 'actions'">
                 <Space :size="4" wrap>
                   <Button size="small" type="primary" v-access:code="IPD_PERMISSION_CODES.SYSTEM_CONFIG_UPDATE" @click="openEdit(asConfig(record))">编辑</Button>
+                  <Button size="small" v-access:code="IPD_PERMISSION_CODES.SYSTEM_CONFIG_UPDATE" @click="revertConfig(asConfig(record))">回滚上一版</Button>
                   <Button size="small" v-access:code="IPD_PERMISSION_CODES.SYSTEM_CONFIG_UPDATE" @click="openVersions(asConfig(record))">版本链</Button>
                   <Button size="small" v-access:code="IPD_PERMISSION_CODES.SYSTEM_CONFIG_UPDATE" @click="runAsOf(asConfig(record))">时点解析</Button>
                 </Space>

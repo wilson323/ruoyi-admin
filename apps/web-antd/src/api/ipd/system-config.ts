@@ -18,7 +18,7 @@
  *     bonus.multiProjectSplit / bonus.launchAnchor / bonus.coefficientDecider。
  * - ID 一律按字符串处理（后端 Long 序列化可能为数字）。
  */
-import { ipdGet, ipdPut } from './http';
+import { ipdGet, ipdPost, ipdPut } from './http';
 
 export interface IpdSystemConfig {
   /** 主键 */
@@ -132,6 +132,14 @@ export async function updateSystemConfig(
     value: String(raw.value ?? ''),
     invalidated: raw.invalidated === 'true' || raw.invalidated === true,
   };
+}
+
+/** 回滚到上一版本。没有历史版本时后端拒绝。 */
+export async function revertSystemConfig(key: string): Promise<{ key: string; value: string }> {
+  const raw = await ipdPost<Record<string, unknown>>(
+    `/system-configs/${encodeURIComponent(key)}/revert`,
+  );
+  return { key: String(raw.key ?? key), value: String(raw.value ?? '') };
 }
 
 /** 版本链（仅超管；limit 默认 20；最新在前；configValue 不可变）。 */

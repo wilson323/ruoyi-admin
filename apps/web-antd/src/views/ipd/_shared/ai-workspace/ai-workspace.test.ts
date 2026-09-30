@@ -1,6 +1,5 @@
 /**
- * AI 工作区四区自动渲染测试（2026-09-29 形态裁决：建议卡/步骤/画布/文档常驻
- * 堆叠渲染，不再互斥切换；锚点条只定位不隐藏）。
+ * AI 工作区分区测试：页签切换，同一时间只显示当前 pane；未显示的分区仍挂载。
  */
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -15,7 +14,7 @@ beforeEach(() => {
 });
 
 describe('IpdAiWorkspace', () => {
-  it('四区常驻自动渲染：建议卡/步骤/画布/文档同时在场，无需切换', () => {
+  it('默认只显示建议卡，其它分区挂着但不展示', () => {
     const wrapper = mount(IpdAiWorkspace, {
       slots: {
         cards: '<div data-testid="card-slot-echo">卡片槽</div>',
@@ -24,26 +23,23 @@ describe('IpdAiWorkspace', () => {
         doc: '<div data-testid="doc-slot-echo">文档槽</div>',
       },
     });
-    for (const key of ['cards', 'steps', 'canvas', 'doc']) {
+    expect(wrapper.find('[data-testid="ipd-ai-ws-pane-cards"]').isVisible()).toBe(true);
+    for (const key of ['steps', 'canvas', 'doc']) {
       expect(wrapper.find(`[data-testid="ipd-ai-ws-pane-${key}"]`).exists()).toBe(true);
+      expect(wrapper.find(`[data-testid="ipd-ai-ws-pane-${key}"]`).isVisible()).toBe(false);
     }
-    // 四个插槽同时渲染（不因未激活而缺席）
-    for (const key of ['card', 'step', 'canvas', 'doc']) {
-      expect(wrapper.find(`[data-testid="${key}-slot-echo"]`).exists()).toBe(true);
-    }
+    expect(wrapper.find('[data-testid="card-slot-echo"]').exists()).toBe(true);
     expect(wrapper.findAll('.ws-tab')).toHaveLength(4);
   });
 
-  it('锚点点击只定位不切换：四区仍在场，pane 记录锚点偏好', async () => {
+  it('点击页签只显示该分区，未显示的插槽仍挂载', async () => {
     const wrapper = mount(IpdAiWorkspace, {
       slots: { cards: '<div data-testid="card-slot-echo">卡片槽</div>' },
     });
     await wrapper.get('[data-testid="ipd-ai-ws-tab-canvas"]').trigger('click');
     expect(useIpdAiWorkspace().pane.value).toBe('canvas');
-    // 切换后四区仍在（互斥 v-if 已移除，状态不因锚点点击丢失）
-    for (const key of ['cards', 'steps', 'canvas', 'doc']) {
-      expect(wrapper.find(`[data-testid="ipd-ai-ws-pane-${key}"]`).exists()).toBe(true);
-    }
+    expect(wrapper.find('[data-testid="ipd-ai-ws-pane-canvas"]').isVisible()).toBe(true);
+    expect(wrapper.find('[data-testid="ipd-ai-ws-pane-cards"]').isVisible()).toBe(false);
     expect(wrapper.find('[data-testid="card-slot-echo"]').exists()).toBe(true);
   });
 
@@ -56,6 +52,16 @@ describe('IpdAiWorkspace', () => {
     ws.focusPane('doc');
     expect(ws.focusTick.value).toBe(before + 2);
     expect(ws.pane.value).toBe('doc');
+  });
+
+  it('传入 panes 时只挂载指定分区', () => {
+    const wrapper = mount(IpdAiWorkspace, {
+      props: { panes: ['cards', 'steps'], titles: { cards: '本次运行' } },
+    });
+    expect(wrapper.find('[data-testid="ipd-ai-ws-pane-cards"]').isVisible()).toBe(true);
+    expect(wrapper.find('[data-testid="ipd-ai-ws-pane-steps"]').isVisible()).toBe(false);
+    expect(wrapper.find('[data-testid="ipd-ai-ws-pane-canvas"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="ipd-ai-ws-tab-cards"]').text()).toBe('本次运行');
   });
 
   it('无插槽时各区回退兜底空态文案（降级铁律）', () => {

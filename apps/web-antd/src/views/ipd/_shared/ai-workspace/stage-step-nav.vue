@@ -5,6 +5,8 @@ import type { SubStage } from '../../../../api/ipd/stage-sub-stages';
 
 const props = defineProps<{
   activeCode: null | string;
+  /** 项目智能体里，选中步骤是为了把动作带到对话，不是只换视图。 */
+  bindsSession?: boolean;
   stageCode?: string;
   stages: SubStage[];
 }>();
@@ -28,7 +30,11 @@ const groups = computed(() => {
 
 <template>
   <div class="stage-nav" data-testid="ipd-ai-step-nav">
-    <p class="stage-hint">选中仅切换视图，不表示已执行或已完成。</p>
+    <p class="stage-hint">
+      {{ bindsSession
+        ? '选中步骤后，到对话里点对应动作再发送，运行才会绑定该动作。'
+        : '选中仅切换视图，不表示已执行或已完成。' }}
+    </p>
     <div v-if="groups.length === 0" class="stage-empty">该浏览阶段暂无可显示的小阶段。</div>
     <section v-for="group in groups" :key="group.code" class="stage-group">
       <h3>{{ group.code }}</h3>

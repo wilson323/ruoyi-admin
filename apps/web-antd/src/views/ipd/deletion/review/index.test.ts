@@ -166,18 +166,14 @@ describe('页05 待我审核', () => {
   });
 });
 
-describe('BackendPending 占位（W11 收口）', () => {
-  it('底部渲染占位横幅：看板卡 + 后端依赖（ipdCard 待 owner 裁决）', async () => {
+describe('已接通页不再挂整页未交付占位', () => {
+  it('审核队列已接真实接口时，不渲染「后端尚未交付」横幅', async () => {
     loginAs('GROUP_LEADER');
     const fetcher = vi.fn(async () => envelope([]));
     vi.stubGlobal('fetch', fetcher);
     const wrapper = mount(Review);
-    await vi.waitFor(() => expect(wrapper.text()).toContain('该页面已登记，后端接口尚未交付'));
-    const text = wrapper.text();
-    // 占位横幅：ipdCard 待 owner 裁决，横幅卡号回落「待补充」
-    expect(text).toContain('该页面已登记，后端接口尚未交付');
-    expect(text).toContain('看板卡');
-    expect(text).toContain('后端依赖');
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalled());
+    expect(wrapper.text()).not.toContain('该页面已登记，后端接口尚未交付');
     wrapper.unmount();
   });
 });
