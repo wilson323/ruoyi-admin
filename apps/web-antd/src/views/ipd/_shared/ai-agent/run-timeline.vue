@@ -336,7 +336,7 @@ async function onReworkArtifact(artifactId: string): Promise<void> {
           </template>
           <template v-else-if="row.item.kind === 'error'">
             <span class="item-error" role="alert">
-              {{ row.item.message || '智能体返回错误' }}<template v-if="row.item.code">（{{ row.item.code }}）</template>
+              {{ row.item.message || '智能体返回错误' }}
             </span>
           </template>
           <template v-else-if="row.item.kind === 'run-finished'">

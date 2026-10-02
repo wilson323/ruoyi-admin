@@ -180,6 +180,9 @@ const {
  */
 async function openHistory(id: string): Promise<void> {
   lastTask.value = '';
+  reworkAssociation.value = null;
+  reworkActionCode.value = null;
+  pendingKey = null;
   if (await agent.openRun(id)) focusPane('cards');
 }
 
@@ -345,6 +348,16 @@ function focusTaskInput(): void {
     return;
   }
   messageBox.value?.focus();
+}
+
+/** 失败后的新尝试只准备当前输入框；不猜历史提问、不续跑或绑定旧文档链。 */
+function prepareNewAttempt(): void {
+  if (status.value !== 'FAILED' || active.value || submitting.value) return;
+  reworkAssociation.value = null;
+  reworkActionCode.value = detail.value?.actionCode?.trim() || null;
+  pendingKey = null;
+  selection.value = sanitizeSelection(capabilities.value, selection.value);
+  focusTaskInput();
 }
 
 /**
@@ -628,9 +641,12 @@ function onMessageKeydown(event: KeyboardEvent): void {
         />
       </Teleport>
 
-      <p v-if="terminal && detail?.errorCode" class="panel-warn" data-testid="panel-error-code">
-        失败码：{{ detail.errorCode }}
-      </p>
+      <div v-if="status === 'FAILED'" class="panel-warn" data-testid="panel-new-attempt">
+        <p>本次运行未能生成产物。重新开始会创建新尝试，原运行仍保留；请在输入框说明这次任务后发送。</p>
+        <Button size="small" :disabled="submitting || active" data-testid="panel-restart" @click="prepareNewAttempt">
+          重新开始
+        </Button>
+      </div>
       <FeedbackBar v-if="terminal" target-type="RUN_MESSAGE" :target-id="runId" label="本次运行" />
     </template>
   </section>

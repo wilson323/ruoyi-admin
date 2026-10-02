@@ -55,7 +55,7 @@ const CAPS: ProjectAgentCapabilities = {
 
 /** 运行详情替身。 */
 function detailOf(
-  status: 'RUNNING' | 'SUCCEEDED' | 'WAITING_APPROVAL',
+  status: 'FAILED' | 'RUNNING' | 'SUCCEEDED' | 'WAITING_APPROVAL',
   actionCode: null | string = 'A-01',
 ) {
   return {
@@ -119,6 +119,34 @@ afterEach(() => {
 });
 
 describe('ProjectAgentPanel', () => {
+  it('prepares an editable new attempt after failure without resuming or guessing the historical prompt', async () => {
+    const failed = { ...detailOf('FAILED'), errorCode: 'COMPLETION_REJECTED' };
+    vi.mocked(listProjectAgentRuns).mockResolvedValue([{ ...historyRow('run-1'), status: 'FAILED' }]);
+    vi.mocked(fetchAgentRun).mockResolvedValue(failed);
+    vi.mocked(fetchAgentRunEvents).mockResolvedValue({ events: [], nextSeq: 0, terminal: true });
+    const wrapper = await mountPanel();
+    await wrapper.find('.run-history button').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('COMPLETION_REJECTED');
+    expect(wrapper.find('[data-testid="panel-restart"]').text()).toBe('重新开始');
+    await wrapper.find('[data-testid="panel-restart"]').trigger('click');
+    expect(createProjectAgentRun).not.toHaveBeenCalled();
+    expect(cancelAgentRun).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="panel-message"]').element).toHaveProperty('value', '');
+    expect(wrapper.find('.run-history').text()).toContain('失败');
+    expect(await wrapper.vm.submitText('重新核对这次资料')).toBe('started');
+    expect(createProjectAgentRun).toHaveBeenCalledTimes(1);
+    const input = vi.mocked(createProjectAgentRun).mock.calls[0]![1];
+    expect(input).toMatchObject({ message: '重新核对这次资料', actionCode: 'A-01' });
+    expect(input.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+    expect(input).not.toHaveProperty('previousRunId');
+    expect(input).not.toHaveProperty('targetDocumentId');
+    expect(input).not.toHaveProperty('baseVersionId');
+    expect(failed.errorCode).toBe('COMPLETION_REJECTED');
+    expect(streamCopilot).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it('shows the backend reason when the feature is off and never falls back to the copilot stream', async () => {
     vi.mocked(fetchProjectAgentCapabilities).mockRejectedValue(
       new IpdRequestError('x', 403, 30001, 'http', '项目智能体功能未开启，请联系管理员'),

@@ -23,6 +23,14 @@ function ev(seq: number, type: AgentRunEvent['type'], payload: unknown = {}): Ag
 }
 
 describe('RunTimeline', () => {
+  it('renders the user error message without exposing its audit code', () => {
+    const event = ev(1, 'ERROR', { code: 'COMPLETION_REJECTED', message: '检索依据不足，产物未生成' });
+    const wrapper = mount(RunTimeline, { props: { events: [event], hasRun: true } });
+    expect(wrapper.text()).toContain('检索依据不足，产物未生成');
+    expect(wrapper.text()).not.toContain('COMPLETION_REJECTED');
+    expect(event.payload).toEqual({ code: 'COMPLETION_REJECTED', message: '检索依据不足，产物未生成' });
+  });
+
   it('shows the idle hint and no items before any run', () => {
     const wrapper = mount(RunTimeline, { props: { events: [], hasRun: false } });
     expect(wrapper.find('[data-testid="timeline-idle"]').exists()).toBe(true);
@@ -73,7 +81,9 @@ describe('RunTimeline', () => {
     const link = items[2]!.find('a');
     expect(link.attributes('href')).toBe('https://example.com');
     expect(link.attributes('rel')).toBe('noopener noreferrer');
-    expect(items[3]!.text()).toContain('模型超时（E1）');
+    expect(items[3]!.find('[role="alert"]').text()).toBe('模型超时');
+    expect(items[3]!.text()).not.toContain('E1');
+    expect(wrapper.props('events')[4]?.payload).toEqual({ code: 'E1', message: '模型超时' });
   });
 
   it('renders think tags as a folded reasoning block and the answer as the body', () => {
