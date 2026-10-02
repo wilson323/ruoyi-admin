@@ -240,4 +240,107 @@ describe('buildTimelineItems', () => {
     expect(intentStepMarks(events, 0)).toEqual([]);
   });
 
+  it('把部分查到、没有查成和没有命中分开，失败不因 hits 被说成没命中', () => {
+    const [partial, failed, noHit, hit] = buildTimelineItems([
+      ev(1, 'SOURCE', { retrievalStatus: 'PARTIAL', hits: 0, preview: '阶段=调用' }),
+      ev(2, 'SOURCE', { retrievalStatus: 'FAILED', hits: [{ id: 'old' }], preview: '连接失败' }),
+      ev(3, 'SOURCE', { retrievalStatus: 'SUCCESS', hits: 0 }),
+      ev(4, 'SOURCE', { retrievalStatus: 'SUCCESS', hits: [{ id: '1' }] }),
+    ]);
+    expect(partial).toMatchObject({ retrieval: 'partial', outcomeText: '部分查到', reasonText: '' });
+    expect(failed).toMatchObject({ retrieval: 'failed', outcomeText: '没有查成', reasonText: '' });
+    expect(noHit).toMatchObject({ retrieval: 'no-hit', outcomeText: '没有命中' });
+    expect(hit).toMatchObject({ retrieval: 'hit', outcomeText: '已查到', reasonText: '' });
+    expect(partial).not.toMatchObject({ outcomeText: '没有命中' });
+    expect(failed).not.toMatchObject({ outcomeText: '没有命中' });
+  });
+
+  it('只展示事件里已有的原因码和合格出处，不从 preview 编原因', () => {
+    const [known, unknown, dropped] = buildTimelineItems([
+      ev(1, 'SOURCE', {
+        retrievalStatus: 'FAILED',
+        reasonCode: 'TIMEOUT',
+        preview: '阶段=握手 原因=超时',
+        sourceEvidence: [
+          {
+            sourceType: 'PROJECT_DOCUMENT',
+            documentId: '2106061816428781569',
+            sourceName: '竞品修订稿',
+            reviewStatus: 'REVIEWED',
+          },
+          {
+            sourceType: 'KNOWLEDGE_FRAGMENT',
+            documentId: 'doc-1',
+            knowledgeId: 'k-1',
+            fragmentId: 'f-1',
+            sourceName: '产品手册',
+            reviewStatus: 'NOT_PROJECT_DOCUMENT',
+          },
+        ],
+      }),
+      ev(2, 'SOURCE', { retrievalStatus: 'FAILED', reasonCode: 'MADE_UP', preview: '阶段=调用' }),
+      ev(3, 'SOURCE', {
+        retrievalStatus: 'SUCCESS',
+        sourceEvidence: [{
+          sourceType: 'KNOWLEDGE_FRAGMENT',
+          documentId: 'doc-1',
+          knowledgeId: 'k-1',
+          sourceName: '缺片段',
+          reviewStatus: 'REVIEWED',
+        }],
+      }),
+    ]);
+    expect(known).toMatchObject({
+      reasonText: '查询超时',
+      evidence: [
+        { kindLabel: '项目已审核文档', sourceName: '竞品修订稿' },
+        { kindLabel: '产品知识库', sourceName: '产品手册' },
+      ],
+    });
+    expect(unknown).toMatchObject({ retrieval: 'failed', reasonText: '' });
+    expect(dropped).toMatchObject({ evidence: [], retrieval: 'hit' });
+  });
+
+  it('查询能力缺失只翻译已知原因，不改变无权或未知来源边界', () => {
+    const [failed, unauthorized, unknown] = buildTimelineItems([
+      ev(1, 'SOURCE', {
+        retrievalStatus: 'FAILED', reasonCode: 'TOOLS_CAPABILITY_MISSING',
+        mcpSdkFrames: ['io.modelcontextprotocol.client.McpAsyncClient#listToolsInternal:653'],
+      }),
+      ev(2, 'SOURCE', { retrievalStatus: 'UNAUTHORIZED', reasonCode: 'TOOLS_CAPABILITY_MISSING' }),
+      ev(3, 'SOURCE', { retrievalStatus: 'UNKNOWN', reasonCode: 'TOOLS_CAPABILITY_MISSING' }),
+    ]);
+    expect(failed).toMatchObject({ retrieval: 'failed', outcomeText: '没有查成', reasonText: '知识库服务暂未提供查询能力' });
+    expect(JSON.stringify(failed)).not.toMatch(/TOOLS_CAPABILITY_MISSING|McpAsyncClient|listToolsInternal/);
+    expect(unauthorized).toMatchObject({ retrieval: 'unauthorized', outcomeText: '无权查看', reasonText: '' });
+    expect(unknown).toMatchObject({ retrieval: 'unknown', outcomeText: '', reasonText: '' });
+  });
+
+  it('没有检索状态时不编没有查成', () => {
+    const [item] = buildTimelineItems([ev(1, 'SOURCE', { title: '市场报告' })]);
+    expect(item).toMatchObject({ retrieval: 'unknown', outcomeText: '', reasonText: '', evidence: [] });
+  });
+
+  it('无权查看不能被命中数或原因码改成失败、空命中或成功', () => {
+    const [item] = buildTimelineItems([ev(1, 'SOURCE', {
+      retrievalStatus: 'UNAUTHORIZED', hits: 1, reasonCode: 'TIMEOUT',
+      query: '私密问题', preview: '私密错误', citationText: '私密正文',
+    })]);
+    expect(item).toMatchObject({ retrieval: 'unauthorized', outcomeText: '无权查看', reasonText: '' });
+    expect(JSON.stringify(item)).not.toMatch(/私密问题|私密错误|私密正文/);
+  });
+
+  it('原型成员不是已知原因码，缺审核合同的知识出处不能展示', () => {
+    for (const reasonCode of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+      const [item] = buildTimelineItems([ev(1, 'SOURCE', { retrievalStatus: 'FAILED', reasonCode })]);
+      expect(item).toMatchObject({ reasonText: '', retrieval: 'failed' });
+    }
+    const identity = { sourceType: 'KNOWLEDGE_FRAGMENT', documentId: 'd', knowledgeId: 'k', fragmentId: 'f', sourceName: '产品手册' };
+    const [item] = buildTimelineItems([ev(1, 'SOURCE', { retrievalStatus: 'SUCCESS', sourceEvidence: [
+      identity, { ...identity, reviewStatus: 'UNKNOWN' }, { ...identity, reviewStatus: 'REVIEWED' },
+      { ...identity, reviewStatus: 'NOT_PROJECT_DOCUMENT' },
+    ] })]);
+    expect(item).toMatchObject({ evidence: [{ kindLabel: '产品知识库', sourceName: '产品手册' }] });
+  });
+
 });

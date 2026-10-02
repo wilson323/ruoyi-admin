@@ -369,3 +369,29 @@ describe('authoritative rework association', () => {
     expect(wrapper.emitted('rework')).toBeUndefined();
   });
 });
+
+describe('source outcome display', () => {
+  it('renders unauthorized explicitly without exposing private source payload or prototype reasons', () => {
+    const wrapper = mount(RunTimeline, { props: { hasRun: true, events: [
+      ev(1, 'SOURCE', { retrievalStatus: 'UNAUTHORIZED', hits: 0, query: '私密问题', preview: '私密错误', citationText: '私密正文' }),
+      ev(2, 'SOURCE', { retrievalStatus: 'FAILED', reasonCode: 'constructor' }),
+      ev(3, 'SOURCE', { retrievalStatus: 'FAILED', reasonCode: '__proto__' }),
+    ] } });
+    expect(wrapper.findAll('[data-testid="source-outcome"]').map((node) => node.text()))
+      .toEqual(['无权查看', '没有查成', '没有查成']);
+    expect(wrapper.findAll('[data-testid="source-reason"]')).toHaveLength(0);
+    expect(wrapper.text()).not.toMatch(/私密问题|私密错误|私密正文|constructor|__proto__/);
+  });
+  it('shows a failed retrieval separately from no hit, and only a known reason', () => {
+    const wrapper = mount(RunTimeline, { props: { hasRun: true, events: [
+      ev(1, 'SOURCE', { retrievalStatus: 'FAILED', hits: [{ id: 'old' }], reasonCode: 'TIMEOUT', preview: '连接失败' }),
+      ev(2, 'SOURCE', { retrievalStatus: 'SUCCESS', hits: 0 }),
+      ev(3, 'SOURCE', { retrievalStatus: 'FAILED', reasonCode: 'MADE_UP' }),
+    ] } });
+    const outcomes = wrapper.findAll('[data-testid="source-outcome"]').map((node) => node.text());
+    expect(outcomes).toEqual(['没有查成', '没有命中', '没有查成']);
+    expect(wrapper.findAll('[data-testid="source-reason"]').map((node) => node.text())).toEqual(['查询超时']);
+    expect(wrapper.text()).not.toContain('MADE_UP');
+    expect(wrapper.text()).not.toContain('TIMEOUT');
+  });
+});

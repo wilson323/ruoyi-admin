@@ -40,6 +40,15 @@ interface TimelineBase {
   createdAt: string;
 }
 
+/** 来源条目里可展示的一条出处。缺必填字段的知识库行不进入这里。 */
+export type SourceEvidenceView = {
+  kindLabel: '产品知识库' | '项目已审核文档';
+  sourceName: string;
+};
+
+/** 检索结果和「没有命中」分开。没有 retrievalStatus 时保持未知，不编原因。 */
+export type SourceRetrieval = 'failed' | 'hit' | 'no-hit' | 'partial' | 'unauthorized' | 'unknown';
+
 /** 时间线条目（判别联合）。 */
 export type TimelineItem =
   | (TimelineBase & {
@@ -56,7 +65,16 @@ export type TimelineItem =
   | (TimelineBase & { kind: 'run-finished'; status: AgentRunStatus | null })
   | (TimelineBase & { kind: 'intent' } & AgentIntentView)
   | (TimelineBase & { kind: 'run-started' })
-  | (TimelineBase & { kind: 'source'; reference: string; title: string; url: null | string })
+  | (TimelineBase & {
+      evidence: SourceEvidenceView[];
+      kind: 'source';
+      outcomeText: string;
+      reasonText: string;
+      reference: string;
+      retrieval: SourceRetrieval;
+      title: string;
+      url: null | string;
+    })
   | (TimelineBase & { kind: 'step'; detail: string; title: string })
   | (TimelineBase & { kind: 'text'; text: string })
   | (TimelineBase & { kind: 'tool-call'; toolCallId: null | string; summary: string; toolName: string })
@@ -161,6 +179,104 @@ function deltaText(payload: unknown): string {
   return '';
 }
 
+const SOURCE_REASONS: Record<string, string> = {
+  AMBIGUOUS_TOOLS: '工具不唯一',
+  CANCELLED: '查询已取消',
+  EMPTY_RESULT: '没有返回内容',
+  INVALID_QUERY: '查询无法执行',
+  NO_CLIENT: '没有连上知识库',
+  NO_ENDPOINT: '没有可用地址',
+  NO_TOOLS: '没有可用工具',
+  PROTOCOL_OR_TRANSPORT: '连接没有完成',
+  REMOTE_IS_ERROR: '知识库返回了错误',
+  TIMEOUT: '查询超时',
+  TOOLS_CAPABILITY_MISSING: '知识库服务暂未提供查询能力',
+  UNSUPPORTED_SCHEMA: '工具参数不受支持',
+};
+
+/**
+ * 只翻译来源事件上已有的 reasonCode。
+ *
+ * 不从 preview 或异常原文反推。未知码留空。
+ *
+ * @param code 来源事件 reasonCode
+ * @returns 给页面的短句；没有可展示原因时为空
+ */
+function sourceReasonText(code: string): string {
+  return Object.prototype.hasOwnProperty.call(SOURCE_REASONS, code) ? SOURCE_REASONS[code]! : '';
+}
+
+/**
+ * 读取 hits。数组看长度，数字看本身；缺字段返回 null，不能当成 0。
+ *
+ * @param value 来源事件 hits
+ */
+function hitCount(value: unknown): null | number {
+  if (Array.isArray(value)) return value.length;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * 区分部分查到、没有查成和没有命中。
+ *
+ * FAILED 优先于 hits，避免旧事件里的命中数组被说成没找到。
+ * 没有 retrievalStatus 时不编「没有查成」。
+ *
+ * @param payload SOURCE 事件载荷
+ */
+function sourceRetrieval(payload: Record<string, unknown>): {
+  outcomeText: string;
+  reasonText: string;
+  retrieval: SourceRetrieval;
+} {
+  const status = pickText(payload, 'retrievalStatus');
+  if (status === 'UNAUTHORIZED') return { retrieval: 'unauthorized', outcomeText: '无权查看', reasonText: '' };
+  if (status === 'FAILED') {
+    return { retrieval: 'failed', outcomeText: '没有查成', reasonText: sourceReasonText(pickText(payload, 'reasonCode')) };
+  }
+  if (status === 'PARTIAL') return { retrieval: 'partial', outcomeText: '部分查到', reasonText: '' };
+  const hits = hitCount(payload.hits);
+  if (status === 'NO_HIT' || (status === 'SUCCESS' && hits === 0)) {
+    return { retrieval: 'no-hit', outcomeText: '没有命中', reasonText: '' };
+  }
+  if (status === 'SUCCESS') return { retrieval: 'hit', outcomeText: '已查到', reasonText: '' };
+  return { retrieval: 'unknown', outcomeText: '', reasonText: '' };
+}
+
+/**
+ * 只保留合同里合格的出处。
+ *
+ * 知识库行必须带完整标识且 reviewStatus 为 NOT_PROJECT_DOCUMENT。
+ *
+ * @param payload SOURCE 事件载荷
+ */
+function sourceEvidence(payload: Record<string, unknown>): SourceEvidenceView[] {
+  if (!Array.isArray(payload.sourceEvidence)) return [];
+  const evidence: SourceEvidenceView[] = [];
+  for (const item of payload.sourceEvidence) {
+    const row = asRecord(item);
+    const sourceName = pickText(row, 'sourceName');
+    const documentId = pickText(row, 'documentId');
+    const sourceType = pickText(row, 'sourceType');
+    const reviewStatus = pickText(row, 'reviewStatus');
+    if (sourceType === 'PROJECT_DOCUMENT' && documentId && sourceName && reviewStatus === 'REVIEWED') {
+      evidence.push({ kindLabel: '项目已审核文档', sourceName });
+      continue;
+    }
+    if (
+      sourceType === 'KNOWLEDGE_FRAGMENT'
+      && documentId
+      && pickText(row, 'knowledgeId')
+      && pickText(row, 'fragmentId')
+      && sourceName
+      && reviewStatus === 'NOT_PROJECT_DOCUMENT'
+    ) {
+      evidence.push({ kindLabel: '产品知识库', sourceName });
+    }
+  }
+  return evidence;
+}
+
 /** 运行结束状态（只认合同内 7 态）。 */
 function finishedStatus(record: Record<string, unknown>): AgentRunStatus | null {
   const value = record.status;
@@ -227,6 +343,8 @@ export function buildTimelineItems(events: readonly AgentRunEvent[]): TimelineIt
           title: pickText(payload, 'title', 'name'),
           url: url ? safeUrl(url) : null,
           reference: pickText(payload, 'ref', 'sourceRef', 'id') || url,
+          evidence: sourceEvidence(payload),
+          ...sourceRetrieval(payload),
         });
         break;
       }

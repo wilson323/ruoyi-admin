@@ -268,6 +268,13 @@ async function onReworkArtifact(artifactId: string): Promise<void> {
               {{ row.item.title || row.item.url }}
             </a>
             <span v-else>{{ row.item.title || row.item.reference }}</span>
+            <span v-if="row.item.outcomeText" data-testid="source-outcome">{{ row.item.outcomeText }}</span>
+            <span v-if="row.item.reasonText" data-testid="source-reason">{{ row.item.reasonText }}</span>
+            <ul v-if="row.item.evidence.length > 0">
+              <li v-for="(entry, index) in row.item.evidence" :key="`${row.item.key}-${index}`" data-testid="source-evidence">
+                {{ entry.kindLabel }} {{ entry.sourceName }}
+              </li>
+            </ul>
           </template>
           <template v-else-if="row.item.kind === 'text'">
             <AssistantTurn
