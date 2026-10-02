@@ -72,6 +72,26 @@ describe('buildTimelineItems', () => {
     expect(items[0]!.key).toBe('seq-1');
   });
 
+  it('replaces all prior text with the authoritative final message while retaining evidence', () => {
+    const events = [
+      ev(1, 'TEXT_DELTA', { text: '中间回复' }),
+      ev(2, 'SOURCE', { title: '原始资料', ref: 'doc-1' }),
+      ev(3, 'TEXT_DELTA', { text: '继续生成' }),
+      ev(4, 'TEXT_DELTA', { text: '最终正文', replace: true }),
+    ];
+    const items = buildTimelineItems(events);
+    expect(items.map((item) => item.kind)).toEqual(['source', 'text']);
+    expect(timelineTranscript(events)).toBe('最终正文');
+    expect(items[0]).toMatchObject({ reference: 'doc-1' });
+    expect(timelineTranscript([
+      ...events, ev(5, 'TEXT_DELTA', { text: '', replace: true }),
+    ])).toBe('');
+  });
+
+  it('keeps execution ownership metadata out of the product timeline', () => {
+    expect(buildTimelineItems([ev(1, 'STEP', { kind: 'EXECUTION_OWNER', epoch: 1 })])).toEqual([]);
+  });
+
   it('only allows http(s) source links', () => {
     const [bad, good] = buildTimelineItems([
       ev(1, 'SOURCE', { title: 'x', url: 'javascript:alert(1)' }),
@@ -172,10 +192,10 @@ describe('buildTimelineItems', () => {
       ev(1, 'STEP', { kind: 'INTENT', needsPlan: true, steps: ['核对功能', '核对价格'] }),
       ev(2, 'TEXT_DELTA', { text: '正文' }),
     ];
-    expect(intentStepMarks(planEvents, 2)).toEqual(['待执行', '执行中']);
+    expect(intentStepMarks(planEvents, 2)).toEqual(['待核实', '待核实']);
     expect(intentStepMarks([...planEvents, ev(3, 'RUN_FINISHED', { status: 'SUCCEEDED' })], 2)).toEqual([
-      '已完成',
-      '已完成',
+      '待核实',
+      '待核实',
     ]);
   });
 
@@ -208,4 +228,16 @@ describe('buildTimelineItems', () => {
     expect(transcript).not.toContain('可以直接回答');
     expect(transcript).not.toContain('执行规约');
   });
+  it('单行检索成功不能证明六个技能步骤完成', () => {
+    const events = [
+      ev(1, 'STEP', { kind: 'INTENT', steps: ['范围', '四维', '价格', '竞品', '报告', '自检'] }),
+      ev(2, 'TOOL_CALL', { toolName: 'project_knowledge_search', toolCallId: 'a' }),
+      ev(3, 'TOOL_RESULT', { toolCallId: 'a', state: 'SUCCESS' }),
+      ev(4, 'TEXT_DELTA', { text: '研发费用率12.83%' }),
+      ev(5, 'RUN_FINISHED', { status: 'SUCCEEDED' }),
+    ];
+    expect(intentStepMarks(events, 6)).toEqual(Array(6).fill('待核实'));
+    expect(intentStepMarks(events, 0)).toEqual([]);
+  });
+
 });

@@ -18,8 +18,8 @@ import type { AgentRunEvent, AgentRunStatus } from '../../../../api/ipd/project-
 /** 摘要最大字符数（防长输出撑爆时间线）。 */
 export const TIMELINE_SUMMARY_MAX = 500;
 
-/** 意图步骤的三种展示态（只由已有事件推断，不发明步骤）。 */
-export type IntentStepMark = '待执行' | '已完成' | '执行中';
+/** 意图步骤没有逐项执行回执，展示待核实。 */
+export type IntentStepMark = '待核实';
 
 /** 一次意图判断，字段全部来自 STEP.payload，缺了就留空。 */
 export interface AgentIntentView {
@@ -59,8 +59,8 @@ export type TimelineItem =
   | (TimelineBase & { kind: 'source'; reference: string; title: string; url: null | string })
   | (TimelineBase & { kind: 'step'; detail: string; title: string })
   | (TimelineBase & { kind: 'text'; text: string })
-  | (TimelineBase & { kind: 'tool-call'; summary: string; toolName: string })
-  | (TimelineBase & { failed: boolean; kind: 'tool-result'; summary: string; toolName: string });
+  | (TimelineBase & { kind: 'tool-call'; toolCallId: null | string; summary: string; toolName: string })
+  | (TimelineBase & { failed: boolean; kind: 'tool-result'; toolCallId: null | string; summary: string; toolName: string });
 
 const RUN_STATUSES: readonly AgentRunStatus[] = [
   'PENDING',
@@ -185,6 +185,7 @@ export function buildTimelineItems(events: readonly AgentRunEvent[]): TimelineIt
         break;
       }
       case 'STEP': {
+        if (payload.kind === 'EXECUTION_OWNER') break;
         if (payload.kind === 'INTENT') {
           items.push({ ...base, kind: 'intent', ...intentView(payload) });
         } else {
@@ -201,6 +202,7 @@ export function buildTimelineItems(events: readonly AgentRunEvent[]): TimelineIt
         items.push({
           ...base,
           kind: 'tool-call',
+          toolCallId: stringId(payload.toolCallId),
           toolName: pickText(payload, 'toolName', 'name', 'toolId'),
           summary: summarize(payload.arguments ?? payload.args ?? payload.input),
         });
@@ -210,9 +212,10 @@ export function buildTimelineItems(events: readonly AgentRunEvent[]): TimelineIt
         items.push({
           ...base,
           kind: 'tool-result',
+          toolCallId: stringId(payload.toolCallId),
           toolName: pickText(payload, 'toolName', 'name', 'toolId'),
           summary: summarize(payload.summary ?? payload.output ?? payload.result),
-          failed: payload.success === false || (payload.error != null && payload.error !== ''),
+          failed: payload.state === 'ERROR' || payload.state === 'FAILED' || payload.success === false || (payload.error != null && payload.error !== ''),
         });
         break;
       }
@@ -229,6 +232,14 @@ export function buildTimelineItems(events: readonly AgentRunEvent[]): TimelineIt
       }
       case 'TEXT_DELTA': {
         const text = deltaText(event.payload);
+        if (payload.replace === true) {
+          // 原生最终消息是正文权威；工具、来源和步骤证据保持原顺序。
+          for (let index = items.length - 1; index >= 0; index--) {
+            if (items[index]?.kind === 'text') items.splice(index, 1);
+          }
+          items.push({ ...base, kind: 'text', text });
+          break;
+        }
         const last = items.at(-1);
         if (last?.kind === 'text') {
           last.text += text;
@@ -317,23 +328,9 @@ export function intentFromEvents(events: readonly AgentRunEvent[]): AgentIntentV
 }
 
 /**
- * 按已有事件给计划步骤标展示状态。
- *
- * 正文 TEXT_DELTA 已开始时，只把最后一步标成执行中；运行成功终态则全部标已完成。
- * 不新增步骤，条数与传入的 steps 一致。
- *
- * @param events 同一次运行的事件
- * @param count 意图 payload 里的步骤条数
+ * 当前事件只记录意图步骤，尚无逐步骤执行回执。
+ * 运行成功、正文或工具调用均不能证明某项专业步骤已完成。
  */
-export function intentStepMarks(events: readonly AgentRunEvent[], count: number): IntentStepMark[] {
-  if (count <= 0) return [];
-  const succeeded = events.some((event) => {
-    if (event.type !== 'RUN_FINISHED') return false;
-    return asRecord(event.payload).status === 'SUCCEEDED';
-  });
-  if (succeeded) return Array.from({ length: count }, () => '已完成');
-  const wrote = buildTimelineItems(events).some((item) => item.kind === 'text' && item.text.trim() !== '');
-  return Array.from({ length: count }, (_, index) =>
-    wrote && index === count - 1 ? '执行中' : '待执行',
-  );
+export function intentStepMarks(_events: readonly AgentRunEvent[], count: number): IntentStepMark[] {
+  return Array.from({ length: Math.max(0, count) }, () => '待核实');
 }

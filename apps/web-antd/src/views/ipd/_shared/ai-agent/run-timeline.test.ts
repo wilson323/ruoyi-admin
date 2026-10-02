@@ -7,6 +7,8 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 
 import { applyAgentRunArtifact, saveAiFeedback, type AgentRunEvent } from '../../../../api/ipd/project-agent';
+import { listAiDocumentVersions } from '../../../../api/ipd/ai-document';
+vi.mock('../../../../api/ipd/ai-document', () => ({ listAiDocumentVersions: vi.fn() }));
 import RunTimeline from './run-timeline.vue';
 
 vi.mock('../../../../api/ipd/project-agent', async (importOriginal) => ({
@@ -270,6 +272,45 @@ describe('RunTimeline', () => {
     expect(wrapper.find('[data-testid="ai-tool-call-body"]').text()).toContain('找到 2 条');
   });
 
+  it('shows a live document preview on the full timeline and does not frame an img fragment', () => {
+    const full = mount(RunTimeline, {
+      props: {
+        hasRun: true,
+        events: [ev(1, 'TEXT_DELTA', { text: '# 概念说明书\n正文' })],
+      },
+    });
+    const preview = full.get('[data-testid="artifact-live-preview"]');
+    expect(preview.text()).toContain('概念说明书');
+    expect(preview.text()).toContain('正文');
+    expect(full.find('[data-testid="artifact-html-frame"]').exists()).toBe(false);
+
+    const streaming = mount(RunTimeline, {
+      props: {
+        hasRun: true,
+        loading: true,
+        events: [ev(1, 'TEXT_DELTA', { text: '# 概念说明书\n正' })],
+      },
+    });
+    expect(streaming.get('.live-preview-title').text()).toBe('正在生成');
+    expect(streaming.get('[data-testid="artifact-live-preview"] .live-preview-doc').text()).toContain('概念说明书');
+
+    const img = mount(RunTimeline, {
+      props: { hasRun: true, events: [ev(1, 'TEXT_DELTA', { text: '<img src=x onerror=alert(1)>' })] },
+    });
+    expect(img.find('iframe').exists()).toBe(false);
+    expect(img.find('[data-testid="artifact-html-frame"]').exists()).toBe(false);
+    expect(img.text()).toContain('<img src=x onerror=alert(1)>');
+
+    const archived = mount(RunTimeline, {
+      props: {
+        hasRun: true,
+        variant: 'artifacts',
+        events: [ev(1, 'TEXT_DELTA', { text: '# 概念说明书\n正文' })],
+      },
+    });
+    expect(archived.find('[data-testid="artifact-live-preview"]').exists()).toBe(false);
+  });
+
   it('hides the apply button when runId is missing even if artifactId exists', () => {
     const wrapper = mount(RunTimeline, {
       props: {
@@ -285,5 +326,46 @@ describe('RunTimeline', () => {
     expect(wrapper.find('[data-testid="artifact-preview"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="artifact-apply-btn"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="ai-feedback-bar"]').exists()).toBe(true);
+  });
+  it('意图计划步骤复用安全Markdown强调渲染且不补执行证据', () => {
+    const wrapper = mount(RunTimeline, { props: { hasRun: true, events: [ev(1, 'STEP', {
+      kind: 'INTENT', needsPlan: true, steps: ['**目的裁剪**', '**可信度**'],
+    })] } });
+    expect(wrapper.findAll('[data-testid="intent-steps"] strong').map((node) => node.text())).toEqual(['目的裁剪', '可信度']);
+    expect(wrapper.get('[data-testid="intent-steps"]').text()).toContain('待核实');
+  });
+
+  it('产物摘要也复用安全Markdown且仍保留限高区域', () => {
+    const wrapper = mount(RunTimeline, { props: { hasRun: true, events: [ev(1, 'ARTIFACT', {
+      artifactId: 'a', content: '**可信度**：有来源',
+    })] } });
+    const preview = wrapper.get('[data-testid="artifact-preview"]');
+    expect(preview.classes()).toContain('item-preview');
+    expect(preview.get('strong').text()).toBe('可信度');
+  });
+
+});
+
+describe('authoritative rework association', () => {
+  it('loads rejected chain head after refresh without applying a new document', async () => {
+    vi.mocked(applyAgentRunArtifact).mockClear();
+    vi.mocked(listAiDocumentVersions).mockResolvedValue([
+      { id: '8000', versionNo: 1, status: 'REJECTED', reviewComment: '纠正规格' } as never,
+    ]);
+    const wrapper = mount(RunTimeline, { props: { hasRun: true, runId: '8',
+      events: [ev(1,'ARTIFACT',{artifactId:'a',title:'报告'})], artifactArchives:[{artifactId:'a',documentId:'8000'}] } });
+    await wrapper.find('[data-testid="artifact-rework-btn"]').trigger('click');
+    await flushPromises();
+    expect(listAiDocumentVersions).toHaveBeenCalledWith('8000');
+    expect(applyAgentRunArtifact).not.toHaveBeenCalled();
+    expect(wrapper.emitted('rework')?.[0]?.[0]).toEqual({previousRunId:'8',targetDocumentId:'8000',baseVersionId:'8000',comment:'纠正规格'});
+  });
+  it('does not create rework association from an unreviewed head', async () => {
+    vi.mocked(listAiDocumentVersions).mockResolvedValue([{id:'8001',versionNo:2,status:'GENERATED'} as never]);
+    const wrapper = mount(RunTimeline, { props: { hasRun:true,runId:'8',
+      events:[ev(1,'ARTIFACT',{artifactId:'a',title:'报告'})],artifactArchives:[{artifactId:'a',documentId:'8000'}] } });
+    await wrapper.find('[data-testid="artifact-rework-btn"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.emitted('rework')).toBeUndefined();
   });
 });

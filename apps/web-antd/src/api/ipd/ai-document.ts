@@ -32,6 +32,8 @@ export interface AiDocument {
   model: null | string;
   parentVersionId: null | string;
   projectId: string;
+  /** 退回意见。只属于这一版；没有意见时为空。 */
+  reviewComment?: null | string;
   reviewedAt: null | string;
   reviewedBy: null | string;
   status: string;
@@ -164,6 +166,7 @@ export function parseAiDocument(data: unknown): AiDocument {
     model: typeof record.model === 'string' ? record.model : null,
     parentVersionId: isIdString(record.parentVersionId) ? record.parentVersionId : null,
     projectId: record.projectId,
+    reviewComment: typeof record.reviewComment === 'string' ? record.reviewComment : null,
     reviewedAt: toTimeText(record.reviewedAt),
     reviewedBy: isIdString(record.reviewedBy) ? record.reviewedBy : null,
     status: record.status,
@@ -261,8 +264,8 @@ export async function archiveAiDocumentVersion(documentId: string, versionId: st
 }
 
 /**
- * 审核拒绝（P4-2.3 reject）：comment 必填，后端 400 抛错；前端 Modal + Form rule 双重拦截。
- * 拒绝后状态变更为 REJECTED，不可再走 review/archive；版本链只读。
+ * 退回修改。comment 必填，写在 versionId 这一版。
+ * 链头待审核或已审核可退回；已退回不覆盖原意见。
  */
 export async function rejectAiDocumentVersion(documentId: string, versionId: string, input: AiDocumentRejectInput): Promise<AiDocument> {
   return parseAiDocument(await ipdPost(`/ai-documents/${documentId}/versions/${versionId}/reject`, {

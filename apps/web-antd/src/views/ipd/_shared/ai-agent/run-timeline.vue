@@ -16,7 +16,9 @@
  * indexStatus，NOT_INDEXED 不得写成已入库。定档用逻辑 artifactId。产物点赞只在
  * payload 带字符串 versionId 时渲染，旧事件没有 versionId 就不打点赞。
  *
- * <p>防注入：全部 {{ }} 插值，禁 v-html；来源链接仅 http/https。
+ * <p>防注入：普通条目文本插值，正文复用净化后的Markdown；来源链接仅 http/https。
+ * full 变体在生成当时另挂一块预览（文档安全Markdown，HTML 用 sandbox="" 的 iframe），
+ * 不等定档。artifacts 变体不挂这块预览。
  */
 import { computed, reactive } from 'vue';
 import { Alert, Button, Tag } from 'ant-design-vue';
@@ -28,15 +30,20 @@ import {
   applyAgentRunArtifact,
   type AgentRunEvent,
 } from '../../../../api/ipd/project-agent';
+import { listAiDocumentVersions } from '../../../../api/ipd/ai-document';
 import { ipdErrorText } from '../ipd-error-text';
+import { modelMessageParts } from '../ai-workspace/model-message';
 import AssistantTurn from '../assistant-turn.vue';
+import SafeMarkdown from '../safe-markdown';
 import { archiveResultText } from './artifact-archive';
+import { liveGeneratedPreview } from './artifact-live-preview';
+import ArtifactLivePreview from './artifact-live-preview.vue';
 import type { ClarificationChoice } from './clarification-choices';
 import FeedbackBar from './feedback-bar.vue';
 import IntentCard from './intent-card.vue';
 import ToolCallCard from './tool-call-card.vue';
 import { foldTimelineRows } from './tool-call-rows';
-import { buildTimelineItems, type TimelineItem } from './timeline-model';
+import { buildTimelineItems, timelineTranscript, type TimelineItem } from './timeline-model';
 
 /** 单条产物「工作成果定档」的交互态。 */
 interface ArtifactApplyState {
@@ -51,6 +58,7 @@ interface ArtifactApplyState {
 interface Props {
   /** 已去重、升序的真实事件。 */
   events: readonly AgentRunEvent[];
+  artifactArchives?: Array<{ artifactId: string; documentId: string }>;
   /** 是否已发起运行。 */
   hasRun: boolean;
   /** 当前运行 ID；空时不渲染「工作成果定档」（路径需要 runId）。 */
@@ -80,6 +88,7 @@ const emit = defineEmits<{
   choose: [choice: ClarificationChoice];
   execute: [steps: string[]];
   retry: [];
+  rework: [association: { previousRunId: string; targetDocumentId: string; baseVersionId: string; comment: string }];
   revise: [];
 }>();
 
@@ -87,6 +96,11 @@ const shownEvents = computed(() =>
   props.variant === 'artifacts' ? props.events.filter((event) => event.type === 'ARTIFACT') : props.events,
 );
 const items = computed(() => buildTimelineItems(shownEvents.value));
+/** 仅 full：用回答正文判定生成预览。思考段不进入预览，也不另拉接口。 */
+const livePreview = computed(() => {
+  if (props.variant !== 'full') return null;
+  return liveGeneratedPreview(modelMessageParts(timelineTranscript(props.events)).answer);
+});
 const rows = computed(() => foldTimelineRows(items.value, props.loading));
 /** 只有最后一段正文显示输入光标，避免前面已经写完的段落一起闪。 */
 const liveTextKey = computed(() => {
@@ -134,6 +148,12 @@ function persistentRunId(): null | string {
  *
  * @param artifactId 事件 payload 中的持久产物 ID
  */
+const appliedDocumentIds = reactive<Record<string, string>>({});
+function archiveDocumentId(artifactId: string): string | undefined {
+  return props.artifactArchives?.find(a => a.artifactId === artifactId)?.documentId
+    ?? appliedDocumentIds[`${persistentRunId()}:${artifactId}`];
+}
+
 async function onApplyArtifact(artifactId: string): Promise<void> {
   const run = persistentRunId();
   if (!run || !artifactId) return;
@@ -144,6 +164,7 @@ async function onApplyArtifact(artifactId: string): Promise<void> {
     const receipt = await applyAgentRunArtifact(run, artifactId);
     if (persistentRunId() !== run) return;
     const receiptText = archiveResultText(receipt);
+    if (receipt.documentId) appliedDocumentIds[`${run}:${artifactId}`] = receipt.documentId;
     applyByArtifact[artifactId] = {
       loading: false,
       errorText: receiptText ? '' : '产物未能回填项目文档，请稍后重试',
@@ -158,6 +179,25 @@ async function onApplyArtifact(artifactId: string): Promise<void> {
       receiptText: '',
       errorText: ipdErrorText(error, { fallback: '工作成果定档失败，请稍后重试' }),
     };
+  }
+}
+/** 返工只读权威关联和文档链头，不调用 apply 来猜定档状态。 */
+async function onReworkArtifact(artifactId: string): Promise<void> {
+  const run = persistentRunId();
+  const documentId = archiveDocumentId(artifactId);
+  if (!run || !documentId) return;
+  try {
+    const versions = await listAiDocumentVersions(documentId);
+    if (persistentRunId() !== run) return;
+    const head = [...versions].sort((a, b) => b.versionNo - a.versionNo)[0];
+    if (!head || head.status !== 'REJECTED' || !head.reviewComment?.trim()) {
+      throw new Error('这份文档没有待处理的退回意见，请先核对审核结果');
+    }
+    emit('rework', { previousRunId: run, targetDocumentId: documentId,
+      baseVersionId: head.id, comment: head.reviewComment });
+  } catch (error) {
+    applyByArtifact[artifactId] = { loading: false, applied: false, receiptText: '',
+      errorText: ipdErrorText(error, { fallback: '无法读取退回意见，请稍后重试' }) };
   }
 }
 </script>
@@ -185,6 +225,8 @@ async function onApplyArtifact(artifactId: string): Promise<void> {
       label="正在等待智能体事件"
     />
     <p v-else-if="isEmptyRun" class="timeline-hint" data-testid="timeline-empty">本次运行暂无事件。</p>
+
+    <ArtifactLivePreview v-if="livePreview" :loading="loading" :preview="livePreview" />
 
     <ol v-if="items.length > 0" class="timeline-list" aria-live="polite" aria-relevant="additions">
       <li
@@ -237,11 +279,12 @@ async function onApplyArtifact(artifactId: string): Promise<void> {
           <template v-else-if="row.item.kind === 'artifact'">
             <strong>{{ row.item.title || '未命名产物' }}</strong>
             <Tag v-if="row.item.artifactType">{{ row.item.artifactType }}</Tag>
-            <pre
+            <SafeMarkdown
               v-if="row.item.artifactId && row.item.preview"
+              :content="row.item.preview"
               class="item-preview"
               data-testid="artifact-preview"
-            >{{ row.item.preview }}</pre>
+            />
             <div v-if="showArchive && row.item.artifactId && persistentRunId()" class="item-apply" data-testid="artifact-apply">
               <p class="item-apply-note" data-testid="artifact-archive-note">
                 定档回填本项目文档链。知识库须审核后入库，不会标成已索引。
@@ -255,6 +298,10 @@ async function onApplyArtifact(artifactId: string): Promise<void> {
                 @click="onApplyArtifact(row.item.artifactId)"
               >
                 工作成果定档
+              </Button>
+              <Button v-if="archiveDocumentId(row.item.artifactId)"
+                size="small" data-testid="artifact-rework-btn" @click="onReworkArtifact(row.item.artifactId)">
+                根据退回意见再做
               </Button>
               <span
                 v-if="applyByArtifact[row.item.artifactId]?.applied"
@@ -368,7 +415,7 @@ async function onApplyArtifact(artifactId: string): Promise<void> {
   line-height: 1.45;
   color: var(--ipd-text);
   word-break: break-word;
-  white-space: pre-wrap;
+  white-space: normal;
   background: var(--ipd-bg);
   border: 1px solid var(--ipd-line);
   border-radius: 4px;

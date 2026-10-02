@@ -48,6 +48,10 @@ describe('AssistantTurn', () => {
     const summary = wrapper.get('[data-testid="assistant-think-summary"]');
     expect(summary.text()).toContain('思考');
     expect(summary.text()).not.toContain('先核对需求');
+    for (const icon of summary.findAll('svg')) {
+      expect(icon.attributes('width')).toBe('16');
+      expect(icon.attributes('height')).toBe('16');
+    }
     const body = wrapper.get('[data-testid="assistant-think-body"]');
     expect(body.text()).toContain('先核对需求');
     const details = wrapper.get('[data-testid="assistant-think"]');

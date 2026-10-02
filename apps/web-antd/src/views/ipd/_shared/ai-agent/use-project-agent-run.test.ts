@@ -251,6 +251,83 @@ describe('isolation of late responses', () => {
     expect(state.terminal.value).toBe(true);
   });
 
+  it('openRun drains more than 200 events by nextSeq before marking a finished run terminal', async () => {
+    vi.mocked(fetchAgentRun).mockResolvedValueOnce({
+      runId: 'run-ended',
+      projectId: 'p-1',
+      agentId: 'a-1',
+      status: 'SUCCEEDED',
+      actionCode: 'C02',
+      configSnapshot: {
+        capabilityPackCode: 'x',
+        capabilityPackVersion: '1',
+        modelConfigId: 'm-1',
+        skills: [],
+        toolIds: [],
+      },
+      errorCode: null,
+      createdAt: 'x',
+      finishedAt: 'y',
+    });
+    vi.mocked(fetchAgentRunEvents)
+      .mockResolvedValueOnce({ events: Array.from({ length: 200 }, (_, i) => ev(i + 1)), nextSeq: 200, terminal: false })
+      .mockResolvedValueOnce({
+        events: [...Array.from({ length: 100 }, (_, i) => ev(i + 201)), ev(301, 'RUN_FINISHED')],
+        nextSeq: 301,
+        terminal: true,
+      });
+    const { state } = setup();
+    expect(await state.openRun('run-ended')).toBe(true);
+    expect(fetchAgentRunEvents).toHaveBeenNthCalledWith(1, 'run-ended', 0);
+    expect(fetchAgentRunEvents).toHaveBeenNthCalledWith(2, 'run-ended', 200);
+    expect(state.events.value.map((event) => event.seq)).toEqual(Array.from({ length: 301 }, (_, i) => i + 1));
+    expect(state.terminal.value).toBe(true);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetchAgentRunEvents).toHaveBeenCalledTimes(2);
+  });
+
+  it('openRun reports incomplete history when a finished run cursor does not advance', async () => {
+    vi.mocked(fetchAgentRun).mockResolvedValueOnce({
+      runId: 'run-stuck',
+      projectId: 'p-1',
+      agentId: 'a-1',
+      status: 'FAILED',
+      actionCode: null,
+      configSnapshot: {
+        capabilityPackCode: 'x',
+        capabilityPackVersion: '1',
+        modelConfigId: 'm-1',
+        skills: [],
+        toolIds: [],
+      },
+      errorCode: null,
+      createdAt: 'x',
+      finishedAt: 'y',
+    });
+    vi.mocked(fetchAgentRunEvents).mockResolvedValue({
+      events: [ev(4)],
+      nextSeq: 4,
+      terminal: false,
+    });
+    const { state } = setup();
+    expect(await state.openRun('run-stuck')).toBe(false);
+    expect(fetchAgentRunEvents).toHaveBeenCalledTimes(2);
+    expect(fetchAgentRunEvents).toHaveBeenLastCalledWith('run-stuck', 4);
+    expect(state.events.value.map((event) => event.seq)).toEqual([4]);
+    expect(state.terminal.value).toBe(false);
+    expect(state.pollError.value).toBeInstanceOf(Error);
+  });
+
+  it('openRun on a live run fetches one page, then polls from the received seq', async () => {
+    vi.mocked(fetchAgentRunEvents).mockResolvedValue({ events: [ev(1)], nextSeq: 5, terminal: false });
+    const { state } = setup();
+    expect(await state.openRun('run-live')).toBe(true);
+    await vi.waitFor(() => expect(fetchAgentRunEvents).toHaveBeenCalledTimes(2));
+    expect(fetchAgentRunEvents).toHaveBeenNthCalledWith(1, 'run-live', 0);
+    expect(fetchAgentRunEvents).toHaveBeenNthCalledWith(2, 'run-live', 1);
+    expect(state.terminal.value).toBe(false);
+  });
+
   it('discards a late create response after the project switched', async () => {
     const late = deferred<{ runId: string; status: 'PENDING' }>();
     vi.mocked(createProjectAgentRun).mockReturnValueOnce(late.promise);

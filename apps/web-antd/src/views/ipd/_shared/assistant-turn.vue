@@ -2,7 +2,7 @@
 /**
  * 助手回合：把 &lt;think&gt; 与回答拆开，并给出复制 / 转发。
  *
- * 推理未闭合时默认展开（流式思考）；闭合后默认收起，原文仍可打开查看。
+ * 思考默认收起，原文可由用户打开查看。
  * pace 为真时，只按已经收到的正文逐字揭示；卸掉组件或追平后清掉定时器。
  */
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
@@ -10,6 +10,7 @@ import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 import { TEXT_REVEAL_INTERVAL_MS, nextRevealedMessage } from './ai-agent/text-reveal';
 import { modelMessageParts } from './ai-workspace/model-message';
 import MessageActions from './message-actions.vue';
+import SafeMarkdown from './safe-markdown';
 
 /** 组件 props。 */
 interface Props {
@@ -100,22 +101,21 @@ watch(
     <details
       v-if="parts.reasoning"
       class="think"
-      :open="streaming && parts.reasoningOpen ? true : undefined"
       data-testid="assistant-think"
     >
       <summary data-testid="assistant-think-summary">
-        <svg class="think-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <svg class="think-mark" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z" />
         </svg>
         <span :class="['think-label', { 'is-live': streaming && !parts.answer }]">思考</span>
-        <svg class="think-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+        <svg class="think-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
           <path d="M6 9l6 6 6-6" />
         </svg>
       </summary>
       <pre ref="thinkBodyRef" class="think-body" data-testid="assistant-think-body">{{ parts.reasoning }}<span v-if="streaming && !parts.answer" class="cursor">▍</span></pre>
     </details>
     <div v-if="parts.answer" class="answer" data-testid="assistant-answer">
-      {{ parts.answer }}<span v-if="streaming || !caughtUp" class="cursor">▍</span>
+      <SafeMarkdown :content="parts.answer" /><span v-if="streaming || !caughtUp" class="cursor">▍</span>
     </div>
     <span v-else-if="streaming || !caughtUp" class="cursor">▍</span>
     <MessageActions v-if="!streaming && caughtUp && source.answer" :text="source.answer" />
@@ -145,6 +145,14 @@ watch(
 .think summary::-webkit-details-marker {
   display: none;
 }
+.think-mark,
+.think-chevron {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+.think-mark { fill: currentColor; }
+.think summary { min-height: 24px; }
 .think-label {
   white-space: nowrap;
 }
@@ -166,7 +174,9 @@ watch(
 }
 .answer {
   color: inherit;
+  white-space: normal;
 }
+
 .cursor {
   animation: ipd-ai-blink 1s step-end infinite;
 }

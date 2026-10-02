@@ -21,12 +21,14 @@ import {
 } from '../../../../api/ipd/project-agent';
 import CapabilityPicker from './capability-picker.vue';
 import {
+  ACTION_TOOL_GAP_NOTE,
+  applyEntryDefaults,
   buildRunInput,
+  describeActionEntryBlock,
   emptySelection,
+  findSelectedPack,
   isSelectionSubmittable,
-  packKey,
   sanitizeSelection,
-  selectPackByKey,
   type AgentCapabilitySelection,
 } from './capability-selection';
 import FeedbackBar from './feedback-bar.vue';
@@ -71,7 +73,17 @@ const historyError = ref('');
 let historyToken = 0;
 const { focusPane } = useIpdAiWorkspace();
 
-/** 历史只请求列表接口。空项目清空，不编造行。 */
+/**
+ * 列表默认一页条数。
+ * listProjectAgentRuns 的响应是数组，没有下一页字段；满这一页才把最后一条 runId 当 cursor。
+ * 条数与 AgentRunListQuery.limit 的默认 20 一致。短页或空页不再请求。
+ */
+const HISTORY_PAGE_SIZE = 20;
+
+/**
+ * 历史只请求已有的列表接口。空项目清空，不编造行。
+ * 不传 cursor 时服务端只给默认一页；这一页满了，用最后一条 runId 再请求。
+ */
 async function loadHistory(): Promise<void> {
   const token = ++historyToken;
   const pid = props.projectId;
@@ -85,9 +97,33 @@ async function loadHistory(): Promise<void> {
   historyError.value = '';
   const q = historyQuery.value.trim();
   try {
-    const rows = await listProjectAgentRuns(pid, q ? { q } : {});
+    const collected: AgentRunListItem[] = [];
+    const seenRuns = new Set<string>();
+    const seenCursors = new Set<string>();
+    let cursor = '';
+    for (;;) {
+      const rows = await listProjectAgentRuns(pid, {
+        ...(q ? { q } : {}),
+        ...(cursor ? { cursor } : {}),
+      });
+      if (token !== historyToken) return;
+      const page = Array.isArray(rows) ? rows : [];
+      for (const item of page) {
+        if (!seenRuns.has(item.runId)) {
+          seenRuns.add(item.runId);
+          collected.push(item);
+        }
+      }
+      const lastId = page.at(-1)?.runId ?? '';
+      if (page.length < HISTORY_PAGE_SIZE) break;
+      if (lastId === '' || seenCursors.has(lastId)) {
+        throw new Error('运行列表尚未完整加载，请重试');
+      }
+      seenCursors.add(lastId);
+      cursor = lastId;
+    }
     if (token !== historyToken) return;
-    historyItems.value = Array.isArray(rows) ? rows : [];
+    historyItems.value = collected;
   } catch (error) {
     if (token !== historyToken) return;
     historyItems.value = [];
@@ -153,15 +189,42 @@ const messageBox = ref<{ focus: () => void } | null>(null);
 const selection = ref<AgentCapabilitySelection>(emptySelection());
 const message = ref('');
 let pendingKey: null | string = null;
+const reworkAssociation = ref<null | { previousRunId: string; targetDocumentId: string; baseVersionId: string }>(null);
+const reworkActionCode = ref<null | string>(null);
+watch(() => props.projectId, () => { reworkAssociation.value = null; reworkActionCode.value = null; });
 
-/** 能力清单刷新：剔除失效选项；仅有一个可用包 / 模型时自动选中。 */
-watch(capabilities, (caps) => {
-  let next = sanitizeSelection(caps, selection.value);
-  const packs = caps?.packs.filter((p) => p.available) ?? [];
-  if (next.packCode === null && packs.length === 1) next = selectPackByKey(caps, next, packKey(packs[0]!));
-  const models = caps?.models.filter((m) => m.available) ?? [];
-  if (next.modelConfigId === null && models.length === 1) next = { ...next, modelConfigId: models[0]!.id };
-  selection.value = next;
+/** 能力清单、动作或目录技能变化：剔除失效选项，再按已批准技能和唯一可用模型补默认。 */
+watch(
+  [capabilities, () => props.actionCode, () => (props.actionSkillNames ?? []).join('\0')],
+  ([caps]) => {
+    selection.value = applyEntryDefaults(
+      caps,
+      sanitizeSelection(caps, selection.value),
+      props.actionCode,
+      props.actionSkillNames ?? [],
+    );
+  },
+);
+
+/**
+ * 带动作进入时的阻断原因。没有动作时为空，不把「未选齐」说成已绑定。
+ */
+const entryBlockReason = computed(() => describeActionEntryBlock(
+  capabilities.value,
+  selection.value,
+  props.actionCode,
+  props.actionSkillNames ?? [],
+));
+
+/**
+ * 动作已绑定且没有预选工具时的说明。加号里仍可勾选工具。
+ */
+const entryToolNote = computed(() => {
+  const code = props.actionCode?.trim() ?? '';
+  if (!code || entryBlockReason.value || selection.value.toolIds.length > 0) return '';
+  const pack = findSelectedPack(capabilities.value, selection.value);
+  if (!pack?.available || !pack.actionCodes.includes(code)) return '';
+  return ACTION_TOOL_GAP_NOTE;
 });
 
 /** 输入变化即作废待复用的幂等键（新内容 = 新提交）。 */
@@ -174,6 +237,7 @@ const canSubmit = computed(
     !submitting.value &&
     !active.value &&
     message.value.trim() !== '' &&
+    entryBlockReason.value === '' &&
     isSelectionSubmittable(capabilities.value, selection.value),
 );
 const canCancel = computed(() => active.value && status.value !== null && isAgentRunCancellable(status.value));
@@ -210,6 +274,18 @@ onUnmounted(() => {
   if (syncFrame !== 0) cancelAnimationFrame(syncFrame);
 });
 
+/** 地址栏上的需求单只接受数字，避免把别的查询参数送进运行。 */
+function demandRequirementId(): string | undefined {
+  const value = new URLSearchParams(window.location.search).get('requirementId') ?? '';
+  return /^\d+$/.test(value) ? value : undefined;
+}
+
+/** 分拣页打开时，同一次创建运行带上需求单。没有该参数时请求体不变。 */
+function withDemand<T extends { requirementId?: string }>(input: T): T {
+  const requirementId = demandRequirementId();
+  return requirementId ? { ...input, requirementId } : input;
+}
+
 /** 发起运行（失败保留幂等键供重试复用）。 */
 async function submit(): Promise<void> {
   if (!canSubmit.value) return;
@@ -219,12 +295,15 @@ async function submit(): Promise<void> {
     selection.value,
     message.value,
     pendingKey,
-    props.actionCode,
+    reworkActionCode.value ?? props.actionCode,
     props.actionSkillNames ?? [],
   );
-  if (!input) return;
-  if (await agent.startRun(input)) {
+  const requested = (reworkActionCode.value ?? props.actionCode)?.trim() ?? '';
+  if (!input || (requested !== '' && input.actionCode !== requested)) return;
+  if (await agent.startRun(withDemand({ ...input, ...(reworkAssociation.value ?? {}) }))) {
     lastTask.value = message.value;
+    reworkAssociation.value = null;
+    reworkActionCode.value = null;
     message.value = '';
     pendingKey = null;
   }
@@ -246,7 +325,7 @@ async function submitText(text: string): Promise<'busy' | 'failed' | 'need-proje
   if (submitting.value || active.value) return 'busy';
   message.value = trimmed;
   await nextTick();
-  if (!canSubmit.value) return 'need-selection';
+  if (entryBlockReason.value || !canSubmit.value) return 'need-selection';
   await submit();
   return submitErrorText.value ? 'failed' : 'started';
 }
@@ -294,7 +373,7 @@ async function confirmPlan(steps: readonly string[]): Promise<void> {
     if (!built) return;
     const { actionCode: _actionCode, ...withoutAction } = built;
     void _actionCode;
-    if (await agent.startRun({ ...withoutAction, message: exact, idempotencyKey: key })) {
+    if (await agent.startRun(withDemand({ ...withoutAction, message: exact, idempotencyKey: key }))) {
       lastTask.value = exact;
       pendingKey = null;
     }
@@ -329,10 +408,29 @@ async function answerClarification(
   }
 }
 
+/** 明确选择已定档产物后，仍走原 submitText/create 发送路径。 */
+async function reworkArtifact(association: { previousRunId: string; targetDocumentId: string; baseVersionId: string; comment: string }): Promise<void> {
+  if (active.value || submitting.value || !runActionCode.value) return;
+  selection.value = applyEntryDefaults(capabilities.value, selection.value, runActionCode.value, []);
+  reworkActionCode.value = runActionCode.value;
+  reworkAssociation.value = { previousRunId: association.previousRunId,
+    targetDocumentId: association.targetDocumentId, baseVersionId: association.baseVersionId };
+  try {
+    await submitText(`请根据以下退回意见修订原文档，保留已证实的内容，纠正未获证据支持的表述：\n${association.comment}`);
+  } finally {
+    // 关联只属于这次明确点击；失败或缺少选择不能污染下一次普通发送。
+    reworkAssociation.value = null;
+    reworkActionCode.value = null;
+    pendingKey = null;
+  }
+}
+
 defineExpose({
   active,
   answerClarification,
   confirmPlan,
+  entryBlockReason,
+  entryToolNote,
   events,
   focusTaskInput,
   lastTask,
@@ -398,6 +496,8 @@ function onMessageKeydown(event: KeyboardEvent): void {
         v-else
         variant="artifacts"
         :events="artifactEvents"
+        :artifact-archives="detail?.artifactArchives"
+        @rework="reworkArtifact"
         :has-run="true"
         :run-id="runId"
         :action-code="runActionCode"
@@ -440,6 +540,16 @@ function onMessageKeydown(event: KeyboardEvent): void {
             :disabled="active || submitting"
           />
         </Teleport>
+        <Alert
+          v-if="entryBlockReason"
+          type="warning"
+          show-icon
+          :message="entryBlockReason"
+          data-testid="panel-entry-block"
+        />
+        <p v-else-if="entryToolNote" class="panel-hint" data-testid="panel-entry-tool-note">
+          {{ entryToolNote }}
+        </p>
 
         <Input.TextArea
           v-if="!controlsReady"
@@ -488,6 +598,8 @@ function onMessageKeydown(event: KeyboardEvent): void {
       <RunTimeline
         v-if="!readoutReady"
         :events="events"
+        :artifact-archives="detail?.artifactArchives"
+        @rework="reworkArtifact"
         :has-run="runId !== null"
         :run-id="runId"
         :action-code="runActionCode"
@@ -502,6 +614,8 @@ function onMessageKeydown(event: KeyboardEvent): void {
         <RunTimeline
           :show-archive="false"
           :events="events"
+        :artifact-archives="detail?.artifactArchives"
+        @rework="reworkArtifact"
           :has-run="runId !== null"
           :run-id="runId"
           :action-code="runActionCode"

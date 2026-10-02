@@ -8,9 +8,9 @@
  *   过期响应直接丢弃，不会把 A 项目的事件写进 B 项目的时间线；
  * - 轮询用串行 setTimeout 链（上一轮落地才排下一轮），不存在并发重叠请求。
  *
- * 游标语义：afterSeq 取「已收到的最大 seq」，事件按 seq 去重后升序排列；后端 nextSeq
- * 不直接作为游标——它是「最后 seq」还是「下一个 seq」合同未定，前者与本游标等价，
- * 后者直接回传会漏掉一条事件，而「最大已收 seq」在两种语义下都正确。
+ * 游标语义：进行中的轮询仍用「已收到的最大 seq」作为 afterSeq。打开已结束的运行时，
+ * 按事件页的 nextSeq 继续要下一页，直到该页 terminal 为 true。后端 nextSeq 是本页
+ * 已交付的最大 seq（ProjectAgentRunService.events），不是 seq+1。
  *
  * 错误：统一经 ipdErrorText 转中文（优先透传后端 message），不吞错；轮询失败即停并保留
  * 错误，由调用方显式 resume。本函数不回落到副驾 SSE 流。
@@ -281,10 +281,11 @@ export function useProjectAgentRun(
   }
 
   /**
-   * 打开已有运行：用详情和 seq=0 起的事件替换当前面板，不把上一轮事件留下来。
+   * 打开已有运行：用详情和事件替换当前面板，不把上一轮事件留下来。
+   * 已结束的运行按 nextSeq 翻页，直到事件页 terminal；进行中的运行只取第一页再轮询。
    *
    * @param id 列表里的 runId（字符串）
-   * @returns 详情和首屏事件都落地时为 true
+   * @returns 详情落地且事件页处理完时为 true
    */
   async function openRun(id: string): Promise<boolean> {
     if (!id) return false;
@@ -296,18 +297,28 @@ export function useProjectAgentRun(
       if (!alive(token)) return false;
       detail.value = data;
       status.value = data.status;
-      const page = await fetchAgentRunEvents(id, 0);
-      if (!alive(token)) return false;
       events.value = [];
       seenSeqs.clear();
       cursor = 0;
-      mergeEvents(page?.events);
-      const ended = page?.terminal === true || isAgentRunTerminal(data.status);
-      if (ended) {
-        terminal.value = true;
-        polling.value = false;
-        return true;
+      let after = 0;
+      const ended = isAgentRunTerminal(data.status);
+      while (alive(token)) {
+        const page = await fetchAgentRunEvents(id, after);
+        if (!alive(token)) return false;
+        mergeEvents(page?.events);
+        if (page?.terminal === true) {
+          terminal.value = true;
+          polling.value = false;
+          return true;
+        }
+        const next = page?.nextSeq;
+        if (!ended) break;
+        if (typeof next !== 'number' || !Number.isSafeInteger(next) || next <= after || next !== cursor) {
+          throw new Error('运行记录尚未完整加载，请重试');
+        }
+        after = next;
       }
+      if (!alive(token)) return false;
       void pollOnce(token);
       return true;
     } catch (error) {

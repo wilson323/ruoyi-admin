@@ -1,0 +1,15 @@
+.safe-markdown { min-width: 0; max-width: 100%; overflow-x: auto; line-height: 1.6; white-space: normal; overflow-wrap: anywhere; }
+.safe-markdown h1, .safe-markdown h2, .safe-markdown h3, .safe-markdown h4, .safe-markdown h5, .safe-markdown h6 { margin: 0.8em 0 0.4em; font-weight: 600; }
+.safe-markdown h1 { font-size: 1.5em; }
+.safe-markdown h2 { font-size: 1.3em; }
+.safe-markdown h3 { font-size: 1.15em; }
+.safe-markdown p { margin: 0.5em 0; }
+.safe-markdown strong { font-weight: 600; }
+.safe-markdown ul, .safe-markdown ol { margin: 0.5em 0; padding-left: 1.5em; }
+.safe-markdown ul { list-style: disc; }
+.safe-markdown ol { list-style: decimal; }
+.safe-markdown table { width: 100%; min-width: 480px; border-collapse: collapse; }
+.safe-markdown th, .safe-markdown td { min-width: 6em; padding: 6px 8px; overflow-wrap: normal; word-break: normal; border: 1px solid var(--ipd-line); }
+.safe-markdown pre { padding: 8px; overflow: auto; white-space: pre; background: var(--ipd-bg); }
+.safe-markdown code { font-family: monospace; }
+.safe-markdown a { text-decoration: underline; }

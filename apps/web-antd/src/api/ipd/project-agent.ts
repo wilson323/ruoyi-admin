@@ -98,6 +98,12 @@ export interface CreateAgentRunInput {
   message: string;
   /** 调用方生成的幂等键（同一次提交的重试必须复用同一个值）。 */
   idempotencyKey: string;
+  /** 分拣页带上的需求单。成功后由服务端按回答里的唯一目录编码回写。 */
+  requirementId?: string;
+  /** 同一发送口的显式返工关联；三项须一起提供。 */
+  previousRunId?: string;
+  targetDocumentId?: string;
+  baseVersionId?: string;
 }
 
 /** 创建 / 取消运行的回执。 */
@@ -140,10 +146,14 @@ export interface AgentRunConfigSnapshot {
   modelConfigId: string;
   skills: Array<{ name: string; sha256: string }>;
   toolIds: string[];
+  previousRunId?: null | string;
+  targetDocumentId?: null | string;
+  baseVersionId?: null | string;
 }
 
 /** 运行详情。 */
 export interface AgentRunDetail {
+  artifactArchives?: Array<{ artifactId: string; documentId: string }>;
   runId: string;
   projectId: string;
   agentId: string;

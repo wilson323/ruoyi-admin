@@ -8,6 +8,7 @@
  */
 import { computed, ref, watch } from 'vue';
 
+import SafeMarkdown from '../safe-markdown';
 import type { AgentRunEvent } from '../../../../api/ipd/project-agent';
 import {
   CLARIFICATION_STILL_RUNNING,
@@ -129,7 +130,7 @@ function onChoose(choice: ClarificationChoice): void {
       data-testid="intent-steps"
     >
       <li v-for="(step, index) in intent.steps" :key="`s-${index}`">
-        {{ step }}
+        <SafeMarkdown :content="step" />
         <span class="intent-mark">{{ marks[index] }}</span>
       </li>
     </ol>

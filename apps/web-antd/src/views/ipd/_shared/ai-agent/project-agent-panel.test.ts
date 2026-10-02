@@ -18,6 +18,7 @@ import {
   listProjectAgentRuns,
   type ProjectAgentCapabilities,
 } from '../../../../api/ipd/project-agent';
+import RunTimeline from './run-timeline.vue';
 import ProjectAgentPanel from './project-agent-panel.vue';
 import { useIpdAiWorkspace } from '../ai-workspace/use-ai-workspace';
 
@@ -70,9 +71,36 @@ function detailOf(
   };
 }
 
+/** 历史列表一行。runId 用字符串字面量，避免超过 2^53 时被 Number 改写。 */
+function historyRow(runId: string) {
+  return {
+    runId,
+    status: 'SUCCEEDED' as const,
+    actionCode: 'C02',
+    capabilityPackCode: 'ipd.market',
+    capabilityPackVersion: '1.0.0',
+    createdAt: '2026-09-30T01:00:00Z',
+    finishedAt: null,
+    inputChars: 4,
+    artifactTitles: [] as string[],
+    artifactExcerpt: null,
+  };
+}
+
+/** 默认一页 20 条。序号只拼进字符串，不参与数值运算。 */
+function fullHistoryPage(): ReturnType<typeof historyRow>[] {
+  return Array.from({ length: 20 }, (_, index) => historyRow(`9007199254741${String(index).padStart(3, '0')}`));
+}
+
 /** 挂载面板并等待能力加载完成。 */
-async function mountPanel(projectId: null | string = 'p-1') {
-  const wrapper = mount(ProjectAgentPanel, { props: { projectId, actionCode: 'A-01', pollIntervalMs: 1000 } });
+async function mountPanel(
+  projectId: null | string = 'p-1',
+  actionSkillNames: string[] = ['swot'],
+  actionCode: string = 'A-01',
+) {
+  const wrapper = mount(ProjectAgentPanel, {
+    props: { projectId, actionCode, actionSkillNames, pollIntervalMs: 1000 },
+  });
   await flushPromises();
   return wrapper;
 }
@@ -134,9 +162,27 @@ describe('ProjectAgentPanel', () => {
       message: '分析竞品',
     });
     expect(input.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
+    expect(wrapper.find('[data-testid="panel-entry-tool-note"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="timeline-waiting"]').exists()).toBe(true);
     expect(wrapper.findAll('[data-testid="timeline-item"]')).toHaveLength(0);
     expect(wrapper.find('[data-testid="ai-feedback-bar"]').exists()).toBe(false);
+  });
+
+  it('does not create a run when the action has no approved skills', async () => {
+    const wrapper = await mountPanel('p-1', []);
+    expect(wrapper.find('[data-testid="panel-entry-block"]').text()).toContain('没有已批准技能');
+    const result = await wrapper.vm.submitText('分析竞品');
+    expect(result).toBe('need-selection');
+    expect(createProjectAgentRun).not.toHaveBeenCalled();
+    expect(streamCopilot).not.toHaveBeenCalled();
+  });
+
+  it('does not bind an action that is outside the only available pack', async () => {
+    const wrapper = await mountPanel('p-1', ['swot'], 'Z99');
+    expect(wrapper.find('[data-testid="panel-entry-block"]').text()).toContain('不在任何可用能力包内');
+    const result = await wrapper.vm.submitText('分析竞品');
+    expect(result).toBe('need-selection');
+    expect(createProjectAgentRun).not.toHaveBeenCalled();
   });
 
   it('submitText from the host composer uses the same create path and does not call the copilot stream', async () => {
@@ -253,6 +299,7 @@ describe('ProjectAgentPanel', () => {
     ]);
     useIpdAiWorkspace().setPane('steps');
     const wrapper = await mountPanel();
+    expect(listProjectAgentRuns).toHaveBeenCalledTimes(1);
     expect(listProjectAgentRuns).toHaveBeenCalledWith('p-1', {});
     expect(wrapper.text()).not.toContain('没有匹配的运行');
     expect(wrapper.find('[data-testid="agent-run-history-row"]').text()).toContain('C02');
@@ -276,6 +323,98 @@ describe('ProjectAgentPanel', () => {
     expect(fetchAgentRunEvents).toHaveBeenCalledWith('9007199254740993', 0);
     expect(useIpdAiWorkspace().pane.value).toBe('cards');
     expect(wrapper.text()).toContain('历史步骤');
+  });
+
+  it('clears the previous project history while the new project response is pending', async () => {
+    vi.mocked(listProjectAgentRuns).mockResolvedValueOnce([historyRow('run-a')]);
+    const wrapper = await mountPanel('p-1');
+    expect(wrapper.find('[data-testid="agent-run-history-row"]').attributes('data-run-id')).toBe('run-a');
+
+    let resolveHistory!: (rows: ReturnType<typeof historyRow>[]) => void;
+    vi.mocked(listProjectAgentRuns).mockImplementationOnce(() => new Promise((resolve) => {
+      resolveHistory = resolve;
+    }));
+    await wrapper.setProps({ projectId: 'p-2' });
+    expect(wrapper.findAll('[data-testid="agent-run-history-row"]')).toHaveLength(0);
+    resolveHistory([historyRow('run-b')]);
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="agent-run-history-row"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="agent-run-history-row"]').attributes('data-run-id')).toBe('run-b');
+    wrapper.unmount();
+  });
+
+  it('discards a late history response from the previous project', async () => {
+    let resolveHistory!: (rows: ReturnType<typeof historyRow>[]) => void;
+    vi.mocked(listProjectAgentRuns).mockImplementationOnce(() => new Promise((resolve) => {
+      resolveHistory = resolve;
+    }));
+    const wrapper = await mountPanel('p-1');
+    vi.mocked(listProjectAgentRuns).mockResolvedValueOnce([historyRow('run-b')]);
+    await wrapper.setProps({ projectId: 'p-2' });
+    await flushPromises();
+    resolveHistory([historyRow('run-a')]);
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="agent-run-history-row"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="agent-run-history-row"]').attributes('data-run-id')).toBe('run-b');
+    wrapper.unmount();
+  });
+
+  it('requests the next history page with the last runId when the default page is full', async () => {
+    const first = fullHistoryPage();
+    vi.mocked(listProjectAgentRuns)
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce([historyRow('9007199254740993')]);
+    const wrapper = await mountPanel();
+    expect(listProjectAgentRuns).toHaveBeenNthCalledWith(1, 'p-1', {});
+    expect(listProjectAgentRuns).toHaveBeenNthCalledWith(2, 'p-1', { cursor: '9007199254741019' });
+    expect(listProjectAgentRuns).toHaveBeenCalledTimes(2);
+    expect(wrapper.findAll('[data-testid="agent-run-history-row"]')).toHaveLength(21);
+    expect(wrapper.findAll('[data-testid="agent-run-history-row"]').at(-1)!.attributes('data-run-id'))
+      .toBe('9007199254740993');
+  });
+
+  it('stops history paging when the next response is empty', async () => {
+    vi.mocked(listProjectAgentRuns)
+      .mockResolvedValueOnce(fullHistoryPage())
+      .mockResolvedValueOnce([]);
+    const wrapper = await mountPanel();
+    expect(listProjectAgentRuns).toHaveBeenCalledTimes(2);
+    expect(listProjectAgentRuns).toHaveBeenLastCalledWith('p-1', { cursor: '9007199254741019' });
+    expect(wrapper.findAll('[data-testid="agent-run-history-row"]')).toHaveLength(20);
+  });
+
+  it('dedupes an overlapping history page while retaining later runs', async () => {
+    const first = fullHistoryPage();
+    vi.mocked(listProjectAgentRuns)
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce([first[19]!, historyRow('9007199254740993')]);
+    const wrapper = await mountPanel();
+    expect(wrapper.findAll('[data-testid="agent-run-history-row"]')).toHaveLength(21);
+    expect(listProjectAgentRuns).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports a nonadvancing history cursor instead of looping or claiming a complete list', async () => {
+    vi.mocked(listProjectAgentRuns).mockResolvedValue(fullHistoryPage());
+    const wrapper = await mountPanel();
+    expect(listProjectAgentRuns).toHaveBeenCalledTimes(2);
+    expect(wrapper.findAll('[data-testid="agent-run-history-row"]')).toHaveLength(0);
+    expect(wrapper.text()).toContain('运行列表加载失败');
+  });
+
+  it('keeps the search text when a full page asks for the next cursor', async () => {
+    vi.mocked(listProjectAgentRuns)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(fullHistoryPage())
+      .mockResolvedValueOnce([historyRow('9007199254740993')]);
+    const wrapper = await mountPanel();
+    await wrapper.find('[data-testid="agent-run-history-query"]').setValue('C02');
+    await flushPromises();
+    expect(listProjectAgentRuns).toHaveBeenNthCalledWith(2, 'p-1', { q: 'C02' });
+    expect(listProjectAgentRuns).toHaveBeenNthCalledWith(3, 'p-1', {
+      q: 'C02',
+      cursor: '9007199254741019',
+    });
+    expect(listProjectAgentRuns).toHaveBeenCalledTimes(3);
   });
 
   it('shows execute and revise on an unbound plan wait, and confirming cancels then creates with the verbatim steps', async () => {
@@ -449,3 +588,80 @@ describe('ProjectAgentPanel', () => {
     expect(wrapper.find('[data-testid="intent-bound-plan"]').text()).toBe('步骤来自动作技能，本次按此执行');
   });
 });
+
+describe('explicit document rework sends through the original run path', () => {
+  it('binds original action and archive association without a copilot request', async () => {
+    vi.mocked(fetchAgentRun).mockResolvedValue(detailOf('SUCCEEDED'));
+    vi.mocked(fetchAgentRunEvents).mockResolvedValue({ events: [], nextSeq: 0, terminal: true });
+    const wrapper = await mountPanel('p-1', ['swot'], '');
+    await wrapper.find('[data-testid="panel-message"]').setValue('初稿');
+    await wrapper.find('[data-testid="panel-submit"]').trigger('click');
+    await flushPromises();
+    wrapper.findComponent(RunTimeline).vm.$emit('rework', {
+      previousRunId:'8',targetDocumentId:'8000',baseVersionId:'8000',comment:'纠正规格',
+    });
+    await flushPromises();
+    expect(createProjectAgentRun).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(createProjectAgentRun).mock.calls[1]?.[1]).toMatchObject({
+      actionCode:'A-01',previousRunId:'8',targetDocumentId:'8000',baseVersionId:'8000',
+    });
+    expect(streamCopilot).not.toHaveBeenCalled();
+  });
+  it('clears a failed rework association before an ordinary send, but binds a new explicit retry', async () => {
+    vi.mocked(fetchAgentRun).mockResolvedValue(detailOf('SUCCEEDED'));
+    vi.mocked(fetchAgentRunEvents).mockResolvedValue({ events: [], nextSeq: 0, terminal: true });
+    const wrapper = await mountPanel('p-1', ['swot'], '');
+    await wrapper.vm.submitText('初稿');
+    await flushPromises();
+    const association = { previousRunId: '8', targetDocumentId: '8000', baseVersionId: '8000', comment: '纠正规格' };
+    vi.mocked(createProjectAgentRun).mockRejectedValueOnce(new IpdRequestError('x', 0, 0, 'transport'));
+    wrapper.findComponent(RunTimeline).vm.$emit('rework', association);
+    await flushPromises();
+    expect(vi.mocked(createProjectAgentRun).mock.calls[1]?.[1]).toMatchObject(associationFields(association));
+    expect(wrapper.get('[data-testid="panel-submit-error"]').text()).toContain('无法连接服务');
+
+    expect(await wrapper.vm.submitText('普通咨询')).toBe('started');
+    await flushPromises();
+    const ordinary = vi.mocked(createProjectAgentRun).mock.calls[2]?.[1];
+    expect(ordinary).not.toHaveProperty('previousRunId');
+    expect(ordinary).not.toHaveProperty('targetDocumentId');
+    expect(ordinary).not.toHaveProperty('baseVersionId');
+    expect(ordinary?.actionCode).toBeUndefined();
+
+    wrapper.findComponent(RunTimeline).vm.$emit('rework', association);
+    await flushPromises();
+    expect(vi.mocked(createProjectAgentRun).mock.calls[3]?.[1]).toMatchObject({ actionCode: 'A-01', ...associationFields(association) });
+    expect(streamCopilot).not.toHaveBeenCalled();
+  });
+
+  it('clears rework association when the model selection is missing before a later ordinary send', async () => {
+    vi.mocked(fetchAgentRun).mockResolvedValue(detailOf('SUCCEEDED'));
+    vi.mocked(fetchAgentRunEvents).mockResolvedValue({ events: [], nextSeq: 0, terminal: true });
+    const wrapper = await mountPanel('p-1', ['swot'], '');
+    await wrapper.vm.submitText('初稿');
+    await flushPromises();
+    const picker = wrapper.findComponent({ name: 'CapabilityPicker' });
+    const selection = picker.props('modelValue');
+    picker.vm.$emit('update:modelValue', { ...selection, modelConfigId: '' });
+    await flushPromises();
+    wrapper.findComponent(RunTimeline).vm.$emit('rework', {
+      previousRunId: '8', targetDocumentId: '8000', baseVersionId: '8000', comment: '纠正规格',
+    });
+    await flushPromises();
+    expect(createProjectAgentRun).toHaveBeenCalledTimes(1);
+    picker.vm.$emit('update:modelValue', selection);
+    await flushPromises();
+    expect(await wrapper.vm.submitText('普通咨询')).toBe('started');
+    const ordinary = vi.mocked(createProjectAgentRun).mock.calls[1]?.[1];
+    expect(ordinary).not.toHaveProperty('previousRunId');
+    expect(ordinary).not.toHaveProperty('targetDocumentId');
+    expect(ordinary).not.toHaveProperty('baseVersionId');
+    expect(ordinary?.actionCode).toBeUndefined();
+    expect(streamCopilot).not.toHaveBeenCalled();
+  });
+
+});
+
+function associationFields(association: { previousRunId: string; targetDocumentId: string; baseVersionId: string }) {
+  return { previousRunId: association.previousRunId, targetDocumentId: association.targetDocumentId, baseVersionId: association.baseVersionId };
+}

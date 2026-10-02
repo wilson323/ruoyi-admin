@@ -47,4 +47,27 @@ describe('foldTimelineRows', () => {
     );
     expect(running[0]).toMatchObject({ kind: 'tool', card: { state: 'running', name: 'create_file' } });
   });
+  it('按原生调用ID跨来源合并，同名并发调用不串结果', () => {
+    const rows = foldTimelineRows(buildTimelineItems([
+      ev(1, 'TOOL_CALL', { toolName: 'project_knowledge_search', toolCallId: 'a' }),
+      ev(2, 'TOOL_CALL', { toolName: 'project_knowledge_search', toolCallId: 'b' }),
+      ev(3, 'SOURCE', { title: '海康威视.md' }),
+      ev(4, 'TOOL_RESULT', { toolName: 'project_knowledge_search', toolCallId: 'b', state: 'ERROR', summary: '失败' }),
+      ev(5, 'TOOL_RESULT', { toolName: 'project_knowledge_search', toolCallId: 'a', state: 'SUCCESS', summary: '12.83%' }),
+    ]), false);
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toMatchObject({ kind: 'tool', card: { state: 'completed', output: '12.83%' } });
+    expect(rows[1]).toMatchObject({ kind: 'tool', card: { state: 'error', error: '失败' } });
+    expect(rows[2]).toMatchObject({ kind: 'plain', item: { kind: 'source', title: '海康威视.md' } });
+  });
+
+  it('不同调用ID即使同名且相邻也不合并', () => {
+    const rows = foldTimelineRows(buildTimelineItems([
+      ev(1, 'TOOL_CALL', { toolName: 'search', toolCallId: 'a' }),
+      ev(2, 'TOOL_RESULT', { toolName: 'search', toolCallId: 'b', state: 'SUCCESS' }),
+    ]), false);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ kind: 'tool', card: { state: 'pending' } });
+  });
+
 });
