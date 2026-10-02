@@ -28,36 +28,8 @@
       "r1": 6,
       "r2": 0
     },
-    "packages/workflow-designer/StandaloneWorkflowDesigner.vue": {
-      "r1": 38,
-      "r2": 0
-    },
-    "packages/workflow-designer/components/RunDetail.vue": {
-      "r1": 4,
-      "r2": 0
-    },
-    "packages/workflow-designer/components/edges/CustomEdge.vue": {
-      "r1": 1,
-      "r2": 0
-    },
-    "packages/workflow-designer/components/nodes/SwitcherNode.vue": {
-      "r1": 25,
-      "r2": 0
-    },
-    "packages/workflow-designer/properties/SwitcherNodeProperty.vue": {
-      "r1": 51,
-      "r2": 0
-    },
     "views/_core/oauth-common.ts": {
       "r1": 1,
-      "r2": 0
-    },
-    "views/aiflow/edit.vue": {
-      "r1": 5,
-      "r2": 0
-    },
-    "views/aiflow/run.vue": {
-      "r1": 11,
       "r2": 0
     },
     "views/chat/model/model-modal.vue": {
@@ -181,26 +153,6 @@
       "r2": 0
     },
     "views/system/menu/index.vue": {
-      "r1": 1,
-      "r2": 0
-    },
-    "views/workflow/task/allTaskWaiting.vue": {
-      "r1": 1,
-      "r2": 0
-    },
-    "views/workflow/task/myDocument.vue": {
-      "r1": 1,
-      "r2": 0
-    },
-    "views/workflow/task/taskCopyList.vue": {
-      "r1": 1,
-      "r2": 0
-    },
-    "views/workflow/task/taskFinish.vue": {
-      "r1": 1,
-      "r2": 0
-    },
-    "views/workflow/task/taskWaiting.vue": {
       "r1": 1,
       "r2": 0
     }

@@ -5,9 +5,9 @@
 | 目录 | 对应门禁 | 期望退出码 |
 |---|---|---|
 | `color-gate-clean/` | D-G02 干净态（token 用法 + 两处同值） | 0 |
-| `color-gate-red/` | D-G02 违规态（#1677ff + `:root{--primary:…}` + 两处不同值） | 1 |
-| `mcp-gates-clean/` | D-G04 干净态（后端读 command/args/baseUrl + 前端只出契约字段） | 0 |
-| `mcp-gates-red/` | D-G04 违规态（后端多读 timeout + `field:'env'` + `{{ tool.configJson }}`） | 5（1\|4） |
+| `color-gate-red/` | D-G02 违规态（#1677ff + `:root{--primary:…}` + 两处不同值 ） | 1 |
+
+（原 D-G04 mcp-gates 两套夹具与 check-mcp-config-gates.mjs 已于 2026-10-02 随 LangChain4jMcpToolProviderService 删除而退役）
 
 D-G05 的孤儿夹具不在本目录（须落在 `apps/web-antd/src` 树内才被发现）：
 验证时临时放 `apps/web-antd/src/views/agent/orphan-fixture/orphan.test.ts`

@@ -64,7 +64,7 @@ const symmetricEncryption: BaseSymmetricEncryption = new AesEncryption();
 
 /**
  * 平台通道成功码（2026-09-11 根修，/system 全模块「Error: 操作成功」事件）。
- * RuoYi-Vue-Plus 原生端点（/system、/chat、/workflow、/monitor…）统一返 code=200；
+ * RuoYi-Vue-Plus 原生端点（/system、/chat、/monitor…）统一返 code=200；
  * @vben/constants 的 BUSINESS_SUCCESS_CODE=0 是 IPD 契约码——两码制混用会把平台
  * 成功响应当错误抛出（new Error(msg)，msg=「操作成功」），页面数据被静默吞掉
  * （/system/user 部门树/初始化密码/用户列表全部拿不到数据，mounted hook 报错）。
@@ -394,7 +394,7 @@ function shouldNormalizeDateTimeValue(key: string, value: unknown) {
 /**
  * 平台通道前缀（2026-09-11 根修：平台全模块页面 404「请求地址不存在」事件）。
  * 后端对两类端点用不同前缀——IPD 契约带 /api/v1（IpdAuthController/IpdMenuController/
- * IpdSseController 等），平台端点（/system、/workflow、/chat、/monitor…）注册在根路径。
+ * IpdSseController 等），平台端点（/system、/chat、/monitor…）注册在根路径。
  * 平台请求必须发 /api/{path}：dev 由 vite、prod 由 nginx 吞掉 /api 前缀后命中；
  * 误发 /api/v1/{path}（曾因 VITE_GLOB_API_URL=/api/v1 被 baseURL 透传）会保留前缀直达后端 → 404。
  * IPD 请求一律走 requestIpd（硬拼 /api/v1 的自研 fetch），两通道不得混用。
