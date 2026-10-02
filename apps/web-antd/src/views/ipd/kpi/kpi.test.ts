@@ -48,6 +48,7 @@ function stubApi() {
     const url = String(input);
     calls.push({ method: 'GET', url });
     if (url.includes('/kpi/performance')) return response(performanceSummary);
+    if (url.includes('/kpi/functional-metrics') || url.includes('/projects')) return response([]);
     if (url.includes('/kpi/functional')) return response(functionalSources);
     if (url.includes('/kpi/trend')) return response(trendPoints);
     return response(null, 40400);
@@ -121,7 +122,7 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
     // period 形态
     const perfCall = calls.find((call) => call.url.includes('/kpi/performance'));
     expect(perfCall?.url).toMatch(/period=\d{4}-\d{2}/);
-    const funcCall = calls.find((call) => call.url.includes('/kpi/functional'));
+    const funcCall = calls.find((call) => call.url.includes('/kpi/functional') && !call.url.includes('/kpi/functional-metrics'));
     expect(funcCall?.url).toMatch(/period=\d{4}-\d{2}/);
     // 切换 periods=24 触发查询
     const select = wrapper.find('select');
@@ -155,6 +156,7 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('/kpi/performance')) return response(performanceSummary);
+      if (url.includes('/kpi/functional-metrics') || url.includes('/projects')) return response([]);
       if (url.includes('/kpi/functional')) return response(functionalSources);
       if (url.includes('/kpi/trend')) return response(trendPoints);
       if (url.includes('/kpi/rules')) return response([
@@ -179,6 +181,7 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('/kpi/performance')) return response(performanceSummary);
+      if (url.includes('/kpi/functional-metrics') || url.includes('/projects')) return response([]);
       if (url.includes('/kpi/functional')) return response(functionalSources);
       if (url.includes('/kpi/trend')) return response(trendPoints);
       if (url.includes('/kpi/rules')) return response([]);
@@ -197,6 +200,7 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('/kpi/performance')) return response(performanceSummary);
+      if (url.includes('/kpi/functional-metrics') || url.includes('/projects')) return response([]);
       if (url.includes('/kpi/functional')) return response(functionalSources);
       if (url.includes('/kpi/trend')) return response(trendPoints);
       if (url.includes('/kpi/rules')) return new Response(
@@ -245,6 +249,7 @@ describe('L2 AI 入口（kpi.monthly-summary / kpi.contributor-summary）', () =
       const url = String(input);
       calls.push({ method: (init?.method ?? 'GET').toUpperCase(), url });
       if (url.includes('/kpi/performance')) return response(performanceSummary);
+      if (url.includes('/kpi/functional-metrics') || url.includes('/projects')) return response([]);
       if (url.includes('/kpi/functional')) return response(functionalSources);
       if (url.includes('/kpi/trend')) return response(trendPoints);
       return response(null, 40400);

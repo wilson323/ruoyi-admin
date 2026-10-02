@@ -1,7 +1,7 @@
 /**
  * MCP 连接配置结构化模型（Track E5）。
  * 硬约束 #20：字段集 = 后端真实读取键（LOCAL: command+args / REMOTE: baseUrl，
- * LangChain4jMcpToolProviderService.createStdioClient/createRemoteClient 实证）。
+ * 后端 MCP 接入层（AgentScope + io.modelcontextprotocol SDK）实证）。
  * env/headers 后端当前不读，E-A1 落地前**禁止**出现在任何 UI/序列化产物里。
  * 硬约束 #19：本模块只做「用户新输入」的序列化；服务端原值永不回显（@JsonIgnore），
  * 解析函数只用于高级视图的用户输入回同步，绝不用于预填服务端配置。

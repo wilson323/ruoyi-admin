@@ -42,8 +42,11 @@ export function isAiTaskTodo(notification: IpdNotification): boolean {
  * aiDocId 有值直达版本链（docId 查询参数）；无值落项目 AI 文档页（进度呈现，无需人审）。
  */
 export function aiTaskDeepLink(task: AiAgentTaskView): string {
-  const base = `/ipd/ai-assistant?projectId=${encodeURIComponent(task.projectId)}`;
-  return task.aiDocId ? `${base}&docId=${encodeURIComponent(task.aiDocId)}` : base;
+  const params = new URLSearchParams();
+  params.set('projectId', task.projectId);
+  if (task.aiDocId) params.set('docId', task.aiDocId);
+  if (task.actionCode) params.set('actionCode', task.actionCode);
+  return `/ipd/ai-assistant?${params.toString()}`;
 }
 
 /**

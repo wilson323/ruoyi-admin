@@ -13,6 +13,9 @@ vi.mock('../../../../api/ipd/project', () => api);
 const productApi = vi.hoisted(() => ({ listProductGroups: vi.fn() }));
 vi.mock('../../../../api/ipd/product', () => productApi);
 
+const lineApi = vi.hoisted(() => ({ listDiscoverableProductLines: vi.fn(), listProductLineProducts: vi.fn() }));
+vi.mock('../../../../api/ipd/product-line', () => lineApi);
+
 const routerMock = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 vi.mock('vue-router', () => ({
   useRouter: () => routerMock,
@@ -39,6 +42,9 @@ function created(overrides: Partial<Project> = {}): Project {
 beforeEach(() => {
   stubAntd();
   setActivePinia(createPinia());
+  lineApi.listDiscoverableProductLines.mockReset();
+  lineApi.listDiscoverableProductLines.mockResolvedValue([]);
+  lineApi.listProductLineProducts.mockReset();
   api.createProject.mockReset();
   productApi.listProductGroups.mockReset();
   productApi.listProductGroups.mockResolvedValue([]);
@@ -137,4 +143,26 @@ describe('ZK-IPD 业务规则显示对齐 Prompt §二.10/§三.2/§三.1', () =
     // 业务规则提示应早于错误 alert 出现（不冲突）
   });
 });
+});
+it('快速切产品线时只显示新线产品，读取失败显示错误', async () => {
+  let resolveOld!: (rows: unknown[]) => void;
+  lineApi.listProductLineProducts.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+  lineApi.listProductLineProducts.mockResolvedValueOnce([{ id: '202', code: 'P202', name: '新线产品' }]);
+  const wrapper = mount(Create);
+  await flushPromises();
+  const lineSelect = wrapper.findAllComponents({ name: 'ASelect' })[0]!;
+  lineSelect.vm.$emit('update:value', 'A'); lineSelect.vm.$emit('change', 'A');
+  await flushPromises();
+  lineSelect.vm.$emit('update:value', 'B'); lineSelect.vm.$emit('change', 'B');
+  await flushPromises();
+  resolveOld([{ id: '101', code: 'P101', name: '旧线产品' }]);
+  await flushPromises();
+  const productSelect = wrapper.findAllComponents({ name: 'ASelect' })[2]!;
+  expect(productSelect.props('options')).toEqual([{ label: '新线产品（P202）', value: '202' }]);
+  lineApi.listProductLineProducts.mockRejectedValueOnce(new Error('读取中断'));
+  lineSelect.vm.$emit('update:value', 'C'); lineSelect.vm.$emit('change', 'C');
+  await flushPromises();
+  expect(wrapper.get('[data-testid="line-products-error"]').text()).toContain('在售产品读取失败');
+  expect(productSelect.props('options')).toEqual([]);
+  wrapper.unmount();
 });

@@ -217,18 +217,13 @@ describe.skipIf(!liveModeEnabled())('project 业务契约 — 真 HTTP loopback'
     }
   });
 
-  it('createProject 真库外键过 Jackson 白名单 DTO — 已占用产品被业务 1:1 规则真实拒绝', async () => {
+  it('createProject 真库外键过 Jackson 白名单 DTO — 同一产品再次立项必须成功并回读', async () => {
     await loginAndPrime();
     clearLiveHttpEvents();
-    // R179-P0（2026-09-22）：真创建受数据模型硬约束——产品:项目 = 1:1 是终身物理约束
-    // （projects.product_id NOT NULL + uk_projects_product/uk_projects_code 物理唯一，
-    //  软删/解绑均不释放序号与产品，且无项目删除 API），空闲产品每用一次即永久失效，
-    //  「每轮真创建」不可持续。本用例验证 body 白名单 DTO 真实生效：真库外键（数字字符串）
-    //  通过 Jackson 反序列化与系数校验，到达业务 1:1 检查被真实拒绝（envelopeMessage
-    //  透传业务文案）——假外键死在 Jackson 层到不了这里（对照用例见下一 it）。
-    let caught: unknown = null;
-    try {
-      await createProject({
+    // 一个产品可以有多个项目。projects.product_id 不再有 uk_projects_product。
+    // 本用例要求成功且回读同一产品，任何权限或业务拒绝均失败。
+    // 假外键死在 Jackson 层（对照下一 it）。
+    const created = await createProject({
         launchDate: null,
         level: 'A',
         levelCoefficient: null,
@@ -236,22 +231,23 @@ describe.skipIf(!liveModeEnabled())('project 业务契约 — 真 HTTP loopback'
         mainGroupId: '900001',
         name: `live-test-${Date.now()}`,
         productId: '9130006',
+        productLineId: '1',
+        startKind: 'ITERATION',
         targetChannelCount: 1,
         targetMarkets: [],
         targetNps: 1,
         targetSalesAmount: 1,
         targetSceneCount: 1,
         templateType: 'SOFTWARE',
-      });
-    } catch (e) {
-      caught = e;
-    }
-    expect(caught).toBeInstanceOf(IpdRequestError);
-    expect((caught as IpdRequestError).envelopeMessage).toContain('1:1');
+    });
+    expect(created.id).toMatch(/^\d+$/);
     const events = getLiveHttpEvents();
-    expect(events[0]?.path).toBe('/api/v1/projects');
-    expect((events[0]?.http ?? 0)).toBe(400);
+    expect(events[0]?.http).toBe(200);
+    expect(events[0]?.code).toBe(0);
     expect(events[0]?.envelopeComplete).toBe(true);
+    const readback = (await listProjects()).find((project) => project.id === created.id);
+    expect(readback?.id).toBe(created.id);
+    expect(readback?.productId).toBe('9130006');
   });
 
   it('createProject 假外键在 Jackson 层被拒（字母串→Long 反序列化失败）', async () => {
@@ -265,7 +261,8 @@ describe.skipIf(!liveModeEnabled())('project 业务契约 — 真 HTTP loopback'
     try {
       await createProject({
         launchDate: null, level: 'B', levelCoefficient: 0.7, levelCoefficientReason: null,
-        mainGroupId: 'g-1', name: `live-nested-${Date.now()}`, productId: 'p-001', targetChannelCount: 1,
+        mainGroupId: 'g-1', name: `live-nested-${Date.now()}`, productId: 'p-001',
+        productLineId: 'line-1', startKind: 'NEW', targetChannelCount: 1,
         targetMarkets: [], targetNps: 1, targetSalesAmount: 1, targetSceneCount: 1,
         templateType: 'SOLUTION',
       });

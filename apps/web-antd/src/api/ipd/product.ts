@@ -136,7 +136,7 @@ export function batchImportProducts(
 }
 
 /**
- * 绑定项目（1:1；query 传 projectId；后端返回 Void，结果以 GET /products 复查）。
+ * 把项目挂到产品上（一个产品可有多个项目；query 传 projectId；后端返回 Void，结果以 GET /products 复查）。
  * 注意：projectId 传 null/空串时 http.ts 会整体省略查询串，后端 @RequestParam 必填→400；
  * 解绑请改走 unbindProductProject（R215 A13 接线，下方）。
  */

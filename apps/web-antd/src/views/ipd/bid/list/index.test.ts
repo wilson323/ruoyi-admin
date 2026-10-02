@@ -66,6 +66,8 @@ function pageOf(records: BidInvitation[]): IpdPage<BidInvitation> {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(2026, 8, 15, 12));
   stubAntd();
   setActivePinia(createPinia());
   api.adminAssignBidInvitation.mockReset();
@@ -78,7 +80,7 @@ beforeEach(() => {
   routeMock.name = 'IpdBids';
 });
 
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 async function mountList() {
   const wrapper = mount(List);

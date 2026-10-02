@@ -3,9 +3,9 @@
  *
  * 后端真值（G-04 以代码为准，2026-09-06 ProductWorkspaceController.java）：
  * - GET /products/{id}/workspace → { product, projects[], demands[](≤100), metrics }；
- * - product：id/productCode/productName/modelCode/source/groupId/status/projectId
+ * - product：id/productCode/productName/modelCode/source/groupId/status；projectId 只是首个项目指针
  *   （无 current_version/product_line/owner_name/lifecycle_status，展示层按产品组名+状态映射补齐）；
- * - projects：id/name/code/status(ACTIVE|ARCHIVED…)/currentStage/launchDate/updatedAt；
+ * - projects[] 是该产品下的项目全集：id/name/code/status(ACTIVE|ARCHIVED…)/currentStage/launchDate/updatedAt；
  * - demands：id/title/customerName/submitterName/source/status/projectId/createdAt；
  * - metrics：feedback(=demands 数)/themes(恒 0，demand-themes P1 未落地)/
  *   activeProjects(ACTIVE)/closedProjects(ARCHIVED)。

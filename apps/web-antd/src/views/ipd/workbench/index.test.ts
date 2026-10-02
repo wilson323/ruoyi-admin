@@ -240,7 +240,7 @@ describe('页03 我的工作台', () => {
     wrapper.unmount();
   });
 
-  it('WB-17-1 P0：deletion_review 任务卡按「删除审批」分组，desc 用 17 类字典文案，kind 显示待初审', async () => {
+  it('待办按三类决定分组：删除审批进待我审核，阻断阶段动作进去决定', async () => {
     loginAs('GROUP_LEADER', '组长甲');
     const summary: WorkbenchSummary = {
       ...fullSummary,
@@ -260,9 +260,17 @@ describe('页03 我的工作台', () => {
     stubSummary(summary);
     const wrapper = mount(Workbench);
     await vi.waitFor(() => expect(wrapper.text()).toContain('删除初审：project #10'));
-    // 分组：删除审批独立成组（projectName 分组口径，B4 拍板②）
     const groups = wrapper.findAll('.ipd-wb-group-title');
-    expect(groups.some((g) => g.text().includes('删除审批'))).toBe(true);
+    expect(groups.map((g) => g.text())).toEqual([
+      expect.stringContaining('待我审核'),
+      expect.stringContaining('需要我补充事实'),
+      expect.stringContaining('被阻断需我决定'),
+    ]);
+    const sections = wrapper.findAll('.ipd-wb-group');
+    expect(sections[0]!.text()).toContain('删除初审：project #10');
+    expect(sections[0]!.text()).toContain('去审核');
+    expect(sections[2]!.text()).toContain('需求评审');
+    expect(sections[2]!.text()).toContain('去决定');
     // kind 标签：LEADER_REVIEW → 待初审（状态字典）
     const kinds = wrapper.findAll('.ipd-wb-task-kind').map((k) => k.text());
     expect(kinds).toContain('待初审');

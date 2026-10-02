@@ -23,7 +23,7 @@
  *
  * ORPHAN-A6（看板卡 8338f2fa，R212 孤儿桶 #37/#39/#40）增量：
  * - DELETE /kpi/functional-metrics/{id}（软删除，ipd:kpi:config）
- * - GET  /kpi/functional-metrics/codes（权威枚举，页面消费见 functional/index.vue）
+ * - GET  /kpi/functional-metrics/codes（权威枚举，页面消费见 kpi/index.vue 的功能指标量表）
  * - GET  /kpi/raw-records/types（权威枚举，页面消费见 raw-records.vue）
  *
  * ORPHAN-A7（看板卡 670aecdf，R212 孤儿桶 #79/#80/#82，原型页30）增量：

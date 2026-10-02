@@ -59,13 +59,18 @@ const sopInstancesFixture = [
 
 /** fetch 分发 stub：project 详情 / stages / stage-actions / gate-checklist / sop instances 五口径。 */
 function stubFlowFetch(sopResponder?: () => Response, stagesResponder?: () => Response) {
-  return vi.fn(async (input: RequestInfo | URL) => {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    void init;
     const path = String(input);
     if (path.includes('/ipd/stage/sub-stages/progress')) return envelope({ projectId: PROJECT_ID, currentStage: 'CONCEPT', currentSubStageCode: null, version: 0, gateResult: null, replayed: false, advanced: false });
     if (path.endsWith('/ipd/stage/sub-stages')) return envelope([{ id: '801', code: 'CONCEPT-01', name: '机会识别', stageCode: 'CONCEPT', sortOrder: 1, isGate: '0', gateCode: null, skillHint: null, ownerRole: 'PM', actions: [] }]);
     if (path.includes('/gate-checklist')) return envelope(checklistFixture);
     if (path.endsWith('/stages')) return stagesResponder ? stagesResponder() : envelope({ stages: [] });
     if (path.includes('/stage-actions')) return envelope([]);
+    if (path.includes('/ai-agent-tasks')) return envelope([]);
+    if (path.includes('/ai-documents')) return envelope([]);
+    if (path.includes('/agent-runs')) return envelope([]);
+    if (path.includes('/workbench/tasks')) return envelope({ tasks: [], total: 0, returned: 0 });
     if (path.includes('/sop-templates/instances')) {
       return sopResponder ? sopResponder() : envelope(sopInstancesFixture);
     }
@@ -307,6 +312,104 @@ describe('阶段清单 GET /projects/{id}/stages（P3-6.1 接线）', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('阶段动作（全项目）'));
     const titles = wrapper.findAll('.ant-steps-item-title').map((n) => n.text());
     expect(titles).toEqual(['概念', '计划', '开发', '验证', '发布', '生命周期']);
+    wrapper.unmount();
+  });
+
+  it('点阶段只切换总览，并重读该阶段门禁，不调用推进接口', async () => {
+    const base = stubFlowFetch();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.includes('/gate-checklist')) {
+        const stage = new URL(path, 'http://127.0.0.1').searchParams.get('stage') ?? 'CONCEPT';
+        return envelope({
+          ...checklistFixture,
+          stage,
+          items: stage === 'PLAN'
+            ? [{ code: 'P-GATE', name: '计划评审门禁', ok: false, reason: '计划未齐', stage: 'PLAN', status: 'PENDING' }]
+            : [],
+        });
+      }
+      return base(input, init);
+    });
+    const wrapper = await mountFlow(fetcher);
+    const workspace = wrapper.get('[data-testid="stage-workspace"]');
+    expect(workspace.get('[data-testid="site-now-stage"]').text()).toContain('概念阶段');
+    expect(workspace.get('[data-testid="site-ai-doing"]').text()).toBe('没有进行中的 AI 任务或运行');
+    expect(workspace.get('[data-testid="site-awaiting-review"]').text()).toBe('没有待审核成果');
+    expect(workspace.get('[data-testid="site-blocking"]').text()).toBe('没有未满足的门禁项或未完成的阻断动作');
+    expect(workspace.text()).toContain('阶段目的');
+    expect(workspace.text()).toContain('这一阶段要完成的事，系统还没有单独说明');
+    expect(workspace.text()).toContain('这一阶段还没有单独的成果说明');
+    expect(workspace.text()).not.toMatch(/接口|字段|API/);
+    expect(workspace.text()).not.toContain('待接入');
+    expect(workspace.text()).not.toContain('机会识别');
+    await wrapper.get('[data-testid="stage-workspace-toggle"]').trigger('click');
+    expect(wrapper.get('[data-testid="stage-workspace-details"]').text()).toContain('机会识别');
+    wrapper.findComponent({ name: 'ASteps' }).vm.$emit('change', 1);
+    await vi.waitFor(() => expect(wrapper.get('[data-testid="stage-workspace"]').text()).toContain('计划评审门禁'));
+    expect(wrapper.get('[data-testid="stage-workspace"]').text()).toContain('计划未齐');
+    expect(wrapper.get('[data-testid="site-now-stage"]').text()).toContain('概念阶段');
+    expect(wrapper.get('[data-testid="site-blocking"]').text()).not.toContain('计划未齐');
+    const paths = fetcher.mock.calls.map((call) => String(call[0]));
+    expect(paths.some((path) => path.includes('/gate-checklist?stage=PLAN'))).toBe(true);
+    expect(paths.some((path) => path.includes('advance-stage'))).toBe(false);
+    expect(paths.some((path) => path.includes('sub-stages/advance'))).toBe(false);
+    expect(wrapper.text()).not.toContain('实例化当前阶段');
+    wrapper.unmount();
+  });
+
+  it('哪些条件阻碍推进不展示内部状态和来源，同一动作只留一句', async () => {
+    const base = stubFlowFetch();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.endsWith('/ipd/stage/sub-stages')) {
+        return envelope([{
+          id: '801',
+          code: 'CONCEPT-01',
+          name: '机会识别',
+          stageCode: 'CONCEPT',
+          sortOrder: 1,
+          isGate: '0',
+          gateCode: null,
+          skillHint: null,
+          ownerRole: 'PM',
+          actions: [
+            { actionCode: 'C01', actionName: 'Charter立项评审会', skillNames: [], sortOrder: 1, subStageCode: 'CONCEPT-01' },
+            { actionCode: 'C08', actionName: '生物特征数据合规审查', skillNames: [], sortOrder: 2, subStageCode: 'CONCEPT-01' },
+          ],
+        }]);
+      }
+      if (path.includes('/stage-actions')) {
+        return envelope([
+          { id: 'a1', projectId: PROJECT_ID, actionCode: 'C01', actionName: 'Charter立项评审会', depth: 'DEEP', status: 'NOT_STARTED', isBlocking: '1' },
+          { id: 'a2', projectId: PROJECT_ID, actionCode: 'C08', actionName: '生物特征数据合规审查', depth: 'DEEP', status: 'IN_PROGRESS', isBlocking: '1' },
+        ]);
+      }
+      if (path.includes('/gate-checklist') && !path.includes('stage=PLAN')) {
+        return envelope({
+          ...checklistFixture,
+          items: [
+            { code: 'C01', name: 'Charter立项评审会', ok: false, reason: '未完成 status=NOT_STARTED；来源=超管配置 gate.a_level_block_codes', stage: 'CONCEPT', status: 'NOT_STARTED' },
+            { code: 'C08', name: '生物特征数据合规审查', ok: false, reason: '未完成 status=IN_PROGRESS；来源=超管配置 gate.a_level_block_codes', stage: 'CONCEPT', status: 'IN_PROGRESS' },
+          ],
+        });
+      }
+      return base(input, init);
+    });
+    const wrapper = await mountFlow(fetcher as unknown as ReturnType<typeof stubFlowFetch>);
+    const blocking = wrapper.get('[data-testid="site-blocking"]').text();
+    expect(blocking).toBe('Charter立项评审会：还没开始；生物特征数据合规审查：还没完成');
+    expect(blocking).not.toMatch(/status=|NOT_STARTED|IN_PROGRESS|gate\.a_level_block_codes|超管配置|未开始/);
+    expect(wrapper.text()).toContain('完成本阶段列出的工作后，才能考虑进入下一阶段');
+    expect(wrapper.text()).toContain('要完成：Charter立项评审会、生物特征数据合规审查');
+    expect(wrapper.text()).not.toContain('阶段接口没有目的字段');
+    expect(wrapper.text()).not.toContain('阶段接口没有必需成果字段');
+    expect(wrapper.text()).not.toContain('待接入');
+    wrapper.findComponent({ name: 'ASteps' }).vm.$emit('change', 1);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="site-blocking"]').text()).toBe(blocking);
+    const paths = fetcher.mock.calls.map((call) => String(call[0]));
+    expect(paths.some((path) => path.includes('advance-stage'))).toBe(false);
     wrapper.unmount();
   });
 });

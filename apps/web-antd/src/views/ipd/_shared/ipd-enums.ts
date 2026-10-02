@@ -467,6 +467,52 @@ export function taskTypeText(value: string): string {
   return WORKBENCH_TASK_TYPE_TEXT[value] ?? value;
 }
 
+/**
+ * 工作台首屏三类决定。
+ * 审核类即使 isBlocking 为 1 也归「待我审核」：聚合器把该标志写成 1，只表示下游被挡住。
+ * 只有 stage_sign 的 isBlocking 来自动作自身，才归「被阻断需我决定」。
+ */
+export type WorkbenchDecisionBucket = 'blocked' | 'fact' | 'review';
+
+const REVIEW_TASK_TYPES = new Set([
+  'bonus_lock',
+  'capacity_approval',
+  'contribution_confirm',
+  'deletion_review',
+  'key_gate',
+  'key_gate_arbitration',
+  'receipt_review',
+  'retirement_review',
+  'strategic_change',
+  'waiver_review',
+]);
+
+export const DECISION_BUCKET_TEXT: Record<WorkbenchDecisionBucket, string> = {
+  blocked: '被阻断需我决定',
+  fact: '需要我补充事实',
+  review: '待我审核',
+};
+
+export const DECISION_BUCKET_ACTION: Record<WorkbenchDecisionBucket, string> = {
+  blocked: '去决定',
+  fact: '去补充',
+  review: '去审核',
+};
+
+/** 按现有 taskType 归入三类；未知类型归补充事实，不另开第四栏。 */
+export function decisionBucket(
+  taskType: string,
+  isBlocking: null | string,
+): WorkbenchDecisionBucket {
+  if (taskType === 'stage_sign' && isBlocking === '1') {
+    return 'blocked';
+  }
+  if (REVIEW_TASK_TYPES.has(taskType)) {
+    return 'review';
+  }
+  return 'fact';
+}
+
 /** 决策动作 APPROVE/REJECT（系数变更等审批页用）。 */
 export const DECISION_LABEL: Record<string, string> = {
   APPROVE: '通过',

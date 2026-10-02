@@ -73,7 +73,9 @@ export interface ProjectCreateBody {
   /** 可选（2026-09-11 owner 拍板）：BR-ORG-01 归属语义不变，未选传 null；存量导入仍必填。 */
   mainGroupId: null | string;
   name: string;
-  productId: string;
+  productId: null | string;
+  productLineId: string;
+  startKind: 'ITERATION' | 'NEW';
   targetChannelCount: number;
   targetMarkets: string[];
   targetNps: number;
@@ -188,7 +190,9 @@ function toWire(
 ): Record<string, unknown> {
   return {
     name: body.name,
-    productId: body.productId,
+    productId: 'productId' in body ? body.productId : undefined,
+    productLineId: 'productLineId' in body ? body.productLineId : undefined,
+    startKind: 'startKind' in body ? body.startKind : undefined,
     templateType: body.templateType,
     targetMarkets: JSON.stringify(body.targetMarkets),
     level: body.level,
@@ -317,6 +321,21 @@ export function createProject(body: ProjectCreateBody): Promise<Project> {
   return ipdPost<unknown>('/projects', toWire(body)).then(normalizeProject);
 }
 
+/** 产品线负责人批准开工。没有负责人时由系统管理员批准。 */
+export function approveProjectStart(projectId: string): Promise<Project> {
+  return ipdPost<unknown>(`/projects/${encodeURIComponent(projectId)}/approve-start`).then(normalizeProject);
+}
+
+/** 产品线负责人拒绝开工。项目保留。 */
+export function rejectProjectStart(projectId: string): Promise<Project> {
+  return ipdPost<unknown>(`/projects/${encodeURIComponent(projectId)}/reject-start`).then(normalizeProject);
+}
+
+/** 创建人再次提交开工。 */
+export function resubmitProjectStart(projectId: string): Promise<Project> {
+  return ipdPost<unknown>(`/projects/${encodeURIComponent(projectId)}/resubmit-start`).then(normalizeProject);
+}
+
 /** 存量单条导入（仅超管；返回被标记历史缺失的动作编码）。 */
 export function legacyImportProject(
   body: LegacyImportBody,
@@ -346,6 +365,13 @@ export function changeProjectStatus(
 }
 
 /** 进入下一阶段（POST /{id}/advance-stage；门禁失败 400/10001 带 checklist 明细）。 */
+/**
+ * 提交人提交当前大阶段验收（POST /api/v1/projects/{id}/stage-acceptance）。
+ */
+export function submitStageAcceptance(id: string): Promise<unknown> {
+  return ipdPost<unknown>(`/projects/${encodeURIComponent(id)}/stage-acceptance`);
+}
+
 export function advanceProjectStage(id: string): Promise<Project> {
   return ipdPost<unknown>(
     `/projects/${encodeURIComponent(id)}/advance-stage`,

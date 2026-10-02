@@ -23,6 +23,7 @@ import { fetchAiAgentTasksByProject } from '../../../../api/ipd/stage-action';
 import TaskCard from './task-card.vue';
 import {
   actionUrlFallback,
+  aiTaskDeepLink,
   isAiTaskTodo,
   resolveAiTaskTodo,
 } from './todo-link';
@@ -103,10 +104,7 @@ async function onRowClick(row: IpdNotification) {
 
 /** 任务卡「直达审批卡」：任务行已在手，直接按 aiDocId 深链（C08：仅路由跳转）。 */
 function onOpenReview(task: AiAgentTaskView) {
-  const base = `/ipd/ai-assistant?projectId=${encodeURIComponent(task.projectId)}`;
-  void router
-    .push(task.aiDocId ? `${base}&docId=${encodeURIComponent(task.aiDocId)}` : base)
-    .catch(() => {});
+  void router.push(aiTaskDeepLink(task)).catch(() => {});
   close();
 }
 </script>

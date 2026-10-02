@@ -8,11 +8,12 @@ import {
 /**
  * IPD 路由（唯一登记处）。
  *
- * 规则（2026-09-06 owner 裁决 D2 强化：菜单/页面严格对齐 ZK-IPD 原型）：
- * - 菜单结构 = 原型 App.jsx navItems 15 项（12 全员 + 3 超管）；49 页导航地图同步变更中；
- * - 已实现页面的 path/name/组件不动，只对齐 title/icon/order；原型未开工的一级入口挂 pending 占位（卡号 ZK-D2 = 原型对齐裁决）；
- * - 原型非一级路由的既有页（审计日志/AI 助手/删除审核/KPI/激励）保留路由但 hideInMenu；
- * - 后端未交付的页面统一挂 _shared/backend-pending.vue，meta 记录卡号与后端依赖（ipdCard + ipdBackend 两字段）；
+ * 规则（2026-10-01 导航收敛；路由仍全部登记，不删路径、不改 access / authority）：
+ * - 侧栏常用入口只留五项，order 1–5：我的工作台、产品线、产品目录、我的项目、资料库；
+ * - 产品目录仍是 authority SUPER_ADMIN，不把这项菜单扩给其他角色；
+ * - 其余一级入口（含产品空间、招募、协同绩效、报表、移交、激励）hideInMenu，直链仍打开原页面；
+ * - 原型 15 项路径和组件保留。原型非一级路由（审计日志/删除审核/KPI/激励）继续 hideInMenu；
+ * - 后端未交付的能力在页内登记缺口（meta.ipdCard + meta.ipdBackend），不另挂占位页；
  * - 项目详情 8 个子页签、动作详情、编辑页等下钻路由 hideInMenu，用 activePath 保持菜单高亮；
  * - 游客门户（38/39）独立于后台布局，单独顶层注册。
  *
@@ -22,7 +23,7 @@ import {
 
 const ipdLayoutRoute: RouteRecordRaw = {
   // 2026-09-11 菜单/UI 统一：本路由树经 routes/index.ts 并入 Root.children，与平台路由共用
-  // 同一 vben BasicLayout 外壳；ipd.vue 降级为轻量容器（stage-rail 六阶段 + 全局项目选择）。
+  // 同一 vben BasicLayout 外壳；ipd.vue 只在带 projectId 的项目页挂阶段轨道。
   // 顶栏/侧栏/用户区/通知由 BasicLayout 承担；菜单由守卫统一构建（后端单一菜单树，IPD 分组置顶）。
   component: () => import('#/layouts/ipd.vue'),
   meta: { hideInBreadcrumb: true, title: 'IPD 工作台' },
@@ -48,7 +49,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     // ② 项目空间（原型 /projects，页07-15 及下钻）
     {
       component: () => import('#/views/ipd/project/list/index.vue'),
-      meta: { access: [...(PAGE_PERMISSIONS['/ipd/projects'] ?? [])], icon: 'lucide:target', order: 2, title: '项目空间' },
+      meta: { access: [...(PAGE_PERMISSIONS['/ipd/projects'] ?? [])], icon: 'lucide:target', order: 4, title: '我的项目' },
       name: 'IpdProjects',
       path: 'projects',
       children: [
@@ -153,7 +154,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     // ③ 需求管理（原型 /requirements，页40；2026-09-06 复刻 RequirementsPage，接 DemandController）
     {
       component: () => import('#/views/ipd/demand/index.vue'),
-      meta: { access: [...(PAGE_PERMISSIONS['/ipd/requirements'] ?? [])], icon: 'lucide:clipboard-list', order: 3, title: '需求管理' },
+      meta: { access: [...(PAGE_PERMISSIONS['/ipd/requirements'] ?? [])], hideInMenu: true, icon: 'lucide:clipboard-list', title: '需求管理' },
       name: 'IpdRequirements',
       path: 'requirements',
     },
@@ -168,13 +169,13 @@ const ipdLayoutRoute: RouteRecordRaw = {
     // ④ 产品空间（原型 /product-space，页16-17；2026-09-06 换挂一比一工作台，接 ProductWorkspaceController）
     {
       component: () => import('#/views/ipd/product-lines/index.vue'),
-      meta: { access: [...(PAGE_PERMISSIONS['/ipd/product-lines'] ?? [])], activePath: '/ipd/products', hideInMenu: true, title: '产品线团队空间' },
+      meta: { access: [...(PAGE_PERMISSIONS['/ipd/product-lines'] ?? [])], icon: 'lucide:layers', order: 2, title: '产品线' },
       name: 'IpdProductLines',
       path: 'product-lines',
     },
     {
       component: () => import('#/views/ipd/product/workspace/index.vue'),
-      meta: { access: [...(PAGE_PERMISSIONS['/ipd/products'] ?? [])], icon: 'lucide:package', order: 4, title: '产品空间' },
+      meta: { access: [...(PAGE_PERMISSIONS['/ipd/products'] ?? [])], hideInMenu: true, icon: 'lucide:package', title: '产品空间' },
       name: 'IpdProducts',
       path: 'products',
       children: [
@@ -202,7 +203,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     // ⑤ 研发招募（原型 /recruitments，页19-22）—— fe-bid 整体覆盖
     {
       component: () => import('#/views/ipd/bid/list/index.vue'),
-      meta: { access: [...(PAGE_PERMISSIONS['/ipd/bids'] ?? [])], icon: 'lucide:handshake', order: 5, title: '研发招募' },
+      meta: { access: [...(PAGE_PERMISSIONS['/ipd/bids'] ?? [])], hideInMenu: true, icon: 'lucide:handshake', title: '研发招募' },
       name: 'IpdBids',
       path: 'bids',
       children: [
@@ -236,7 +237,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     //    P2-6.1 双签否决，创建/提交/签署真实；协作决策链（旧五节点口径已废止）后端未交付在页内如实登记）
     {
       component: () => import('#/views/ipd/change/index.vue'),
-      meta: { icon: 'lucide:arrow-left-right', order: 6, title: '变更管理' },
+      meta: { hideInMenu: true, icon: 'lucide:arrow-left-right', title: '变更管理' },
       name: 'IpdChanges',
       path: 'changes',
     },
@@ -246,7 +247,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     // 按钮权限码 system:info:* 走基线 RBAC，非超管映射账号需 RBAC 授权后可见写操作（遗留登记））
     {
       component: () => import('#/views/knowledge/info/index.vue'),
-      meta: { icon: 'lucide:folder-open', order: 7, title: '资料库' },
+      meta: { icon: 'lucide:folder-open', order: 5, title: '资料库' },
       name: 'IpdDocuments',
       path: 'documents',
     },
@@ -254,7 +255,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     //    双PM确认链/双周评审/五大关键 Gate/豁免后端未交付在页内如实登记）
     {
       component: () => import('#/views/ipd/review/index.vue'),
-      meta: { icon: 'lucide:shield-check', order: 8, title: '阶段确认' },
+      meta: { hideInMenu: true, icon: 'lucide:shield-check', title: '阶段确认' },
       name: 'IpdReviews',
       path: 'reviews',
     },
@@ -262,7 +263,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     //    functional/project-score/bonus-pool 等真组件已挂 /ipd/kpi|incentive 隐藏路由，原 pending
     //    占位会让菜单点进去停在占位页；V3.1 回款台账与津贴读端点缺已登记（W3-Backend-B1）
     {
-      meta: { icon: 'lucide:bar-chart-3', order: 9, title: '协同绩效' },
+      meta: { hideInMenu: true, icon: 'lucide:bar-chart-3', title: '协同绩效' },
       name: 'IpdPerformance',
       path: 'performance',
       redirect: '/ipd/kpi/functional',
@@ -271,14 +272,14 @@ const ipdLayoutRoute: RouteRecordRaw = {
     //    2026-09-06 真实现：审计日志 + 工作台待办 + 奖金池三源融合，五态齐全。
     {
       component: () => import('#/views/ipd/timeline/index.vue'),
-      meta: { icon: 'lucide:book-open', ipdBackend: '无 timeline 聚合端点；以审计日志（GET /audit-logs/scope）+ 工作台（GET /workbench/summary）+ 奖金池（GET /bonus-pool/list）三源融合按时间倒序。', ipdCard: 'ZK-D2', order: 10, title: '全流程轨迹' },
+      meta: { hideInMenu: true, icon: 'lucide:book-open', ipdBackend: '无 timeline 聚合端点；以审计日志（GET /audit-logs/scope）+ 工作台（GET /workbench/summary）+ 奖金池（GET /bonus-pool/list）三源融合按时间倒序。', ipdCard: 'ZK-D2', title: '全流程轨迹' },
       name: 'IpdTimeline', path: 'timeline',
     },
     // ⑪ 报表分析（原型 /reports；2026-09-06 复刻：P4-4.1 月度绩效汇总+三类台账导出已交付为页面主区，
     //    原型 analytics 流程分析四卡/建议卡按原型渲染但数值区登记真缺口）
     {
       component: () => import('#/views/ipd/report/index.vue'),
-      meta: { icon: 'lucide:line-chart', order: 11, title: '报表分析' },
+      meta: { hideInMenu: true, icon: 'lucide:line-chart', title: '报表分析' },
       name: 'IpdReports',
       path: 'reports',
     },
@@ -286,7 +287,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     //    原型 scope 四卡预检/责任确认链/取消/产品续交不同构在页内登记）
     {
       component: () => import('#/views/ipd/handover/index.vue'),
-      meta: { access: [...(PAGE_PERMISSIONS['/ipd/handover'] ?? [])], icon: 'lucide:users', order: 12, title: '项目移交' },
+      meta: { access: [...(PAGE_PERMISSIONS['/ipd/handover'] ?? [])], hideInMenu: true, icon: 'lucide:users', title: '项目移交' },
       name: 'IpdHandover',
       path: 'handover',
     },
@@ -306,7 +307,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
           //    端点已交付为主区；原型 12 项 KPI 表格 + KpiDrawer 填报/共担 KPI 确认链未交付
           //    在页内登记真缺口（路由 IpdKpiShared 维持真缺口，IpdKpiScore 真组件挂在下条）
           component: () => import('#/views/ipd/kpi/index.vue'),
-          meta: { access: [...(PAGE_PERMISSIONS['/ipd/kpi/functional'] ?? [])], activePath: '/ipd/performance', ipdBackend: 'KpiRecordController 已交付：GET /kpi/performance、GET /kpi/functional、GET /kpi/trend；KpiRulesController 已交付：GET /kpi/rules（规则快照）；原型 12 项项目 KPI 表格写链（PUT /performance/kpis/{projectId}/{metricCode}）与 KpiDrawer 填报/证据上传/编辑均未交付。', ipdCard: 'P0-10.29', title: '功能 KPI' },
+          meta: { access: [...(PAGE_PERMISSIONS['/ipd/kpi/functional'] ?? [])], activePath: '/ipd/performance', ipdBackend: 'KpiRecordController 已交付：GET /kpi/performance、GET /kpi/functional、GET /kpi/trend；KpiRulesController 已交付：GET /kpi/rules（规则快照）；功能指标量表 GET/PUT/DELETE /kpi/functional-metrics 与 GET /kpi/functional-metrics/codes 在本页。原型 12 项项目 KPI 表格写链（PUT /performance/kpis/{projectId}/{metricCode}）与 KpiDrawer 填报/证据上传/编辑均未交付。', ipdCard: 'P0-10.29', title: '功能 KPI' },
           name: 'IpdKpiFunctional',
           path: 'functional',
         },
@@ -382,7 +383,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     // 自绘壳悬浮「AI 副驾」与「AI 管理平台」切换钮均已移除，本菜单项为 AI 能力唯一入口（便于深链与权限收敛）。
     {
       component: () => import('#/views/ipd/ai-docs/index.vue'),
-      meta: { access: [...(PAGE_PERMISSIONS['/ipd/ai-assistant'] ?? [])], icon: 'lucide:bot', order: 1.5, title: 'AI 文档助手' },
+      meta: { access: [...(PAGE_PERMISSIONS['/ipd/ai-assistant'] ?? [])], hideInMenu: true, icon: 'lucide:bot', title: 'AI 文档助手' },
       name: 'IpdAiAssistant',
       path: 'ai-assistant',
     },
@@ -418,7 +419,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     // ⑬ 产品目录〔超管〕（原型 /products 超管项；2026-09-06 复刻 ProductCatalogPage，主表接 GET /products；导入三步流后端未交付已在页内登记）
     {
       component: () => import('#/views/ipd/product/catalog/index.vue'),
-      meta: { authority: ['SUPER_ADMIN'], icon: 'lucide:package', order: 13, title: '产品目录' },
+      meta: { authority: ['SUPER_ADMIN'], icon: 'lucide:package', order: 3, title: '产品目录' },
       name: 'IpdProductCatalog',
       path: 'product-catalog',
     },
@@ -427,14 +428,14 @@ const ipdLayoutRoute: RouteRecordRaw = {
     //    主体挂 GET /pm-directory（在职人员目录）真组件，IPD_PERMISSION_CODES.IDENTITY_SYNC_* 权限码走 _shared。
     {
       component: () => import('#/views/ipd/admin/identity-sync/index.vue'),
-      meta: { authority: ['SUPER_ADMIN'], icon: 'lucide:database', ipdBackend: 'PmDirectoryController 已交付：GET /pm-directory（在职目录只读视图）；identity-source Controller 待补（同步源类型/来源实例/最近同步时间三个维度未交付）。', ipdCard: 'P0-10.44', order: 14, title: '人员同步' },
+      meta: { authority: ['SUPER_ADMIN'], hideInMenu: true, icon: 'lucide:database', ipdBackend: 'PmDirectoryController 已交付：GET /pm-directory（在职目录只读视图）；identity-source Controller 待补（同步源类型/来源实例/最近同步时间三个维度未交付）。', ipdCard: 'P0-10.44', title: '人员同步' },
       name: 'IpdIdentitySync', path: 'identity-sync',
     },
     // ⑮ 超级管理〔超管〕（原型 /admin，页06/18/28/44-49）
     {
       // 纯分组/重定向父路由：省略 component，子页由 ipd.vue plain <router-view> depth-skip 渲染；
       // 勿挂 not-found.vue（无 outlet 会吞掉 org 等超管子页 → 404）。
-      meta: { authority: ['SUPER_ADMIN'], icon: 'lucide:settings', order: 15, title: '超级管理' },
+      meta: { authority: ['SUPER_ADMIN'], hideInMenu: true, icon: 'lucide:settings', title: '超级管理' },
       name: 'IpdAdmin',
       path: 'admin',
       redirect: '/ipd/admin/org',
@@ -580,7 +581,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     //   省略 component，子页由 ipd.vue plain <router-view> depth-skip 渲染；点菜单直接进
     //   recovery-warnings 子页（与 IpdKpi/Incentive/Performance 同构）。
     {
-      meta: { icon: 'mdi:alert-circle', order: 15, title: '运营管理' },
+      meta: { hideInMenu: true, icon: 'mdi:alert-circle', title: '运营管理' },
       name: 'IpdOperation',
       path: 'operation',
       redirect: '/ipd/operation/recovery-warnings',

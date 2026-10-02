@@ -11,6 +11,7 @@ import { streamCopilot } from '../../../../api/ipd/ai-copilot';
 import { IpdRequestError } from '../../../../api/ipd/auth';
 import {
   cancelAgentRun,
+  resumeAgentRun,
   createProjectAgentRun,
   fetchAgentRun,
   fetchAgentRunEvents,
@@ -25,6 +26,7 @@ import { useIpdAiWorkspace } from '../ai-workspace/use-ai-workspace';
 vi.mock('../../../../api/ipd/project-agent', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   cancelAgentRun: vi.fn(),
+  resumeAgentRun: vi.fn(),
   createProjectAgentRun: vi.fn(),
   fetchAgentRun: vi.fn(),
   fetchAgentRunEvents: vi.fn(),
@@ -33,6 +35,11 @@ vi.mock('../../../../api/ipd/project-agent', async (importOriginal) => ({
   saveAiFeedback: vi.fn(),
 }));
 vi.mock('../../../../api/ipd/ai-copilot', () => ({ streamCopilot: vi.fn(), chatCopilot: vi.fn() }));
+// 本文件验证面板行为，显式使用确定性轮询；AG-UI 传输由独立测试覆盖。
+vi.mock('./use-project-agent-run', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./use-project-agent-run')>();
+  return { ...actual, useProjectAgentRun: (projectId: Parameters<typeof actual.useProjectAgentRun>[0], options: Parameters<typeof actual.useProjectAgentRun>[1]) => actual.useProjectAgentRun(projectId, { ...options, transport: 'poll', restoreSession: false }) };
+});
 
 /** 单包单模型：面板会自动选中。 */
 const CAPS: ProjectAgentCapabilities = {
@@ -63,6 +70,7 @@ function detailOf(
     projectId: 'p-1',
     agentId: 'a',
     status,
+    pauseSeq: status === 'WAITING_APPROVAL' ? 7 : null,
     actionCode,
     configSnapshot: { capabilityPackCode: 'ipd.market', capabilityPackVersion: '1.2.0', modelConfigId: '0012', skills: [], toolIds: [] },
     errorCode: null,
@@ -693,3 +701,38 @@ describe('explicit document rework sends through the original run path', () => {
 function associationFields(association: { previousRunId: string; targetDocumentId: string; baseVersionId: string }) {
   return { previousRunId: association.previousRunId, targetDocumentId: association.targetDocumentId, baseVersionId: association.baseVersionId };
 }
+
+
+describe('official HITL uses the existing run instead of a new send track', () => {
+  it('submits tool denial from the current run and preserves its durable cursor', async () => {
+    const wrapper = await mountPanel();
+    vi.mocked(fetchAgentRun).mockResolvedValue(detailOf('WAITING_APPROVAL'));
+    vi.mocked(fetchAgentRunEvents).mockResolvedValueOnce({ events: [{ seq: 7, type: 'STEP', payload: { kind: 'AWAIT_USER', reason: 'AGUI_INTERRUPT', interrupts: { tool: { id: 'tool', reason: 'tool_call', message: '允许读取吗？' } } }, createdAt: 'x' }], nextSeq: 7, terminal: false }).mockResolvedValue({ events: [], nextSeq: 7, terminal: false });
+    vi.mocked(resumeAgentRun).mockResolvedValueOnce({ runId: 'run-1', status: 'RUNNING' });
+    await wrapper.vm.submitText('分析竞品');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="agui-interrupt-form"]').exists()).toBe(true);
+    await wrapper.find('[data-testid="interrupt-deny"]').setValue();
+    await wrapper.find('[data-testid="interrupt-submit"]').trigger('click');
+    await flushPromises();
+    expect(resumeAgentRun).toHaveBeenCalledWith('run-1', expect.objectContaining({ expectedPauseSeq: 7, aguiInput: expect.objectContaining({ resume: [{ interruptId: 'tool', status: 'resolved', payload: { approved: false } }] }) }));
+    expect(createProjectAgentRun).toHaveBeenCalledTimes(1);
+    expect(cancelAgentRun).not.toHaveBeenCalled();
+    expect(fetchAgentRunEvents).toHaveBeenLastCalledWith('run-1', 7);
+    wrapper.unmount();
+  });
+
+  it('maps the same input composer to a pending text answer without cancelling or creating another run', async () => {
+    const wrapper = await mountPanel();
+    vi.mocked(fetchAgentRun).mockResolvedValue(detailOf('WAITING_APPROVAL'));
+    vi.mocked(fetchAgentRunEvents).mockResolvedValueOnce({ events: [{ seq: 7, type: 'STEP', payload: { kind: 'AWAIT_USER', reason: 'AGUI_INTERRUPT', interrupts: { input: { id: 'input', reason: 'input_required', responseSchema: { type: 'object', properties: { scope: { type: 'string' } }, required: ['scope'] } } } }, createdAt: 'x' }], nextSeq: 7, terminal: false }).mockResolvedValue({ events: [], nextSeq: 7, terminal: false });
+    vi.mocked(resumeAgentRun).mockResolvedValueOnce({ runId: 'run-1', status: 'RUNNING' });
+    expect(await wrapper.vm.submitText('分析竞品')).toBe('started');
+    await flushPromises();
+    expect(await wrapper.vm.submitText('中国市场')).toBe('started');
+    expect(resumeAgentRun).toHaveBeenCalledWith('run-1', expect.objectContaining({ aguiInput: expect.objectContaining({ resume: [{ interruptId: 'input', status: 'resolved', payload: { scope: '中国市场' } }] }) }));
+    expect(createProjectAgentRun).toHaveBeenCalledTimes(1);
+    expect(cancelAgentRun).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+});

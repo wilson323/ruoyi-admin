@@ -17,7 +17,7 @@
  * - V02 certNo 格式 ^[A-Za-z0-9\-/]+$（后端 10001）。
  * - P10/V02 阻断性动作：/transit?target=DONE 前 /fields 必须含 certNo+certPassedAt；不通过则 40001。
  */
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import dayjs, { type Dayjs } from 'dayjs';
 import {
@@ -44,13 +44,14 @@ import type {
   StageActionStatus,
 } from '../../../../api/ipd/stage-action';
 import {
+  acceptStageAction,
   uploadStageActionDeliverable,
   aiExecuteStageAction,
   listStageActions,
   recordStageActionFields,
   transitStageAction,
 } from '../../../../api/ipd/stage-action';
-import { registerCopilotPageContext } from '../../../../api/ipd/ai-copilot';
+import { registerCopilotPageContext, stageActionIdText } from '../../../../api/ipd/ai-copilot';
 import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import {
   actionStatusColor,
@@ -69,6 +70,16 @@ const router = useRouter();
 
 const projectId = computed(() => String(route.params.projectId ?? ''));
 const actionId = computed(() => String(route.params.actionId ?? ''));
+
+/** 带上当前项目和动作，打开项目智能体。不在本页另开一条发送。 */
+function openInProjectAgent(): void {
+  const code = action.value?.actionCode;
+  if (!code || !projectId.value) return;
+  void router.push({
+    path: '/ipd/ai-assistant',
+    query: { actionCode: code, projectId: projectId.value },
+  });
+}
 
 const loading = ref(false);
 const loadError = ref<unknown>(null);
@@ -163,7 +174,7 @@ const farFrrValid = computed(() => {
   return Number(fields.farValue) + Number(fields.frrValue) <= 1.000001;
 });
 
-const busyAction = ref<'' | 'aiExecute' | 'saveFields' | 'transit'>('');
+const busyAction = ref<'' | 'accept' | 'aiExecute' | 'saveFields' | 'transit'>('');
 const submitError = ref<unknown>(null);
 
 const transitReasonModalOpen = ref(false);
@@ -180,7 +191,12 @@ const showCert = computed(() => needsCert.value);
 const deliverableModalOpen = ref(false);
 const deliverableFile = ref<File | null>(null);
 
+let identityEpoch = 0;
+
 async function load(): Promise<void> {
+  const epoch = identityEpoch;
+  const requestedProject = projectId.value;
+  const requestedAction = actionId.value;
   if (!projectId.value || !actionId.value) {
     loadError.value = new Error('路由参数缺失：项目 ID 或动作 ID 为空');
     registerCopilotPageContext(null);
@@ -189,8 +205,9 @@ async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
   try {
-    const list = await listStageActions(projectId.value);
-    const found = list.find((row) => row.id === actionId.value);
+    const list = await listStageActions(requestedProject);
+    if (epoch !== identityEpoch) return;
+    const found = list.find((row) => row.id === requestedAction);
     if (!found) {
       loadError.value = new Error(`动作 ID ${actionId.value} 不在项目 ${projectId.value} 下`);
       registerCopilotPageContext(null);
@@ -206,9 +223,9 @@ async function load(): Promise<void> {
     fields.frrValue = found.frrValue == null ? null : Number(found.frrValue);
     fields.remark = found.remark ?? '';
   } catch (cause) {
-    loadError.value = cause;
+    if (epoch === identityEpoch) loadError.value = cause;
   } finally {
-    loading.value = false;
+    if (epoch === identityEpoch) loading.value = false;
   }
 }
 
@@ -229,16 +246,20 @@ async function saveFields(): Promise<void> {
     submitError.value = new Error('FAR+FRR 之和需小于等于 1.000000（系统参数可配）');
     return;
   }
+  const epoch = identityEpoch;
   submitError.value = null;
   busyAction.value = 'saveFields';
   try {
-    action.value = await recordStageActionFields(action.value.id, toFieldsBody());
+    const updated = await recordStageActionFields(action.value.id, toFieldsBody());
+    if (epoch !== identityEpoch) return;
+    action.value = updated;
     aiFillHint.value = '';
     message.success('动作字段已保存（status 未变更，请走状态流转接口）');
   } catch (cause) {
+    if (epoch !== identityEpoch) return;
     submitError.value = cause;
   } finally {
-    busyAction.value = '';
+    if (epoch === identityEpoch) busyAction.value = '';
   }
 }
 
@@ -248,6 +269,24 @@ function askTransit(target: StageActionStatus): void {
   transitReasonModalOpen.value = true;
 }
 
+async function approveAcceptance(): Promise<void> {
+  if (!action.value) return;
+  const epoch = identityEpoch;
+  submitError.value = null;
+  busyAction.value = 'accept';
+  try {
+    const updated = await acceptStageAction(action.value.id);
+    if (epoch !== identityEpoch) return;
+    action.value = updated;
+    message.success(action.value.confirmedBy ? '已由产线负责人批准' : '批准已提交');
+  } catch (cause) {
+    if (epoch !== identityEpoch) return;
+    submitError.value = cause;
+  } finally {
+    if (epoch === identityEpoch) busyAction.value = '';
+  }
+}
+
 async function confirmTransit(): Promise<void> {
   if (!action.value || !pendingTarget.value) return;
   if (pendingTarget.value === 'NA' && !transitReason.value.trim()) {
@@ -255,15 +294,19 @@ async function confirmTransit(): Promise<void> {
     return;
   }
   transitReasonModalOpen.value = false;
+  const epoch = identityEpoch;
   submitError.value = null;
   busyAction.value = 'transit';
   try {
-    action.value = await transitStageAction(action.value.id, pendingTarget.value, transitReason.value.trim() || undefined);
+    const updated = await transitStageAction(action.value.id, pendingTarget.value, transitReason.value.trim() || undefined);
+    if (epoch !== identityEpoch) return;
+    action.value = updated;
     message.success(`状态已流转为 ${actionStatusText(action.value.status)}`);
   } catch (cause) {
+    if (epoch !== identityEpoch) return;
     submitError.value = cause;
   } finally {
-    busyAction.value = '';
+    if (epoch === identityEpoch) busyAction.value = '';
   }
 }
 
@@ -284,16 +327,19 @@ async function submitDeliverable(): Promise<void> {
     message.warning('请选择要上传的文件');
     return Promise.reject(new Error('missing-file'));
   }
+  const epoch = identityEpoch;
   busyAction.value = 'saveFields';
   try {
     await uploadStageActionDeliverable(action.value.id, deliverableFile.value);
+    if (epoch !== identityEpoch) return;
     message.success('交付物已上传');
     deliverableModalOpen.value = false;
   } catch (cause) {
+    if (epoch !== identityEpoch) return;
     submitError.value = cause;
     return Promise.reject(cause instanceof Error ? cause : new Error('upload-failed'));
   } finally {
-    busyAction.value = '';
+    if (epoch === identityEpoch) busyAction.value = '';
   }
 }
 
@@ -314,17 +360,20 @@ let aiExecuteTimer: ReturnType<typeof setTimeout> | undefined;
 
 async function aiExecute(): Promise<void> {
   if (!action.value) return;
+  const epoch = identityEpoch;
   submitError.value = null;
   busyAction.value = 'aiExecute';
   try {
     await aiExecuteStageAction(action.value.id);
+    if (epoch !== identityEpoch) return;
     message.success('AI 任务已提交，稍后刷新查看结果');
     // 引擎 afterCommit 异步跑：延时 3s 后自动刷新一次拉取结果（不阻塞、不轮询；卸载时 clearTimeout 防对已销毁组件回调）。
     aiExecuteTimer = setTimeout(() => { void load(); }, 3000);
   } catch (cause) {
+    if (epoch !== identityEpoch) return;
     submitError.value = cause;
   } finally {
-    busyAction.value = '';
+    if (epoch === identityEpoch) busyAction.value = '';
   }
 }
 
@@ -372,29 +421,44 @@ function onAiFill(e: Event) {
 }
 
 /**
- * R232 P2-03 fillContext 落地：向 streamCopilot 注册本页填表上下文（pageContext 上送源，
- * 键面 = 后端 fillPagePath 解析面 AiCopilotService.java L317-325：scene/actionCode/stageActionId，
- * 后端不读的键一个不发明）。stageActionId 仅可转数字且 >0 才送（对齐后端 L324-325 采纳条件）。
- * C08 铁律：注册上下文只影响 FILL_PAGE 意图与 suggest 回填，与提交链路零耦合（提交必须人手动）。
+ * 向副驾注册本页填表上下文。stageActionId 保持动作 ID 字符串，不经 Number()。
+ * 非正整数或超出 Java long 的不送。上送时再按原文拼成 JSON 数字。
  */
 function syncFillPageContext(): void {
   if (!action.value) {
     registerCopilotPageContext(null);
     return;
   }
-  const stageActionId = Number(action.value.id);
+  const stageActionId = stageActionIdText(action.value.id);
   registerCopilotPageContext({
     actionCode: action.value.actionCode ?? undefined,
     scene: 'stage-action-fields',
-    ...(Number.isInteger(stageActionId) && stageActionId > 0 ? { stageActionId } : {}),
+    ...(stageActionId ? { stageActionId } : {}),
   });
 }
 
-onMounted(() => {
+watch([projectId, actionId], () => {
+  identityEpoch++;
+  action.value = null;
+  loading.value = false;
+  loadError.value = null;
+  submitError.value = null;
+  busyAction.value = '';
+  transitReasonModalOpen.value = false;
+  pendingTarget.value = '';
+  deliverableModalOpen.value = false;
+  deliverableFile.value = null;
+  aiFillHint.value = '';
+  registerCopilotPageContext(null);
+  if (aiExecuteTimer) clearTimeout(aiExecuteTimer);
   void load();
+}, { immediate: true });
+
+onMounted(() => {
   window.addEventListener(AI_FILL_EVENT, onAiFill);
 });
 onUnmounted(() => {
+  identityEpoch++;
   window.removeEventListener(AI_FILL_EVENT, onAiFill);
   registerCopilotPageContext(null);
   if (aiExecuteTimer) clearTimeout(aiExecuteTimer);
@@ -414,7 +478,16 @@ onUnmounted(() => {
         </Space>
       </template>
       <template #extra>
-        <Button @click="backToList">返回 IPD 流程</Button>
+        <Space>
+          <Button
+            v-if="action?.actionCode"
+            data-testid="action-open-agent"
+            @click="openInProjectAgent"
+          >
+            用项目智能体做这一动作
+          </Button>
+          <Button @click="backToList">返回 IPD 流程</Button>
+        </Space>
       </template>
 
       <Alert
@@ -615,7 +688,15 @@ onUnmounted(() => {
                   && !(fields.certNo && fields.certPassedAt)"
                 @click="askTransit('DONE')"
               >
-                切到「已完成」
+                提交验收
+              </Button>
+              <Button
+                v-if="action.status === 'DONE' && !action.confirmedBy"
+                type="primary"
+                :loading="busyAction === 'accept'"
+                @click="approveAcceptance"
+              >
+                批准验收
               </Button>
               <Button
                 v-if="isDeep && action.status !== 'DELAYED'"

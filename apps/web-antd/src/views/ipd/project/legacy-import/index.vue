@@ -473,7 +473,7 @@ const resultColumns = [
         <Form.Item
           label="产品 ID"
           name="productId"
-          extra="1:1 项目-产品关系（BR-PROD-01）。"
+          extra="一个产品可以对应多个项目；一个项目只属于一个产品。"
         >
           <Input
             v-model:value="formState.productId"

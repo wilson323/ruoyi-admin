@@ -51,6 +51,8 @@ function pool(overrides: Partial<BonusPool> = {}): BonusPool {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(2026, 8, 15, 12));
   setActivePinia(createPinia());
   kpiApi.listSharedKpis.mockReset();
   kpiApi.listSharedConfirms.mockReset();
@@ -70,7 +72,7 @@ beforeEach(() => {
   routeState.query = { period: '2026-09', projectId: '1001' };
 });
 
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 /** ORPHAN-A7 #82：签署闸按 personType 判定（GROUP_LEADER / SUPER_ADMIN 可签）。 */
 function signIn(personType: 'GROUP_LEADER' | 'MARKET_PM' | 'RD_PM' | 'SUPER_ADMIN'): void {

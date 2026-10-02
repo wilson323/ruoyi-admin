@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IpdRequestError } from '../../../../api/ipd/auth';
 import {
   cancelAgentRun,
+  resumeAgentRun,
   createProjectAgentRun,
   fetchAgentRun,
   fetchAgentRunEvents,
@@ -17,6 +18,7 @@ import {
   type AgentRunEvent,
   type AgentRunEventPage,
 } from '../../../../api/ipd/project-agent';
+import { streamAgentRunEvents } from '../../../../api/ipd/project-agent-agui';
 import { createIdempotencyKey, useProjectAgentRun } from './use-project-agent-run';
 
 vi.mock('../../../../api/ipd/project-agent', async (importOriginal) => {
@@ -24,12 +26,17 @@ vi.mock('../../../../api/ipd/project-agent', async (importOriginal) => {
   return {
     ...actual,
     cancelAgentRun: vi.fn(),
+    resumeAgentRun: vi.fn(),
     createProjectAgentRun: vi.fn(),
     fetchAgentRun: vi.fn(),
     fetchAgentRunEvents: vi.fn(),
     fetchProjectAgentCapabilities: vi.fn(),
   };
 });
+
+vi.mock('../../../../api/ipd/project-agent-agui', () => ({ streamAgentRunEvents: vi.fn(), projectAgentSessionOwner: () => sessionOwner.value }));
+
+const sessionOwner = ref<string | null>('person-1');
 
 const INPUT = {
   capabilityPackCode: 'ipd.market',
@@ -61,11 +68,15 @@ function deferred<T>() {
 /** 在独立作用域里创建组合式函数（模拟组件生命周期）。 */
 function setup(projectId = ref<null | string>('p-1'), pollIntervalMs = 1000) {
   const scope = effectScope();
-  const state = scope.run(() => useProjectAgentRun(projectId, { pollIntervalMs }))!;
+  const state = scope.run(() => useProjectAgentRun(projectId, { pollIntervalMs, transport: 'poll' }))!;
   return { projectId, scope, state };
 }
 
 beforeEach(() => {
+  sessionOwner.value = 'person-1';
+  sessionStorage.clear();
+  vi.mocked(streamAgentRunEvents).mockReset();
+  vi.mocked(resumeAgentRun).mockReset();
   vi.useFakeTimers();
   vi.mocked(fetchProjectAgentCapabilities).mockResolvedValue({ packs: [], models: [] });
   vi.mocked(createProjectAgentRun).mockResolvedValue({ runId: 'run-1', status: 'PENDING' });
@@ -251,6 +262,58 @@ describe('isolation of late responses', () => {
     expect(state.terminal.value).toBe(true);
   });
 
+  it('keeps history recovery serial while its detail is loading', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof fetchAgentRun>>>();
+    vi.mocked(fetchAgentRun).mockReturnValueOnce(pending.promise);
+    vi.mocked(fetchAgentRunEvents).mockResolvedValueOnce(page([ev(1, 'RUN_FINISHED')], true));
+    const { state } = setup();
+    const opened = state.openRun('run-recovering');
+    expect(state.polling.value).toBe(true);
+    state.resume();
+    expect(fetchAgentRunEvents).not.toHaveBeenCalled();
+    pending.resolve({
+      runId: 'run-recovering', projectId: 'p-1', agentId: 'a-1', status: 'SUCCEEDED',
+      actionCode: null, configSnapshot: { capabilityPackCode: 'x', capabilityPackVersion: '1', modelConfigId: 'm-1', skills: [], toolIds: [] },
+      errorCode: null, createdAt: 'x', finishedAt: 'y',
+    });
+    expect(await opened).toBe(true);
+    expect(fetchAgentRunEvents).toHaveBeenCalledTimes(1);
+    expect(state.polling.value).toBe(false);
+  });
+
+  it('does not overwrite terminal history while its remaining events are replaying', async () => {
+    const pending = deferred<AgentRunEventPage>();
+    const actualDetail = await fetchAgentRun('run-ended');
+    vi.mocked(fetchAgentRun).mockResolvedValueOnce({ ...actualDetail, status: 'SUCCEEDED', finishedAt: 'y' });
+    vi.mocked(fetchAgentRunEvents).mockReturnValueOnce(pending.promise);
+    const { state } = setup();
+    const opened = state.openRun('run-ended');
+    await vi.waitFor(() => expect(fetchAgentRunEvents).toHaveBeenCalledTimes(1));
+    expect(state.active.value).toBe(false);
+    expect(await state.startRun(INPUT)).toBe(false);
+    expect(createProjectAgentRun).not.toHaveBeenCalled();
+    state.resume();
+    expect(fetchAgentRunEvents).toHaveBeenCalledTimes(1);
+    pending.resolve(page([ev(1, 'RUN_FINISHED')], true));
+    expect(await opened).toBe(true);
+    expect(state.runId.value).toBe('run-ended');
+    expect(state.events.value.map((event) => event.seq)).toEqual([1]);
+    expect(state.polling.value).toBe(false);
+  });
+
+  it('releases the recovery channel after detail failure and allows an explicit retry', async () => {
+    vi.mocked(fetchAgentRun).mockRejectedValueOnce(new Error('network disconnected'));
+    vi.mocked(fetchAgentRunEvents).mockResolvedValueOnce(page([ev(1, 'RUN_FINISHED')], true));
+    const { state } = setup();
+    expect(await state.openRun('run-recovering')).toBe(false);
+    expect(state.polling.value).toBe(false);
+    expect(state.pollError.value).toBeInstanceOf(Error);
+    state.resume();
+    await vi.waitFor(() => expect(state.terminal.value).toBe(true));
+    expect(fetchAgentRunEvents).toHaveBeenCalledTimes(1);
+    expect(state.pollError.value).toBeNull();
+  });
+
   it('openRun drains more than 200 events by nextSeq before marking a finished run terminal', async () => {
     vi.mocked(fetchAgentRun).mockResolvedValueOnce({
       runId: 'run-ended',
@@ -392,5 +455,257 @@ describe('createIdempotencyKey', () => {
     } finally {
       Object.defineProperty(globalThis.crypto, 'randomUUID', { configurable: true, value: original });
     }
+  });
+});
+
+
+describe('default AG-UI transport and session recovery', () => {
+  function setupAgui(restoreSession = false) {
+    const scope = effectScope();
+    const state = scope.run(() => useProjectAgentRun(ref('p-1'), { pollIntervalMs: 1000, restoreSession }))!;
+    return { scope, state };
+  }
+
+  it('reconnects from consumed seq, dedupes replay and never recreates or polls the run', async () => {
+    vi.mocked(streamAgentRunEvents)
+      .mockImplementationOnce(async (_id, _cursor, consume) => { consume(ev(1)); throw new TypeError('offline'); })
+      .mockImplementationOnce(async (_id, _cursor, consume) => { consume(ev(1)); consume(ev(2, 'RUN_FINISHED')); });
+    const { scope, state } = setupAgui();
+    expect(await state.startRun(INPUT)).toBe(true);
+    await vi.waitFor(() => expect(streamAgentRunEvents).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(streamAgentRunEvents).toHaveBeenNthCalledWith(2, 'run-1', 1, expect.any(Function), expect.any(AbortSignal));
+    expect(state.events.value.map((event) => event.seq)).toEqual([1, 2]);
+    expect(state.terminal.value).toBe(true);
+    expect(state.pollError.value).toBeNull();
+    expect(createProjectAgentRun).toHaveBeenCalledTimes(1);
+    expect(fetchAgentRunEvents).not.toHaveBeenCalled();
+    scope.stop();
+  });
+
+  it('limits automatic reconnections and resumes explicitly without changing the consumed cursor', async () => {
+    vi.mocked(streamAgentRunEvents).mockRejectedValue(new TypeError('offline'));
+    const { scope, state } = setupAgui();
+    await state.startRun(INPUT);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(streamAgentRunEvents).toHaveBeenCalledTimes(3);
+    expect(state.polling.value).toBe(false);
+    expect(state.pollError.value).toBeInstanceOf(TypeError);
+    vi.mocked(streamAgentRunEvents).mockImplementationOnce(async (_id, _cursor, consume) => { consume(ev(1, 'RUN_FINISHED')); });
+    state.resume();
+    await vi.waitFor(() => expect(state.terminal.value).toBe(true));
+    expect(createProjectAgentRun).toHaveBeenCalledTimes(1);
+    scope.stop();
+  });
+
+  it('does not retry authorization failures or silently fall back to polling', async () => {
+    vi.mocked(streamAgentRunEvents).mockRejectedValueOnce(new IpdRequestError('denied', 403, 30001, 'http'));
+    const { scope, state } = setupAgui();
+    await state.startRun(INPUT);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(streamAgentRunEvents).toHaveBeenCalledTimes(1);
+    expect(state.polling.value).toBe(false);
+    expect(fetchAgentRunEvents).not.toHaveBeenCalled();
+    scope.stop();
+  });
+
+  it('stops reading at waiting approval and refreshes authoritative detail', async () => {
+    vi.mocked(fetchAgentRun).mockResolvedValueOnce({ ...(await fetchAgentRun('run-1')), status: 'WAITING_APPROVAL', pauseSeq: 1 });
+    vi.mocked(streamAgentRunEvents).mockImplementationOnce(async (_id, _cursor, consume) => {
+      expect(consume({ ...ev(1), payload: { kind: 'AWAIT_USER' } })).toBe(false);
+    });
+    const { scope, state } = setupAgui();
+    await state.startRun(INPUT);
+    await vi.waitFor(() => expect(state.status.value).toBe('WAITING_APPROVAL'));
+    expect(state.polling.value).toBe(false);
+    expect(state.terminal.value).toBe(false);
+    scope.stop();
+  });
+
+  it('accepts an empty stream close after the waiting approval event was already consumed', async () => {
+    const actualDetail = await fetchAgentRun('run-1');
+    vi.mocked(fetchAgentRun).mockResolvedValue({ ...actualDetail, status: 'WAITING_APPROVAL', pauseSeq: 1 });
+    vi.mocked(streamAgentRunEvents)
+      .mockImplementationOnce(async (_id, _cursor, consume) => { consume({ ...ev(1), payload: { kind: 'AWAIT_USER' } }); })
+      .mockRejectedValueOnce(new IpdRequestError('closed', 0, 0, 'transport'));
+    const { scope, state } = setupAgui();
+    await state.startRun(INPUT);
+    await vi.waitFor(() => expect(state.status.value).toBe('WAITING_APPROVAL'));
+    state.resume();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(streamAgentRunEvents).toHaveBeenCalledTimes(2);
+    expect(state.polling.value).toBe(false);
+    expect(state.pollError.value).toBeNull();
+    scope.stop();
+  });
+
+  it('persists only scoped identifiers and restores the same run after scope disposal without cancelling', async () => {
+    let signal: AbortSignal | undefined;
+    vi.mocked(streamAgentRunEvents).mockImplementationOnce(async (_id, _cursor, _consume, currentSignal) => {
+      signal = currentSignal;
+      await new Promise<void>((resolve) => currentSignal.addEventListener('abort', () => resolve()));
+    }).mockImplementationOnce(async (_id, _cursor, consume) => { consume(ev(1, 'RUN_FINISHED')); });
+    const first = setupAgui(true);
+    await first.state.startRun(INPUT);
+    expect(sessionStorage.getItem('ipd.agent-run:person-1:p-1')).toBe(JSON.stringify({ projectId: 'p-1', owner: 'person-1', runId: 'run-1' }));
+    first.scope.stop();
+    expect(signal?.aborted).toBe(true);
+    expect(cancelAgentRun).not.toHaveBeenCalled();
+    const second = setupAgui(true);
+    await vi.waitFor(() => expect(second.state.terminal.value).toBe(true));
+    expect(second.state.runId.value).toBe('run-1');
+    expect(createProjectAgentRun).toHaveBeenCalledTimes(1);
+    expect(streamAgentRunEvents).toHaveBeenLastCalledWith('run-1', 0, expect.any(Function), expect.any(AbortSignal));
+    second.scope.stop();
+  });
+
+  it('replays old waiting and resumed events before displaying only the authoritative current pause', async () => {
+    const base = await fetchAgentRun('run-1');
+    vi.mocked(fetchAgentRun).mockResolvedValue({ ...base, status: 'WAITING_APPROVAL', pauseSeq: 9 });
+    const oldPause = { ...ev(2), payload: { kind: 'AWAIT_USER', reason: 'AGUI_INTERRUPT', interrupts: { old: { id: 'old', reason: 'tool_call' } } } };
+    const current = { ...ev(9), payload: { kind: 'AWAIT_USER', reason: 'AGUI_INTERRUPT', interrupts: { current: { id: 'current', reason: 'input_required', responseSchema: { type: 'string' } } } } };
+    vi.mocked(streamAgentRunEvents).mockImplementationOnce(async (_id, _cursor, consume) => {
+      expect(consume(oldPause)).toBe(false);
+      expect(consume({ ...ev(3), payload: { kind: 'AGUI_RESUMED' } })).toBe(false);
+      expect(consume(current)).toBe(true);
+    });
+    const { scope, state } = setupAgui();
+    expect(await state.openRun('run-1')).toBe(true);
+    await vi.waitFor(() => expect(state.polling.value).toBe(false));
+    expect(state.events.value.map((event) => event.seq)).toEqual([2, 3, 9]);
+    expect(state.pendingInterrupt.value?.interrupts.map((interrupt) => interrupt.id)).toEqual(['current']);
+    scope.stop();
+  });
+
+  it('replays a succeeded history through previous waits and resumes to the real terminal event', async () => {
+    const base = await fetchAgentRun('run-1');
+    vi.mocked(fetchAgentRun).mockResolvedValue({ ...base, status: 'SUCCEEDED', pauseSeq: null });
+    vi.mocked(streamAgentRunEvents).mockImplementationOnce(async (_id, _cursor, consume) => {
+      expect(consume({ ...ev(2), payload: { kind: 'AWAIT_USER', reason: 'AGUI_INTERRUPT', interrupts: { old: { id: 'old', reason: 'tool_call' } } } })).toBe(false);
+      expect(consume({ ...ev(3), payload: { kind: 'AGUI_RESUMED' } })).toBe(false);
+      expect(consume(ev(10, 'RUN_FINISHED'))).toBe(true);
+    });
+    const { scope, state } = setupAgui();
+    expect(await state.openRun('run-1')).toBe(true);
+    await vi.waitFor(() => expect(state.terminal.value).toBe(true));
+    expect(state.events.value.map((event) => event.seq)).toEqual([2, 3, 10]);
+    expect(state.pendingInterrupt.value).toBeNull();
+    scope.stop();
+  });
+
+  it('does not treat a truncated replay containing an old wait as the current completed pause', async () => {
+    const base = await fetchAgentRun('run-1');
+    vi.mocked(fetchAgentRun).mockResolvedValue({ ...base, status: 'WAITING_APPROVAL', pauseSeq: 9 });
+    vi.mocked(streamAgentRunEvents).mockImplementation(async (_id, _cursor, consume) => {
+      consume({ ...ev(2), payload: { kind: 'AWAIT_USER', reason: 'AGUI_INTERRUPT', interrupts: { old: { id: 'old', reason: 'tool_call' } } } });
+      throw new IpdRequestError('truncated', 0, 0, 'transport');
+    });
+    const { scope, state } = setupAgui();
+    await state.openRun('run-1');
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(state.pendingInterrupt.value).toBeNull();
+    expect(state.pollError.value).toBeInstanceOf(IpdRequestError);
+    expect(streamAgentRunEvents).toHaveBeenCalledTimes(3);
+    scope.stop();
+  });
+
+  it('answers every native interrupt on the same run and resumes from its durable waiting cursor', async () => {
+    const base = await fetchAgentRun('run-1');
+    vi.mocked(fetchAgentRun).mockResolvedValueOnce({ ...base, status: 'WAITING_APPROVAL', pauseSeq: 7 });
+    vi.mocked(resumeAgentRun).mockResolvedValueOnce({ runId: 'run-1', status: 'RUNNING' });
+    const wait = { ...ev(7), payload: { kind: 'AWAIT_USER', reason: 'AGUI_INTERRUPT', interrupts: { tool: { id: 'tool', reason: 'tool_call' }, input: { id: 'input', reason: 'input_required', responseSchema: { type: 'string' } } } } };
+    vi.mocked(streamAgentRunEvents)
+      .mockImplementationOnce(async (_id, _cursor, consume) => { consume(wait); })
+      .mockImplementationOnce(async (_id, _cursor, consume) => { consume(ev(8, 'RUN_FINISHED')); });
+    const { scope, state } = setupAgui();
+    await state.startRun(INPUT);
+    await vi.waitFor(() => expect(state.pendingInterrupt.value?.seq).toBe(7));
+    expect(await state.respondToInterrupt([{ interruptId: 'tool', status: 'resolved', payload: { approved: true } }])).toBe(false);
+    expect(resumeAgentRun).not.toHaveBeenCalled();
+    const entries = [{ interruptId: 'tool', status: 'resolved' as const, payload: { approved: false } }, { interruptId: 'input', status: 'resolved' as const, payload: '中国市场' }];
+    expect(await state.respondToInterrupt(entries)).toBe(true);
+    await vi.waitFor(() => expect(state.terminal.value).toBe(true));
+    expect(resumeAgentRun).toHaveBeenCalledWith('run-1', { expectedPauseSeq: 7, aguiInput: { threadId: 'run-1', runId: 'run-1', messages: [], tools: [], context: [], state: {}, forwardedProps: {}, resume: entries } });
+    expect(streamAgentRunEvents).toHaveBeenLastCalledWith('run-1', 7, expect.any(Function), expect.any(AbortSignal));
+    expect(state.events.value.map((event) => event.seq)).toEqual([7, 8]);
+    expect(createProjectAgentRun).toHaveBeenCalledTimes(1);
+    expect(cancelAgentRun).not.toHaveBeenCalled();
+    scope.stop();
+  });
+
+  it('preserves the pause after rejected/stale approval and never replaces it with a new run', async () => {
+    const base = await fetchAgentRun('run-1');
+    vi.mocked(fetchAgentRun).mockResolvedValueOnce({ ...base, status: 'WAITING_APPROVAL', pauseSeq: 7 });
+    vi.mocked(streamAgentRunEvents).mockImplementationOnce(async (_id, _cursor, consume) => { consume({ ...ev(7), payload: { kind: 'AWAIT_USER', reason: 'AGUI_INTERRUPT', interrupts: { tool: { id: 'tool', reason: 'tool_call' } } } }); });
+    vi.mocked(resumeAgentRun).mockRejectedValueOnce(new IpdRequestError('这个问题已更新，请恢复运行记录', 409, 0, 'http'));
+    const { scope, state } = setupAgui();
+    await state.startRun(INPUT);
+    await vi.waitFor(() => expect(state.pendingInterrupt.value?.seq).toBe(7));
+    expect(await state.respondToInterrupt([{ interruptId: 'tool', status: 'resolved', payload: { approved: true } }])).toBe(false);
+    expect(state.responseErrorText.value).toContain('状态已变更');
+    expect(state.runId.value).toBe('run-1');
+    expect(state.pendingInterrupt.value?.seq).toBe(7);
+    expect(createProjectAgentRun).toHaveBeenCalledTimes(1);
+    expect(cancelAgentRun).not.toHaveBeenCalled();
+    scope.stop();
+  });
+
+  it('clears state immediately on logout and ignores late stream events without cancelling the backend', async () => {
+    let consume: ((event: AgentRunEvent) => boolean) | undefined;
+    let signal: AbortSignal | undefined;
+    const waiting = deferred<void>();
+    vi.mocked(streamAgentRunEvents).mockImplementationOnce(async (_id, _cursor, onEvent, currentSignal) => {
+      consume = onEvent;
+      signal = currentSignal;
+      onEvent(ev(1));
+      await waiting.promise;
+    });
+    const { scope, state } = setupAgui(true);
+    await state.startRun(INPUT);
+    expect(state.events.value).toHaveLength(1);
+    sessionOwner.value = null;
+    expect(signal?.aborted).toBe(true);
+    expect(state.runId.value).toBeNull();
+    expect(state.events.value).toEqual([]);
+    expect(state.capabilities.value).toBeNull();
+    consume?.(ev(2, 'RUN_FINISHED'));
+    waiting.resolve();
+    await Promise.resolve();
+    expect(state.events.value).toEqual([]);
+    expect(cancelAgentRun).not.toHaveBeenCalled();
+    scope.stop();
+  });
+
+  it('restores only the next owner run and invalidates old detail and capability responses', async () => {
+    const oldDetail = deferred<Awaited<ReturnType<typeof fetchAgentRun>>>();
+    const oldCaps = deferred<{ packs: never[]; models: never[] }>();
+    const actualDetail = await fetchAgentRun('old-run');
+    vi.mocked(fetchAgentRun).mockReturnValueOnce(oldDetail.promise).mockResolvedValueOnce({ ...actualDetail, runId: 'new-run' });
+    vi.mocked(fetchProjectAgentCapabilities).mockReturnValueOnce(oldCaps.promise).mockResolvedValueOnce({ packs: [], models: [] });
+    vi.mocked(streamAgentRunEvents).mockImplementationOnce(async (_id, _cursor, consume) => { consume(ev(1, 'RUN_FINISHED')); });
+    sessionStorage.setItem('ipd.agent-run:person-1:p-1', JSON.stringify({ projectId: 'p-1', owner: 'person-1', runId: 'old-run' }));
+    sessionStorage.setItem('ipd.agent-run:person-2:p-1', JSON.stringify({ projectId: 'p-1', owner: 'person-2', runId: 'new-run' }));
+    const { scope, state } = setupAgui(true);
+    expect(state.runId.value).toBe('old-run');
+    sessionOwner.value = 'person-2';
+    expect(state.runId.value).toBe('new-run');
+    await vi.waitFor(() => expect(state.terminal.value).toBe(true));
+    oldDetail.resolve({ ...actualDetail, runId: 'old-run', status: 'FAILED' });
+    oldCaps.resolve({ packs: [], models: [] });
+    await Promise.resolve();
+    expect(state.runId.value).toBe('new-run');
+    expect(state.detail.value?.runId).toBe('new-run');
+    expect(streamAgentRunEvents).toHaveBeenCalledTimes(1);
+    expect(streamAgentRunEvents).toHaveBeenCalledWith('new-run', 0, expect.any(Function), expect.any(AbortSignal));
+    scope.stop();
+  });
+
+  it('does not restore a saved identifier for another owner or project', async () => {
+    sessionStorage.setItem('ipd.agent-run:person-1:p-1', JSON.stringify({ projectId: 'p-2', owner: 'person-2', runId: 'other' }));
+    const { scope, state } = setupAgui(true);
+    await Promise.resolve();
+    expect(state.runId.value).toBeNull();
+    expect(streamAgentRunEvents).not.toHaveBeenCalled();
+    scope.stop();
   });
 });

@@ -13,6 +13,7 @@ import {
   agentRunStatusMeta,
   applyAgentRunArtifact,
   cancelAgentRun,
+  resumeAgentRun,
   createProjectAgentRun,
   fetchAgentRun,
   fetchAgentRunEvents,
@@ -262,5 +263,21 @@ describe('agent run status helpers', () => {
 
   it('throws on an unknown status that bypassed the type system', () => {
     expect(() => isAgentRunTerminal('BOGUS' as AgentRunStatus)).toThrow('未处理的枚举值');
+  });
+});
+
+
+describe('official interrupt resume contract', () => {
+  it('posts original pause seq and AG-UI resumes to the original string run id', async () => {
+    const runId = '9007199254740993';
+    const input = { expectedPauseSeq: 7, aguiInput: { threadId: runId, runId, messages: [], tools: [], context: [], state: {}, forwardedProps: {}, resume: [{ interruptId: 'approval-1', status: 'resolved' as const, payload: { approved: false } }] } };
+    const fetcher = vi.fn().mockResolvedValue(envelope({ runId, status: 'RUNNING' }));
+    vi.stubGlobal('fetch', fetcher);
+    expect(await resumeAgentRun(runId, input)).toEqual({ runId, status: 'RUNNING' });
+    const [url, init] = call(fetcher);
+    expect(url).toBe(`/api/v1/agent-runs/${runId}/resume`);
+    expect(init.method).toBe('POST');
+    expect(bodyOf(init)).toEqual(input);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });

@@ -21,10 +21,14 @@ const api = vi.hoisted(() => ({
 vi.mock('../../../../api/ipd/stage-action', () => api);
 
 const routerMock = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+const routeState = vi.hoisted(() => ({ projectId: 'PRJ-1', actionId: 'W-1' }));
 vi.mock('vue-router', () => ({
   useRouter: () => routerMock,
-  useRoute: () => ({ params: { projectId: 'PRJ-1', actionId: 'W-1' }, query: {} }),
+  useRoute: () => ({ params: reactiveRoute, query: {} }),
 }));
+
+const { reactive } = await import('vue');
+let reactiveRoute = reactive({ ...routeState });
 
 function stubAntd(): void {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -72,6 +76,7 @@ beforeEach(() => {
   setActivePinia(createPinia());
   Object.values(api).forEach((fn) => fn.mockReset());
   routerMock.replace.mockReset();
+  reactiveRoute = reactive({ projectId: 'PRJ-1', actionId: 'W-1' });
 });
 
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -352,4 +357,39 @@ describe('R232 P2-03 fillContext 落地', () => {
       new URL(String(fetcher.mock.calls[1]![0]), 'http://test.local').searchParams.has('pageContext'),
     ).toBe(false);
   });
+
+  it('雪花动作 ID 按原文进入 pageContext，不经 Number()', async () => {
+    const snowflake = '9007199254740993';
+    reactiveRoute.actionId = snowflake;
+    api.listStageActions.mockResolvedValueOnce([deep({ id: snowflake, actionCode: 'C08', status: 'IN_PROGRESS' })]);
+    const fetcher = vi.fn().mockImplementation(async () => new Response(
+      new ReadableStream<Uint8Array>({ start(c) { c.close(); } }),
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    ));
+    vi.stubGlobal('fetch', fetcher);
+    const handlers = { onDelta: () => {}, onDone: () => {}, onError: () => {}, onMeta: () => {} };
+    await mountDetail();
+    await streamCopilot({ message: '帮我填一下' }, handlers);
+    const raw = String(new URL(String(fetcher.mock.calls[0]![0]), 'http://test.local').searchParams.get('pageContext'));
+    expect(raw).toContain(`"stageActionId":${snowflake}`);
+    expect(raw).not.toContain('"stageActionId":9007199254740992');
+  });
+});
+
+it('同实例切项目立即撤下旧动作，迟到列表不覆盖新项目', async () => {
+  let resolveOld!: (rows: StageAction[]) => void;
+  api.listStageActions.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+  const wrapper = mount(ActionDetail);
+  await flushPromises();
+  api.listStageActions.mockResolvedValueOnce([deep({ id: 'W-2', projectId: 'PRJ-2', actionName: '新项目动作' })]);
+  reactiveRoute.projectId = 'PRJ-2';
+  reactiveRoute.actionId = 'W-2';
+  await flushPromises();
+  expect(api.listStageActions).toHaveBeenLastCalledWith('PRJ-2');
+  expect(wrapper.text()).toContain('新项目动作');
+  resolveOld([deep({ actionName: '旧项目动作' })]);
+  await flushPromises();
+  expect(wrapper.text()).not.toContain('旧项目动作');
+  expect(wrapper.text()).toContain('新项目动作');
+  wrapper.unmount();
 });

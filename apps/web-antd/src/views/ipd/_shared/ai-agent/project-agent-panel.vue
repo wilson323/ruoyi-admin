@@ -34,6 +34,7 @@ import {
 import FeedbackBar from './feedback-bar.vue';
 import type { ClarificationChoice } from './clarification-choices';
 import { confirmedPlanMessage } from './plan-confirm';
+import { interruptTextResponse } from './agui-interrupt';
 import RunTimeline from './run-timeline.vue';
 import { createIdempotencyKey, useProjectAgentRun } from './use-project-agent-run';
 import { useIpdAiWorkspace } from '../ai-workspace/use-ai-workspace';
@@ -155,6 +156,9 @@ watch(historyQuery, () => {
 const agent = useProjectAgentRun(() => props.projectId, { pollIntervalMs: props.pollIntervalMs });
 const {
   active,
+  pendingInterrupt,
+  responding,
+  responseErrorText,
   cancelError,
   cancelErrorText,
   cancelling,
@@ -238,7 +242,8 @@ watch([selection, message], () => {
 const canSubmit = computed(
   () =>
     !submitting.value &&
-    !active.value &&
+    (!active.value || (pendingInterrupt.value !== null && interruptTextResponse(pendingInterrupt.value, message.value.trim()) !== null)) &&
+    !responding.value &&
     message.value.trim() !== '' &&
     entryBlockReason.value === '' &&
     isSelectionSubmittable(capabilities.value, selection.value),
@@ -291,6 +296,11 @@ function withDemand<T extends { requirementId?: string }>(input: T): T {
 
 /** 发起运行（失败保留幂等键供重试复用）。 */
 async function submit(): Promise<void> {
+  if (pendingInterrupt.value) {
+    const entries = interruptTextResponse(pendingInterrupt.value, message.value.trim());
+    if (entries && await agent.respondToInterrupt(entries)) message.value = '';
+    return;
+  }
   if (!canSubmit.value) return;
   pendingKey ??= createIdempotencyKey();
   const input = buildRunInput(
@@ -325,6 +335,12 @@ async function submitText(text: string): Promise<'busy' | 'failed' | 'need-proje
   const trimmed = text.trim();
   if (!props.projectId) return 'need-project';
   if (!trimmed) return 'failed';
+  if (pendingInterrupt.value) {
+    if (responding.value) return 'busy';
+    const entries = interruptTextResponse(pendingInterrupt.value, trimmed);
+    if (!entries) { focusPane('cards'); return 'failed'; }
+    return await agent.respondToInterrupt(entries) ? 'started' : 'failed';
+  }
   if (submitting.value || active.value) return 'busy';
   message.value = trimmed;
   await nextTick();
@@ -439,7 +455,7 @@ async function reworkArtifact(association: { previousRunId: string; targetDocume
 }
 
 defineExpose({
-  active,
+  active: computed(() => active.value && !pendingInterrupt.value),
   answerClarification,
   confirmPlan,
   entryBlockReason,
@@ -570,7 +586,7 @@ function onMessageKeydown(event: KeyboardEvent): void {
           v-model:value="message"
           :maxlength="MESSAGE_MAX"
           :auto-size="{ minRows: 2, maxRows: 6 }"
-          :disabled="active || submitting"
+          :disabled="(active && !pendingInterrupt) || submitting || responding"
           aria-label="发送给项目智能体的任务说明"
           placeholder="描述要智能体完成的任务（Ctrl/⌘ + Enter 发起）"
           data-testid="panel-message"
@@ -586,7 +602,7 @@ function onMessageKeydown(event: KeyboardEvent): void {
             data-testid="panel-submit"
             @click="submit"
           >
-            发起运行
+            {{ pendingInterrupt ? '提交回答并继续' : '发起运行' }}
           </Button>
           <Button
             v-if="canCancel"
@@ -618,6 +634,10 @@ function onMessageKeydown(event: KeyboardEvent): void {
         :action-code="runActionCode"
         :loading="active || polling"
         :error-text="pollErrorText"
+        :interrupt-pause="pendingInterrupt"
+        :responding="responding"
+        :response-error-text="responseErrorText"
+        @respond="agent.respondToInterrupt($event)"
         @choose="emit('choose', $event)"
         @execute="confirmPlan"
         @revise="focusTaskInput"
@@ -634,6 +654,10 @@ function onMessageKeydown(event: KeyboardEvent): void {
           :action-code="runActionCode"
           :loading="active || polling"
           :error-text="pollErrorText"
+          :interrupt-pause="pendingInterrupt"
+          :responding="responding"
+          :response-error-text="responseErrorText"
+          @respond="agent.respondToInterrupt($event)"
           @choose="emit('choose', $event)"
           @execute="confirmPlan"
           @revise="focusTaskInput"

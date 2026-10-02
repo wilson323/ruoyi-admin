@@ -157,7 +157,7 @@ describe('BR-AI-04：AI 输出展示位置风险提示落位', () => {
 });
 
 describe('P4-2.3 状态机：review/archive/reject 仅在合法状态渲染', () => {
-  it('GENERATED 行同时渲染「审核通过」+「审核拒绝」两个按钮；REVIEWED 行只渲染「归档」', async () => {
+  it('当前链头待审核可退回，更早的待审核行不提供退回；已审核链头可以退回', async () => {
     const { wrapper } = await mountWithChain([
       docFixture({ id: '1', versionNo: 1, status: 'GENERATED' }),
       docFixture({ id: '2', versionNo: 2, status: 'REVIEWED', reviewedAt: '2026-09-05 12:00:00', reviewedBy: '42', parentVersionId: '1' }),
@@ -166,15 +166,12 @@ describe('P4-2.3 状态机：review/archive/reject 仅在合法状态渲染', ()
     expect(items.length).toBe(2);
     const generatedHtml = items[0]!.html();
     const reviewedHtml = items[1]!.html();
-    // GENERATED 行：审核通过 + 审核拒绝 都渲染
     expect(generatedHtml).toContain('审核通过');
-    expect(generatedHtml).toContain('审核拒绝');
-    // 归档按钮不该在 GENERATED 行渲染（状态机校验）
+    expect(generatedHtml).not.toContain('退回修改');
     expect(generatedHtml).not.toContain('归档');
-    // REVIEWED 行：仅归档
     expect(reviewedHtml).toContain('归档');
+    expect(reviewedHtml).toContain('退回修改');
     expect(reviewedHtml).not.toContain('审核通过');
-    expect(reviewedHtml).not.toContain('审核拒绝');
     wrapper.unmount();
   });
 
@@ -185,11 +182,10 @@ describe('P4-2.3 状态机：review/archive/reject 仅在合法状态渲染', ()
     // 仅检查版本链 <li> 内的按钮（顶部 Alert 文案含「审核拒绝/归档」会污染全页匹配）
     const item = wrapper.findAll('li')[0]!;
     const buttons = item.findAll('button').map((b) => b.text().trim());
-    expect(buttons, 'REJECTED 行不渲染审核通过按钮').not.toContain('审核通过');
-    expect(buttons, 'REJECTED 行不渲染审核拒绝按钮').not.toContain('审核拒绝');
+    expect(buttons, 'REJECTED 行可再次审核通过').toContain('审核通过');
+    expect(buttons, 'REJECTED 行不渲染退回修改').not.toContain('退回修改');
     expect(buttons, 'REJECTED 行不渲染归档按钮').not.toContain('归档');
-    // 拒绝后就不可再走 review/archive 的只读说明
-    expect(item.text()).toContain('不可再走 review/archive');
+    expect(item.text()).toContain('意见保留');
     wrapper.unmount();
   });
 
@@ -201,32 +197,32 @@ describe('P4-2.3 状态机：review/archive/reject 仅在合法状态渲染', ()
     const item = wrapper.findAll('li')[0]!;
     const buttons = item.findAll('button').map((b) => b.text().trim());
     expect(buttons, 'ARCHIVED 行不渲染审核通过按钮').not.toContain('审核通过');
-    expect(buttons, 'ARCHIVED 行不渲染审核拒绝按钮').not.toContain('审核拒绝');
+    expect(buttons, 'ARCHIVED 行不渲染退回修改').not.toContain('退回修改');
     expect(buttons, 'ARCHIVED 行不渲染归档按钮').not.toContain('归档');
     wrapper.unmount();
   });
 });
 
 describe('P4-2.3 reject Modal：comment 必填 + 双层校验', () => {
-  it('点击「审核拒绝」打开 Modal，「确认拒绝」按钮在 comment 为空时 disabled', async () => {
+  it('点击「退回修改」打开 Modal，「确认退回」按钮在意见为空时 disabled', async () => {
     const { wrapper } = await mountWithChain([
       docFixture({ id: '1', versionNo: 1, status: 'GENERATED' }),
     ]);
-    const rejectButton = wrapper.findAll('button').find((b) => b.text().includes('审核拒绝'));
-    expect(rejectButton, 'GENERATED 行必须渲染「审核拒绝」按钮').toBeTruthy();
+    const rejectButton = wrapper.findAll('button').find((b) => b.text().includes('退回修改'));
+    expect(rejectButton, 'GENERATED 行必须渲染「退回修改」按钮').toBeTruthy();
     await rejectButton!.trigger('click');
     await flushPromises();
     const modal = document.body.querySelector('.ant-modal');
     expect(modal, 'reject Modal 必须渲染').toBeTruthy();
     // OK 按钮初始 disabled（comment 空）
     const okButton = [...document.body.querySelectorAll('.ant-modal .ant-btn-primary')].find(
-      (b) => (b.textContent ?? '').includes('确认拒绝'),
+      (b) => (b.textContent ?? '').includes('确认退回'),
     );
-    expect(okButton, '确认拒绝按钮必须渲染').toBeTruthy();
+    expect(okButton, '确认退回按钮必须渲染').toBeTruthy();
     // AntDV Modal 的 disabled 通过原生 disabled 属性表达（不用 ant-btn-disabled class）
     expect(okButton!.hasAttribute('disabled'), 'comment 空时按钮必须 disabled').toBe(true);
     // 提示文字
-    expect(modal!.textContent).toContain('拒绝原因');
+    expect(modal!.textContent).toContain('退回意见');
     wrapper.unmount();
   });
 
@@ -241,7 +237,7 @@ describe('P4-2.3 reject Modal：comment 必填 + 双层校验', () => {
         return null;
       },
     );
-    const rejectButton = wrapper.findAll('button').find((b) => b.text().includes('审核拒绝'));
+    const rejectButton = wrapper.findAll('button').find((b) => b.text().includes('退回修改'));
     await rejectButton!.trigger('click');
     await flushPromises();
     const modal = document.body.querySelector('.ant-modal')!;
@@ -253,9 +249,9 @@ describe('P4-2.3 reject Modal：comment 必填 + 双层校验', () => {
     await flushPromises();
     // 找到确认按钮
     const okButton = [...modal.querySelectorAll('.ant-btn-primary')].find((b) =>
-      (b.textContent ?? '').includes('确认拒绝'),
+      (b.textContent ?? '').includes('确认退回'),
     )!;
-    expect(okButton, '确认拒绝按钮必须存在').toBeTruthy();
+    expect(okButton, '确认退回按钮必须存在').toBeTruthy();
     // comment 填好后按钮应 enable
     expect(!okButton.hasAttribute('disabled'), 'comment 填好后按钮必须 enable').toBe(true);
     (okButton as HTMLButtonElement).click();

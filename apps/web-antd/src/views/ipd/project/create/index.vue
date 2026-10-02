@@ -36,6 +36,8 @@ import {
 
 import type { Project, ProjectCreateBody, ProjectLevel, TemplateType } from '../../../../api/ipd/project';
 import { createProject } from '../../../../api/ipd/project';
+import type { ProductLine, ProductLineProduct } from '../../../../api/ipd/product-line';
+import { listDiscoverableProductLines, listProductLineProducts } from '../../../../api/ipd/product-line';
 import type { ProductGroup } from '../../../../api/ipd/product';
 import { listProductGroups } from '../../../../api/ipd/product';
 import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
@@ -55,6 +57,8 @@ interface FormState {
   marketsText: string;
   name: string;
   productId: string;
+  productLineId: string;
+  startKind: 'ITERATION' | 'NEW';
   targetChannelCount: number;
   targetNps: number;
   targetSalesAmount: number;
@@ -71,6 +75,8 @@ const formState = reactive<FormState>({
   marketsText: '',
   name: '',
   productId: '',
+  productLineId: '',
+  startKind: 'ITERATION',
   targetChannelCount: 20,
   targetNps: 40,
   targetSalesAmount: 5_000_000,
@@ -95,14 +101,42 @@ const levelOptions = [
 
 /** 主组产品组下拉（可选；加载失败降级空列表不阻断创建，G-06 不造假数据）。 */
 const groups = ref<ProductGroup[]>([]);
+const lines = ref<ProductLine[]>([]);
+const lineProducts = ref<ProductLineProduct[]>([]);
 const groupOptions = computed(() => [
   { label: '待选择', value: '' },
   ...groups.value.map((group) => ({ label: group.groupName, value: group.id })),
 ]);
+const lineOptions = computed(() => lines.value.map((line) => ({ label: line.name, value: line.id })));
+const lineProductsError = ref('');
+let lineProductsEpoch = 0;
+const productOptions = computed(() => lineProducts.value.map((product) => ({
+  label: `${product.name}（${product.code}）`,
+  value: product.id,
+})));
+async function loadLineProducts(lineId: string): Promise<void> {
+  const epoch = ++lineProductsEpoch;
+  formState.productId = '';
+  lineProducts.value = [];
+  lineProductsError.value = '';
+  if (!lineId || formState.startKind !== 'ITERATION') {
+    lineProducts.value = [];
+    return;
+  }
+  try {
+    const rows = await listProductLineProducts(lineId);
+    if (epoch === lineProductsEpoch) lineProducts.value = rows;
+  } catch (cause) {
+    if (epoch === lineProductsEpoch) lineProductsError.value = ipdErrorText(cause, { fallback: '在售产品读取失败，请重新选择产品线重试' });
+  }
+}
 onMounted(() => {
   listProductGroups()
     .then((list) => { groups.value = list; })
     .catch(() => { groups.value = []; });
+  listDiscoverableProductLines()
+    .then((list) => { lines.value = list; })
+    .catch(() => { lines.value = []; });
 });
 
 /** 解析 targetMarkets：换行/逗号分隔 → 数组；空段忽略；去重保序。 */
@@ -139,7 +173,12 @@ const levelCoefficientModel = computed<number | string | undefined>({
 
 const rules = computed<Record<string, RuleObject[]>>(() => ({
   name: [{ required: true, message: '项目名称必填', whitespace: true, min: 4 }],
-  productId: [{ required: true, message: '产品 ID 必填' }],
+  productLineId: [{ required: true, message: '必须选择产品线' }],
+  productId: [{
+    validator: async () => {
+      if (formState.startKind === 'ITERATION' && !formState.productId) throw new Error('迭代必须选择在售产品');
+    },
+  }],
   templateType: [{ required: true, message: '模板类型必填' }],
   level: [{ required: true, message: '立项级别必填' }],
   marketsText: [{
@@ -158,7 +197,9 @@ const rules = computed<Record<string, RuleObject[]>>(() => ({
 function toBody(): ProjectCreateBody {
   return {
     name: formState.name.trim(),
-    productId: formState.productId.trim(),
+    productId: formState.startKind === 'NEW' ? null : formState.productId.trim(),
+    productLineId: formState.productLineId,
+    startKind: formState.startKind,
     templateType: formState.templateType,
     targetMarkets: parsedMarkets.value,
     level: formState.level,
@@ -258,8 +299,24 @@ function cancel(): void {
           <Input v-model:value="formState.name" placeholder="例如：智慧园区视频分析算法研发" :maxlength="120" show-count />
         </Form.Item>
 
-        <Form.Item label="产品 ID" name="productId" extra="1:1 项目-产品关系（BR-PROD-01）；具体产品通过产品管理维护。">
-          <Input v-model:value="formState.productId" placeholder="产品唯一标识" />
+        <Form.Item label="产品线" name="productLineId">
+          <Select
+            v-model:value="formState.productLineId"
+            :options="lineOptions"
+            placeholder="选择产品线"
+            @change="loadLineProducts(String($event ?? ''))"
+          />
+        </Form.Item>
+        <Alert v-if="lineProductsError" :message="lineProductsError" show-icon type="error" data-testid="line-products-error" />
+        <Form.Item label="立项类型" name="startKind">
+          <Select
+            v-model:value="formState.startKind"
+            :options="[{ label: '在售产品迭代', value: 'ITERATION' }, { label: '新品', value: 'NEW' }]"
+            @change="loadLineProducts(formState.productLineId)"
+          />
+        </Form.Item>
+        <Form.Item v-if="formState.startKind === 'ITERATION'" label="在售产品" name="productId">
+          <Select v-model:value="formState.productId" :options="productOptions" placeholder="选择该产品线的在售产品" />
         </Form.Item>
 
         <Form.Item label="主组（市场PM 所在产品组）" name="mainGroupId" extra="BR-ORG-01：项目归属于市场PM 所在产品组；可选，未选可创建后补充。">

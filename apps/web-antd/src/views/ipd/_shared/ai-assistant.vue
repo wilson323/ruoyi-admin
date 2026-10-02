@@ -45,6 +45,7 @@ import {
   watch,
   type Component,
 } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
 import { CopilotKitProvider } from '@copilotkit/vue/v2';
 import {
@@ -61,6 +62,7 @@ import {
 import {
   parseStreamDone,
   streamCopilot,
+  type CopilotDataItem,
   type CopilotStreamDone,
 } from '../../../api/ipd/ai-copilot';
 
@@ -90,6 +92,7 @@ import {
 import { IpdGuideScriptHost } from './ai-guide/guide-script-host';
 import { IpdSwarmProgressHost } from './ai-swarm/swarm-progress-host';
 import GuideSuggestionBar from './ai-guide/guide-suggestion-bar.vue';
+import DocumentVersionReview from './ai-agent/document-version-review.vue';
 import ProjectAgentPanel from './ai-agent/project-agent-panel.vue';
 import { clarificationSendText, type ClarificationChoice } from './ai-agent/clarification-choices';
 import { timelineTranscript } from './ai-agent/timeline-model';
@@ -431,10 +434,11 @@ function enforceCardRenderRules(raw: AiCardEnvelope): CardCheckResult {
   };
 }
 
-/** 会话消息（role 与后端 CopilotTurn 对齐；assistant 附流式状态与来源摘要）。 */
+/** 会话消息（role 与后端 CopilotTurn 对齐；assistant 附流式状态、来源和 meta 里的结构化条目）。 */
 interface ChatMessage {
   content: string;
   intent: null | string;
+  items: CopilotDataItem[] | null;
   role: 'assistant' | 'user';
   sources: null | string[];
   streaming: boolean;
@@ -482,6 +486,71 @@ const {
 } = useIpdAiWorkspace();
 expanded.value = workspaceMode.value === 'ai';
 open.value = workspaceMode.value === 'ai';
+const route = useRoute();
+/** 在 setup 里取路由。点击处理函数里再调 useRouter() 拿不到当前实例，跳转会被吃掉。 */
+const router = useRouter();
+
+/**
+ * 查询参数只取单个字符串。
+ * 布局里能读到路由；单测直接挂组件时没有路由，退回地址栏。
+ */
+function queryText(key: string): string {
+  const value = route?.query?.[key];
+  if (route?.query) return typeof value === 'string' ? value : '';
+  return new URLSearchParams(window.location.search).get(key) ?? '';
+}
+
+/** 从产品线需求链接进来时打开项目智能体，发送仍走原来的创建运行。 */
+function demandRequirementId(): string {
+  const value = queryText('requirementId');
+  return /^\d+$/.test(value) ? value : '';
+}
+
+/** 待办或动作深链上的项目编号。只接受数字，避免把任意查询写进当前项目。 */
+function entryProjectId(): string {
+  const value = queryText('projectId');
+  return /^\d+$/.test(value) ? value : '';
+}
+
+/** 待办深链上的文档编号。只接受数字。 */
+function entryDocumentId(): string {
+  const value = queryText('docId');
+  return /^\d+$/.test(value) ? value : '';
+}
+
+/** 待办或动作深链上的动作编码。 */
+function entryActionCodeFromQuery(): string {
+  const value = queryText('actionCode');
+  return /^[A-Z][A-Z0-9]{0,15}$/.test(value) ? value : '';
+}
+
+const entryActionCode = ref('');
+let entryEpoch = 0;
+
+/**
+ * 从待办或动作进入时带上项目和动作，并打开项目智能体。
+ * 发送仍走面板里的 createProjectAgentRun。
+ */
+async function applyEntryFromQuery(): Promise<void> {
+  const projectId = entryProjectId();
+  const actionCode = entryActionCodeFromQuery();
+  if (projectId) switchConversationProject(projectId);
+  const epoch = ++entryEpoch;
+  if (entryDocumentId()) applyMode('ai');
+  entryActionCode.value = actionCode;
+  sessionActionCode.value = '';
+  if (!actionCode) return;
+  applyMode('ai');
+  await loadSubStages();
+  if (epoch !== entryEpoch || (projectId && projectId !== currentProjectId.value)) return;
+  const stage = subStages.value.find((item) =>
+    item.actions.some((action) => action.actionCode === actionCode),
+  );
+  if (!stage) return;
+  activeSubStageCode.value = stage.code;
+  sessionActionCode.value = actionCode;
+}
+
 function applyMode(next: WorkspaceMode) {
   if (next !== workspaceMode.value) {
     abort?.abort();
@@ -502,14 +571,16 @@ function applyMode(next: WorkspaceMode) {
     open.value = true;
   } else {
     expanded.value = false;
-    open.value = false;
+    open.value = true;
   }
 }
 function onModeSelected(event: Event) {
   const next = (event as CustomEvent<{ mode?: string }>).detail?.mode;
   if (next === 'classic' || next === 'ai') applyMode(next);
 }
-onMounted(() => window.addEventListener('ipd:ai-mode-select', onModeSelected));
+onMounted(() => {
+  window.addEventListener('ipd:ai-mode-select', onModeSelected);
+});
 onUnmounted(() => window.removeEventListener('ipd:ai-mode-select', onModeSelected));
 const inputText = ref('');
 const sending = ref(false);
@@ -596,6 +667,7 @@ async function onGuideSubStage(event: Event) {
       messages.value.push({
         content: intro,
         intent: null,
+        items: null,
         role: 'assistant',
         sources: null,
         streaming: false,
@@ -645,11 +717,17 @@ async function loadConversationProjects(): Promise<void> {
   }
 }
 
+let abort: AbortController | null = null;
+let runVersion = 0;
+
 function onActiveProjectUpdated(event: Event) {
   const detail = (event as CustomEvent<{ projectId?: string }>).detail;
   const nextId = typeof detail?.projectId === 'string' ? detail.projectId : '';
   if (nextId === currentProjectId.value) return;
   currentProjectId.value = nextId;
+  entryEpoch++;
+  entryActionCode.value = '';
+  sessionActionCode.value = '';
   abort?.abort();
   runVersion++;
   guideRequest++;
@@ -682,13 +760,32 @@ function switchConversationProject(id: string): void {
   onActiveProjectUpdated(new CustomEvent('ipd:active-project-updated', { detail: { projectId: id } }));
 }
 
+watch(
+  () => [
+    route?.fullPath ?? `${window.location.pathname}${window.location.search}`,
+    queryText('projectId'),
+    queryText('actionCode'),
+    queryText('docId'),
+    queryText('requirementId'),
+  ],
+  () => {
+    if (demandRequirementId()) applyMode('ai');
+    void applyEntryFromQuery();
+  },
+  { immediate: true },
+);
+
 onMounted(() => {
   window.addEventListener('ipd:active-project-updated', onActiveProjectUpdated);
   window.addEventListener('storage', onProjectStorage);
   void loadConversationProjects();
-  onActiveProjectUpdated(new CustomEvent('ipd:active-project-updated', {
-    detail: { projectId: window.localStorage.getItem(CURRENT_PROJECT_KEY) ?? '' },
-  }));
+  // 地址栏已经带了项目时，不用本地记住的另一个项目把阶段清掉。
+  if (!entryProjectId()) {
+    onActiveProjectUpdated(new CustomEvent('ipd:active-project-updated', {
+      detail: { projectId: window.localStorage.getItem(CURRENT_PROJECT_KEY) ?? '' },
+    }));
+  }
+  void applyEntryFromQuery();
 });
 onUnmounted(() => {
   window.removeEventListener('ipd:active-project-updated', onActiveProjectUpdated);
@@ -719,9 +816,6 @@ function clearCardState() {
   cardNotice.value = '';
 }
 
-let abort: AbortController | null = null;
-let runVersion = 0;
-
 /** 附件清单后缀（诚实呈现：后端 /ai-copilot 无文件通道，只随消息声明名称/大小，不上传内容）。 */
 function attachmentManifest(attachments: ComposerAttachment[]): string {
   if (!attachments.length) return '';
@@ -739,6 +833,8 @@ const projectAgentPanelRef = ref<{
   confirmPlan: (steps: readonly string[]) => Promise<void>;
   events: AgentRunEvent[];
   focusTaskInput: () => void;
+  entryBlockReason: string;
+  entryToolNote: string;
   lastTask: string;
   runActionCode: null | string;
   submitText: (text: string) => Promise<ProjectAgentSubmitResult>;
@@ -811,7 +907,10 @@ function presentProjectAgentResult(result: ProjectAgentSubmitResult | undefined)
       antMessage.warning('请先选择有权限的项目');
       return;
     case 'need-selection':
-      antMessage.warning('请先点输入框里的加号，选择能力包和模型');
+      antMessage.warning(
+        projectAgentPanelRef.value?.entryBlockReason
+          || '请先点输入框里的加号，选择能力包和模型',
+      );
       return;
     case 'busy':
       antMessage.warning('当前已有进行中的智能体运行');
@@ -850,6 +949,35 @@ async function chooseClarification(choice: ClarificationChoice): Promise<void> {
   presentProjectAgentResult(result);
 }
 
+/**
+ * meta 帧里的待办或推进条目。只留下有标题的行；链接只接受站内路径。
+ */
+function copilotItems(data: unknown): CopilotDataItem[] | null {
+  if (!Array.isArray(data)) return null;
+  const items: CopilotDataItem[] = [];
+  for (const raw of data) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as Record<string, unknown>;
+    const title = typeof row.title === 'string' ? row.title.trim() : '';
+    if (!title) continue;
+    const hint = typeof row.hint === 'string' ? row.hint.trim() : '';
+    const url = typeof row.url === 'string' ? row.url.trim() : '';
+    items.push({
+      hint: hint || null,
+      title,
+      type: typeof row.type === 'string' ? row.type : null,
+      url: url.startsWith('/') && !url.startsWith('//') ? url : null,
+    });
+  }
+  return items.length > 0 ? items : null;
+}
+
+/** 点开 meta 里的站内链接。单测没有路由时不跳转。 */
+function openCopilotItem(url: string): void {
+  if (!url.startsWith('/') || url.startsWith('//')) return;
+  void router?.push(url);
+}
+
 /** 输入框发送入口（AiComposer send 事件：文本 + 附件清单）。 */
 function onComposerSend(payload: { attachments: ComposerAttachment[]; text: string }): void {
   void send(payload.text, payload.attachments);
@@ -876,6 +1004,7 @@ async function send(text: string = inputText.value.trim(), attachments: Composer
     {
       content: body,
       intent: null,
+      items: null,
       role: 'user',
       sources: null,
       streaming: false,
@@ -883,6 +1012,7 @@ async function send(text: string = inputText.value.trim(), attachments: Composer
     {
       content: '',
       intent: null,
+      items: null,
       role: 'assistant',
       sources: null,
       streaming: true,
@@ -930,6 +1060,7 @@ async function send(text: string = inputText.value.trim(), attachments: Composer
         onMeta: (meta) => {
           if (version !== runVersion) return;
           assistant.intent = meta.intent;
+          assistant.items = copilotItems(meta.data);
           assistant.sources = meta.sources;
         },
       },
@@ -1142,10 +1273,15 @@ defineExpose({ clearConversation, send });
           class="ipd-ai-runs-col"
           data-testid="ipd-ai-runs"
         >
+          <DocumentVersionReview
+            v-if="entryDocumentId()"
+            :document-id="entryDocumentId()"
+            :project-id="entryProjectId() || currentProjectId"
+          />
           <ProjectAgentPanel
             ref="projectAgentPanelRef"
             controls-external
-            :action-code="sessionAction?.actionCode"
+            :action-code="sessionAction?.actionCode || entryActionCode || undefined"
             :action-skill-names="sessionAction?.skillNames ?? []"
             :project-id="currentProjectId || null"
             @choose="chooseClarification"
@@ -1200,7 +1336,21 @@ defineExpose({ clearConversation, send });
               class="step-actions"
               data-testid="ipd-ai-step-actions"
             >
-              <p>当前步骤：{{ selectedSubStage.name }}。点选动作后再发送，本次运行才绑定该动作。</p>
+              <p v-if="projectAgentPanelRef?.entryBlockReason" data-testid="ipd-ai-entry-block">
+                {{ projectAgentPanelRef.entryBlockReason }}
+              </p>
+              <p v-else-if="sessionAction" data-testid="ipd-ai-entry-bound">
+                本次发送将绑定动作 {{ sessionAction.actionName }}（{{ sessionAction.actionCode }}），并带上小阶段目录里已批准的技能。
+              </p>
+              <p v-else>
+                当前步骤：{{ selectedSubStage.name }}。目标还不明确时，先点选一个动作再发送。
+              </p>
+              <p
+                v-if="sessionAction && projectAgentPanelRef?.entryToolNote && !projectAgentPanelRef?.entryBlockReason"
+                data-testid="ipd-ai-entry-tool-note"
+              >
+                {{ projectAgentPanelRef.entryToolNote }}
+              </p>
               <button
                 v-for="action in selectedSubStage.actions"
                 :key="action.actionCode"
@@ -1255,6 +1405,23 @@ defineExpose({ clearConversation, send });
               >
                 来源：{{ m.sources.join('；') }}
               </div>
+              <ul
+                v-if="m.role === 'assistant' && m.items?.length"
+                class="copilot-items"
+                data-testid="ipd-ai-msg-items"
+              >
+                <li v-for="(item, itemIndex) in m.items" :key="`${item.type ?? 'item'}-${itemIndex}`">
+                  <button
+                    v-if="item.url"
+                    type="button"
+                    @click="openCopilotItem(item.url)"
+                  >
+                    {{ item.title }}
+                  </button>
+                  <span v-else>{{ item.title }}</span>
+                  <small v-if="item.hint">{{ item.hint }}</small>
+                </li>
+              </ul>
             </div>
             <AiLoadingState v-if="sending" data-testid="ipd-ai-loading" label="正在生成" />
           </div>
@@ -1750,6 +1917,36 @@ defineExpose({ clearConversation, send });
 .msg .sources {
   margin-top: 4px;
   font-size: 12px;
+  color: var(--ipd-muted);
+}
+.copilot-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.copilot-items li {
+  padding: 6px 8px;
+  border: 1px solid var(--ipd-line);
+  border-radius: 8px;
+  background: var(--ipd-surface);
+  color: var(--ipd-text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.copilot-items button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ipd-blue);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.copilot-items small {
+  display: block;
   color: var(--ipd-muted);
 }
 .cursor {

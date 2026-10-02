@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { Alert, Button, Card, Input, Popconfirm, Select, Space, message } from 'ant-design-vue';
 
-import type { ProductLine, ProductLineMember, ProductLineProduct, ProductLineProject } from '../../../api/ipd/product-line';
+import type { ProductLine, ProductLineDemand, ProductLineMember, ProductLineProduct, ProductLineProject } from '../../../api/ipd/product-line';
 import {
   applyToProductLine,
   appointProductLineLeader,
@@ -12,6 +12,7 @@ import {
   leaveProductLine,
   listDiscoverableProductLines,
   listPendingProductLineApplications,
+  listProductLineDemands,
   listProductLineProducts,
   listProductLineProjects,
   listProductLines,
@@ -23,6 +24,7 @@ import type { Product } from '../../../api/ipd/product';
 import { listProducts } from '../../../api/ipd/product';
 import type { PmDirectoryEntry } from '../../../api/ipd/handover';
 import { getPmDirectory } from '../../../api/ipd/handover';
+import { approveProjectStart, rejectProjectStart, resubmitProjectStart } from '../../../api/ipd/project';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
 import '../_shared/ipd-theme.css';
 
@@ -32,6 +34,7 @@ const discoverableLines = ref<ProductLine[]>([]);
 const selectedId = ref('');
 const products = ref<ProductLineProduct[]>([]);
 const projects = ref<ProductLineProject[]>([]);
+const demands = ref<ProductLineDemand[]>([]);
 const applications = ref<ProductLineMember[]>([]);
 const loading = ref(false);
 const detailLoading = ref(false);
@@ -58,6 +61,12 @@ const isAdmin = computed(() => auth.identity?.person.personType === 'SUPER_ADMIN
 const personId = computed(() => auth.identity?.person.id ?? '');
 const selected = computed(() => lines.value.find((line) => line.id === selectedId.value));
 const canReview = computed(() => isAdmin.value || selected.value?.leaderPersonId === personId.value);
+const triageProject = computed(() => projects.value.find((project) => project.code === 'PRJ-2026-900') ?? null);
+const canDecideStart = computed(() => {
+  const leader = selected.value?.leaderPersonId;
+  if (!leader) return isAdmin.value;
+  return leader === personId.value;
+});
 const joinableLines = computed(() => discoverableLines.value.filter((line) =>
   !lines.value.some((visible) => visible.id === line.id)));
 
@@ -132,6 +141,7 @@ async function loadDetail() {
   const lineId = selectedId.value;
   products.value = [];
   projects.value = [];
+  demands.value = [];
   detailError.value = '';
   detailLoading.value = false;
   void loadApplications(lineId, version);
@@ -140,13 +150,15 @@ async function loadDetail() {
   leaderPersonId.value = selected.value?.leaderPersonId ?? '';
   detailLoading.value = true;
   try {
-    const [nextProducts, nextProjects] = await Promise.all([
+    const [nextProducts, nextProjects, nextDemands] = await Promise.all([
       listProductLineProducts(lineId),
       listProductLineProjects(lineId),
+      listProductLineDemands(lineId),
     ]);
     if (version !== detailVersion) return;
     products.value = nextProducts;
     projects.value = nextProjects;
+    demands.value = nextDemands;
   } catch (cause) {
     if (version === detailVersion) detailError.value = cause instanceof Error ? cause.message : '空间目录加载失败';
   } finally {
@@ -217,8 +229,8 @@ onMounted(() => { void loadLines(); });
 <template>
   <main class="ipd-line-page">
     <header>
-      <h1>产品线团队空间</h1>
-      <p>产品线汇集多个产品；项目权限仍按项目成员单独校验。</p>
+      <h1>产品线</h1>
+      <p>这里汇总该产品线下的产品和项目。负责人能看本线全部项目；要改阶段、改产物或发起项目智能体，仍须先成为该项目成员。</p>
     </header>
     <div v-if="error">
       <Alert type="error" show-icon :message="`空间接口暂不可用：${error}`" />
@@ -291,9 +303,26 @@ onMounted(() => { void loadLines(); });
               </Popconfirm>
             </li></ul>
           </Card>
-          <Card title="我有权限的项目" size="small">
-            <p v-if="!projects.length">暂无可访问项目；团队成员资格不授予项目权限。</p>
-            <ul v-else><li v-for="project in projects" :key="project.id"><RouterLink :to="`/ipd/projects/${project.id}/overview`">{{ project.name }}</RouterLink>（{{ project.currentStage ?? '阶段待定' }}）</li></ul>
+          <Card title="需求反馈" size="small">
+            <p v-if="!demands.length">还没有写到本产品线的需求。未指定产品线会同时列出尚未绑定产品线的需求。</p>
+            <ul v-else>
+              <li v-for="demand in demands" :key="demand.id">
+                {{ demand.title || '未命名需求' }}（{{ demand.status }}）
+                <RouterLink v-if="triageProject" :to="`/ipd/projects/${triageProject.id}/flow?requirementId=${demand.id}`">用项目智能体理解</RouterLink>
+              </li>
+            </ul>
+          </Card>
+          <Card title="本产品线项目" size="small">
+            <p v-if="!projects.length">暂无可见项目。未开工的项目只有创建人、产品线负责人和系统管理员能看见。</p>
+            <ul v-else><li v-for="project in projects" :key="project.id">
+              <RouterLink :to="`/ipd/projects/${project.id}/overview`">{{ project.name }}</RouterLink>
+              （{{ project.status === 'PENDING_START' ? '待开工' : project.status === 'START_REJECTED' ? '开工已拒绝' : (project.currentStage ?? '阶段待定') }}）
+              <Space v-if="project.status === 'PENDING_START' && canDecideStart">
+                <Button size="small" :disabled="acting" @click="perform(() => approveProjectStart(project.id), '已批准开工')">批准开工</Button>
+                <Button size="small" danger :disabled="acting" @click="perform(() => rejectProjectStart(project.id), '已拒绝开工')">拒绝开工</Button>
+              </Space>
+              <Button v-if="project.status === 'START_REJECTED'" size="small" :disabled="acting" @click="perform(() => resubmitProjectStart(project.id), '已再次提交')">再次提交</Button>
+            </li></ul>
           </Card>
           <Card v-if="canReview" title="待审批加入申请" size="small">
             <div v-if="applicationsError">

@@ -6,14 +6,16 @@
  *   - 8 项功能指标口径（DOC-01 §4：市场 4 + 研发 4）与后端编码一致
  *
  * 端点真值：GET /api/v1/kpi/functional（既有）+ GET/PUT /api/v1/kpi/functional-metrics（A2 P1）。
+ * 挂载对象是路由页 kpi/index.vue（量表区块已并入该页）。
  * Mock 形态：与 .vue 同模块的 ipdGet/ipdPut → authenticatedRequest → fetch 链。
  * 注：PUT 提交链（body 白名单 / 拒绝码）由 api/ipd/kpi.test.ts 覆盖（antd Select 交互在 DOM 断言层不可靠）。
  */
+import { message } from 'ant-design-vue';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import FunctionalPage from './index.vue';
+import FunctionalPage from '../index.vue';
 import { KPI_FUNCTIONAL_METRIC_CODES } from '../../../../api/ipd/kpi';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 
@@ -49,6 +51,8 @@ function stubApi(opts: { functionalReject?: boolean } = {}) {
       if (opts.functionalReject) throw new TypeError('network unavailable');
       return envelope(functionalRows);
     }
+    if (url.includes('/kpi/performance')) return envelope({});
+    if (url.includes('/kpi/trend')) return envelope([]);
     if (url.includes('/projects')) return envelope(projectsStub);
     return envelope(null);
   });
@@ -119,12 +123,14 @@ describe('页29 功能指标量表录入入口（A2 P1）', () => {
     wrapper.unmount();
   });
 
-  it('只读区断网降级：仍挂载且给出网络文案（不把 transport 误报为业务错误）', async () => {
+  it('只读区断网降级：量表仍挂载，月度聚合走网络文案（不把 transport 误报为业务错误）', async () => {
     signIn('MARKET_PM');
+    const errorSpy = vi.spyOn(message, 'error');
     stubApi({ functionalReject: true });
     const wrapper = mount(FunctionalPage);
-    await vi.waitFor(() => expect(wrapper.text()).toContain('无法连接服务，请检查网络后重试'));
-    expect(wrapper.text()).toContain('功能指标量表（8 项人工录入）');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('功能指标量表（8 项人工录入）'));
+    await vi.waitFor(() => expect(errorSpy).toHaveBeenCalledWith('无法连接服务，请检查网络后重试'));
+    expect(wrapper.text()).not.toContain('46');
     wrapper.unmount();
   });
 
@@ -171,6 +177,8 @@ describe('页29 功能指标量表（ORPHAN-A6：DELETE 接线 + codes 权威枚
       }
       if (url.includes('/kpi/functional-metrics')) return envelope([metricRow]);
       if (url.includes('/kpi/functional')) return envelope([]);
+      if (url.includes('/kpi/performance')) return envelope({});
+      if (url.includes('/kpi/trend')) return envelope([]);
       if (url.includes('/projects')) return envelope(projectsStub);
       return envelope(null);
     });
@@ -221,9 +229,12 @@ describe('页29 功能指标量表（ORPHAN-A6：DELETE 接线 + codes 权威枚
     await vi.waitFor(() => {
       expect(calls.some((c) => c.method === 'DELETE' && c.url.includes('/kpi/functional-metrics/9001'))).toBe(true);
     });
-    // 删除成功后列表刷新（GET 量表行查询 ≥ 2 次：mount 首查无项目不发——本用例未选项目，
-    // loadMetrics 由 removeMetric 成功路径触发；实际首查不发，删除后也不会发（projectId 空）。
-    // 故刷新断言以 DELETE 后无崩溃 + 气泡关闭为准；带项目的刷新链路由 api 契约与 live 覆盖）
+    // 已选项目 201：删除成功后 loadMetrics 再发一次量表 GET。必须等这次请求进入 stub，
+    // 否则 afterEach 卸掉 fetch stub 后，迟到的 GET 会打到 happy-dom 默认源 localhost:3000。
+    await vi.waitFor(() => {
+      const listGets = calls.filter((c) => c.method === 'GET' && c.url.includes('/kpi/functional-metrics') && !c.url.includes('/codes'));
+      expect(listGets.length).toBeGreaterThanOrEqual(2);
+    });
     wrapper.unmount();
   });
 

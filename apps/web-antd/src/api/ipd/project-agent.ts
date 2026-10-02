@@ -112,6 +112,36 @@ export interface AgentRunReceipt {
   status: AgentRunStatus;
 }
 
+/** 官方中断只从服务器持久化事件取得，不能用客户端内容授予权限。 */
+export interface AgentRunInterrupt {
+  id: string;
+  reason: string;
+  message?: string;
+  toolCallId?: string;
+  responseSchema?: Record<string, unknown>;
+  expiresAt?: string;
+  metadata?: Record<string, unknown>;
+}
+export interface AgentRunResumeEntry {
+  interruptId: string;
+  status: 'resolved' | 'cancelled';
+  payload?: unknown;
+}
+export interface ResumeAgentRunInput {
+  expectedPauseSeq: number;
+  aguiInput: {
+    threadId: string; runId: string;
+    messages: unknown[]; tools: unknown[]; context: unknown[];
+    state: Record<string, unknown>; forwardedProps: Record<string, unknown>;
+    resume: AgentRunResumeEntry[];
+  };
+}
+
+/** 回答原运行的全部待处理中断，不取消或新建运行。 */
+export function resumeAgentRun(runId: string, input: ResumeAgentRunInput): Promise<AgentRunReceipt> {
+  return ipdPost<AgentRunReceipt>(`/agent-runs/${seg(runId)}/resume`, input);
+}
+
 /** 运行列表查询。字段均可空；cursor 是上一页最后的 runId。 */
 export interface AgentRunListQuery {
   q?: string;
@@ -154,6 +184,8 @@ export interface AgentRunConfigSnapshot {
 /** 运行详情。 */
 export interface AgentRunDetail {
   artifactArchives?: Array<{ artifactId: string; documentId: string }>;
+  /** 权威当前等待事件序号；旧等待不作为可回答的暂停。 */
+  pauseSeq?: null | number;
   runId: string;
   projectId: string;
   agentId: string;

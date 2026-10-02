@@ -29,6 +29,7 @@ import {
   agentRunStatusMeta,
   applyAgentRunArtifact,
   type AgentRunEvent,
+  type AgentRunResumeEntry,
 } from '../../../../api/ipd/project-agent';
 import { listAiDocumentVersions } from '../../../../api/ipd/ai-document';
 import { ipdErrorText } from '../ipd-error-text';
@@ -41,6 +42,8 @@ import ArtifactLivePreview from './artifact-live-preview.vue';
 import type { ClarificationChoice } from './clarification-choices';
 import FeedbackBar from './feedback-bar.vue';
 import IntentCard from './intent-card.vue';
+import AguiInterruptForm from './agui-interrupt-form.vue';
+import type { AgentInterruptPause } from './agui-interrupt';
 import ToolCallCard from './tool-call-card.vue';
 import { foldTimelineRows } from './tool-call-rows';
 import { buildTimelineItems, timelineTranscript, type TimelineItem } from './timeline-model';
@@ -58,6 +61,9 @@ interface ArtifactApplyState {
 interface Props {
   /** 已去重、升序的真实事件。 */
   events: readonly AgentRunEvent[];
+  interruptPause?: AgentInterruptPause | null;
+  responding?: boolean;
+  responseErrorText?: string;
   artifactArchives?: Array<{ artifactId: string; documentId: string }>;
   /** 是否已发起运行。 */
   hasRun: boolean;
@@ -85,6 +91,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
+  respond: [entries: AgentRunResumeEntry[]];
   choose: [choice: ClarificationChoice];
   execute: [steps: string[]];
   retry: [];
@@ -346,6 +353,7 @@ async function onReworkArtifact(artifactId: string): Promise<void> {
         </template>
       </li>
     </ol>
+    <AguiInterruptForm v-if="variant === 'full' && interruptPause" :pause="interruptPause" :loading="responding" :error-text="responseErrorText" @respond="emit('respond', $event)" @refresh="emit('retry')" />
   </section>
 </template>
 

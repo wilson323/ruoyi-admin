@@ -26,6 +26,13 @@ export interface ProductLineProject {
   code: string;
   name: string;
   currentStage: null | string;
+  status: string;
+}
+
+export interface ProductLineDemand {
+  id: string;
+  title: string;
+  status: string;
 }
 
 const object = (value: unknown): Record<string, unknown> =>
@@ -49,9 +56,13 @@ const product = (raw: unknown): ProductLineProduct => {
   const value = object(raw);
   return { id: string(value.id), code: string(value.code), name: string(value.name) };
 };
+const demand = (raw: unknown): ProductLineDemand => {
+  const value = object(raw);
+  return { id: string(value.id), title: string(value.title), status: string(value.status) };
+};
 const project = (raw: unknown): ProductLineProject => {
   const value = object(raw);
-  return { id: string(value.id), code: string(value.code), name: string(value.name), currentStage: nullableString(value.currentStage) };
+  return { id: string(value.id), code: string(value.code), name: string(value.name), currentStage: nullableString(value.currentStage), status: string(value.status) };
 };
 
 export const listProductLines = (): Promise<ProductLine[]> =>
@@ -84,3 +95,5 @@ export const listProductLineProducts = (lineId: string): Promise<ProductLineProd
   ipdGet<unknown>(`/ipd/product-lines/${encodeURIComponent(lineId)}/products`).then((value) => list(value, product));
 export const listProductLineProjects = (lineId: string): Promise<ProductLineProject[]> =>
   ipdGet<unknown>(`/ipd/product-lines/${encodeURIComponent(lineId)}/projects`).then((value) => list(value, project));
+export const listProductLineDemands = (lineId: string): Promise<ProductLineDemand[]> =>
+  ipdGet<unknown>(`/ipd/product-lines/${encodeURIComponent(lineId)}/demands`).then((value) => list(value, demand));

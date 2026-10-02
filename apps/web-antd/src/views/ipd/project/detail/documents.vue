@@ -32,6 +32,7 @@ import {
   message,
 } from 'ant-design-vue';
 
+import { headReviewActions } from '../../_shared/ai-agent/document-review-actions';
 import { PENDING_TEXT } from '../../_shared/format';
 import {
   type AiDocument,
@@ -39,6 +40,7 @@ import {
   listAiDocumentVersions,
   listAiDocumentsByProject,
   registerAiDocument,
+  rejectAiDocumentVersion,
   reviewAiDocumentVersion,
   reviseAiDocument,
 } from '../../../../api/ipd/ai-document';
@@ -62,6 +64,7 @@ const DOC_TYPE_TEXTS: Record<string, string> = Object.fromEntries(
 const STATUS_META: Record<string, { color: string; text: string }> = {
   ARCHIVED: { color: 'default', text: '已归档' },
   GENERATED: { color: 'warning', text: '待审核' },
+  REJECTED: { color: 'error', text: '已退回' },
   REVIEWED: { color: 'success', text: '已审核' },
 };
 
@@ -247,6 +250,39 @@ async function submitReview(doc: AiDocument) {
     message.error(ipdApiErrorText(cause));
   } finally {
     if (epoch === projectEpoch) reviewingVersionId.value = null;
+  }
+}
+
+const returnOpen = ref(false);
+const returnSubmitting = ref(false);
+const returnComment = ref('');
+
+function openReturn() {
+  if (!head.value || !headReviewActions(head.value.status).reject) return;
+  returnComment.value = '';
+  returnOpen.value = true;
+}
+
+/** 退回当前链头。意见只写入这一版，不发起新的项目智能体运行。 */
+async function submitReturn() {
+  const comment = returnComment.value.trim();
+  const current = head.value;
+  const anchor = chain.value[0];
+  if (!current || !anchor || !comment || returnSubmitting.value) return;
+  if (current.projectId !== projectId.value) return;
+  returnSubmitting.value = true;
+  const epoch = projectEpoch;
+  try {
+    await rejectAiDocumentVersion(anchor.id, current.id, { comment });
+    if (epoch !== projectEpoch) return;
+    returnOpen.value = false;
+    message.success(`v${current.versionNo} 已退回`);
+    await loadChain(anchor.id);
+  } catch (cause) {
+    if (epoch !== projectEpoch) return;
+    message.error(ipdApiErrorText(cause));
+  } finally {
+    if (epoch === projectEpoch) returnSubmitting.value = false;
   }
 }
 
@@ -492,13 +528,22 @@ watch(projectId, (pid) => {
             </details>
             <Space class="mt-2">
               <Button
-                v-if="doc.status === 'GENERATED'"
+                v-if="doc.status === 'GENERATED' || (doc.id === head?.id && doc.status === 'REJECTED')"
                 :loading="reviewingVersionId === doc.id"
                 size="small"
                 type="primary"
                 @click="submitReview(doc)"
               >
                 审核通过
+              </Button>
+              <Button
+                v-if="doc.id === head?.id && headReviewActions(doc.status).reject"
+                danger
+                data-testid="document-return"
+                size="small"
+                @click="openReturn"
+              >
+                退回修改
               </Button>
               <Button v-if="doc.id === head?.id" size="small" @click="openRevise">基于此版本人工改版</Button>
             </Space>
@@ -531,6 +576,24 @@ watch(projectId, (pid) => {
           </FormItem>
         </Form>
         <Alert v-if="reviseError" show-icon type="error" role="alert" :message="reviseError" />
+      </Modal>
+      <Modal
+        v-model:open="returnOpen"
+        :confirm-loading="returnSubmitting"
+        :ok-button-props="{ disabled: !returnComment.trim() }"
+        cancel-text="取消"
+        ok-text="确认退回"
+        title="退回修改"
+        @ok="submitReturn"
+      >
+        <p>意见只写在 v{{ head?.versionNo }}（版本 {{ head?.id }}）。</p>
+        <Textarea
+          v-model:value="returnComment"
+          data-testid="document-return-comment"
+          :maxlength="1000"
+          placeholder="填写退回意见"
+          :rows="4"
+        />
       </Modal>
     </Card>
   </div>

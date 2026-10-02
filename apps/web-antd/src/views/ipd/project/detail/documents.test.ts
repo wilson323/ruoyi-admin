@@ -7,6 +7,7 @@ import {
   listAiDocumentVersions,
   listAiDocumentsByProject,
   registerAiDocument,
+  rejectAiDocumentVersion,
 } from '../../../../api/ipd/ai-document';
 import DocumentsTab from './documents.vue';
 
@@ -15,6 +16,7 @@ vi.mock('../../../../api/ipd/ai-document', () => ({
   listAiDocumentVersions: vi.fn(),
   listAiDocumentsByProject: vi.fn(),
   registerAiDocument: vi.fn(),
+  rejectAiDocumentVersion: vi.fn(),
   reviewAiDocumentVersion: vi.fn(),
   reviseAiDocument: vi.fn(),
 }));
@@ -49,6 +51,7 @@ beforeEach(() => {
   vi.mocked(listAiDocumentsByProject).mockReset();
   vi.mocked(listAiDocumentVersions).mockReset();
   vi.mocked(registerAiDocument).mockReset();
+  vi.mocked(rejectAiDocumentVersion).mockReset();
   vi.mocked(listAiDocumentsByProject).mockResolvedValue([]);
   vi.mocked(listAiDocumentVersions).mockResolvedValue([]);
 });
@@ -124,6 +127,51 @@ describe('项目文档页同实例切项目隔离', () => {
     await flushPromises();
     expect(wrapper.text()).not.toContain('迟到登记结果');
     expect(listAiDocumentsByProject).toHaveBeenCalledWith('202');
+    wrapper.unmount();
+  });
+});
+
+describe('当前版本退回修改', () => {
+  it('意见提交到链头版本，路径文档编号用版本链起点', async () => {
+    const older = {
+      ...documentFor('101', '旧版'),
+      id: '1001',
+      status: 'REVIEWED',
+      versionNo: 1,
+    };
+    const current = {
+      ...documentFor('101', '当前版'),
+      id: '1002',
+      parentVersionId: '1001',
+      status: 'GENERATED',
+      title: '当前版',
+      versionNo: 2,
+    };
+    vi.mocked(listAiDocumentVersions).mockResolvedValue([older, current]);
+    vi.mocked(rejectAiDocumentVersion).mockResolvedValue({
+      ...current,
+      reviewComment: '事实不对',
+      status: 'REJECTED',
+    });
+    const { wrapper } = await mountAt('101');
+    await flushPromises();
+    await wrapper.find('input[placeholder="输入文档 ID 查看版本链"]').setValue('1001');
+    await wrapper.findAll('button').find((button) => button.text().includes('加载版本链'))!.trigger('click');
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="document-return"]')).toHaveLength(1);
+    await wrapper.find('[data-testid="document-return"]').trigger('click');
+    await flushPromises();
+    const area = document.body.querySelector('[data-testid="document-return-comment"]') as HTMLTextAreaElement;
+    area.value = '事实不对';
+    area.dispatchEvent(new Event('input', { bubbles: true }));
+    await flushPromises();
+    const confirm = [...document.body.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('确认退回'),
+    ) as HTMLButtonElement;
+    expect(confirm.hasAttribute('disabled')).toBe(false);
+    confirm.click();
+    await flushPromises();
+    expect(rejectAiDocumentVersion).toHaveBeenCalledWith('1001', '1002', { comment: '事实不对' });
     wrapper.unmount();
   });
 });

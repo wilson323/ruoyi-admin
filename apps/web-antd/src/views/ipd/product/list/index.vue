@@ -143,7 +143,7 @@ const columns = [
   { dataIndex: 'groupName', key: 'groupName', title: '归属产品组', width: 140 },
   { dataIndex: 'source', key: 'source', title: '来源', width: 110 },
   { dataIndex: 'status', key: 'status', title: '上架状态', width: 110 },
-  { dataIndex: 'projectId', key: 'projectId', title: '绑定项目', width: 140 },
+  { dataIndex: 'projectId', key: 'projectId', title: '首个项目', width: 140 },
   { key: 'actions', title: '操作', width: 260 },
 ];
 

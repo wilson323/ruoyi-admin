@@ -19,7 +19,7 @@
  *   STAGE_ORDER 六阶段骨架不断链）；动作表不做阶段分组（原型页11 无分组要求）；
  * - 动作详情操作（深管/轻管分形态）在页 12/13（action-detail）完成，本页仅导航。
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   Alert,
@@ -38,7 +38,14 @@ import {
 } from 'ant-design-vue';
 
 import {
+  listAiDocumentsByProject,
+  listAiDocumentVersions,
+  type AiDocument,
+} from '../../../../api/ipd/ai-document';
+import { listProjectAgentRuns, type AgentRunListItem } from '../../../../api/ipd/project-agent';
+import {
   advanceProjectStage,
+  submitStageAcceptance,
   getGateChecklist,
   getProject,
   listProjectStages,
@@ -46,6 +53,7 @@ import {
   type Project,
   type ProjectStageRow,
 } from '../../../../api/ipd/project';
+import { fetchWorkbenchTasks, type WorkbenchTask } from '../../../../api/ipd/workbench';
 import {
   fetchAiAgentTasksByProject,
   listStageActions,
@@ -61,6 +69,8 @@ import {
   type SubStageProgress,
 } from '../../../../api/ipd/stage-sub-stages';
 import AiSuggest from '../../_shared/ai-suggest.vue';
+import StageWorkspace from './stage-workspace.vue';
+import { gateReasonText } from './stage-workspace-model';
 import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import {
   ACTION_EXEC_MODE,
@@ -93,6 +103,7 @@ const subStageProgress = ref<null | SubStageProgress>(null);
 const subStageError = ref('');
 const subStageLoading = ref(false);
 const subStageAdvancing = ref(false);
+const subStageCatalogLoaded = ref(false);
 const targetSubStageCode = ref('');
 
 const subStageOptions = computed(() => subStages.value
@@ -109,8 +120,10 @@ async function loadSubStageProgress(): Promise<void> {
     ]);
     subStages.value = catalog;
     subStageProgress.value = progress;
+    subStageCatalogLoaded.value = true;
     targetSubStageCode.value = '';
   } catch (cause) {
+    subStageCatalogLoaded.value = false;
     subStageProgress.value = null;
     subStageError.value = ipdErrorText(cause, { domain: 'project', fallback: '小阶段游标加载失败' });
   } finally {
@@ -149,7 +162,15 @@ function onAiAdopt(payload: { markdown: string; scene: string }): void {
 // ---------- R236 AI 任务状态 ----------
 
 const aiTasks = ref<AiAgentTaskView[]>([]);
+const aiTasksLoaded = ref(false);
 const aiTasksLoading = ref(false);
+const reviewDocuments = ref<AiDocument[]>([]);
+const reviewDocumentsLoaded = ref(false);
+const agentRuns = ref<AgentRunListItem[]>([]);
+const agentRunsLoaded = ref(false);
+const workbenchTodos = ref<WorkbenchTask[]>([]);
+const workbenchTodosLoaded = ref(false);
+const browsedChecklist = ref<GateChecklistView | null>(null);
 
 /** 按 stageActionId 归并最新一条任务（create_time DESC，后端已排序，取首条即最新）。 */
 const aiTaskByActionId = computed(() => {
@@ -194,12 +215,55 @@ async function loadAiTasks(): Promise<void> {
   aiTasksLoading.value = true;
   try {
     aiTasks.value = await fetchAiAgentTasksByProject(projectId.value);
+    aiTasksLoaded.value = true;
   } catch {
     // AI 任务加载失败不阻断主页面（降级为无 AI 状态展示）
     aiTasks.value = [];
+    aiTasksLoaded.value = false;
   } finally {
     aiTasksLoading.value = false;
   }
+}
+
+/** 链头列表只含 v1。待审核以 versions 最后一版为准；任一链失败则整格写明文档列表没加载。 */
+async function loadReviewDocuments(): Promise<void> {
+  try {
+    const heads = await listAiDocumentsByProject(projectId.value);
+    const latest = await Promise.all(heads.map(async (head) => {
+      const versions = await listAiDocumentVersions(head.id);
+      return versions.length > 0 ? versions[versions.length - 1] ?? head : head;
+    }));
+    reviewDocuments.value = latest;
+    reviewDocumentsLoaded.value = true;
+  } catch {
+    reviewDocuments.value = [];
+    reviewDocumentsLoaded.value = false;
+  }
+}
+
+/** 项目智能体运行和待办只读接入。失败保持未加载，工作区写明哪份列表没加载。 */
+async function loadWorkspaceFacts(): Promise<void> {
+  await Promise.all([
+    loadReviewDocuments(),
+    listProjectAgentRuns(projectId.value, { limit: 50 })
+      .then((rows) => {
+        agentRuns.value = Array.isArray(rows) ? rows : [];
+        agentRunsLoaded.value = Array.isArray(rows);
+      })
+      .catch(() => {
+        agentRuns.value = [];
+        agentRunsLoaded.value = false;
+      }),
+    fetchWorkbenchTasks({ bucket: 'pending', limit: 50, projectId: projectId.value })
+      .then((view) => {
+        workbenchTodos.value = Array.isArray(view.tasks) ? view.tasks : [];
+        workbenchTodosLoaded.value = Array.isArray(view.tasks);
+      })
+      .catch(() => {
+        workbenchTodos.value = [];
+        workbenchTodosLoaded.value = false;
+      }),
+  ]);
 }
 
 async function load(): Promise<void> {
@@ -215,7 +279,7 @@ async function load(): Promise<void> {
     project.value = detail;
     actions.value = rows;
     serverStages.value = stageRows;
-    await Promise.all([loadChecklist(), loadAiTasks(), loadSubStageProgress()]);
+    await Promise.all([loadChecklist(), loadAiTasks(), loadSubStageProgress(), loadWorkspaceFacts()]);
   } catch (cause) {
     loadError.value = cause;
   } finally {
@@ -253,12 +317,89 @@ const stepItems = computed(() =>
   })),
 );
 
+const viewStageIndex = ref<number | null>(null);
+const activeViewIndex = computed(() => {
+  const index = viewStageIndex.value;
+  const length = stageSequence.value.length;
+  if (index == null || index < 0 || index >= length) return currentStageIndex.value;
+  return index;
+});
+const viewedStage = computed(() => stageSequence.value[activeViewIndex.value]);
+
+/** 阶段轨只切换总览视图，不调用阶段推进。浏览阶段的门禁由单独的只读请求加载。 */
+function selectStageView(index: number): void {
+  viewStageIndex.value = index;
+}
+
+/** 浏览其他阶段时另读该阶段门禁，不调用推进。当前阶段仍用页面已加载的清单。 */
+async function loadBrowsedChecklist(code: null | string): Promise<void> {
+  if (!code || !project.value || code === project.value.currentStage) return;
+  if (checklist.value?.stage === code) return;
+  try {
+    const view = await getGateChecklist(projectId.value, code);
+    if ((viewedStage.value?.code ?? null) !== code) return;
+    browsedChecklist.value = view.stage === code ? view : null;
+  } catch {
+    if ((viewedStage.value?.code ?? null) !== code) return;
+    browsedChecklist.value = null;
+  }
+}
+
+watch(() => viewedStage.value?.code ?? null, (code) => {
+  void loadBrowsedChecklist(code);
+});
+
+const viewedChecklist = computed(() => {
+  const code = viewedStage.value?.code ?? null;
+  if (!code) return null;
+  if (checklist.value?.stage === code) return checklist.value;
+  if (browsedChecklist.value?.stage === code) return browsedChecklist.value;
+  return null;
+});
+
+const workspaceInput = computed(() => ({
+  actions: actions.value,
+  catalogLoaded: subStageCatalogLoaded.value,
+  checklistItems: viewedChecklist.value?.items ?? [],
+  checklistLoaded: viewedChecklist.value != null,
+  checklistStage: viewedChecklist.value?.stage ?? null,
+  currentChecklistItems: checklist.value?.items ?? [],
+  currentChecklistLoaded: checklist.value != null,
+  currentChecklistStage: checklist.value?.stage ?? null,
+  currentStageCode: project.value?.currentStage ?? null,
+  currentStageId: serverStages.value.find((stage) => stage.code === project.value?.currentStage)?.id ?? null,
+  currentSubStageCode: subStageProgress.value?.currentSubStageCode ?? null,
+  documents: reviewDocuments.value.map((doc) => ({ id: doc.id, status: doc.status, title: doc.title })),
+  documentsLoaded: reviewDocumentsLoaded.value,
+  runs: agentRuns.value.map((run) => ({
+    actionCode: run.actionCode,
+    artifactTitles: Array.isArray(run.artifactTitles) ? run.artifactTitles : [],
+    status: run.status,
+  })),
+  runsLoaded: agentRunsLoaded.value,
+  stageCode: viewedStage.value?.code ?? null,
+  stageId: serverStages.value.find((stage) => stage.code === viewedStage.value?.code)?.id ?? null,
+  subStageLoaded: subStageProgress.value != null,
+  subStages: subStages.value,
+  tasks: aiTasks.value,
+  tasksLoaded: aiTasksLoaded.value,
+  todos: workbenchTodos.value.map((task) => ({
+    actionCode: task.actionCode,
+    status: task.status,
+    taskType: task.taskType,
+    title: task.title,
+  })),
+  todosLoaded: workbenchTodosLoaded.value,
+}));
+
 /** 动作统计（全项目；阻断性未完成单独计数 BR-IPD-06）。 */
 const actionStats = computed(() => {
   const total = actions.value.length;
-  const done = actions.value.filter((action) => action.status === 'DONE').length;
+  const accepted = (action: { confirmedBy?: null | string; isBlocking?: null | string; status: string }) =>
+    action.status === 'NA' || (action.status === 'DONE' && !!action.confirmedBy);
+  const done = actions.value.filter((action) => accepted(action)).length;
   const blockingOpen = actions.value.filter(
-    (action) => action.isBlocking === '1' && action.status !== 'DONE' && action.status !== 'NA',
+    (action) => action.isBlocking === '1' && !accepted(action),
   ).length;
   return { blockingOpen, done, total };
 });
@@ -271,15 +412,45 @@ const advancing = ref(false);
 const advanceError = ref('');
 const checklist = ref<GateChecklistView | null>(null);
 const checklistLoading = ref(false);
+let checklistToken = 0;
 
-async function loadChecklist(): Promise<void> {
+/** 刷新当前阶段门禁。点击事件不能当作阶段参数传入。 */
+function refreshChecklist(): void {
+  void loadChecklist();
+}
+
+/** 读取门禁清单。传入阶段时只读该阶段，不推进项目。后返回的旧请求不覆盖新视图。 */
+async function loadChecklist(stage?: string): Promise<void> {
+  const token = ++checklistToken;
   checklistLoading.value = true;
   try {
-    checklist.value = await getGateChecklist(projectId.value);
+    const view = await getGateChecklist(projectId.value, stage);
+    if (token !== checklistToken) return;
+    checklist.value = view;
   } catch {
+    if (token !== checklistToken) return;
     checklist.value = null;
   } finally {
-    checklistLoading.value = false;
+    if (token === checklistToken) checklistLoading.value = false;
+  }
+}
+
+const submittingStage = ref(false);
+
+async function submitStage(): Promise<void> {
+  if (submittingStage.value) return;
+  submittingStage.value = true;
+  advanceError.value = '';
+  try {
+    await submitStageAcceptance(projectId.value);
+    message.success('已提交本阶段验收，等待产线负责人批准');
+    await loadChecklist();
+  } catch (cause) {
+    advanceError.value = isTransportError(cause)
+      ? '无法连接服务，请检查网络后重试'
+      : ipdErrorText(cause, { domain: 'project', fallback: '提交阶段验收失败' });
+  } finally {
+    submittingStage.value = false;
   }
 }
 
@@ -428,12 +599,17 @@ const sopColumns = [
 
     <template v-else-if="project">
       <Card title="阶段进度">
-        <Steps :current="currentStageIndex" :items="stepItems" />
+        <Steps :current="currentStageIndex" :items="stepItems" @change="selectStageView" />
         <div class="text-muted-foreground mt-3 text-xs">
           当前阶段：<Tag :color="stageColor(project.currentStage)">{{ stageText(project.currentStage) }}</Tag>
           动作完成 {{ actionStats.done }}/{{ actionStats.total }}；
           阻断性未完成 {{ actionStats.blockingOpen }} 项（BR-IPD-06 分级）
         </div>
+        <StageWorkspace
+          v-if="viewedStage"
+          :input="workspaceInput"
+          :stage-label="viewedStage.label"
+        />
       </Card>
 
       <Card title="阶段推进">
@@ -453,7 +629,14 @@ const sopColumns = [
           >
             进入下一阶段
           </Button>
-          <Button :loading="checklistLoading" @click="loadChecklist">刷新门禁清单</Button>
+          <Button
+            v-if="!atLifecycle"
+            :loading="submittingStage"
+            @click="submitStage"
+          >
+            提交阶段验收
+          </Button>
+          <Button :loading="checklistLoading" @click="refreshChecklist">刷新门禁清单</Button>
         </Space>
         <div v-if="atLifecycle" class="text-muted-foreground mt-2 text-sm">
           已处于生命周期阶段（最终阶段），无后续阶段推进。
@@ -479,7 +662,7 @@ const sopColumns = [
                 <Tag :color="record.ok ? 'success' : 'error'">{{ record.ok ? '已满足' : '未满足' }}</Tag>
               </template>
               <template v-else-if="column.key === 'reason'">
-                <span :class="record.ok ? 'text-muted-foreground' : 'text-red-600'">{{ record.reason || '—' }}</span>
+                <span :class="record.ok ? 'text-muted-foreground' : 'text-red-600'">{{ gateReasonText(record.reason, record.status) }}</span>
               </template>
             </template>
           </Table>

@@ -5,13 +5,15 @@
  * 历史：本文件曾为 IPD 自绘 Shell（topbar / sidebar / 双悬浮入口 / 三弹窗，
  * ZK-IPD 原型 1:1 复刻）。统一后顶栏、侧栏、菜单由 vben BasicLayout 承担
  * （后端菜单「AI 平台 + IPD 工作台」合并为同一份侧栏菜单），本组件只保留
- * IPD 专属的阶段轨道：全局项目切换 + 六阶段进度 + 今日日期，
+ * IPD 专属的阶段轨道：仅当路由带 projectId（单个项目页）时显示项目切换、
+ * 六阶段和传统/AI 模式。产品线、目录、工作台等空间页不挂这条轨道。
  * 页面在其下方 router-view 渲染。
  *
  * 路由：/ipd 路由树并入 Root.children（router/routes/index.ts），与平台动态路由
  * 共用同一 BasicLayout 实例；本组件由 ipdLayoutRoute.component 挂载。
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
 import { PhCalendarBlank as CalendarBlank } from '@phosphor-icons/vue';
 
@@ -38,13 +40,25 @@ const today = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
 }).format(new Date());
 
-/** 全局当前项目（迁移自旧自绘壳顶栏下拉）：listProjects() 拉全量；切换等价原型 refresh(projectId)。 */
+/** 当前打开的项目（路由 projectId）。空间页没有这个参数，不显示项目轨道。 */
+const route = useRoute();
+const router = useRouter();
 const projects = ref<Project[]>([]);
-const currentProjectId = ref('');
 const CURRENT_PROJECT_KEY = 'ipd:current-project';
-/** 子页（如奖金池）表单改项目时派发，顶栏只改值不整页 reload。 */
+/** 子页（如奖金池）表单改项目时派发，项目页只改路由，不整页 reload。 */
 const PROJECT_SYNC_EVENT = 'ipd:current-project-changed';
 const { mode: aiMode } = useIpdAiWorkspace();
+
+/**
+ * 路由里的项目 id。项目列表、新建、产品线、目录、工作台都没有这个参数。
+ */
+const routeProjectId = computed(() => {
+  const id = route.params.projectId;
+  return typeof id === 'string' ? id : '';
+});
+
+/** 只有单个项目页才挂阶段轨道。 */
+const projectScoped = computed(() => routeProjectId.value.length > 0);
 
 /** 顶栏只发出模式意图；AI 宿主统一负责停止旧流及清理卡片。 */
 function selectAiMode(mode: WorkspaceMode) {
@@ -52,20 +66,12 @@ function selectAiMode(mode: WorkspaceMode) {
 }
 
 /**
- * 应用全局项目 id：写入 localStorage；整页刷新仅在显式切换时使用。
+ * 把打开中的项目写入副驾读取的键。不刷新页面，项目页以路由为准。
  */
-function applyProjectId(id: string, reload: boolean) {
-  if (!id || id === currentProjectId.value) {
-    if (id) {
-      window.localStorage.setItem(CURRENT_PROJECT_KEY, id);
-      window.dispatchEvent(new CustomEvent('ipd:active-project-updated', { detail: { projectId: id } }));
-    }
-    return;
-  }
+function rememberProject(id: string) {
+  if (!id) return;
   window.localStorage.setItem(CURRENT_PROJECT_KEY, id);
-  currentProjectId.value = id;
   window.dispatchEvent(new CustomEvent('ipd:active-project-updated', { detail: { projectId: id } }));
-  if (reload) window.location.reload();
 }
 
 /**
@@ -74,33 +80,41 @@ function applyProjectId(id: string, reload: boolean) {
 function onProjectSync(event: Event) {
   const detail = (event as CustomEvent<{ projectId?: string }>).detail;
   const id = typeof detail?.projectId === 'string' ? detail.projectId : '';
-  if (!id || !projects.value.some((p) => p.id === id)) return;
-  applyProjectId(id, false);
+  if (!id) return;
+  if (projectScoped.value) {
+    switchProject(id);
+    return;
+  }
+  rememberProject(id);
 }
 
-onMounted(async () => {
-  window.addEventListener(PROJECT_SYNC_EVENT, onProjectSync);
+/**
+ * 项目页才拉项目列表，供轨道下拉使用。空间页不请求、也不默认选中第一个项目。
+ */
+async function loadProjects() {
   try {
     projects.value = await listProjects();
-    const saved = window.localStorage.getItem(CURRENT_PROJECT_KEY);
-    currentProjectId.value =
-      projects.value.some((p) => p.id === saved) && saved
-        ? saved
-        : (projects.value[0]?.id ?? '');
-    // R215 B3：默认选中也持久化（AI 副驾等全局组件读 ipd:current-project 注入项目上下文；
-    // 原先仅显式切换时写入，首访时上下文缺失）
-    applyProjectId(currentProjectId.value, false);
   } catch {
     projects.value = [];
   }
+}
+
+onMounted(() => {
+  window.addEventListener(PROJECT_SYNC_EVENT, onProjectSync);
 });
+
+watch(routeProjectId, (id) => {
+  if (!id) return;
+  rememberProject(id);
+  if (projects.value.length === 0) void loadProjects();
+}, { immediate: true });
 
 onUnmounted(() => {
   window.removeEventListener(PROJECT_SYNC_EVENT, onProjectSync);
 });
 
 const currentProject = computed(
-  () => projects.value.find((p) => p.id === currentProjectId.value) ?? projects.value[0],
+  () => projects.value.find((p) => p.id === routeProjectId.value),
 );
 
 /** 项目选项文案：原型为「名称 · 负责人」；后端暂无负责人字段，回退项目编号。 */
@@ -108,21 +122,29 @@ function projectLabel(p: Project): string {
   return p.code ? `${p.name} · ${p.code}` : p.name;
 }
 
-/** 切换全局当前项目：持久化后整页刷新，复刻原型 bootstrap 重载语义。 */
+/**
+ * 切换项目：替换路由中的 projectId，同一子页打开另一个项目。不整页刷新。
+ */
 function switchProject(id: string) {
-  applyProjectId(id, true);
+  const current = routeProjectId.value;
+  if (!current || !id || id === current) return;
+  const marker = `/projects/${current}`;
+  const at = route.path.indexOf(marker);
+  if (at < 0) return;
+  const next = `${route.path.slice(0, at)}/projects/${id}${route.path.slice(at + marker.length)}`;
+  void router.push({ path: next, query: route.query });
 }
 </script>
 
 <template>
   <div class="ipd-stage-shell">
-    <div class="stage-rail" data-testid="ipd-stage-rail">
+    <div v-if="projectScoped" class="stage-rail" data-testid="ipd-stage-rail">
       <label class="rail-project">
         <span>项目</span>
         <select
           id="ipd-global-project-select"
           name="ipd_global_project_id"
-          :value="currentProjectId"
+          :value="routeProjectId"
           data-testid="ipd-project-select"
           @change="switchProject(($event.target as HTMLSelectElement).value)"
         >

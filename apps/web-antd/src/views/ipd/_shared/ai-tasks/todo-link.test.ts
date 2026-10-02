@@ -66,7 +66,7 @@ describe('aiTaskDeepLink（审批卡落点）', () => {
         actionCode: 'C11', aiDocId: '9001', errorMsg: null, execMode: 'HUMAN_GATE',
         id: '2104', projectId: '200', resultSummary: 'ok', status: 'SUCCEEDED', triggerType: 'PASSIVE',
       }),
-    ).toBe('/ipd/ai-assistant?projectId=200&docId=9001');
+    ).toBe('/ipd/ai-assistant?projectId=200&docId=9001&actionCode=C11');
   });
   it('无 aiDocId → 落项目 AI 文档页（进度呈现）', () => {
     expect(
@@ -74,7 +74,7 @@ describe('aiTaskDeepLink（审批卡落点）', () => {
         actionCode: 'C11', aiDocId: null, errorMsg: null, execMode: 'HUMAN_GATE',
         id: '2104', projectId: '200', resultSummary: null, status: 'RUNNING', triggerType: 'PASSIVE',
       }),
-    ).toBe('/ipd/ai-assistant?projectId=200');
+    ).toBe('/ipd/ai-assistant?projectId=200&actionCode=C11');
   });
 });
 
@@ -103,7 +103,7 @@ describe('resolveAiTaskTodo（AI 任务直达 + fail 并存路径）', () => {
     vi.stubGlobal('fetch', fetcher);
     const target = await resolveAiTaskTodo(aiRow);
     expect(target.source).toBe('ai-agent-task');
-    expect(target.deepLink).toBe('/ipd/ai-assistant?projectId=200&docId=9001');
+    expect(target.deepLink).toBe('/ipd/ai-assistant?projectId=200&docId=9001&actionCode=C11');
     expect(target.task?.aiDocId).toBe('9001');
     const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
     expect(url.pathname).toBe('/api/v1/ai-agent-tasks/2104');

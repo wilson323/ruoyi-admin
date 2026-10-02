@@ -196,8 +196,53 @@ export interface CopilotPageContext {
   actionCode?: string;
   /** 场景键：唯一登记场景 = 后端 FILL_FIELD_WHITELIST 的键（stage-action-fields）。 */
   scene: string;
-  /** 动作实例雪花 id；仅可转数字且 >0 才送（与后端 fillPagePath L324-325 采纳条件对齐）。 */
-  stageActionId?: number;
+  /**
+   * 动作实例雪花 id，保持十进制字符串。
+   * 上送时由 serializeCopilotPageContext 按原文拼成 JSON 数字：后端 fillPagePath
+   * 只对数值节点 canConvertToLong，TextNode 恒为 false；超过 2^53 不能走 Number()。
+   */
+  stageActionId?: string;
+}
+
+/** Java long 最大值的十进制原文。用来比较字符串，避免 Number() 改写雪花 ID。 */
+const JAVA_LONG_MAX_TEXT = '9223372036854775807';
+
+/**
+ * 判断文本是不是正的 Java long。
+ *
+ * @param value 动作 ID 原文
+ * @returns 是 1..Long.MAX_VALUE 的十进制且无前导零时为 true
+ */
+function isJavaLongText(value: string): boolean {
+  if (!/^[1-9]\d*$/.test(value)) return false;
+  if (value.length > JAVA_LONG_MAX_TEXT.length) return false;
+  if (value.length < JAVA_LONG_MAX_TEXT.length) return true;
+  return value <= JAVA_LONG_MAX_TEXT;
+}
+
+/**
+ * 动作 ID 转成可上送的字符串。非正整数或超出 Java long 时不送。
+ *
+ * @param id 动作实例 ID（字符串）
+ * @returns 可上送的原文；不能上送时为 undefined
+ */
+export function stageActionIdText(id: string): string | undefined {
+  return isJavaLongText(id) ? id : undefined;
+}
+
+/**
+ * 把填表上下文收成 query JSON。stageActionId 在对象里是字符串，写出时按原文拼成 JSON 数字。
+ *
+ * @param ctx 填表上下文
+ * @returns pageContext 查询值
+ */
+export function serializeCopilotPageContext(ctx: CopilotPageContext): string {
+  const body: { actionCode?: string; scene: string } = { scene: ctx.scene };
+  if (ctx.actionCode !== undefined) body.actionCode = ctx.actionCode;
+  const head = JSON.stringify(body);
+  const id = ctx.stageActionId;
+  if (id === undefined || !isJavaLongText(id)) return head;
+  return `${head.slice(0, -1)},"stageActionId":${id}}`;
 }
 
 /**
@@ -235,7 +280,7 @@ export async function streamCopilot(
   // R232 P2-03：pageContext 随请求上送（GET query JSON 字符串，字段名对齐 AiCopilotReq.pageContext；
   // 显式 input 优先、缺省回落宿主页面注册表，无上下文不送键——与改造前逐字节一致）。
   const pageContext = input.pageContext ?? registeredPageContext;
-  if (pageContext) params.set('pageContext', JSON.stringify(pageContext));
+  if (pageContext) params.set('pageContext', serializeCopilotPageContext(pageContext));
   // P3 取消切片：每次流生成唯一 runId；abort 时补发 cancel（fire-and-forget，失败不阻断断流本身）。
   const runId =
     typeof crypto !== 'undefined' && 'randomUUID' in crypto

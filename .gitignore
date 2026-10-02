@@ -56,6 +56,8 @@ apps/web-antd/types/components.d.ts
 .claude
 
 # 本地 agent 运行时目录（非交付件）
+.peerbridge/
+.omc/
 .evolver/
 .serena/
 .claude-flow/
@@ -64,3 +66,7 @@ apps/web-antd/types/components.d.ts
 # Local tooling noise directories (2026-09-27)
 .qoder/
 .harness/audit/
+
+# Python 编译缓存（脚本取证产物，非交付件）
+__pycache__/
+*.pyc

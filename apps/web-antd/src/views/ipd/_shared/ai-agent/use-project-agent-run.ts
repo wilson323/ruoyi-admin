@@ -1,7 +1,7 @@
 /**
  * 项目智能体运行组合式函数（W1）。
  *
- * 职责：加载能力清单 → 创建运行 → 按 seq 游标轮询事件（terminal 即停）→ 取消。
+ * 职责：加载能力清单 → 创建运行 → AG-UI SSE 与持久化 seq 回放 → 取消。
  *
  * 隔离与迟到响应：
  * - 每次新运行 / 项目切换 / 作用域销毁都会递增令牌；异步回调写状态前先核对令牌，
@@ -12,7 +12,7 @@
  * 按事件页的 nextSeq 继续要下一页，直到该页 terminal 为 true。后端 nextSeq 是本页
  * 已交付的最大 seq（ProjectAgentRunService.events），不是 seq+1。
  *
- * 错误：统一经 ipdErrorText 转中文（优先透传后端 message），不吞错；轮询失败即停并保留
+ * 错误：统一经 ipdErrorText 转中文（优先透传后端 message），不吞错；SSE 网络故障有限重连后保留
  * 错误，由调用方显式 resume。本函数不回落到副驾 SSE 流。
  */
 import {
@@ -28,6 +28,7 @@ import {
 
 import {
   cancelAgentRun,
+  resumeAgentRun,
   createProjectAgentRun,
   fetchAgentRun,
   fetchAgentRunEvents,
@@ -35,12 +36,16 @@ import {
   isAgentRunCancellable,
   isAgentRunTerminal,
   type AgentRunDetail,
+  type AgentRunResumeEntry,
   type AgentRunEvent,
   type AgentRunStatus,
   type CreateAgentRunInput,
   type ProjectAgentCapabilities,
 } from '../../../../api/ipd/project-agent';
+import { projectAgentSessionOwner, streamAgentRunEvents } from '../../../../api/ipd/project-agent-agui';
+import { IpdRequestError } from '../../../../api/ipd/auth';
 import { ipdErrorText } from '../ipd-error-text';
+import { agentInterruptPause, validateInterruptPayload } from './agui-interrupt';
 
 /** 默认轮询间隔（毫秒）。 */
 export const DEFAULT_AGENT_POLL_INTERVAL_MS = 400;
@@ -49,6 +54,12 @@ export const DEFAULT_AGENT_POLL_INTERVAL_MS = 400;
 export interface UseProjectAgentRunOptions {
   /** 轮询间隔（毫秒）。默认 400，让已落库的文本增量尽快出现在界面上。 */
   pollIntervalMs?: number;
+  /** 生产默认 AG-UI；poll 仅供显式兼容与确定性验证，不作失败回退。 */
+  transport?: 'agui' | 'poll';
+  /** 一次读取最多自动重连两次，失败后保留显式恢复入口。 */
+  maxReconnects?: number;
+  /** 默认从同用户、同项目的会话标识恢复，不保存正文。 */
+  restoreSession?: boolean;
   /** projectId 变化时是否自动加载能力清单，默认 true。 */
   autoLoadCapabilities?: boolean;
 }
@@ -101,6 +112,9 @@ export function useProjectAgentRun(
 ) {
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_AGENT_POLL_INTERVAL_MS;
   const autoLoad = options.autoLoadCapabilities ?? true;
+  const transport = options.transport ?? 'agui';
+  const maxReconnects = options.maxReconnects ?? 2;
+  const restoreSession = options.restoreSession ?? transport === 'agui';
 
   const capabilities = shallowRef<null | ProjectAgentCapabilities>(null);
   const capabilitiesLoading = ref(false);
@@ -118,6 +132,14 @@ export function useProjectAgentRun(
   const pollError = shallowRef<unknown>(null);
   const cancelError = shallowRef<unknown>(null);
   const detailError = shallowRef<unknown>(null);
+  const responding = ref(false);
+  const responseError = shallowRef<unknown>(null);
+  const consumedPauses = ref(new Set<number>());
+  const pendingInterrupt = computed(() => {
+    if (terminal.value || status.value !== 'WAITING_APPROVAL') return null;
+    const pause = agentInterruptPause(events.value);
+    return pause && pause.seq === detail.value?.pauseSeq && !consumedPauses.value.has(pause.seq) ? pause : null;
+  });
 
   let capToken = 0;
   let runToken = 0;
@@ -125,6 +147,16 @@ export function useProjectAgentRun(
   let disposed = false;
   let timer: null | ReturnType<typeof setTimeout> = null;
   const seenSeqs = new Set<number>();
+  let streamController: AbortController | null = null;
+  let reconnects = 0;
+  const sessionKey = (pid: string, owner: string) => `ipd.agent-run:${owner}:${pid}`;
+  function rememberRun(id: string): void {
+    if (!restoreSession) return;
+    const pid = toValue(projectId);
+    const owner = projectAgentSessionOwner();
+    if (!pid || !owner) return;
+    try { sessionStorage.setItem(sessionKey(pid, owner), JSON.stringify({ projectId: pid, owner, runId: id })); } catch { /* 禁用存储时仍能使用服务器历史。 */ }
+  }
 
   /** 清除待执行的下一轮轮询。 */
   function clearTimer(): void {
@@ -137,6 +169,9 @@ export function useProjectAgentRun(
   /** 作废当前运行（令牌递增 → 所有在途回调失效）并清空运行态。 */
   function resetRun(): void {
     runToken += 1;
+    streamController?.abort();
+    streamController = null;
+    reconnects = 0;
     clearTimer();
     runId.value = null;
     status.value = null;
@@ -152,6 +187,9 @@ export function useProjectAgentRun(
     pollError.value = null;
     cancelError.value = null;
     detailError.value = null;
+    responding.value = false;
+    responseError.value = null;
+    consumedPauses.value.clear();
   }
 
   /** 令牌是否仍有效（未被新运行 / 项目切换 / 销毁作废）。 */
@@ -217,7 +255,7 @@ export function useProjectAgentRun(
     if (!alive(token)) return;
     timer = setTimeout(() => {
       timer = null;
-      void pollOnce(token);
+      void readEvents(token);
     }, delay);
   }
 
@@ -238,12 +276,70 @@ export function useProjectAgentRun(
       }
       if (changed) await refreshDetail(token, id);
       if (!alive(token)) return;
+      if (pendingInterrupt.value) { polling.value = false; return; }
       schedule(token, pollIntervalMs);
     } catch (error) {
       if (!alive(token)) return;
       pollError.value = error;
       polling.value = false;
     }
+  }
+
+  /** AG-UI 读取仅消费持久化投影；网络失败从已消费 seq 重连，不重建运行。 */
+  async function streamOnce(token: number): Promise<void> {
+    const id = runId.value;
+    if (!alive(token) || !id) return;
+    polling.value = true;
+    const controller = new AbortController();
+    streamController = controller;
+    let paused = false;
+    try {
+      await streamAgentRunEvents(id, cursor, (event) => {
+        if (!alive(token)) return true;
+        if (!mergeEvents([event])) return false;
+        if (event.type === 'ERROR' || event.type === 'RUN_FINISHED') terminal.value = true;
+        const payload = event.payload as { kind?: string; status?: string } | null;
+        paused = status.value === 'WAITING_APPROVAL' && event.seq === detail.value?.pauseSeq
+          && event.type === 'STEP' && (payload?.kind === 'AWAIT_USER' || payload?.status === 'WAITING_APPROVAL');
+        return terminal.value || paused;
+      }, controller.signal);
+      if (!alive(token) || controller.signal.aborted) return;
+      if (!terminal.value && !paused) throw new IpdRequestError('运行事件连接已断开，请恢复读取', 0, 0, 'transport');
+      polling.value = false;
+      reconnects = 0;
+      pollError.value = null;
+      await refreshDetail(token, id);
+    } catch (error) {
+      if (!alive(token) || controller.signal.aborted) return;
+      // 已读到待批准事件后，服务器关闭空回放流属于正常暂停，而非网络故障。
+      if (error instanceof IpdRequestError && error.kind === 'transport') {
+        await refreshDetail(token, id);
+        if (!alive(token)) return;
+        const hasAwaitEvent = events.value.some((event) => {
+          const payload = event.payload as { kind?: string; status?: string } | null;
+          return event.seq === detail.value?.pauseSeq && event.type === 'STEP'
+            && (payload?.kind === 'AWAIT_USER' || payload?.status === 'WAITING_APPROVAL');
+        });
+        if (!detailError.value && status.value === 'WAITING_APPROVAL' && typeof detail.value?.pauseSeq === 'number'
+          && detail.value.pauseSeq <= cursor && hasAwaitEvent) {
+          polling.value = false;
+          pollError.value = null;
+          return;
+        }
+      }
+      pollError.value = error;
+      const retryable = !(error instanceof IpdRequestError) || error.kind === 'transport' || error.status >= 500;
+      if (retryable && reconnects < maxReconnects) {
+        reconnects += 1;
+        schedule(token, pollIntervalMs * reconnects);
+      } else polling.value = false;
+    } finally {
+      if (streamController === controller) streamController = null;
+    }
+  }
+
+  function readEvents(token: number): Promise<void> {
+    return transport === 'agui' ? streamOnce(token) : pollOnce(token);
   }
 
   /** 是否存在进行中的运行（已创建且未终结）。 */
@@ -259,7 +355,7 @@ export function useProjectAgentRun(
    */
   async function startRun(input: CreateAgentRunInput): Promise<boolean> {
     const pid = toValue(projectId);
-    if (!pid || submitting.value || active.value) return false;
+    if (!pid || submitting.value || active.value || polling.value) return false;
     resetRun();
     const token = runToken;
     submitting.value = true;
@@ -267,9 +363,10 @@ export function useProjectAgentRun(
       const receipt = await createProjectAgentRun(pid, input);
       if (!alive(token)) return false;
       runId.value = receipt.runId;
+      rememberRun(receipt.runId);
       status.value = receipt.status;
       submitting.value = false;
-      void pollOnce(token);
+      void readEvents(token);
       return true;
     } catch (error) {
       if (alive(token)) {
@@ -292,14 +389,22 @@ export function useProjectAgentRun(
     resetRun();
     const token = runToken;
     runId.value = id;
+    // 历史恢复也占用事件读取通道，避免重试或取消启动重叠轮询。
+    polling.value = true;
     try {
       const data = await fetchAgentRun(id);
       if (!alive(token)) return false;
+      if (data.projectId !== toValue(projectId)) throw new IpdRequestError('运行不属于当前项目', 403, 0, 'protocol');
+      rememberRun(id);
       detail.value = data;
       status.value = data.status;
       events.value = [];
       seenSeqs.clear();
       cursor = 0;
+      if (transport === 'agui') {
+        void readEvents(token);
+        return true;
+      }
       let after = 0;
       const ended = isAgentRunTerminal(data.status);
       while (alive(token)) {
@@ -319,10 +424,13 @@ export function useProjectAgentRun(
         after = next;
       }
       if (!alive(token)) return false;
-      void pollOnce(token);
+      void readEvents(token);
       return true;
     } catch (error) {
-      if (alive(token)) pollError.value = error;
+      if (alive(token)) {
+        pollError.value = error;
+        polling.value = false;
+      }
       return false;
     }
   }
@@ -340,7 +448,7 @@ export function useProjectAgentRun(
       status.value = receipt.status;
       if (!terminal.value && !polling.value && timer === null) {
         pollError.value = null;
-        void pollOnce(token);
+        void readEvents(token);
       }
     } catch (error) {
       if (alive(token)) cancelError.value = error;
@@ -349,24 +457,79 @@ export function useProjectAgentRun(
     }
   }
 
+  /** 回答官方中断，在同一 runId 与已消费游标上继续；读取重试 resume() 不承载业务回答。 */
+  async function respondToInterrupt(entries: AgentRunResumeEntry[]): Promise<boolean> {
+    const pause = pendingInterrupt.value;
+    const id = runId.value;
+    if (!pause || !id || responding.value || polling.value) return false;
+    responseError.value = null;
+    const ids = entries.map((entry) => entry.interruptId);
+    if (new Set(ids).size !== ids.length || ids.length !== pause.interrupts.length || pause.interrupts.some((interrupt) => !ids.includes(interrupt.id))) {
+      responseError.value = new Error('请回答本次运行里的所有问题。');
+      return false;
+    }
+    for (const interrupt of pause.interrupts) {
+      const entry = entries.find((item) => item.interruptId === interrupt.id)!;
+      if (interrupt.expiresAt && Date.parse(interrupt.expiresAt) <= Date.now()) {
+        responseError.value = new Error('这个问题已过期，请恢复运行记录后查看。');
+        return false;
+      }
+      const error = entry.status === 'cancelled'
+        ? (entry.payload === undefined ? '' : '未回答时请不要提交回答内容。')
+        : entry.status === 'resolved' ? validateInterruptPayload(interrupt, entry.payload) : '回答状态不正确。';
+      if (error) { responseError.value = new Error(error); return false; }
+    }
+    const token = runToken;
+    responding.value = true;
+    try {
+      const receipt = await resumeAgentRun(id, { expectedPauseSeq: pause.seq, aguiInput: {
+        threadId: id, runId: id, messages: [], tools: [], context: [], state: {}, forwardedProps: {}, resume: entries,
+      } });
+      if (!alive(token)) return false;
+      if (receipt.runId !== id) throw new IpdRequestError('恢复运行编号不一致', 0, 0, 'protocol');
+      consumedPauses.value.add(pause.seq);
+      status.value = receipt.status;
+      pollError.value = null;
+      terminal.value = false;
+      reconnects = 0;
+      void readEvents(token);
+      return true;
+    } catch (error) {
+      if (alive(token)) responseError.value = error;
+      return false;
+    } finally { if (alive(token)) responding.value = false; }
+  }
+
   /** 轮询失败后手动恢复（清除错误并立即拉一轮）。 */
   function resume(): void {
     if (!runId.value || terminal.value || polling.value) return;
     pollError.value = null;
-    void pollOnce(runToken);
+    reconnects = 0;
+    void readEvents(runToken);
   }
 
   watch(
-    () => toValue(projectId),
+    [() => toValue(projectId), () => transport === 'agui' ? projectAgentSessionOwner() : null],
     () => {
       resetRun();
       capToken += 1;
       capabilities.value = null;
       capabilitiesError.value = null;
       capabilitiesLoading.value = false;
-      if (autoLoad) void loadCapabilities();
+      const sessionOwner = transport === 'agui' ? projectAgentSessionOwner() : null;
+      if (autoLoad && (transport === 'poll' || sessionOwner)) void loadCapabilities();
+      if (restoreSession) {
+        const pid = toValue(projectId);
+        const owner = projectAgentSessionOwner();
+        if (pid && owner) {
+          try {
+            const saved = JSON.parse(sessionStorage.getItem(sessionKey(pid, owner)) ?? 'null');
+            if (saved?.projectId === pid && saved.owner === owner && typeof saved.runId === 'string' && saved.runId) void openRun(saved.runId);
+          } catch { /* 存储不可读时由服务器历史恢复。 */ }
+        }
+      }
     },
-    { immediate: true },
+    { immediate: true, flush: 'sync' },
   );
 
   if (getCurrentScope()) {
@@ -379,6 +542,10 @@ export function useProjectAgentRun(
 
   return {
     active,
+    pendingInterrupt,
+    responding,
+    responseErrorText: computed(() => textOf(responseError.value, '回答提交失败')),
+    respondToInterrupt,
     cancel,
     cancelError,
     cancelErrorText: computed(() => textOf(cancelError.value, '取消运行失败')),

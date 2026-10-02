@@ -28,7 +28,14 @@ import AiSuggest from '../_shared/ai-suggest.vue';
 import AiTaskTodoDrawer from '../_shared/ai-tasks/ai-task-todo-drawer.vue';
 import '../_shared/ipd-theme.css';
 import { RULES_BY_PAGE, renderRulesDescription } from '../_shared/zk-ipd-rules';
-import { WORKBENCH_TASK_STATUS_TEXT, taskTypeText } from '../_shared/ipd-enums';
+import {
+  DECISION_BUCKET_ACTION,
+  DECISION_BUCKET_TEXT,
+  WORKBENCH_TASK_STATUS_TEXT,
+  decisionBucket,
+  taskTypeText,
+} from '../_shared/ipd-enums';
+import type { WorkbenchDecisionBucket } from '../_shared/ipd-enums';
 import type { SpaceScope } from './space-context';
 import SpaceProgress from './space-progress.vue';
 import TodoQuickEntry from './todo-quick-entry.vue';
@@ -108,11 +115,22 @@ const queueTabs = computed<QueueTab[]>(() => {
   ];
 });
 
-/** 责任队列：后端 tasks 平铺 → 按项目分组（stage_sign + deletion_review，WB-17-1 P0）。 */
+/** 待办与超期按三类决定分组；我发起的仍是单组。项目名留在每条卡片上。 */
 interface TaskGroup {
   projectName: string;
   count: number;
-  items: { kind: string; title: string; desc: string; code: string; initiator: string; time: string; overdue: boolean }[];
+  items: {
+    kind: string;
+    title: string;
+    desc: string;
+    code: string;
+    initiator: string;
+    time: string;
+    overdue: boolean;
+    deepLink: string;
+    actionLabel: string;
+    projectName: string;
+  }[];
 }
 
 const STATUS_TEXT: Record<string, string> = WORKBENCH_TASK_STATUS_TEXT;
@@ -174,6 +192,9 @@ const taskGroups = computed<TaskGroup[]>(() => {
       initiator: '',
       time: t.createdAt ? formatDue(t.createdAt) : '—',
       overdue: false,
+      deepLink: '',
+      actionLabel: '',
+      projectName: '',
     }));
     return items.length > 0 ? [{ projectName: '我发起的', count: items.length, items }] : [];
   }
@@ -182,26 +203,32 @@ const taskGroups = computed<TaskGroup[]>(() => {
   const visible = activeTab.value === 'overdue' && !queueFromTasks.value
     ? tasks.filter((t) => t.priority === 'high')
     : tasks;
-  const byProject = new Map<string, WorkbenchTask[]>();
+  const order: WorkbenchDecisionBucket[] = ['review', 'fact', 'blocked'];
+  const byBucket = new Map<WorkbenchDecisionBucket, WorkbenchTask[]>(
+    order.map((key) => [key, []]),
+  );
   for (const t of visible) {
-    const key = t.projectName ?? '未命名项目';
-    byProject.set(key, [...(byProject.get(key) ?? []), t]);
+    byBucket.get(decisionBucket(t.taskType, t.isBlocking))!.push(t);
   }
-  return [...byProject.entries()].map(([projectName, items]) => ({
-    projectName,
-    count: items.length,
-    items: items.map((t) => ({
-      kind: STATUS_TEXT[t.status] ?? t.status,
-      title: t.title ?? t.actionCode ?? '阶段动作',
-      // WB-17-1 P0：任务类型用 taskType 字典展示（阶段签署/删除审批等 17 类）；ownerRole 仅 stage_sign 有值
-      desc: `${taskTypeText(t.taskType)}${t.ownerRole ? ` · 责任角色 ${t.ownerRole}` : ''} · ${t.isBlocking === '1' ? '阻断项' : '非阻断'}`,
-      code: t.projectCode ?? '',
-      initiator: '',
-      time: formatDue(t.dueDate),
-      // 超期红字按事实判定（dueDate 已过，与后端 priority=high 同口径），而非仅 DELAYED 状态
-      overdue: typeof t.dueDate === 'number' && t.dueDate < Date.now(),
-    })),
-  }));
+  return order.map((key) => {
+    const items = byBucket.get(key) ?? [];
+    return {
+      projectName: DECISION_BUCKET_TEXT[key],
+      count: items.length,
+      items: items.map((t) => ({
+        kind: STATUS_TEXT[t.status] ?? t.status,
+        title: t.title ?? t.actionCode ?? '阶段动作',
+        desc: `${taskTypeText(t.taskType)}${t.ownerRole ? ` · 责任角色 ${t.ownerRole}` : ''} · ${t.isBlocking === '1' ? '阻断项' : '非阻断'}`,
+        code: t.projectCode ?? '',
+        initiator: '',
+        time: formatDue(t.dueDate),
+        overdue: typeof t.dueDate === 'number' && t.dueDate < Date.now(),
+        deepLink: t.deepLink,
+        actionLabel: DECISION_BUCKET_ACTION[key],
+        projectName: t.projectName ?? '',
+      })),
+    };
+  });
 });
 
 /* ---------- 产品空间（=工作空间）：选择器 + 空间内容/数据范围 ----------
@@ -413,7 +440,7 @@ watch(activeTab, (tab) => {
         <!-- 责任任务队列（左列） -->
         <section class="ipd-wb-queue-card">
           <header class="ipd-wb-section-header">
-            <h2 class="ipd-wb-section-title">责任任务队列</h2>
+            <h2 class="ipd-wb-section-title">今天需要我决定什么</h2>
             <span class="ipd-wb-section-meta">{{ taskGroups.reduce((n, g) => n + g.count, 0) }} 项</span>
           </header>
           <p v-if="loadError" class="ipd-wb-empty">聚合接口加载失败：{{ loadError }}</p>
@@ -421,7 +448,7 @@ watch(activeTab, (tab) => {
             {{ activeTab === 'followed' ? '尚未收藏业务对象；在动作工作区点击收藏后，会集中显示在这里。' : '当前没有待处理事项；新的动作、审批、移交、绩效或整改责任会自动投递到这里。' }}
           </div>
           <template v-else>
-          <div v-if="taskGroups.length === 0" class="ipd-wb-empty">
+          <div v-if="taskGroups.every((g) => g.count === 0)" class="ipd-wb-empty">
             暂无责任任务；任务到达会按责任链实时投递到这里。
           </div>
           <div v-for="g in taskGroups" :key="g.projectName" class="ipd-wb-group">
@@ -429,6 +456,7 @@ watch(activeTab, (tab) => {
               {{ g.projectName }}
               <Tag color="blue">{{ g.count }}项</Tag>
             </h3>
+            <p v-if="g.items.length === 0" class="ipd-wb-empty">暂无</p>
             <article
               v-for="(it, idx) in g.items"
               :key="idx"
@@ -439,6 +467,8 @@ watch(activeTab, (tab) => {
                 <h4 class="ipd-wb-task-title">{{ it.title }}</h4>
                 <p class="ipd-wb-task-desc">{{ it.desc }}</p>
                 <p class="ipd-wb-task-meta">
+                  <span v-if="it.projectName">{{ it.projectName }}</span>
+                  <span v-if="it.projectName && it.code"> · </span>
                   <span v-if="it.code">{{ it.code }}</span>
                   <span v-if="it.initiator"> · 发起人 </span>
                   <span v-if="it.initiator">{{ it.initiator }}</span>
@@ -446,6 +476,15 @@ watch(activeTab, (tab) => {
                   <span :class="{ 'ipd-wb-overdue': it.overdue }">{{ it.time }}</span>
                 </p>
               </div>
+              <button
+                v-if="it.deepLink"
+                type="button"
+                class="ipd-wb-coach-btn"
+                data-testid="workbench-task-open"
+                @click="$router.push(it.deepLink).catch(() => {})"
+              >
+                {{ it.actionLabel }}
+              </button>
             </article>
           </div>
           </template>

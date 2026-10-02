@@ -19,6 +19,7 @@ import { message } from 'ant-design-vue';
 import { FundOutlined, LineChartOutlined, ProfileOutlined, RiseOutlined, TableOutlined } from '@ant-design/icons-vue';
 
 import AiSuggest from '../_shared/ai-suggest.vue';
+import FunctionalMetricsPanel from './functional-metrics-panel.vue';
 import { formatMoney } from '../_shared/format';
 import { ipdErrorText } from '../_shared/ipd-error-text';
 import {
@@ -32,7 +33,7 @@ import {
   type KpiTrendPoint,
 } from '../../../api/ipd/kpi';
 
-defineOptions({ name: 'IpdKpiFunctional', meta: { ipdBackend: 'KpiRecordController 已交付：GET /kpi/performance、GET /kpi/functional、GET /kpi/trend；KpiRulesController 已交付：GET /kpi/rules（规则快照）；原型 12 项项目 KPI 表格写链（PUT /performance/kpis/{projectId}/{metricCode}）与 KpiDrawer 填报/证据上传/编辑均未交付。', ipdCard: 'P0-10.29' } });
+defineOptions({ name: 'IpdKpiFunctional', meta: { ipdBackend: 'KpiRecordController 已交付：GET /kpi/performance、GET /kpi/functional、GET /kpi/trend；KpiRulesController 已交付：GET /kpi/rules（规则快照）；功能指标量表 GET/PUT/DELETE /kpi/functional-metrics 与 GET /kpi/functional-metrics/codes 在本页。原型 12 项项目 KPI 表格写链（PUT /performance/kpis/{projectId}/{metricCode}）与 KpiDrawer 填报/证据上传/编辑均未交付。', ipdCard: 'P0-10.29' } });
 
 function currentMonth(): string {
   const now = new Date();
@@ -246,6 +247,8 @@ onMounted(() => { void load(); });
       </table>
       <p v-else class="empty-tip">该月份尚无功能 KPI 来源数据。</p>
     </section>
+
+    <FunctionalMetricsPanel />
 
     <section class="surface trend-section">
       <div class="section-title">

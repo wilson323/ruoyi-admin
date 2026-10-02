@@ -129,7 +129,7 @@ describe('R232 P2-04 站内待办抽屉（NotificationService 载荷复用）', 
     const { router, wrapper } = await mountDrawer({ open: true }, routingFetcher());
     bodyQueryAll<HTMLButtonElement>('[data-testid="ai-todo-direct-link"]')[0]!.click();
     await flushPromises();
-    expect(router.currentRoute.value.fullPath).toBe('/ipd/ai-assistant?projectId=200&docId=9001');
+    expect(router.currentRoute.value.fullPath).toBe('/ipd/ai-assistant?projectId=200&docId=9001&actionCode=C11');
     expect(calls).toContain('/api/v1/ai-agent-tasks/2104');
     expect(wrapper.emitted('update:open')?.at(-1)).toEqual([false]);
   });
@@ -154,7 +154,7 @@ describe('R232 P2-04 站内待办抽屉（NotificationService 载荷复用）', 
     const { router } = await mountDrawer({ open: true, projectId: '200' }, fetcher);
     bodyQueryAll<HTMLButtonElement>('[data-testid="ai-task-open-review"]')[0]!.click();
     await flushPromises();
-    expect(router.currentRoute.value.fullPath).toBe('/ipd/ai-assistant?projectId=200&docId=9001');
+    expect(router.currentRoute.value.fullPath).toBe('/ipd/ai-assistant?projectId=200&docId=9001&actionCode=C11');
     const writeCalls = fetcher.mock.calls.filter((call) => {
       const init = (call as unknown[])[1] as RequestInit | undefined;
       return (init?.method ?? 'GET') !== 'GET';

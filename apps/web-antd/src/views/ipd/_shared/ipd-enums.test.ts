@@ -45,6 +45,7 @@ import {
   roleText,
   severityText,
   severityTone,
+  decisionBucket,
   taskTypeText,
 } from './ipd-enums';
 
@@ -255,6 +256,15 @@ describe('WORKBENCH_TASK_TYPE_TEXT 工作台任务类型 17 类', () => {
     expect(taskTypeText('closeout')).toBe('项目收尾');
     expect(taskTypeText('key_gate_arbitration')).toBe('Gate 仲裁');
     expect(taskTypeText('kpi_fill')).toBe('KPI 填写');
+  });
+
+  it('审核类即使阻断标志为 1 仍待我审核；只有阶段动作自身阻断才进被阻断', () => {
+    expect(decisionBucket('deletion_review', '1')).toBe('review');
+    expect(decisionBucket('key_gate', '1')).toBe('review');
+    expect(decisionBucket('stage_sign', '1')).toBe('blocked');
+    expect(decisionBucket('stage_sign', 'N')).toBe('fact');
+    expect(decisionBucket('kpi_fill', '1')).toBe('fact');
+    expect(decisionBucket('UNKNOWN_TYPE', '1')).toBe('fact');
   });
 
   it('taskTypeText 未知值原样返回（passthrough fallback）', () => {

@@ -36,6 +36,7 @@ export interface StageAction {
   algoType?: null | string;
   certNo?: null | string;
   certPassedAt?: null | number | string;
+  confirmedBy?: null | string;
   createBy?: null | string;
   createTime?: null | string;
   depth: StageActionDepth;
@@ -52,6 +53,7 @@ export interface StageAction {
   sopId?: null | string | number;
   stageId?: null | string | number;
   status: StageActionStatus;
+  updateBy?: null | string;
   version?: number;
 }
 
@@ -95,6 +97,8 @@ function normalizeAction(raw: unknown): StageAction {
     ownerRole: typeof row.ownerRole === 'string' ? row.ownerRole : null,
     depth: typeof row.depth === 'string' ? row.depth : '',
     status: typeof row.status === 'string' ? row.status : '',
+    confirmedBy: asOptionalString(row.confirmedBy),
+    updateBy: asOptionalString(row.updateBy),
     historyMark: typeof row.historyMark === 'string' ? row.historyMark : null,
     isBlocking: typeof row.isBlocking === 'string' ? row.isBlocking : null,
     actualDoneAt: typeof row.actualDoneAt === 'number'
@@ -159,6 +163,13 @@ export async function listStageActions(projectIdOrCode: string): Promise<StageAc
  * 状态流转（POST /api/v1/stage-actions/{id}/transit?target=&reason=）。
  * NA 必须传 reason；幂等；并发由乐观锁拦截，50002。
  */
+/**
+ * 产线负责人批准已提交的小阶段（POST /api/v1/stage-actions/{id}/accept）。
+ */
+export function acceptStageAction(id: string): Promise<StageAction> {
+  return ipdPost<unknown>(`/stage-actions/${id}/accept`).then(normalizeAction);
+}
+
 export function transitStageAction(id: string, target: StageActionStatus, reason?: string): Promise<StageAction> {
   const params = new URLSearchParams();
   params.set('target', target);

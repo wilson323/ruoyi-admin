@@ -35,6 +35,7 @@ import {
   message,
 } from 'ant-design-vue';
 
+import { headReviewActions } from '../_shared/ai-agent/document-review-actions';
 import { PENDING_TEXT } from '../_shared/format';
 import {
   type AiDocument,
@@ -292,7 +293,7 @@ async function loadChain(documentId: string) {
 
 async function submitReview(doc: AiDocument) {
   if (reviewingVersionId.value) return;
-  if (doc.status !== 'GENERATED') {
+  if (!headReviewActions(doc.status).approve) {
     message.warning(`v${doc.versionNo} 当前状态 ${doc.status}，无需再次审核`);
     return;
   }
@@ -325,8 +326,8 @@ const rejectCommentReady = computed(() => rejectModal.comment.trim().length > 0)
 const okButtonProps = computed(() => ({ disabled: !rejectCommentReady.value }));
 
 function openRejectModal(doc: AiDocument) {
-  if (doc.status !== 'GENERATED') {
-    message.warning(`v${doc.versionNo} 当前状态 ${doc.status}，无法拒绝`);
+  if (doc.id !== head.value?.id || !headReviewActions(doc.status).reject) {
+    message.warning(`v${doc.versionNo} 不是当前可退回的版本`);
     return;
   }
   rejectModal.doc = doc;
@@ -341,10 +342,11 @@ async function submitReject() {
   rejectSubmitting.value = true;
   try {
     await rejectFormRef.value?.validate();
-    await rejectAiDocumentVersion(rejectModal.docId, rejectModal.docId, {
+    const anchorId = chain.value[0]?.id ?? rejectModal.docId;
+    await rejectAiDocumentVersion(anchorId, rejectModal.docId, {
       comment: rejectModal.comment.trim(),
     });
-    message.success(`v${rejectModal.doc.versionNo} 已拒绝`);
+    message.success(`v${rejectModal.doc.versionNo} 已退回`);
     rejectModalOpen.value = false;
     await loadChain(currentDocId.value);
   } catch (cause) {
@@ -454,7 +456,7 @@ onMounted(() => {
 <template>
   <div class="flex flex-col gap-4 p-4">
     <Alert
-      message="AI 生成已接入（P4-2.2）：生成结果登记为待审核 v1，未经人工审核不得作为正式交付物（BR-AI-03）。系统不做内容过滤、直接透传模型输出（BR-AI-04），请人工把控内容风险。归档状态机：GENERATED → REVIEWED → ARCHIVED；GENERATED 状态可通过「审核拒绝」进入 REJECTED。"
+      message="AI 生成已接入（P4-2.2）：生成结果登记为待审核 v1，未经人工审核不得作为正式交付物（BR-AI-03）。系统不做内容过滤、直接透传模型输出（BR-AI-04），请人工把控内容风险。归档状态机：待审核 → 已审核 → 已归档；当前版本可通过「退回修改」进入已退回。"
       show-icon
       type="warning"
     />
@@ -629,13 +631,14 @@ onMounted(() => {
                 审核通过
               </Button>
               <Button
+                v-if="doc.id === head?.id"
                 :loading="rejectSubmitting && rejectModal.docId === doc.id"
                 danger
                 size="small"
                 v-access:code="IPD_PERMISSION_CODES.AI_DOCUMENT_REVIEW"
                 @click="openRejectModal(doc)"
               >
-                审核拒绝
+                退回修改
               </Button>
             </Space>
           </template>
@@ -651,17 +654,37 @@ onMounted(() => {
               >
                 归档
               </Button>
+              <Button
+                v-if="doc.id === head?.id"
+                danger
+                size="small"
+                v-access:code="IPD_PERMISSION_CODES.AI_DOCUMENT_REVIEW"
+                @click="openRejectModal(doc)"
+              >
+                退回修改
+              </Button>
               <span class="text-muted-foreground text-xs">审核已通过；归档后不可再修改内容。</span>
             </Space>
           </template>
           <template v-else-if="doc.status === 'REJECTED'">
             <Alert
               class="mt-2"
-              message="该版本已被驳回，不可再走 review/archive。"
+              message="这一版已退回，意见保留在本版。可再次审核通过，或改版后重新提交。"
               show-icon
               type="error"
               role="alert"
             />
+            <Space class="mt-2">
+              <Button
+                :loading="reviewingVersionId === doc.id"
+                size="small"
+                type="primary"
+                v-access:code="IPD_PERMISSION_CODES.AI_DOCUMENT_REVIEW"
+                @click="submitReview(doc)"
+              >
+                审核通过
+              </Button>
+            </Space>
           </template>
         </li>
       </ul>
@@ -757,29 +780,28 @@ onMounted(() => {
       :mask-closable="false"
       :ok-button-props="okButtonProps"
       cancel-text="取消"
-      ok-text="确认拒绝"
-      title="审核拒绝"
+      ok-text="确认退回"
+      title="退回修改"
       @ok="submitReject"
     >
       <Alert
         class="mb-3"
-        message="拒绝原因将写入版本日志，用于回溯。请客观描述问题（如事实错误 / 风险不可接受 / 与产品定位不符）。"
+        message="退回意见只写在这一版，用于回溯。请写明要改的地方。"
         show-icon
         type="warning"
       />
       <Form ref="rejectFormRef" :model="rejectModal" layout="vertical">
         <FormItem
-          label="拒绝原因"
+          label="退回意见"
           name="comment"
           required
           :rules="[
-            { required: true, message: '请填写拒绝原因' },
-            { min: 2, message: '拒绝原因至少 2 个字符' },
+            { required: true, message: '请填写退回意见' },
           ]"
         >
           <Input.TextArea
             v-model:value="rejectModal.comment"
-            :maxlength="500"
+            :maxlength="1000"
             :rows="4"
             placeholder="例如：与 PRD 模板不符、需求边界不清晰、目标用户群定义错误等"
             show-count
@@ -791,7 +813,7 @@ onMounted(() => {
         </FormItem>
       </Form>
       <div class="text-muted-foreground text-xs">
-        comment 为必填项（后端 reject 端点强制校验）；拒绝后状态变更为 REJECTED，版本链只读。
+        意见只写在这一版。已退回不会覆盖原意见。改版后的新版本回到待审核，不继承这条意见。
       </div>
     </Modal>
 

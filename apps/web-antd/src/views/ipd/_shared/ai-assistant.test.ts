@@ -26,6 +26,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type {
@@ -33,7 +34,9 @@ import type {
   CopilotStreamHandlers,
 } from '../../../api/ipd/ai-copilot';
 import { streamCopilot } from '../../../api/ipd/ai-copilot';
+import { listAiDocumentVersions } from '../../../api/ipd/ai-document';
 import { fetchGuideEvents } from '../../../api/ipd/guide-script';
+import type { AgentRunEvent } from '../../../api/ipd/project-agent';
 import {
   cancelAgentRun,
   createProjectAgentRun,
@@ -68,6 +71,32 @@ vi.mock('../../../api/ipd/project-agent', async (importOriginal) => ({
   fetchProjectAgentCapabilities: vi.fn(),
   listProjectAgentRuns: vi.fn(),
   saveAiFeedback: vi.fn(),
+}));
+vi.mock('../../../api/ipd/ai-document', () => ({
+  listAiDocumentVersions: vi.fn(),
+  rejectAiDocumentVersion: vi.fn(),
+  reviewAiDocumentVersion: vi.fn(),
+}));
+vi.mock('../../../api/ipd/project-agent-agui', () => ({
+  /** 组件级集成测试无 pinia 载体；会话属主固定，与 use-project-agent-run.test.ts 同口径。 */
+  projectAgentSessionOwner: () => 'person-1',
+  /**
+   * AG-UI 流只重放已持久化的 ipd_event 投影，与 fetchAgentRunEvents 同源，故直接委托后者。
+   * 夹具以 terminal:true 声明运行已终结时补齐后端 ProjectAgentRunHandle 必写的末帧；缺末帧
+   * 时消费方按「连接已断开」计入重连，等于把正常收口当成传输故障，掩盖真实契约。
+   */
+  streamAgentRunEvents: vi.fn(async (
+    runId: string,
+    afterSeq: number,
+    onEvent: (event: AgentRunEvent) => boolean,
+  ) => {
+    const page = await fetchAgentRunEvents(runId, afterSeq);
+    const events = page?.events ?? [];
+    for (const event of events) if (onEvent(event)) return;
+    if (page?.terminal === true && !events.some((e) => e.type === 'ERROR' || e.type === 'RUN_FINISHED')) {
+      onEvent({ seq: page.nextSeq, type: 'RUN_FINISHED', payload: { status: 'SUCCEEDED' }, createdAt: '2026-01-01T00:00:09Z' });
+    }
+  }),
 }));
 
 /** 单包单模型：面板自动选中，主发送可走 createProjectAgentRun。 */
@@ -275,6 +304,8 @@ beforeEach(() => {
   trackedEvents = [];
   assistantWrapper = null;
   window.localStorage.clear();
+  // agui 传输默认 restoreSession=true，会按 sessionKey 复原上次运行；不清理即跨用例污染。
+  window.sessionStorage.clear();
   useIpdAiWorkspace().setMode('classic');
   useIpdAiWorkspace().setPane('cards');
   vi.mocked(fetchGuideEvents).mockReset();
@@ -293,6 +324,8 @@ beforeEach(() => {
   vi.mocked(createProjectAgentRun).mockResolvedValue({ runId: 'run-1', status: 'PENDING' });
   vi.mocked(fetchAgentRunEvents).mockResolvedValue({ events: [], nextSeq: 0, terminal: false });
   vi.mocked(listProjectAgentRuns).mockResolvedValue([]);
+  vi.mocked(listAiDocumentVersions).mockReset();
+  vi.mocked(listAiDocumentVersions).mockResolvedValue([]);
   vi.mocked(fetchAgentRun).mockResolvedValue({
     runId: 'run-1',
     projectId: 'P-1',
@@ -335,9 +368,16 @@ function bodyQuery<T extends Element = HTMLElement>(selector: string): T | null 
 }
 
 /** 挂载助手并打开抽屉（Drawer getContainer=body 传送，按仓内惯例 attachTo + body 查询）。 */
-async function mountAssistant(props: { projectCurrentStage?: string; stages?: Array<{ code: string; name: string }> } = {}) {
+async function mountAssistant(
+  props: { projectCurrentStage?: string; stages?: Array<{ code: string; name: string }> } = {},
+  options: { router?: ReturnType<typeof createRouter> } = {},
+) {
   document.body.innerHTML = '';
-  assistantWrapper = mount(AiAssistant, { attachTo: document.body, props });
+  assistantWrapper = mount(AiAssistant, {
+    attachTo: document.body,
+    global: options.router ? { plugins: [options.router] } : undefined,
+    props,
+  });
   if (useIpdAiWorkspace().mode.value === 'classic') {
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-fab"]')!.click();
   }
@@ -887,8 +927,8 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(false);
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-classic"]')!.click();
     await flushPromises();
-    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-fab"]')!.click();
-    await flushPromises();
+    expect(bodyQuery('.ant-drawer-open')).toBeTruthy();
+    expect(bodyQuery('[data-testid="ipd-ai-workbench"]')).toBeNull();
     expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(false);
     await sendText('副驾继续');
     expect(streamCalls).toHaveLength(2);
@@ -921,8 +961,8 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(false);
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-classic"]')!.click();
     await flushPromises();
-    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-fab"]')!.click();
-    await flushPromises();
+    expect(bodyQuery('.ant-drawer-open')).toBeTruthy();
+    expect(bodyQuery('[data-testid="ipd-ai-workbench"]')).toBeNull();
     expect(bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-send"]')?.disabled).toBe(false);
   });
 
@@ -1262,11 +1302,74 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
 
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-mode-classic"]')!.click();
     await flushPromises();
-    bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-fab"]')!.click();
-    await flushPromises();
+    expect(bodyQuery('.ant-drawer-open')).toBeTruthy();
     bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-step-S1"]')!.click();
     await flushPromises();
     expect(fetchGuideEvents).toHaveBeenCalledWith('S1', 'P-1');
+  });
+
+  it('㉓ meta 帧的待办清单渲染在回答下方，外链不做成按钮', async () => {
+    await mountAssistant();
+    await sendText('我的待办');
+    lastHandlers().onMeta({
+      answer: '',
+      data: [
+        { hint: '', title: '智能锁通信协议评审', type: 'stage_sign', url: '' },
+        { hint: '待签', title: '归档复核', type: 'deletion_review', url: '/ipd/projects/2/actions/9' },
+        { hint: null, title: '外链', type: 'TASK', url: 'https://example.invalid/x' },
+      ],
+      intent: 'TASKS',
+      latencyMs: 1,
+      sources: ['workbench.tasks'],
+      tokenCompletion: 0,
+      tokenPrompt: 0,
+    });
+    lastHandlers().onDelta('你有 2 项待办，下方按类型排序展示。');
+    lastHandlers().onDone(doneWith());
+    await flushPromises();
+    const list = bodyQuery('[data-testid="ipd-ai-msg-items"]');
+    expect(list?.textContent).toContain('智能锁通信协议评审');
+    expect(list?.textContent).toContain('归档复核');
+    expect(list?.textContent).toContain('待签');
+    expect(list?.textContent).toContain('外链');
+    expect([...(list?.querySelectorAll('button') ?? [])].map((button) => button.textContent?.trim())).toEqual(['归档复核']);
+  });
+
+  it('㉓b 站内待办按钮点进已有动作页', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', component: { template: '<div />' } },
+        {
+          path: '/ipd/projects/:projectId/actions/:actionId',
+          name: 'IpdActionDetail',
+          component: { template: '<div data-testid="action-page" />' },
+        },
+      ],
+    });
+    await router.push('/');
+    await router.isReady();
+    await mountAssistant({}, { router });
+    await sendText('我的待办');
+    lastHandlers().onMeta({
+      answer: '',
+      data: [
+        { hint: '熵基互联+智能锁联动', title: '智能锁通信协议评审', type: 'stage_sign', url: '/ipd/projects/2/actions/9' },
+      ],
+      intent: 'TASKS',
+      latencyMs: 1,
+      sources: ['workbench.tasks'],
+      tokenCompletion: 0,
+      tokenPrompt: 0,
+    });
+    lastHandlers().onDelta('你有 1 项待办，下方按类型排序展示。');
+    lastHandlers().onDone(doneWith());
+    await flushPromises();
+    const button = bodyQuery<HTMLButtonElement>('[data-testid="ipd-ai-msg-items"] button');
+    expect(button?.textContent).toContain('智能锁通信协议评审');
+    button!.click();
+    await flushPromises();
+    expect(router.currentRoute.value.fullPath).toBe('/ipd/projects/2/actions/9');
   });
 
   it('㉒ 对话栏可以切换项目，并同步全局当前项目', async () => {
@@ -1282,4 +1385,56 @@ describe('AI 副驾 done 帧卡片分发渲染（P2-02）', () => {
     expect(synced).toHaveLength(1);
     expect(bodyQuery('[data-testid="ipd-ai-ctx"]')?.textContent).toContain('#P-2');
   });
+});
+
+describe('待办进入后的产物审核', () => {
+  it('深链带 docId 时在现有侧栏显示当前版本的审核通过和退回修改，不创建运行', async () => {
+    const previous = `${window.location.pathname}${window.location.search}`;
+    window.history.replaceState({}, '', '/ipd/ai-assistant?projectId=200&docId=9001&actionCode=C02');
+    vi.mocked(fetchSubStages).mockResolvedValue([]);
+    vi.mocked(listAiDocumentVersions).mockResolvedValue([
+      {
+        content: '竞品正文',
+        contentSha256: null,
+        createTime: null,
+        docType: 'MRD',
+        id: '9001',
+        model: null,
+        parentVersionId: null,
+        projectId: '200',
+        reviewedAt: null,
+        reviewedBy: null,
+        status: 'GENERATED',
+        title: '竞品分析',
+        tokenCompletion: null,
+        tokenPrompt: null,
+        versionNo: 1,
+      },
+    ]);
+    try {
+      await mountAssistant();
+      const review = bodyQuery('[data-testid="document-version-review"]');
+      expect(review?.textContent).toContain('待审核');
+      expect(review?.textContent).toContain('审核通过');
+      expect(review?.textContent).toContain('退回修改');
+      expect(bodyQuery('[data-testid="ipd-ai-runs"]')).not.toBeNull();
+      expect(createProjectAgentRun).not.toHaveBeenCalled();
+    } finally {
+      window.history.replaceState({}, '', previous || '/');
+    }
+  });
+});
+
+it('移除动作深链后不残留上一动作绑定', async () => {
+  const router = createRouter({ history: createMemoryHistory(), routes: [
+    { path: '/ipd/ai-assistant', component: { template: '<div />' } },
+  ] });
+  await router.push('/ipd/ai-assistant?projectId=200&actionCode=C02');
+  await router.isReady();
+  vi.mocked(fetchSubStages).mockResolvedValue([]);
+  await mountAssistant({}, { router });
+  expect(assistantWrapper!.findComponent({ name: 'ProjectAgentPanel' }).props('actionCode')).toBe('C02');
+  await router.push('/ipd/ai-assistant?projectId=200');
+  await flushPromises();
+  expect(assistantWrapper!.findComponent({ name: 'ProjectAgentPanel' }).props('actionCode')).toBeUndefined();
 });

@@ -425,7 +425,7 @@ describe('R232 P2-03 fillContext：pageContext 随请求上送', () => {
     onMeta: () => {},
   };
   /** 键面 = 后端 fillPagePath 解析面（AiCopilotService.java L317-325）：scene/actionCode/stageActionId。 */
-  const ctx = { actionCode: 'C08', scene: 'stage-action-fields', stageActionId: 9001 };
+  const ctx = { actionCode: 'C08', scene: 'stage-action-fields', stageActionId: '9001' };
 
   beforeEach(() => registerCopilotPageContext(null));
   afterEach(() => registerCopilotPageContext(null));
@@ -450,6 +450,24 @@ describe('R232 P2-03 fillContext：pageContext 随请求上送', () => {
       scene: 'stage-action-fields',
       stageActionId: 9001,
     });
+  });
+
+  it('超过 2^53 的 stageActionId 按原文拼成 JSON 数字，不经 Number()', async () => {
+    const snowflake = '9007199254740993';
+    const fetcher = vi.fn().mockResolvedValue(
+      sseResponse(frame('done', { status: 'ok', tokenPrompt: 0, tokenCompletion: 0, latencyMs: 1 })),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    await streamCopilot(
+      {
+        message: '帮我填一下',
+        pageContext: { actionCode: 'C08', scene: 'stage-action-fields', stageActionId: snowflake },
+      },
+      noopHandlers,
+    );
+    const raw = String(new URL(String(fetcher.mock.calls[0]![0]), 'http://test.local').searchParams.get('pageContext'));
+    expect(raw).toContain(`"stageActionId":${snowflake}`);
+    expect(raw).not.toContain(String(Number(snowflake)));
   });
 
   it('fillContext 注册表：input 未传时以宿主页面注册上下文上送；清除后不再上送', async () => {
