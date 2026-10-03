@@ -1,0 +1,2442 @@
+{
+ "summary": {
+  "at": "2026-09-30T20:13:57.258Z",
+  "routesTotal": 66,
+  "admin": {
+   "ok": 58,
+   "blocked": [],
+   "white": [],
+   "notfound": [],
+   "warn": [
+    {
+     "r": "/ipd/projects/:projectId/change/:changeId",
+     "c": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+     "h": "404 /api/v1/requirement-changes/1"
+    },
+    {
+     "r": "/ipd/projects/:projectId/kpi",
+     "c": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+     "h": "400 /api/v1/post-launch-reviews/pending?projectId=2103713141614489601"
+    },
+    {
+     "r": "/ipd/requirements/:id",
+     "c": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+     "h": "404 /api/v1/demands/2103713141614489601"
+    },
+    {
+     "r": "/ipd/bids/:bidId/respond",
+     "c": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+     "h": "404 /api/v1/bid-invitations/1"
+    },
+    {
+     "r": "/ipd/bids/:bidId/select",
+     "c": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+     "h": "404 /api/v1/bid-invitations/1"
+    }
+   ]
+  },
+  "rd": {
+   "ok": 37,
+   "blocked": [
+    "/ipd/audit-logs",
+    "/ipd/projects/create",
+    "/ipd/bids/create",
+    "/ipd/deletion/archive",
+    "/ipd/product-catalog",
+    "/ipd/identity-sync",
+    "/ipd/admin/org",
+    "/ipd/admin/config",
+    "/ipd/admin/business-config",
+    "/ipd/admin/role-permission",
+    "/ipd/admin/sop",
+    "/ipd/admin/gate-elements",
+    "/ipd/admin/gate-detail",
+    "/ipd/admin/cert-templates",
+    "/ipd/admin/ai-config",
+    "/ipd/admin/audit-logs-old",
+    "/ipd/admin/handover",
+    "/ipd/admin/compliance",
+    "/ipd/admin/person-sync",
+    "/ipd/admin/p0-escalation",
+    "/ipd/admin/permanent-delete"
+   ],
+   "white": [],
+   "notfound": [],
+   "warn": [
+    {
+     "r": "/ipd/projects/:projectId/change/:changeId",
+     "c": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+     "h": "404 /api/v1/requirement-changes/1"
+    },
+    {
+     "r": "/ipd/projects/:projectId/kpi",
+     "c": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+     "h": "400 /api/v1/post-launch-reviews/pending?projectId=2103713141614489601"
+    },
+    {
+     "r": "/ipd/requirements/:id",
+     "c": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+     "h": "404 /api/v1/demands/2103713141614489601"
+    },
+    {
+     "r": "/ipd/bids/:bidId/respond",
+     "c": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+     "h": "404 /api/v1/bid-invitations/1"
+    },
+    {
+     "r": "/ipd/bids/:bidId/select",
+     "c": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+     "h": "404 /api/v1/bid-invitations/1"
+    }
+   ]
+  },
+  "roleDiffRdBlockedAdminOk": [
+   "/ipd/audit-logs",
+   "/ipd/projects/create",
+   "/ipd/bids/create",
+   "/ipd/deletion/archive",
+   "/ipd/product-catalog",
+   "/ipd/identity-sync",
+   "/ipd/admin/org",
+   "/ipd/admin/config",
+   "/ipd/admin/business-config",
+   "/ipd/admin/role-permission",
+   "/ipd/admin/sop",
+   "/ipd/admin/gate-elements",
+   "/ipd/admin/gate-detail",
+   "/ipd/admin/cert-templates",
+   "/ipd/admin/ai-config",
+   "/ipd/admin/audit-logs-old",
+   "/ipd/admin/handover",
+   "/ipd/admin/compliance",
+   "/ipd/admin/person-sync",
+   "/ipd/admin/p0-escalation",
+   "/ipd/admin/permanent-delete"
+  ],
+  "narrow": [
+   {
+    "page": "/ipd/workbench",
+    "scrollW": 375,
+    "clientW": 375,
+    "horizontalOverflow": false
+   },
+   {
+    "page": "/ipd/projects",
+    "scrollW": 375,
+    "clientW": 375,
+    "horizontalOverflow": false
+   },
+   {
+    "page": "/ipd/project/2103713141614489601/overview",
+    "scrollW": 375,
+    "clientW": 375,
+    "horizontalOverflow": false
+   },
+   {
+    "page": "/ipd/admin/ai-models",
+    "scrollW": 375,
+    "clientW": 375,
+    "horizontalOverflow": false
+   },
+   {
+    "page": "/ipd/product-lines",
+    "scrollW": 375,
+    "clientW": 375,
+    "horizontalOverflow": false
+   }
+  ],
+  "keyboard": [
+   {
+    "page": "/ipd/workbench",
+    "tabTargets": [
+     "a",
+     "div",
+     "button",
+     "button",
+     "button",
+     "button",
+     "button",
+     "button"
+    ],
+    "anyFocusable": true,
+    "focusRingVisible": true
+   },
+   {
+    "page": "/ipd/projects",
+    "tabTargets": [
+     "a",
+     "div",
+     "button",
+     "button",
+     "button",
+     "button",
+     "button",
+     "button"
+    ],
+    "anyFocusable": true,
+    "focusRingVisible": true
+   },
+   {
+    "page": "/ipd/project/2103713141614489601/overview",
+    "tabTargets": [
+     "button",
+     "body",
+     "button",
+     "body",
+     "button",
+     "body",
+     "button",
+     "body"
+    ],
+    "anyFocusable": true,
+    "focusRingVisible": false
+   }
+  ]
+ },
+ "byAccount": {
+  "admin": [
+   {
+    "route": "/ipd/workbench",
+    "title": "我的工作台",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/workbench",
+    "finalUrl": "/ipd/workbench",
+    "textLen": 21203,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 1045
+   },
+   {
+    "route": "/ipd/audit-logs",
+    "title": "审计日志",
+    "authority": [],
+    "access": [
+     "ipd:audit-log:list",
+     "ipd:audit-log:verify",
+     "ipd:audit-log:export"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/audit-logs",
+    "finalUrl": "/ipd/audit-logs",
+    "textLen": 11490,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 942
+   },
+   {
+    "route": "/ipd/projects/create",
+    "title": "新建项目",
+    "authority": [],
+    "access": [
+     "ipd:project:add"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/create",
+    "finalUrl": "/ipd/projects/create",
+    "textLen": 10478,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 1063
+   },
+   {
+    "route": "/ipd/projects/legacy-import",
+    "title": "存量项目导入",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/legacy-import",
+    "finalUrl": "/ipd/projects/legacy-import",
+    "textLen": 10378,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 932
+   },
+   {
+    "route": "/ipd/projects/:projectId/overview",
+    "title": "项目概览",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/overview",
+    "finalUrl": "/ipd/projects/2103713141614489601/overview",
+    "textLen": 10804,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 930
+   },
+   {
+    "route": "/ipd/projects/:projectId/flow",
+    "title": "IPD 流程",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/flow",
+    "finalUrl": "/ipd/projects/2103713141614489601/flow",
+    "textLen": 13111,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 930
+   },
+   {
+    "route": "/ipd/projects/:projectId/gates",
+    "title": "Gate 评审",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/gates",
+    "finalUrl": "/ipd/projects/2103713141614489601/gates",
+    "textLen": 10510,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 931
+   },
+   {
+    "route": "/ipd/projects/:projectId/changes",
+    "title": "需求与变更",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/changes",
+    "finalUrl": "/ipd/projects/2103713141614489601/changes",
+    "textLen": 10204,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 934
+   },
+   {
+    "route": "/ipd/projects/:projectId/change/:changeId",
+    "title": "变更单详情",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/change/1",
+    "finalUrl": "/ipd/projects/2103713141614489601/change/1",
+    "textLen": 10041,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [
+     "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "httpErrors": [
+     "404 /api/v1/requirement-changes/1"
+    ],
+    "err": "",
+    "ms": 935
+   },
+   {
+    "route": "/ipd/projects/:projectId/kpi",
+    "title": "KPI 考核",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/kpi",
+    "finalUrl": "/ipd/projects/2103713141614489601/kpi",
+    "textLen": 10710,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [
+     "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+    ],
+    "httpErrors": [
+     "400 /api/v1/post-launch-reviews/pending?projectId=2103713141614489601"
+    ],
+    "err": "",
+    "ms": 929
+   },
+   {
+    "route": "/ipd/projects/:projectId/incentive",
+    "title": "激励台账",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/incentive",
+    "finalUrl": "/ipd/projects/2103713141614489601/incentive",
+    "textLen": 10874,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 935
+   },
+   {
+    "route": "/ipd/projects/:projectId/documents",
+    "title": "文档与交付物",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/documents",
+    "finalUrl": "/ipd/projects/2103713141614489601/documents",
+    "textLen": 10505,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 939
+   },
+   {
+    "route": "/ipd/projects/:projectId/audit",
+    "title": "项目日志",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/audit",
+    "finalUrl": "/ipd/projects/2103713141614489601/audit",
+    "textLen": 10103,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 934
+   },
+   {
+    "route": "/ipd/projects/:projectId/circle",
+    "title": "协作圈",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/circle",
+    "finalUrl": "/ipd/projects/2103713141614489601/circle",
+    "textLen": 9991,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 1077
+   },
+   {
+    "route": "/ipd/projects/:projectId/actions/:actionId",
+    "title": "动作详情",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/actions/1",
+    "finalUrl": "/ipd/projects/2103713141614489601/actions/1",
+    "textLen": 9849,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 930
+   },
+   {
+    "route": "/ipd/requirements",
+    "title": "需求管理",
+    "authority": [],
+    "access": [
+     "ipd:product:query"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/requirements",
+    "finalUrl": "/ipd/requirements",
+    "textLen": 20661,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 929
+   },
+   {
+    "route": "/ipd/requirements/:id",
+    "title": "需求详情",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/requirements/2103713141614489601",
+    "finalUrl": "/ipd/requirements/2103713141614489601",
+    "textLen": 9848,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [
+     "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "httpErrors": [
+     "404 /api/v1/demands/2103713141614489601"
+    ],
+    "err": "",
+    "ms": 934
+   },
+   {
+    "route": "/ipd/product-lines",
+    "title": "产品线团队空间",
+    "authority": [],
+    "access": [
+     "ipd:product-line:list"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/product-lines",
+    "finalUrl": "/ipd/product-lines",
+    "textLen": 10122,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 971
+   },
+   {
+    "route": "/ipd/products/manage",
+    "title": "产品管理",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/products/manage",
+    "finalUrl": "/ipd/products/manage",
+    "textLen": 11457,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 990
+   },
+   {
+    "route": "/ipd/products/create",
+    "title": "新增产品",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/products/create",
+    "finalUrl": "/ipd/products/create",
+    "textLen": 9924,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 937
+   },
+   {
+    "route": "/ipd/products/:productId/edit",
+    "title": "编辑产品",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/products/2103713141559963649/edit",
+    "finalUrl": "/ipd/products/2103713141559963649/edit",
+    "textLen": 9910,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 931
+   },
+   {
+    "route": "/ipd/bids/create",
+    "title": "发起招标",
+    "authority": [],
+    "access": [
+     "ipd:bid-invitation:create"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/bids/create",
+    "finalUrl": "/ipd/bids/create",
+    "textLen": 10066,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 931
+   },
+   {
+    "route": "/ipd/bids/:bidId/respond",
+    "title": "应标",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/bids/1/respond",
+    "finalUrl": "/ipd/bids/1/respond",
+    "textLen": 9882,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [
+     "Failed to load resource: the server responded with a status of 404 (Not Found)",
+     "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "httpErrors": [
+     "404 /api/v1/bid-invitations/1",
+     "404 /api/v1/bid-invitations/1/responses"
+    ],
+    "err": "",
+    "ms": 934
+   },
+   {
+    "route": "/ipd/bids/:bidId/select",
+    "title": "遴选",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/bids/1/select",
+    "finalUrl": "/ipd/bids/1/select",
+    "textLen": 9821,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [
+     "Failed to load resource: the server responded with a status of 404 (Not Found)",
+     "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "httpErrors": [
+     "404 /api/v1/bid-invitations/1",
+     "404 /api/v1/bid-invitations/1/responses"
+    ],
+    "err": "",
+    "ms": 933
+   },
+   {
+    "route": "/ipd/bids/my-responses",
+    "title": "我的应标",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/bids/my-responses",
+    "finalUrl": "/ipd/bids/my-responses",
+    "textLen": 10036,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 927
+   },
+   {
+    "route": "/ipd/changes",
+    "title": "变更管理",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/changes",
+    "finalUrl": "/ipd/changes",
+    "textLen": 19920,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 927
+   },
+   {
+    "route": "/ipd/documents",
+    "title": "资料库",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/documents",
+    "finalUrl": "/ipd/documents",
+    "textLen": 9903,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 930
+   },
+   {
+    "route": "/ipd/reviews",
+    "title": "阶段确认",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/reviews",
+    "finalUrl": "/ipd/reviews",
+    "textLen": 20307,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 940
+   },
+   {
+    "route": "/ipd/timeline",
+    "title": "全流程轨迹",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/timeline",
+    "finalUrl": "/ipd/timeline",
+    "textLen": 55830,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 950
+   },
+   {
+    "route": "/ipd/reports",
+    "title": "报表分析",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/reports",
+    "finalUrl": "/ipd/reports",
+    "textLen": 10402,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 945
+   },
+   {
+    "route": "/ipd/handover",
+    "title": "项目移交",
+    "authority": [],
+    "access": [
+     "ipd:handover:cancel"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/handover",
+    "finalUrl": "/ipd/handover",
+    "textLen": 30509,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 942
+   },
+   {
+    "route": "/ipd/kpi/functional",
+    "title": "功能 KPI",
+    "authority": [],
+    "access": [
+     "ipd:kpi:query"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/kpi/functional",
+    "finalUrl": "/ipd/kpi/functional",
+    "textLen": 10936,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 928
+   },
+   {
+    "route": "/ipd/kpi/shared",
+    "title": "共担 KPI 归集",
+    "authority": [],
+    "access": [
+     "ipd:kpi:query"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/kpi/shared",
+    "finalUrl": "/ipd/kpi/shared",
+    "textLen": 10349,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 927
+   },
+   {
+    "route": "/ipd/kpi/project-score",
+    "title": "项目绩效评定",
+    "authority": [],
+    "access": [
+     "ipd:kpi:query"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/kpi/project-score",
+    "finalUrl": "/ipd/kpi/project-score",
+    "textLen": 10038,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 928
+   },
+   {
+    "route": "/ipd/kpi/raw-records",
+    "title": "KPI 原始数据",
+    "authority": [],
+    "access": [
+     "ipd:kpi:query"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/kpi/raw-records",
+    "finalUrl": "/ipd/kpi/raw-records",
+    "textLen": 10030,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 937
+   },
+   {
+    "route": "/ipd/incentive/allowance",
+    "title": "津贴台账",
+    "authority": [],
+    "access": [
+     "ipd:system-config:read"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/incentive/allowance",
+    "finalUrl": "/ipd/incentive/allowance",
+    "textLen": 10356,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 925
+   },
+   {
+    "route": "/ipd/incentive/bonus-pool",
+    "title": "奖金池核算",
+    "authority": [],
+    "access": [
+     "ipd:bonus-pool:query",
+     "ipd:bonus-pool:compute",
+     "ipd:bonus-pool:freeze",
+     "ipd:bonus-pool:distribute"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/incentive/bonus-pool",
+    "finalUrl": "/ipd/incentive/bonus-pool",
+    "textLen": 10734,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 935
+   },
+   {
+    "route": "/ipd/incentive/contribution",
+    "title": "贡献度评定",
+    "authority": [],
+    "access": [
+     "ipd:contribution:query",
+     "ipd:contribution:save",
+     "ipd:contribution:confirm"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/incentive/contribution",
+    "finalUrl": "/ipd/incentive/contribution",
+    "textLen": 10019,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 930
+   },
+   {
+    "route": "/ipd/incentive/negative-feedback",
+    "title": "负反馈执行",
+    "authority": [],
+    "access": [
+     "ipd:negative-feedback:query",
+     "ipd:negative-feedback:create",
+     "ipd:negative-feedback:decide"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/incentive/negative-feedback",
+    "finalUrl": "/ipd/incentive/negative-feedback",
+    "textLen": 10028,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 926
+   },
+   {
+    "route": "/ipd/ai-assistant",
+    "title": "AI 文档助手",
+    "authority": [],
+    "access": [
+     "ipd:ai-document:list",
+     "ipd:ai-document:add",
+     "ipd:ai-document:edit",
+     "ipd:ai-document:review"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/ai-assistant",
+    "finalUrl": "/ipd/ai-assistant",
+    "textLen": 10245,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 925
+   },
+   {
+    "route": "/ipd/deletion/my-requests",
+    "title": "我的申请",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/deletion/my-requests",
+    "finalUrl": "/ipd/deletion/my-requests",
+    "textLen": 11276,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 935
+   },
+   {
+    "route": "/ipd/deletion/review",
+    "title": "待我审核",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/deletion/review",
+    "finalUrl": "/ipd/deletion/review",
+    "textLen": 10540,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 942
+   },
+   {
+    "route": "/ipd/deletion/archive",
+    "title": "归档区",
+    "authority": [
+     "SUPER_ADMIN"
+    ],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/deletion/archive",
+    "finalUrl": "/ipd/deletion/archive",
+    "textLen": 13045,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 942
+   },
+   {
+    "route": "/ipd/product-catalog",
+    "title": "产品目录",
+    "authority": [
+     "SUPER_ADMIN"
+    ],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/product-catalog",
+    "finalUrl": "/ipd/product-catalog",
+    "textLen": 23027,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 958
+   },
+   {
+    "route": "/ipd/identity-sync",
+    "title": "人员同步",
+    "authority": [
+     "SUPER_ADMIN"
+    ],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/identity-sync",
+    "finalUrl": "/ipd/identity-sync",
+    "textLen": 11539,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 953
+   },
+   {
+    "route": "/ipd/admin/org",
+    "title": "组织架构",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/org",
+    "finalUrl": "/ipd/admin/org",
+    "textLen": 10561,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 936
+   },
+   {
+    "route": "/ipd/admin/config",
+    "title": "参数配置",
+    "authority": [],
+    "access": [
+     "ipd:system-config:list",
+     "ipd:system-config:update"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/config",
+    "finalUrl": "/ipd/admin/config",
+    "textLen": 20645,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 929
+   },
+   {
+    "route": "/ipd/admin/business-config",
+    "title": "审批人配置",
+    "authority": [
+     "SUPER_ADMIN",
+     "GROUP_LEADER"
+    ],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/business-config",
+    "finalUrl": "/ipd/admin/business-config",
+    "textLen": 10081,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 936
+   },
+   {
+    "route": "/ipd/admin/role-permission",
+    "title": "角色权限配置",
+    "authority": [
+     "SUPER_ADMIN"
+    ],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/role-permission",
+    "finalUrl": "/ipd/admin/role-permission",
+    "textLen": 10249,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 936
+   },
+   {
+    "route": "/ipd/admin/sop",
+    "title": "SOP 模板",
+    "authority": [],
+    "access": [
+     "ipd:sop-template:edit"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/sop",
+    "finalUrl": "/ipd/admin/sop",
+    "textLen": 9926,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 931
+   },
+   {
+    "route": "/ipd/admin/gate-elements",
+    "title": "Gate 评审要素",
+    "authority": [],
+    "access": [
+     "ipd:gate-element:list"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/gate-elements",
+    "finalUrl": "/ipd/admin/gate-elements",
+    "textLen": 13006,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 932
+   },
+   {
+    "route": "/ipd/admin/gate-detail",
+    "title": "Gate 评审详情",
+    "authority": [],
+    "access": [
+     "ipd:gate-review:list"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/gate-detail",
+    "finalUrl": "/ipd/admin/gate-detail",
+    "textLen": 10324,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 944
+   },
+   {
+    "route": "/ipd/admin/cert-templates",
+    "title": "国别认证清单模板库",
+    "authority": [],
+    "access": [
+     "ipd:cert-template:list"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/cert-templates",
+    "finalUrl": "/ipd/admin/cert-templates",
+    "textLen": 10540,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 934
+   },
+   {
+    "route": "/ipd/admin/ai-config",
+    "title": "AI 模型配置",
+    "authority": [],
+    "access": [
+     "ipd:ai-model:list",
+     "ipd:ai-model:edit"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/ai-config",
+    "finalUrl": "/ipd/admin/ai-config",
+    "textLen": 10955,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 961
+   },
+   {
+    "route": "/ipd/admin/audit-logs-old",
+    "title": "审计日志（兼容路径）",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/audit-logs-old",
+    "finalUrl": "/ipd/admin/audit-logs-old",
+    "textLen": 11490,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 927
+   },
+   {
+    "route": "/ipd/admin/handover",
+    "title": "超级管理员移交",
+    "authority": [],
+    "access": [
+     "ipd:handover:cancel"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/handover",
+    "finalUrl": "/ipd/admin/handover",
+    "textLen": 10293,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 932
+   },
+   {
+    "route": "/ipd/admin/compliance",
+    "title": "合规中心",
+    "authority": [],
+    "access": [
+     "ipd:compliance:read"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/compliance",
+    "finalUrl": "/ipd/admin/compliance",
+    "textLen": 10196,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 928
+   },
+   {
+    "route": "/ipd/admin/person-sync",
+    "title": "同步任务",
+    "authority": [
+     "SUPER_ADMIN",
+     "GROUP_LEADER"
+    ],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/person-sync",
+    "finalUrl": "/ipd/admin/person-sync",
+    "textLen": 11478,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 928
+   },
+   {
+    "route": "/ipd/admin/p0-escalation",
+    "title": "P0 升级链",
+    "authority": [
+     "SUPER_ADMIN",
+     "GROUP_LEADER"
+    ],
+    "access": [
+     "ipd:p0-escalation:read"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/p0-escalation",
+    "finalUrl": "/ipd/admin/p0-escalation",
+    "textLen": 10011,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 939
+   },
+   {
+    "route": "/ipd/admin/permanent-delete",
+    "title": "永久清除",
+    "authority": [],
+    "access": [
+     "ipd:permanent-delete:execute"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/permanent-delete",
+    "finalUrl": "/ipd/admin/permanent-delete",
+    "textLen": 10180,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 924
+   },
+   {
+    "route": "/ipd/operation/recovery-warnings",
+    "title": "回款预警",
+    "authority": [],
+    "access": [
+     "ipd:recovery:check-90d",
+     "ipd:recovery:warnings:query"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/operation/recovery-warnings",
+    "finalUrl": "/ipd/operation/recovery-warnings",
+    "textLen": 10071,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 946
+   },
+   {
+    "route": "/ipd/operation/switching-acceptance",
+    "title": "切换验收",
+    "authority": [],
+    "access": [
+     "ipd:switching-acceptance:query",
+     "ipd:switching-acceptance:lock",
+     "ipd:switching-acceptance:unlock"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/operation/switching-acceptance",
+    "finalUrl": "/ipd/operation/switching-acceptance",
+    "textLen": 10147,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 930
+   },
+   {
+    "route": "/ipd/scenarios/landed-scenarios",
+    "title": "落地场景登记",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/scenarios/landed-scenarios",
+    "finalUrl": "/ipd/scenarios/landed-scenarios",
+    "textLen": 10083,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 944
+   }
+  ],
+  "rd": [
+   {
+    "route": "/ipd/workbench",
+    "title": "我的工作台",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/workbench",
+    "finalUrl": "/ipd/workbench",
+    "textLen": 8393,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 1004
+   },
+   {
+    "route": "/ipd/audit-logs",
+    "title": "审计日志",
+    "authority": [],
+    "access": [
+     "ipd:audit-log:list",
+     "ipd:audit-log:verify",
+     "ipd:audit-log:export"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/audit-logs",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 954
+   },
+   {
+    "route": "/ipd/projects/create",
+    "title": "新建项目",
+    "authority": [],
+    "access": [
+     "ipd:project:add"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/create",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 936
+   },
+   {
+    "route": "/ipd/projects/legacy-import",
+    "title": "存量项目导入",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/legacy-import",
+    "finalUrl": "/ipd/projects/legacy-import",
+    "textLen": 845,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 950
+   },
+   {
+    "route": "/ipd/projects/:projectId/overview",
+    "title": "项目概览",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/overview",
+    "finalUrl": "/ipd/projects/2103713141614489601/overview",
+    "textLen": 1287,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 933
+   },
+   {
+    "route": "/ipd/projects/:projectId/flow",
+    "title": "IPD 流程",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/flow",
+    "finalUrl": "/ipd/projects/2103713141614489601/flow",
+    "textLen": 3578,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 936
+   },
+   {
+    "route": "/ipd/projects/:projectId/gates",
+    "title": "Gate 评审",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/gates",
+    "finalUrl": "/ipd/projects/2103713141614489601/gates",
+    "textLen": 977,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 940
+   },
+   {
+    "route": "/ipd/projects/:projectId/changes",
+    "title": "需求与变更",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/changes",
+    "finalUrl": "/ipd/projects/2103713141614489601/changes",
+    "textLen": 671,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 932
+   },
+   {
+    "route": "/ipd/projects/:projectId/change/:changeId",
+    "title": "变更单详情",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/change/1",
+    "finalUrl": "/ipd/projects/2103713141614489601/change/1",
+    "textLen": 508,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [
+     "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "httpErrors": [
+     "404 /api/v1/requirement-changes/1"
+    ],
+    "err": "",
+    "ms": 930
+   },
+   {
+    "route": "/ipd/projects/:projectId/kpi",
+    "title": "KPI 考核",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/kpi",
+    "finalUrl": "/ipd/projects/2103713141614489601/kpi",
+    "textLen": 1177,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [
+     "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+    ],
+    "httpErrors": [
+     "400 /api/v1/post-launch-reviews/pending?projectId=2103713141614489601"
+    ],
+    "err": "",
+    "ms": 928
+   },
+   {
+    "route": "/ipd/projects/:projectId/incentive",
+    "title": "激励台账",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/incentive",
+    "finalUrl": "/ipd/projects/2103713141614489601/incentive",
+    "textLen": 1294,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 940
+   },
+   {
+    "route": "/ipd/projects/:projectId/documents",
+    "title": "文档与交付物",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/documents",
+    "finalUrl": "/ipd/projects/2103713141614489601/documents",
+    "textLen": 972,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 938
+   },
+   {
+    "route": "/ipd/projects/:projectId/audit",
+    "title": "项目日志",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/audit",
+    "finalUrl": "/ipd/projects/2103713141614489601/audit",
+    "textLen": 570,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 936
+   },
+   {
+    "route": "/ipd/projects/:projectId/circle",
+    "title": "协作圈",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/circle",
+    "finalUrl": "/ipd/projects/2103713141614489601/circle",
+    "textLen": 452,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 935
+   },
+   {
+    "route": "/ipd/projects/:projectId/actions/:actionId",
+    "title": "动作详情",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/projects/2103713141614489601/actions/1",
+    "finalUrl": "/ipd/projects/2103713141614489601/actions/1",
+    "textLen": 316,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 936
+   },
+   {
+    "route": "/ipd/requirements",
+    "title": "需求管理",
+    "authority": [],
+    "access": [
+     "ipd:product:query"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/requirements",
+    "finalUrl": "/ipd/requirements",
+    "textLen": 2762,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 940
+   },
+   {
+    "route": "/ipd/requirements/:id",
+    "title": "需求详情",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/requirements/2103713141614489601",
+    "finalUrl": "/ipd/requirements/2103713141614489601",
+    "textLen": 315,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [
+     "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "httpErrors": [
+     "404 /api/v1/demands/2103713141614489601"
+    ],
+    "err": "",
+    "ms": 937
+   },
+   {
+    "route": "/ipd/product-lines",
+    "title": "产品线团队空间",
+    "authority": [],
+    "access": [
+     "ipd:product-line:list"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/product-lines",
+    "finalUrl": "/ipd/product-lines",
+    "textLen": 427,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 930
+   },
+   {
+    "route": "/ipd/products/manage",
+    "title": "产品管理",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/products/manage",
+    "finalUrl": "/ipd/products/manage",
+    "textLen": 1924,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 950
+   },
+   {
+    "route": "/ipd/products/create",
+    "title": "新增产品",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/products/create",
+    "finalUrl": "/ipd/products/create",
+    "textLen": 391,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 942
+   },
+   {
+    "route": "/ipd/products/:productId/edit",
+    "title": "编辑产品",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/products/2103713141559963649/edit",
+    "finalUrl": "/ipd/products/2103713141559963649/edit",
+    "textLen": 377,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 951
+   },
+   {
+    "route": "/ipd/bids/create",
+    "title": "发起招标",
+    "authority": [],
+    "access": [
+     "ipd:bid-invitation:create"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/bids/create",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 938
+   },
+   {
+    "route": "/ipd/bids/:bidId/respond",
+    "title": "应标",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/bids/1/respond",
+    "finalUrl": "/ipd/bids/1/respond",
+    "textLen": 349,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [
+     "Failed to load resource: the server responded with a status of 404 (Not Found)",
+     "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "httpErrors": [
+     "404 /api/v1/bid-invitations/1",
+     "404 /api/v1/bid-invitations/1/responses"
+    ],
+    "err": "",
+    "ms": 932
+   },
+   {
+    "route": "/ipd/bids/:bidId/select",
+    "title": "遴选",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/bids/1/select",
+    "finalUrl": "/ipd/bids/1/select",
+    "textLen": 288,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [
+     "Failed to load resource: the server responded with a status of 404 (Not Found)",
+     "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "httpErrors": [
+     "404 /api/v1/bid-invitations/1",
+     "404 /api/v1/bid-invitations/1/responses"
+    ],
+    "err": "",
+    "ms": 934
+   },
+   {
+    "route": "/ipd/bids/my-responses",
+    "title": "我的应标",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/bids/my-responses",
+    "finalUrl": "/ipd/bids/my-responses",
+    "textLen": 835,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 947
+   },
+   {
+    "route": "/ipd/changes",
+    "title": "变更管理",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/changes",
+    "finalUrl": "/ipd/changes",
+    "textLen": 854,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 927
+   },
+   {
+    "route": "/ipd/documents",
+    "title": "资料库",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/documents",
+    "finalUrl": "/ipd/documents",
+    "textLen": 296,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 957
+   },
+   {
+    "route": "/ipd/reviews",
+    "title": "阶段确认",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/reviews",
+    "finalUrl": "/ipd/reviews",
+    "textLen": 1241,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 960
+   },
+   {
+    "route": "/ipd/timeline",
+    "title": "全流程轨迹",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/timeline",
+    "finalUrl": "/ipd/timeline",
+    "textLen": 2082,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 932
+   },
+   {
+    "route": "/ipd/reports",
+    "title": "报表分析",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/reports",
+    "finalUrl": "/ipd/reports",
+    "textLen": 1356,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 932
+   },
+   {
+    "route": "/ipd/handover",
+    "title": "项目移交",
+    "authority": [],
+    "access": [
+     "ipd:handover:cancel"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/handover",
+    "finalUrl": "/ipd/handover",
+    "textLen": 1373,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 928
+   },
+   {
+    "route": "/ipd/kpi/functional",
+    "title": "功能 KPI",
+    "authority": [],
+    "access": [
+     "ipd:kpi:query"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/kpi/functional",
+    "finalUrl": "/ipd/kpi/functional",
+    "textLen": 1403,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 939
+   },
+   {
+    "route": "/ipd/kpi/shared",
+    "title": "共担 KPI 归集",
+    "authority": [],
+    "access": [
+     "ipd:kpi:query"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/kpi/shared",
+    "finalUrl": "/ipd/kpi/shared",
+    "textLen": 816,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 929
+   },
+   {
+    "route": "/ipd/kpi/project-score",
+    "title": "项目绩效评定",
+    "authority": [],
+    "access": [
+     "ipd:kpi:query"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/kpi/project-score",
+    "finalUrl": "/ipd/kpi/project-score",
+    "textLen": 539,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 942
+   },
+   {
+    "route": "/ipd/kpi/raw-records",
+    "title": "KPI 原始数据",
+    "authority": [],
+    "access": [
+     "ipd:kpi:query"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/kpi/raw-records",
+    "finalUrl": "/ipd/kpi/raw-records",
+    "textLen": 497,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 927
+   },
+   {
+    "route": "/ipd/incentive/allowance",
+    "title": "津贴台账",
+    "authority": [],
+    "access": [
+     "ipd:system-config:read"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/incentive/allowance",
+    "finalUrl": "/ipd/incentive/allowance",
+    "textLen": 822,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 941
+   },
+   {
+    "route": "/ipd/incentive/bonus-pool",
+    "title": "奖金池核算",
+    "authority": [],
+    "access": [
+     "ipd:bonus-pool:query",
+     "ipd:bonus-pool:compute",
+     "ipd:bonus-pool:freeze",
+     "ipd:bonus-pool:distribute"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/incentive/bonus-pool",
+    "finalUrl": "/ipd/incentive/bonus-pool",
+    "textLen": 1154,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 928
+   },
+   {
+    "route": "/ipd/incentive/contribution",
+    "title": "贡献度评定",
+    "authority": [],
+    "access": [
+     "ipd:contribution:query",
+     "ipd:contribution:save",
+     "ipd:contribution:confirm"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/incentive/contribution",
+    "finalUrl": "/ipd/incentive/contribution",
+    "textLen": 486,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 938
+   },
+   {
+    "route": "/ipd/incentive/negative-feedback",
+    "title": "负反馈执行",
+    "authority": [],
+    "access": [
+     "ipd:negative-feedback:query",
+     "ipd:negative-feedback:create",
+     "ipd:negative-feedback:decide"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/incentive/negative-feedback",
+    "finalUrl": "/ipd/incentive/negative-feedback",
+    "textLen": 495,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 927
+   },
+   {
+    "route": "/ipd/ai-assistant",
+    "title": "AI 文档助手",
+    "authority": [],
+    "access": [
+     "ipd:ai-document:list",
+     "ipd:ai-document:add",
+     "ipd:ai-document:edit",
+     "ipd:ai-document:review"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/ai-assistant",
+    "finalUrl": "/ipd/ai-assistant",
+    "textLen": 712,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 927
+   },
+   {
+    "route": "/ipd/deletion/my-requests",
+    "title": "我的申请",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/deletion/my-requests",
+    "finalUrl": "/ipd/deletion/my-requests",
+    "textLen": 1873,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 930
+   },
+   {
+    "route": "/ipd/deletion/review",
+    "title": "待我审核",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/deletion/review",
+    "finalUrl": "/ipd/deletion/review",
+    "textLen": 397,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 927
+   },
+   {
+    "route": "/ipd/deletion/archive",
+    "title": "归档区",
+    "authority": [
+     "SUPER_ADMIN"
+    ],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/deletion/archive",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 949
+   },
+   {
+    "route": "/ipd/product-catalog",
+    "title": "产品目录",
+    "authority": [
+     "SUPER_ADMIN"
+    ],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/product-catalog",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 939
+   },
+   {
+    "route": "/ipd/identity-sync",
+    "title": "人员同步",
+    "authority": [
+     "SUPER_ADMIN"
+    ],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/identity-sync",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 942
+   },
+   {
+    "route": "/ipd/admin/org",
+    "title": "组织架构",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/org",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 939
+   },
+   {
+    "route": "/ipd/admin/config",
+    "title": "参数配置",
+    "authority": [],
+    "access": [
+     "ipd:system-config:list",
+     "ipd:system-config:update"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/config",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 956
+   },
+   {
+    "route": "/ipd/admin/business-config",
+    "title": "审批人配置",
+    "authority": [
+     "SUPER_ADMIN",
+     "GROUP_LEADER"
+    ],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/business-config",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 935
+   },
+   {
+    "route": "/ipd/admin/role-permission",
+    "title": "角色权限配置",
+    "authority": [
+     "SUPER_ADMIN"
+    ],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/role-permission",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 940
+   },
+   {
+    "route": "/ipd/admin/sop",
+    "title": "SOP 模板",
+    "authority": [],
+    "access": [
+     "ipd:sop-template:edit"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/sop",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 950
+   },
+   {
+    "route": "/ipd/admin/gate-elements",
+    "title": "Gate 评审要素",
+    "authority": [],
+    "access": [
+     "ipd:gate-element:list"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/gate-elements",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 933
+   },
+   {
+    "route": "/ipd/admin/gate-detail",
+    "title": "Gate 评审详情",
+    "authority": [],
+    "access": [
+     "ipd:gate-review:list"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/gate-detail",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 949
+   },
+   {
+    "route": "/ipd/admin/cert-templates",
+    "title": "国别认证清单模板库",
+    "authority": [],
+    "access": [
+     "ipd:cert-template:list"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/cert-templates",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 933
+   },
+   {
+    "route": "/ipd/admin/ai-config",
+    "title": "AI 模型配置",
+    "authority": [],
+    "access": [
+     "ipd:ai-model:list",
+     "ipd:ai-model:edit"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/ai-config",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 952
+   },
+   {
+    "route": "/ipd/admin/audit-logs-old",
+    "title": "审计日志（兼容路径）",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/audit-logs-old",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 929
+   },
+   {
+    "route": "/ipd/admin/handover",
+    "title": "超级管理员移交",
+    "authority": [],
+    "access": [
+     "ipd:handover:cancel"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/handover",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 944
+   },
+   {
+    "route": "/ipd/admin/compliance",
+    "title": "合规中心",
+    "authority": [],
+    "access": [
+     "ipd:compliance:read"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/compliance",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 927
+   },
+   {
+    "route": "/ipd/admin/person-sync",
+    "title": "同步任务",
+    "authority": [
+     "SUPER_ADMIN",
+     "GROUP_LEADER"
+    ],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/person-sync",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 930
+   },
+   {
+    "route": "/ipd/admin/p0-escalation",
+    "title": "P0 升级链",
+    "authority": [
+     "SUPER_ADMIN",
+     "GROUP_LEADER"
+    ],
+    "access": [
+     "ipd:p0-escalation:read"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/p0-escalation",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 924
+   },
+   {
+    "route": "/ipd/admin/permanent-delete",
+    "title": "永久清除",
+    "authority": [],
+    "access": [
+     "ipd:permanent-delete:execute"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/admin/permanent-delete",
+    "finalUrl": "/ipd/no-access",
+    "textLen": 319,
+    "whiteScreen": false,
+    "blockedByGate": true,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 927
+   },
+   {
+    "route": "/ipd/operation/recovery-warnings",
+    "title": "回款预警",
+    "authority": [],
+    "access": [
+     "ipd:recovery:check-90d",
+     "ipd:recovery:warnings:query"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/operation/recovery-warnings",
+    "finalUrl": "/ipd/operation/recovery-warnings",
+    "textLen": 538,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 947
+   },
+   {
+    "route": "/ipd/operation/switching-acceptance",
+    "title": "切换验收",
+    "authority": [],
+    "access": [
+     "ipd:switching-acceptance:query",
+     "ipd:switching-acceptance:lock",
+     "ipd:switching-acceptance:unlock"
+    ],
+    "url": "http://127.0.0.12103713141614489601/ipd/operation/switching-acceptance",
+    "finalUrl": "/ipd/operation/switching-acceptance",
+    "textLen": 580,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 926
+   },
+   {
+    "route": "/ipd/scenarios/landed-scenarios",
+    "title": "落地场景登记",
+    "authority": [],
+    "access": [],
+    "url": "http://127.0.0.12103713141614489601/ipd/scenarios/landed-scenarios",
+    "finalUrl": "/ipd/scenarios/landed-scenarios",
+    "textLen": 550,
+    "whiteScreen": false,
+    "blockedByGate": false,
+    "notFound": false,
+    "consoleErrors": [],
+    "httpErrors": [],
+    "err": "",
+    "ms": 931
+   }
+  ]
+ }
+}
