@@ -1,0 +1,89 @@
+# 前端静态门禁（纯静态扫描，秒级，无需 node_modules / 构建）
+#
+# 来源：这两个门禁原挂在后端仓 ruoyi-ai/scripts/ 下，但它们扫的是**前端源码**
+#      （$REPO/apps/web-antd/src）。在后端仓里接 CI 必然失败——CI 是干净检出，
+#      没有兄弟仓库目录，实测 FRONT_DIR 指到不存在的目录一律 exit=2（输入缺失不降级）。
+#      2026-10-03 owner 决策：挪到本仓 CI，路径默认值改为本仓的 apps/web-antd/src。
+#
+# 本 workflow 只做两件事：
+#   1. 跑判定
+#   2. 跑自证能红（门禁自己会不会是假绿）—— 两个门禁都有 *_FAIL_SEED 入口
+#
+# ⚠️ 禁止在本文件里用 `|| echo` 或 `continue-on-error`：
+#    后端仓 r38-5-gates.yml 曾用 `|| echo` 吞掉退出码，文件头写着「fail → 阻断 PR」，
+#    实际 step 恒绿。这类假绿最难发现，因为读头部会以为门禁在生效。
+#
+# 退出码语义：0=通过  1=有违规（红）  2=门禁自身错误（红，不许当通过）
+
+name: static-gates
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web-antd/src/**'
+      - 'scripts/**'
+      - '.github/workflows/static-gates.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web-antd/src/**'
+      - 'scripts/**'
+      - '.github/workflows/static-gates.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-gates:
+    name: 前端静态门禁（2 项）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 门禁 1/2：内存泄漏反模式（BP-008）─────────────────
+      # 判据：定时器/监听/连接 的「调用数 > 清理数」。语法节点计数，
+      # 不证明句柄配对或运行时泄漏——脚本自己会打印这句免责。
+      - name: 1/2 内存泄漏模式
+        run: bash scripts/check-memory-leak-pattern.sh
+
+      - name: 自证能红 · 内存泄漏模式
+        env:
+          LEAK_FAIL_SEED: '1'
+        run: |
+          set +e
+          bash scripts/check-memory-leak-pattern.sh
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::门禁自证失败：注入 LEAK_FAIL_SEED 后仍返回 0，说明门禁是假绿"
+            exit 1
+          fi
+          echo "✅ 自证能红（exit=$rc），门禁确实会拦"
+
+      # ── 门禁 2/2：可访问性基础（BP-009）──────────────────
+      # 判据：img 缺 alt、ARIA 拼写错误等静态可判项。
+      # ⚠️ 与后端仓 a11y-ci.yml 的 axe-core 扫描**不等价**：那边跑的是
+      #    真实 DOM 上的 axe 规则，这边是源码文本启发式；两者互补，不能互替。
+      - name: 2/2 可访问性基础
+        run: bash scripts/check-a11y-basics.sh
+
+      - name: 自证能红 · 可访问性基础
+        env:
+          A11Y_FAIL_SEED: '1'
+        run: |
+          set +e
+          bash scripts/check-a11y-basics.sh
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::门禁自证失败：注入 A11Y_FAIL_SEED 后仍返回 0，说明门禁是假绿"
+            exit 1
+          fi
+          echo "✅ 自证能红（exit=$rc），门禁确实会拦"
