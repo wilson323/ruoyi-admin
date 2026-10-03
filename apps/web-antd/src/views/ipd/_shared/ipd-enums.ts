@@ -593,7 +593,9 @@ export function aiTaskStatusTone(status: null | string | undefined, fallback = '
 }
 
 /**
- * 69 码 → execMode 静态映射（R236 §5 SSOT 矩阵，与后端 ActionCatalog 逐行对齐）。
+ * 67 码 → execMode 静态映射（R236 §5 SSOT 矩阵，与后端 ActionCatalog 逐行对齐）。
+ * 2026-10-03：LC01（上市后销售与回款跟踪，随「回款台账」退役）与 LC03（上市后6个月终算，
+ * 随「奖金池」退役）两码已从后端 ActionCatalog 移除，本表同步删除（69 → 67）。
  * 用途：flow.vue 在尚无 AI 任务时仍可展示节点的执行模式徽标——`/stage-actions` 的 VO 不带
  * execMode，只有已产生 AI 任务时 AiAgentTaskView 才带，故此处存一份前端副本。
  * 维护纪律：后端 ActionCatalog 改档位须同步此表——由后端哨兵
@@ -616,7 +618,7 @@ export const ACTION_EXEC_MODE: Record<string, string> = {
   V09: 'AI_DIRECT', V10: 'AI_DIRECT', V11: 'AI_DIRECT', V12: 'AI_DIRECT',
   L01: 'AI_GENERATE', L02: 'AI_DIRECT', L03: 'AI_GENERATE', L04: 'AI_GENERATE',
   L05: 'AI_DIRECT', L06: 'AI_DIRECT', L07: 'HUMAN_GATE', L08: 'AI_DIRECT',
-  LC01: 'AI_DIRECT', LC02: 'HUMAN_GATE', LC03: 'AI_DIRECT', LC04: 'AI_DIRECT',
+  LC02: 'HUMAN_GATE', LC04: 'AI_DIRECT',
   LC05: 'AI_DIRECT', LC06: 'AI_DIRECT', LC07: 'AI_DIRECT', LC08: 'AI_GENERATE',
   LC09: 'AI_DIRECT',
   K01: 'AI_DIRECT', K02: 'AI_DIRECT', K03: 'AI_DIRECT', K04: 'AI_DIRECT',
