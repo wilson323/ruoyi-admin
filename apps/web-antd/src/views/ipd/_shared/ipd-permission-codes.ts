@@ -68,9 +68,10 @@ export const IPD_PERMISSION_CODES = {
   GATE_REVIEW_INITIATE: 'ipd:gate-review:add',
   GATE_REVIEW_APPROVE: 'ipd:gate-review:edit',
 
-  // 系数提议/确认（AC-INC-15c）
-  COEFFICIENT_PROPOSE: 'ipd:coefficient:propose', /* reserved (A23): kpi 模块未对应系数提议 UI */
-  COEFFICIENT_CONFIRM: 'ipd:coefficient:confirm', /* reserved (A23): kpi 模块未对应系数确认 UI */
+  // 系数提议/确认 —— 2026-10-03 owner 裁决退役「业绩窗口（含系数变更）」（AC-INC-15c 域）：
+  //   ipd:coefficient:propose / ipd:coefficient:confirm 两码已随后端 IpdPermissionCode 删除
+  //   （其 Controller/Service/Mapper/Entity 先期已删），前端常量同步摘除。
+  //   原为 A23 零引用 reserved 名单成员；跨仓镜像门禁 check-permission-mirror-fe-be.sh 对账。
 
   // 通知收件箱
   NOTIFICATION_READ: 'ipd:notification:read', /* reserved (A23): workbench 仅显示数量无显式按钮 */

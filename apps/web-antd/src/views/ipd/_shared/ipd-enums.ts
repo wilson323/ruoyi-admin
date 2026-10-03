@@ -89,9 +89,7 @@ export const IPD_PERMISSION_TEXT: Record<string, string> = {
   'ipd:gate-review:list': '查看 Gate 评审',
   'ipd:gate-review:add': '发起 Gate 评审',
   'ipd:gate-review:edit': '审批 Gate 评审',
-  // 考核系数
-  'ipd:coefficient:propose': '提议考核系数',
-  'ipd:coefficient:confirm': '确认考核系数',
+  // 考核系数两码已随「业绩窗口（含系数变更）」退役摘除（2026-10-03）
   // 站内通知
   'ipd:notification:read': '查看站内通知',
   'ipd:notification:dispatch': '手动派发通知',

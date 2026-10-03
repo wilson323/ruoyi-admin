@@ -12,21 +12,24 @@ import {
 } from './ipd-permission-codes';
 
 describe('IPD 权限码常量（与后端 IpdPermissionCode 镜像对账由后端仓 scripts/check-permission-mirror-fe-be.sh 门禁承担（R234））', () => {
-  it('导出 94 个 key / 93 distinct 码（含产品线五码；STAGE_ACTION 双码同值；2026-10-03 摘奖金池 4 码）', () => {
+  it('导出 92 个 key / 91 distinct 码（含产品线五码；STAGE_ACTION 双码同值；2026-10-03 摘奖金池 4 码 + 系数 2 码）', () => {
     // 与后端 IpdPermissionCode 镜像对账由后端仓 scripts/check-permission-mirror-fe-be.sh 门禁承担（R234）；
     // 本用例只锁前端自身计数，不宣称「与后端一一镜像已验证」。
     // 演进史：R215 权限可配置化 +2 distinct（commit 3764830）→ GAP-F4/F5 +3（keys 71→74、distinct 70→73）
     //   → GAP-F10 +1（keys 74→75、distinct 73→74）→ R234 补镜像 18 个后端孤码（keys 75→93、distinct 74→92）
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(94);
-    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(93);
+    //   → 2026-10-03 退役「回款台账+奖金池+业绩窗口」：先摘 bonus-pool 4 码（本文件），
+    //     再摘 ipd:coefficient:propose / ipd:coefficient:confirm 2 码（keys 94→92、distinct 93→91）
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(92);
+    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(91);
   });
 
-  it('keys 数组长度 94、distinct 93（唯一同值双键是 STAGE_ACTION 双码，白名单见碰撞断言）', () => {
+  it('keys 数组长度 92、distinct 91（唯一同值双键是 STAGE_ACTION 双码，白名单见碰撞断言）', () => {
     const set = new Set(ALL_IPD_PERMISSION_CODES);
-    expect(set.size).toBe(93);
-    // 数组长度 93 = 92 distinct + 1（STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 同码；
-    //   演进史：R175-A +1 GATE_ELEMENT_RESTORE、R215 权限可配置化 +2、GAP-F4/F5 +3、GAP-F10 +1、R234 补镜像后端孤码 +18）
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(94);
+    expect(set.size).toBe(91);
+    // 数组长度 92 = 91 distinct + 1（STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 同码；
+    //   演进史：R175-A +1 GATE_ELEMENT_RESTORE、R215 权限可配置化 +2、GAP-F4/F5 +3、GAP-F10 +1、
+    //   R234 补镜像后端孤码 +18、2026-10-03 摘系数 2 码）
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(92);
   });
 
   it('全部码遵循 ipd:资源:动作 命名规范', () => {
@@ -234,10 +237,12 @@ describe('A13 19 个零引用权限码已接入（v-access:code 或 meta.access�
  *   4. STAGE_ACTION_INSTANTIATE 与 DELIVERABLE 同字面值（已在 9fde989 之前记录），
  *      本次仅在 INSTANTIATE 行加碰撞 doc 注释，不重复加 v-access 指令
  */
-describe('A23 9 个零引用权限码已处置（reserved 注释 8 + 碰撞 doc 1；R215-F6 摘 COMPLIANCE_* 2 项、R215-F5 摘 SWITCHING_ACCEPTANCE_QUERY/ADMIN 2 项）', () => {
-  // 9 目标常量 key（R175-A 后 13；R215 GAP-F6 合规视图交付摘除 COMPLIANCE_READ/WRITE → 11；
+describe('A23 7 个零引用权限码已处置（reserved 注释 6 + 碰撞 doc 1；R215-F6 摘 COMPLIANCE_* 2 项、R215-F5 摘 SWITCHING_ACCEPTANCE_QUERY/ADMIN 2 项、2026-10-03 摘系数 2 项）', () => {
+  // 7 目标常量 key（R175-A 后 13；R215 GAP-F6 合规视图交付摘除 COMPLIANCE_READ/WRITE → 11；
   //   R215 GAP-F5 切换验收视图交付摘除 SWITCHING_ACCEPTANCE_QUERY（已接 get/list 读口）与
-  //   SWITCHING_ACCEPTANCE_ADMIN（死别名，镜像保留去 reserved）→ 9）
+  //   SWITCHING_ACCEPTANCE_ADMIN（死别名，镜像保留去 reserved）→ 9；
+  //   2026-10-03 owner 裁决退役「业绩窗口（含系数变更）」，COEFFICIENT_PROPOSE / COEFFICIENT_CONFIRM
+  //   两码随后端 IpdPermissionCode 一并删除（常量已从本清单与常量表摘除）→ 7）
   const reservedCodes: readonly string[] = [
     // 优先级 1：与现有视图弱关联
     IPD_PERMISSION_CODES.PROJECT_QUERY,
@@ -247,8 +252,8 @@ describe('A23 9 个零引用权限码已处置（reserved 注释 8 + 碰撞 doc 
     // 优先级 2：后端未交付相关 UI
     IPD_PERMISSION_CODES.NOTIFICATION_READ,
     IPD_PERMISSION_CODES.NOTIFICATION_DISPATCH,
-    IPD_PERMISSION_CODES.COEFFICIENT_PROPOSE,
-    IPD_PERMISSION_CODES.COEFFICIENT_CONFIRM,
+    // 2026-10-03：原 COEFFICIENT_PROPOSE / COEFFICIENT_CONFIRM 两码已随「业绩窗口（含系数变更）」
+    //   退役，常量删除后不可再入本名单（引用会编译失败）——由此 9 → 7。
     // R215 GAP-F5：SWITCHING_ACCEPTANCE_QUERY 已接 /ipd/operation/switching-acceptance（get/list 读口
     //   路由 meta.access）；SWITCHING_ACCEPTANCE_ADMIN 为死别名（后端注解已迁 _LOCK/_UNLOCK，
     //   常量残留镜像保留、去 reserved 注释）——双双摘除（11 → 9）
@@ -260,11 +265,11 @@ describe('A23 9 个零引用权限码已处置（reserved 注释 8 + 碰撞 doc 
     IPD_PERMISSION_CODES.STAGE_ACTION_INSTANTIATE,
   ];
 
-  it('A23 目标码数量 = 9（R175-A 后 13，R215-F6 摘 COMPLIANCE_* 2 项，R215-F5 摘 SWITCHING_* 2 项）', () => {
-    expect(reservedCodes.length).toBe(9);
+  it('A23 目标码数量 = 7（R175-A 后 13，R215-F6 摘 COMPLIANCE_* 2 项，R215-F5 摘 SWITCHING_* 2 项，2026-10-03 摘系数 2 项）', () => {
+    expect(reservedCodes.length).toBe(7);
   });
 
-  it('产品线五码接入后（并于 2026-10-03 摘奖金池 4 码）：distinct count = 93、数组长度 94', () => {
+  it('产品线五码接入后（并于 2026-10-03 摘奖金池 4 码 + 系数 2 码）：distinct count = 91、数组长度 92', () => {
     // A13 增补 5 项（4 转 + 1 新），A23 移除 4 项，ALL_IPD_PERMISSION_CODES 净增 1；
     //   distinct count 由 67（R149 后）提升到 68（R175-A）。
     // R215 权限可配置化新增 ROLE_PERMISSION_QUERY / ROLE_PERMISSION_EDIT：distinct 68 → 70、数组长度 69 → 71（commit 3764830）
@@ -272,8 +277,9 @@ describe('A23 9 个零引用权限码已处置（reserved 注释 8 + 碰撞 doc 
     // R215 GAP-F10 登记 PERMANENT_DELETE_EXECUTE：distinct 73 → 74、数组长度 74 → 75
     // R234 补镜像 18 个后端孤码（13+5）：distinct 74 → 92、数组长度 75 → 93
     //   （与后端 IpdPermissionCode 镜像对账由后端仓 scripts/check-permission-mirror-fe-be.sh 门禁承担（R234））
-    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(93);
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(94);
+    // 2026-10-03 退役「业绩窗口（含系数变更）」再摘 ipd:coefficient:* 2 码：distinct 93 → 91、长度 94 → 92
+    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(91);
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(92);
   });
 
   for (const code of reservedCodes) {
