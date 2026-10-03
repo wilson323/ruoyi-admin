@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+## 推送铁律（必读 · 2026-10-03 owner 明令）
+
+**推送目标只有两个仓：`wilson323/ruoyi-ai`（后端）与 `wilson323/ruoyi-admin`（前端），其余一律视为"别人的仓"严禁触碰。分支名必须由 owner 逐次指定；AI 不得主动建议任何 git 推送命令（包括"给你命令自己跑"的形式），owner 说"自动推送"时也只报"本地有 N 笔未推"，命令等 owner 索要。**
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Engineering start/resume/failure/completion uses `.harness/skills/ipd-engineering-feedback/SKILL.md` and the current repository's `scripts/engineering_harness.py intake/verify/check`. Use the existing master canvas and kanban, not a new plan. The runner archives failures and enables only predefined procedural checks after same-task regression; it never changes permissions, business approvals or Git history. A local hook is not a universal enforcement boundary.
