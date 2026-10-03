@@ -53,7 +53,7 @@ const trend = ref<KpiTrendPoint[]>([]);
 const performanceCards = computed(() => {
   const data = performance.value ?? ({} as KpiPerformanceSummary);
   return [
-    { key: 'COMPREHENSIVE', label: '综合', desc: '项目加权分 × 奖金池阶梯系数 ×100' },
+    { key: 'COMPREHENSIVE', label: '综合', desc: '项目加权分按绩效阶梯系数映射 ×100' },
     { key: 'L1', label: 'L1 津贴分档', desc: '主管级月度津贴合计' },
     { key: 'L2', label: 'L2 津贴分档', desc: '高级工程师月度津贴合计' },
     { key: 'L3', label: 'L3 津贴分档', desc: '工程师月度津贴合计' },

@@ -5,7 +5,8 @@
  * - POST /ai/suggest 路径与 body 四字段（undefined 键透传给 http 层，包络 code=0 解包）；
  * - 视图字段原样透传（markdown/degraded/aiModel 等不做数值转换）；
  * - 非 0 包络错误经 IpdRequestError 通道抛出（复用 authenticatedRequest 链路，此处不重复测包络层）；
- * - L2 场景镜像：AiSuggestScene 21 项 ↔ 后端 AiSuggestionService.SCENES 防漂移。
+ * - L2 场景镜像：AiSuggestScene 20 项 ↔ 后端 AiSuggestionService.SCENES 防漂移
+ *   （bonus.fairness-analyze 已于 2026-10-03 随「奖金池」退役移除，21 → 20）。
  */
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -96,7 +97,8 @@ describe('aiSuggest（R227-C1 AI-FUSION L2）', () => {
  *
  * 后端真值源：ruoyi-ai/ruoyi-modules/ruoyi-ipd/.../ipd/service/AiSuggestionService.java
  * 的 SCENES（POST /ai/suggest 单入口多场景分发）。跨仓不可 import，此处清单写死；
- * 与后端对账日期 2026-09-28（L2 每页 AI 入口补全落地 21 项）。后端增删场景时，
+ * 与后端对账日期 2026-10-03（2026-09-28 L2 补全落地 21 项后，bonus.fairness-analyze
+ * 随「奖金池」退役移除，现存 20 项）。后端增删场景时，
  * `satisfies Record<AiSuggestScene, true>` 会因键缺失/多余在 check:type 报错，双向防漂移。
  */
 const SCENE_MIRROR = {
@@ -112,10 +114,10 @@ const SCENE_MIRROR = {
   'report.nl-query': true,
   'workbench.next-step': true,
   'workbench.risk-warning': true,
-  // L2 每页 AI 入口补全（2026-09-28）新增 10 场景
+  // L2 每页 AI 入口补全（2026-09-28）新增 10 场景，其中 bonus.fairness-analyze
+  // 已于 2026-10-03 随「奖金池」退役移除，现存 9 项
   'audit.anomaly-detect': true,
   'bid.evaluate-proposal': true,
-  'bonus.fairness-analyze': true,
   'demand.classify': true,
   'demand.priority': true,
   'kpi.contributor-summary': true,
@@ -125,9 +127,9 @@ const SCENE_MIRROR = {
   'timeline.storyline': true,
 } satisfies Record<AiSuggestScene, true>;
 
-describe('L2 场景镜像（AiSuggestScene ↔ 后端 SCENES 防漂移，对账 2026-09-28）', () => {
-  it('场景清单 21 项全对齐：11 老场景 + 10 个 L2 新场景逐项存在', () => {
-    expect(Object.keys(SCENE_MIRROR)).toHaveLength(21);
+describe('L2 场景镜像（AiSuggestScene ↔ 后端 SCENES 防漂移，对账 2026-10-03）', () => {
+  it('场景清单 20 项全对齐：11 老场景 + 9 个 L2 新场景逐项存在', () => {
+    expect(Object.keys(SCENE_MIRROR)).toHaveLength(20);
   });
 
   it.each([
@@ -136,7 +138,6 @@ describe('L2 场景镜像（AiSuggestScene ↔ 后端 SCENES 防漂移，对账 
     'bid.evaluate-proposal',
     'kpi.monthly-summary',
     'kpi.contributor-summary',
-    'bonus.fairness-analyze',
     'timeline.storyline',
     'report.trend-analyze',
     'audit.anomaly-detect',

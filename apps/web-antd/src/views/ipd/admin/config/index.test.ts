@@ -1,4 +1,4 @@
-/** 页45 参数配置：超管只读/6 项涉钱高亮/PUT 更新/版本链/时点解析/JSON 校验。 */
+/** 页45 参数配置：超管只读/参数列表/PUT 更新/版本链/时点解析/JSON 校验。 */
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -109,19 +109,14 @@ describe('页45 参数配置', () => {
     wrapper.unmount();
   });
 
-  it('6 项涉钱参数高亮 Tab：切换后只展示 G-08 红线键', async () => {
+  it('退役奖金专用页签后，参数列表仍展示服务端实际返回值', async () => {
     setupIdentity('SUPER_ADMIN');
     vi.stubGlobal('fetch', vi.fn(async () => envelope(configs)));
     const wrapper = mount(Index);
     await vi.waitFor(() => expect(wrapper.text()).toContain('gate.signDeadlineDays'));
-    // ant-design-vue Tabs 在 happy-dom 下可能未渲染完整标签节点；直接切换 activeTab
-    (wrapper.vm as unknown as { activeTab: string }).activeTab = 'money';
-    await wrapper.vm.$nextTick();
-    await vi.waitFor(() => expect(wrapper.text()).toContain('6 项涉钱参数'));
+    expect(wrapper.text()).toContain('kpi.functionalWeight');
     expect(wrapper.text()).toContain('bonus.poolBase');
-    expect(wrapper.text()).toContain('bonus.salesSource');
-    expect(wrapper.text()).not.toContain('gate.signDeadlineDays');
-    expect(wrapper.text()).not.toContain('kpi.functionalWeight');
+    expect(wrapper.text()).not.toContain('6 项涉钱参数');
     wrapper.unmount();
   });
 

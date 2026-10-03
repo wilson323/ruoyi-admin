@@ -11,11 +11,7 @@
  * - GET /{key:.+}/versions?limit —— 仅超管：某 key 的不可变版本历史（最新在前）；
  * - GET /{key:.+}/as-of?time=ISO-8601 —— 仅超管：时点解析，返回命中版本或回退源
  *   （VERSION / FACTORY_DEFAULT / NONE）。
- * - 规格 §4 / §5 要求的 draft/publish/revert 三阶段接口、6 项涉钱参数高亮目录、PM/组长/超管可见范围
- *   后端均未交付——页面按控制器能返回的真值渲染（真值见 README-IPD-OVERRIDE.md）；
- *   6 项涉钱键已在前端做静态高亮（P0-10.45 规格映射；G-08 红线字段）：
- *     bonus.poolBase / bonus.salesSource / bonus.performanceScoreStrategy /
- *     bonus.multiProjectSplit / bonus.launchAnchor / bonus.coefficientDecider。
+ * - 奖金功能退役后，页面不再提供其专用参数高亮目录；列表展示服务端实际返回值。
  * - ID 一律按字符串处理（后端 Long 序列化可能为数字）。
  */
 import { ipdGet, ipdPost, ipdPut } from './http';
@@ -23,7 +19,7 @@ import { ipdGet, ipdPost, ipdPut } from './http';
 export interface IpdSystemConfig {
   /** 主键 */
   id: string;
-  /** 参数键（如 bonus.salesSource / allowance.L3 / gate.signDeadlineDays） */
+  /** 参数键（如 allowance.L3 / gate.signDeadlineDays） */
   configKey: string;
   /** 当前值（不可变由服务端实现层保证；PUT 后立即 invalidate 缓存） */
   configValue: string;

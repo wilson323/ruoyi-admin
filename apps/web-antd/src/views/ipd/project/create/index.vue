@@ -339,7 +339,7 @@ function cancel(): void {
           <Select v-model:value="formState.level" :options="levelOptions" />
         </Form.Item>
 
-        <Form.Item label="差异化系数" name="levelCoefficient" extra="S/A/B 映射见系统参数 bonus.coefficient；A 级可不填。S/B 级必填。">
+        <Form.Item label="差异化系数" name="levelCoefficient" extra="A 级可不填；S/B 级必填。">
           <InputNumber
             v-model:value="levelCoefficientModel"
             :min="0"

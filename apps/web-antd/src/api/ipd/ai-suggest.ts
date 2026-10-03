@@ -14,21 +14,21 @@ import type { AiCardEnvelope } from '../../views/ipd/_shared/ai-cards/types';
 import { ipdPost } from './http';
 
 /**
- * 场景白名单 21 项（与后端 AiSuggestionService.SCENES 对齐，改动须双端同步；
- * 对账日期 2026-09-28，防漂移镜像见 ai-suggest.test.ts「L2 场景镜像」）。
+ * 场景白名单 20 项（与后端 AiSuggestionService.SCENES 对齐，改动须双端同步；
+ * 对账日期 2026-10-03，防漂移镜像见 ai-suggest.test.ts「L2 场景镜像」；
+ * bonus.fairness-analyze 已于 2026-10-03 随「奖金池」功能块退役移除，21 → 20）。
  * 其中 4 项为结构化卡场景（AiSuggestionService.STRUCTURED_SCENES =
  * system_configs 'ai.suggest.cardCatalog' 4 卡，见 _shared/ai-cards/card-registry.ts）；
- * 其余 17 项（含 AI-P3 新增 demand.dedupe / change.impact-analyze /
+ * 其余 16 项（含 AI-P3 新增 demand.dedupe / change.impact-analyze /
  * handover.checklist-generate / report.nl-query，及 L2 每页 AI 入口补全 2026-09-28
  * 新增 demand.classify / demand.priority / bid.evaluate-proposal / kpi.monthly-summary /
- * kpi.contributor-summary / bonus.fairness-analyze / timeline.storyline /
+ * kpi.contributor-summary / timeline.storyline /
  * report.trend-analyze / audit.anomaly-detect / product.name-classify）无卡注册，
  * 按注册表既有 fallback 模式经 getCardType 未命中自动降级纯文本路径。
  */
 export type AiSuggestScene =
   | 'audit.anomaly-detect'
   | 'bid.evaluate-proposal'
-  | 'bonus.fairness-analyze'
   | 'change.impact-analyze'
   | 'demand.classify'
   | 'demand.create.from-requirement'

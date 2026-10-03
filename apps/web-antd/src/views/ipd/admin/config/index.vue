@@ -4,8 +4,7 @@
  *
  * 后端真值：GET / 裸 List 约 55 条种子；GET /{key} 单点读取；PUT /{key} 更新（仅超管，写后立即失效缓存
  * PERF-02 + 同事务写版本链）；GET /{key}/versions 版本历史；GET /{key}/as-of 时点解析。
- * 规格 §4/§5 要求的 draft/publish/revert 三阶段接口、6 项涉钱参数高亮目录、数据范围仅读
- * 后端均未交付——页面按控制器能返回的真值渲染，6 项涉钱键在前端做静态高亮（P0-10.45 规格映射；G-08 红线）。
+ * 页面按控制器实际返回的参数渲染；奖金功能退役后不再提供其专用参数高亮目录。
  *
  * 五态：加载 / 列表 / 空态 / 拒绝与断网；不展示任何模拟数据（G-06）。
  */
@@ -27,7 +26,6 @@ import {
   Spin,
   Switch,
   Table,
-  Tabs,
   Tag,
   Tooltip,
   message as antMessage,
@@ -47,7 +45,6 @@ import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { RULES_BY_PAGE, renderRulesDescription } from '../../_shared/zk-ipd-rules';
 
 type Phase = 'error' | 'idle' | 'loading' | 'ready';
-type TabKey = 'all' | 'money';
 
 const auth = useIpdAuthStore();
 const adminConfigRules = computed(() => renderRulesDescription(RULES_BY_PAGE.adminConfig));
@@ -65,37 +62,16 @@ function rejectText(cause: unknown): string {
 const isTransportError = (cause: unknown): boolean =>
   cause instanceof IpdRequestError && cause.kind === 'transport';
 
-/** G-08 红线：6 项涉钱参数（G-08 红线字段；前端静态高亮，后端 controller 已支持更新）。 */
-const MONEY_KEYS = new Set([
-  'bonus.poolBase',
-  'bonus.salesSource',
-  'bonus.performanceScoreStrategy',
-  'bonus.multiProjectSplit',
-  'bonus.launchAnchor',
-  'bonus.coefficientDecider',
-]);
-const MONEY_DESC: Record<string, string> = {
-  'bonus.poolBase': '奖金池基数：目标销售额 / 实际销售额（G-08）',
-  'bonus.salesSource': '奖金池销售额口径：回款 / 签单（G-08 / Q2）',
-  'bonus.performanceScoreStrategy': '绩效分数策略：项目得分 / 综合得分（G-08 / Q3）',
-  'bonus.multiProjectSplit': '多项目切分策略：无 / 按系数 / 按工时（G-08 / Q5）',
-  'bonus.launchAnchor': '上市锚定节点：L08 动作完成 / 上市日（G-08 / Q6）',
-  'bonus.coefficientDecider': '系数裁决：G1 双签 / 组长裁决 / 自动测度（G-08 / Q4）',
-};
-
 const phase = ref<Phase>('loading');
 const offline = ref(false);
 const errorMsg = ref('');
 const rows = ref<IpdSystemConfig[]>([]);
 
-const activeTab = ref<TabKey>('all');
 const keywordInput = ref('');
 
-const moneyRows = computed(() => rows.value.filter((row) => MONEY_KEYS.has(row.configKey)));
-const otherRows = computed(() => rows.value.filter((row) => !MONEY_KEYS.has(row.configKey)));
 const visibleRows = computed(() => {
   const keyword = keywordInput.value.trim().toLowerCase();
-  const source = activeTab.value === 'money' ? moneyRows.value : otherRows.value;
+  const source = rows.value;
   if (!keyword) return source;
   return source.filter((row) =>
     [row.configKey, row.description ?? '', row.remark ?? ''].join('|').toLowerCase().includes(keyword),
@@ -322,13 +298,6 @@ function reload() {
       />
 
       <Card>
-        <Tabs
-          v-model:active-key="activeTab"
-          :items="[
-            { key: 'all', tab: `全部参数 (${otherRows.length})` },
-            { key: 'money', tab: `6 项涉钱参数高亮 (${moneyRows.length})` },
-          ]"
-        />
         <Space wrap>
           <Input
             v-model:value="keywordInput"
@@ -365,10 +334,6 @@ function reload() {
           <Empty description="系统中暂无系统参数。请确认 P0-3.2 种子数据已初始化。" />
         </Card>
 
-        <Card v-else-if="activeTab === 'money' && moneyRows.length === 0" class="text-center">
-          <Empty description="未匹配到 6 项涉钱参数。请确认 system_configs 表中存在对应键值（spec §3）。" />
-        </Card>
-
         <Card v-else-if="visibleRows.length === 0" class="text-center">
           <Empty description="当前过滤条件下无匹配参数。" />
         </Card>
@@ -376,17 +341,10 @@ function reload() {
         <Card v-else>
           <template #title>
             <Space>
-              <span>{{ activeTab === 'money' ? '6 项涉钱参数（G-08 红线）' : '系统参数总览' }}</span>
+              <span>系统参数总览</span>
               <Tag color="default">当前可见 {{ visibleRows.length }} 项</Tag>
             </Space>
           </template>
-          <Alert
-            v-if="activeTab === 'money'"
-            class="mb-3"
-            :message="'G-08 红线：以下 6 项涉钱参数变更需写入专用审计 action=money_param_switched（后端审计约定；前端高亮定位）。'"
-            show-icon
-            type="warning"
-          />
           <Table
             :columns="columns"
             :data-source="visibleRows"
@@ -397,16 +355,6 @@ function reload() {
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'configKey'">
                 <code class="font-mono text-sm">{{ record.configKey }}</code>
-                <Tag
-                  v-if="MONEY_KEYS.has(record.configKey)"
-                  class="ml-2"
-                  color="error"
-                >
-                  涉钱
-                </Tag>
-                <Tooltip v-if="MONEY_DESC[record.configKey]" :title="MONEY_DESC[record.configKey]">
-                  <span class="text-muted-foreground ml-1 cursor-help text-xs">说明</span>
-                </Tooltip>
               </template>
               <template v-else-if="column.key === 'valueType'">
                 <Tag color="default">{{ record.valueType }}</Tag>
@@ -447,11 +395,9 @@ function reload() {
     >
       <Alert
         class="mb-3"
-        :message="MONEY_KEYS.has(editingKey)
-          ? '涉钱参数（G-08 红线）：变更会被审计为 money_param_switched，请确认影响面。'
-          : '更新后立即失效缓存（PERF-02），同一事务写版本链；前端仅展示，不展示明文密文。'"
+        message="更新后立即生效，并保存参数版本历史。请确认修改内容。"
         show-icon
-        :type="MONEY_KEYS.has(editingKey) ? 'error' : 'info'"
+        type="info"
       />
       <Form ref="modalFormRef" :model="modalForm" :rules="valueTypeRules" layout="vertical">
         <FormItem label="参数键">

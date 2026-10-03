@@ -199,11 +199,10 @@ describe('A28 新增显示映射表 SSOT', () => {
   });
 });
 
-describe('WORKBENCH_TASK_TYPE_TEXT 工作台任务类型 17 类', () => {
-  it('17 类 taskType 齐全（spec batch-01 页03:165）', () => {
+describe('WORKBENCH_TASK_TYPE_TEXT 工作台任务类型 16 类', () => {
+  it('16 类 taskType 齐全（spec batch-01 页03:165；bonus_lock 已随奖金池退役移除）', () => {
     expect(Object.keys(WORKBENCH_TASK_TYPE_TEXT).sort()).toEqual(
       [
-        'bonus_lock',
         'capacity_approval',
         'change_implementation',
         'change_verify',
@@ -240,7 +239,6 @@ describe('WORKBENCH_TASK_TYPE_TEXT 工作台任务类型 17 类', () => {
     expect(WORKBENCH_TASK_TYPE_TEXT.kpi_fill).toBe('KPI 填写');
     expect(WORKBENCH_TASK_TYPE_TEXT.change_implementation).toBe('变更实施');
     expect(WORKBENCH_TASK_TYPE_TEXT.change_verify).toBe('变更验收');
-    expect(WORKBENCH_TASK_TYPE_TEXT.bonus_lock).toBe('奖金锁定');
     expect(WORKBENCH_TASK_TYPE_TEXT.closeout).toBe('项目收尾');
   });
 

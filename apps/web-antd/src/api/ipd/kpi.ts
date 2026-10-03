@@ -6,7 +6,7 @@
  * 真值：KpiRecordController（/api/v1/kpi/...，2026-09-06 磁盘核实，权限 ipd:kpi:query）。
  * 已交付端点：GET /functional?period（功能 KPI 指标来源与加权贡献，P0-10.29）、
  * GET /performance?period（绩效 KPI 聚合：L1..L5 津贴分档合计 + COMPREHENSIVE
- * 项目加权分经奖金池阶梯系数映射 ×100，P0-10.30）、GET /trend?periods（历史趋势，
+ * 项目加权分经绩效阶梯系数映射 ×100，P0-10.30）、GET /trend?periods（历史趋势，
  * 缺省 12 个月，缺数月 source=MISSING，P0-10.32）。
  *
  * 共担 KPI（页30 归集列表 / W4-E）：GET /kpi/shared?projectId&period

@@ -188,7 +188,7 @@ const trendColumns = [
   <div class="p-4">
     <Alert
       class="mb-4"
-      :message="`项目 KPI 考核：项目 ${projectId || '尚未选择'} · 当前周期 ${period} · L1..L5 津贴分档合计 + COMPREHENSIVE 项目加权分（×100 后奖金池映射）。后端 KpiRecordController：GET /kpi/performance · /kpi/functional · /kpi/trend。`"
+      :message="`项目 KPI 考核：项目 ${projectId || '尚未选择'} · 当前周期 ${period} · L1..L5 津贴分档合计 + COMPREHENSIVE 项目加权分（绩效阶梯系数 ×100）。后端 KpiRecordController：GET /kpi/performance · /kpi/functional · /kpi/trend。`"
       show-icon
       type="info"
     />
@@ -226,7 +226,7 @@ const trendColumns = [
         <DescriptionsItem label="L3 津贴分档">{{ performance.L3 }}</DescriptionsItem>
         <DescriptionsItem label="L4 津贴分档">{{ performance.L4 }}</DescriptionsItem>
         <DescriptionsItem label="L5 津贴分档">{{ performance.L5 }}</DescriptionsItem>
-        <DescriptionsItem label="综合分（×100 后奖金池映射）">
+        <DescriptionsItem label="综合分（绩效阶梯系数 ×100）">
           <strong>{{ performance.COMPREHENSIVE }}</strong>
         </DescriptionsItem>
       </Descriptions>

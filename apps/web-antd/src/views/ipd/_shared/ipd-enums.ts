@@ -427,9 +427,9 @@ export const WORKBENCH_TASK_STATUS_TEXT: Record<string, string> = {
   SUBMITTED: '待评定',
 };
 
-/** 工作台任务类型中文（17 类 taskType，按 spec batch-01 页03:165）。 */
+/** 工作台任务类型中文（16 类 taskType，按 spec batch-01 页03:165；
+ * bonus_lock「奖金锁定」已于 2026-10-03 随「奖金池」功能块退役移除，17 → 16）。 */
 export const WORKBENCH_TASK_TYPE_TEXT: Record<string, string> = {
-  bonus_lock: '奖金锁定',
   capacity_approval: '产能审批',
   change_implementation: '变更实施',
   change_verify: '变更验收',
@@ -461,7 +461,6 @@ export function taskTypeText(value: string): string {
 export type WorkbenchDecisionBucket = 'blocked' | 'fact' | 'review';
 
 const REVIEW_TASK_TYPES = new Set([
-  'bonus_lock',
   'capacity_approval',
   'contribution_confirm',
   'deletion_review',
