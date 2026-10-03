@@ -19,7 +19,7 @@
  */
 import { ipdDownload, ipdGet, ipdPost, ipdPut } from './http';
 
-/** 运行状态（后端状态机 7 态）。 */
+/** 运行状态（后端状态机 8 态；VERIFYING 为产物校验驻留态，非终态可取消/可复检）。 */
 export type AgentRunStatus =
   | 'CANCEL_REQUESTED'
   | 'CANCELLED'
@@ -27,6 +27,7 @@ export type AgentRunStatus =
   | 'PENDING'
   | 'RUNNING'
   | 'SUCCEEDED'
+  | 'VERIFYING'
   | 'WAITING_APPROVAL';
 
 /** 运行事件类型（9 种，时间线只按这些真实事件渲染）。 */
@@ -383,6 +384,7 @@ export function isAgentRunTerminal(status: AgentRunStatus): boolean {
     case 'CANCEL_REQUESTED':
     case 'PENDING':
     case 'RUNNING':
+    case 'VERIFYING':
     case 'WAITING_APPROVAL': {
       return false;
     }
@@ -411,6 +413,9 @@ export function agentRunStatusMeta(status: AgentRunStatus): { color: string; lab
     case 'CANCEL_REQUESTED': {
       return { color: 'warning', label: '取消中' };
     }
+    case 'VERIFYING': {
+      return { color: 'processing', label: '校验中' };
+    }
     case 'SUCCEEDED': {
       return { color: 'success', label: '已完成' };
     }
@@ -435,6 +440,7 @@ export function isAgentRunCancellable(status: AgentRunStatus): boolean {
   switch (status) {
     case 'PENDING':
     case 'RUNNING':
+    case 'VERIFYING':
     case 'WAITING_APPROVAL': {
       return true;
     }

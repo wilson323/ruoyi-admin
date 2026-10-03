@@ -258,6 +258,7 @@ describe('agent run status helpers', () => {
     'RUNNING',
     'WAITING_APPROVAL',
     'CANCEL_REQUESTED',
+    'VERIFYING',
     'SUCCEEDED',
     'FAILED',
     'CANCELLED',
@@ -268,7 +269,12 @@ describe('agent run status helpers', () => {
   });
 
   it('only allows cancelling non-terminal runs that are not already cancelling', () => {
-    expect(all.filter((s) => isAgentRunCancellable(s))).toEqual(['PENDING', 'RUNNING', 'WAITING_APPROVAL']);
+    expect(all.filter((s) => isAgentRunCancellable(s))).toEqual([
+      'PENDING',
+      'RUNNING',
+      'WAITING_APPROVAL',
+      'VERIFYING',
+    ]);
   });
 
   it('gives every status a Chinese label', () => {
