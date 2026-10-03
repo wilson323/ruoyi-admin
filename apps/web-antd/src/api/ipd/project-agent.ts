@@ -143,6 +143,11 @@ export function resumeAgentRun(runId: string, input: ResumeAgentRunInput): Promi
   return ipdPost<AgentRunReceipt>(`/agent-runs/${seg(runId)}/resume`, input);
 }
 
+/** 对同一运行的现有正文重新检查；不新建运行，不修改已结束记录。 */
+export function reverifyAgentRun(runId: string): Promise<AgentRunReceipt> {
+  return ipdPost<AgentRunReceipt>(`/agent-runs/${seg(runId)}/reverify`, {});
+}
+
 /** 运行列表查询。字段均可空；cursor 是上一页最后的 runId。 */
 export interface AgentRunListQuery {
   q?: string;
