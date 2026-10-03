@@ -3,24 +3,23 @@
  * 页25 项目详情-需求与变更（看板卡 P0-10.25）。
  *
  * 真实交付（写端点）：
- * - POST /api/v1/coefficient-change-requests            系数变更双PM 联合提议
- * - POST /api/v1/coefficient-change-requests/{id}/leader-decision  产品组长确认/驳回
  * - POST /api/v1/launch-date-change-requests            上市日期变更第一签提议
  * - POST /api/v1/launch-date-change-requests/{id}/second-decision  另一侧PM 第二签
  *
  * P1-2 交付（读端点，2026-09-21）：
- * - GET  /api/v1/coefficient-change-requests?projectId=…  系数变更单列表（按项目）
- * - GET  /api/v1/coefficient-change-requests/{id}         系数变更单详情
  * - GET  /api/v1/launch-date-change-requests?projectId=…  上市日期变更单列表（按项目）
  * - GET  /api/v1/launch-date-change-requests/{id}         上市日期变更单详情
  *
  * 已交付（RequirementChange，P2-6.1/6.2 双签否决 6 端点）：
  * - POST /requirement-changes、PUT /{id}/submit、PUT /{id}/sign、
  *   GET /{id}、GET /requirement-changes?pageNo&pageSize&projectId&status、
- *   GET /requirement-changes/open。本页 Tab3 接完整工作流（创建草稿 → 提交双签 → 签署 → 列表）。
+ *   GET /requirement-changes/open。本页 Tab 接完整工作流（创建草稿 → 提交双签 → 签署 → 列表）。
  *
  * 决策操作内联到发起成功卡内：发起后按返回的申请 ID 直接做确认/驳回（approve 走 query 串），
  * 无需导航到独立详情页。
+ *
+ * 2026-10-03 拆除（业绩窗口域）：系数变更（S/B 级差异化系数定值）域已下线，
+ * 后端 CoefficientChangeController 已删除，原 Tab1「系数变更」整段 Tab / 表单 / 列表移除。
  */
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
@@ -35,7 +34,6 @@ import {
   Form,
   FormItem,
   Input,
-  InputNumber,
   Radio,
   RadioGroup,
   Select,
@@ -53,23 +51,18 @@ import { PENDING_TEXT } from '../../_shared/format';
 import { ipdApiErrorText } from '../../../../api/ipd/ai-document';
 import { IpdRequestError } from '../../../../api/ipd/auth';
 import {
-  type CoefficientChangeRequest,
   type LaunchDateChangeRequest,
   type LaunchDateConfirmerRole,
   type RequirementChange,
-  decideCoefficientChange,
   decideLaunchDateChange,
   createRequirementChange,
-  listCoefficientChanges,
   listLaunchDateChanges,
   listOpenRequirementChanges,
   listRequirementChanges,
-  proposeCoefficientChange,
   proposeLaunchDateChange,
   signRequirementChange,
   submitRequirementChange,
 } from '../../../../api/ipd/change';
-import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import {
   COEF_CHANGE_STATUS_TEXT,
   DECISION_LABEL,
@@ -78,11 +71,10 @@ import {
 } from '../../_shared/ipd-enums';
 
 const route = useRoute();
-const auth = useIpdAuthStore();
 
 const projectId = computed(() => String(route.params.projectId ?? ''));
 
-/** 系数/上市日变更审批状态（仅本页用，非通用状态机；走 SSOT 见 _shared/ipd-enums.COEF_CHANGE_STATUS_TEXT）。 */
+/** 上市日期变更审批状态（仅本页用，非通用状态机；走 SSOT 见 _shared/ipd-enums.COEF_CHANGE_STATUS_TEXT）。 */
 const STATUS_TEXTS: Record<string, string> = COEF_CHANGE_STATUS_TEXT;
 
 function statusText(status: null | string): string {
@@ -93,95 +85,8 @@ function decisionText(value: null | string): string {
   return value ? (DECISION_LABEL[value] ?? value) : PENDING_TEXT;
 }
 
-// ---------- 系数变更（真实端点） ----------
-const coefForm = reactive({
-  marketPmId: auth.identity?.person.personType === 'MARKET_PM' ? (auth.identity.person.id ?? '') : '',
-  proposedCoefficient: null as null | number,
-  rdPmId: auth.identity?.person.personType === 'RD_PM' ? (auth.identity.person.id ?? '') : '',
-  reason: '',
-});
-const coefSubmitting = ref(false);
-const coefError = ref<null | string>(null);
-const coefResult = ref<null | CoefficientChangeRequest>(null);
-
-const coefDecision = reactive({ approve: true, opinion: '' });
-const coefDecisionSubmitting = ref(false);
-const coefDecisionError = ref<null | string>(null);
-const coefDecisionResult = ref<null | CoefficientChangeRequest>(null);
-
-/** InputNumber 不收 null：与 coefForm.proposedCoefficient（null|number）双向适配。 */
-const proposedCoefficientModel = computed<number | string | undefined>({
-  get: () => (coefForm.proposedCoefficient == null ? undefined : coefForm.proposedCoefficient),
-  set: (value) => {
-    coefForm.proposedCoefficient = value == null || value === '' ? null : Number(value);
-  },
-});
-
 function validateId(value: string, label: string): null | string {
   return /^\d+$/.test(value.trim()) ? null : `请输入正确的${label}账号 ID（纯数字）。`;
-}
-
-async function submitCoefficient() {
-  const coefficient = coefForm.proposedCoefficient;
-  if (coefficient === null || Number.isNaN(coefficient) || coefficient <= 0) {
-    coefError.value = '请填写大于 0 的建议系数（保留两位小数）。';
-    return;
-  }
-  const marketError = validateId(coefForm.marketPmId, '市场PM');
-  if (marketError) {
-    coefError.value = marketError;
-    return;
-  }
-  const rdError = validateId(coefForm.rdPmId, '研发PM');
-  if (rdError) {
-    coefError.value = rdError;
-    return;
-  }
-  if (!coefForm.reason.trim() || coefForm.reason.length > 500) {
-    coefError.value = '请填写变更原因（不超过 500 字）。';
-    return;
-  }
-  coefSubmitting.value = true;
-  coefError.value = null;
-  try {
-    coefResult.value = await proposeCoefficientChange({
-      marketPmId: coefForm.marketPmId.trim(),
-      proposedCoefficient: coefficient.toFixed(2),
-      rdPmId: coefForm.rdPmId.trim(),
-      projectId: projectId.value,
-      reason: coefForm.reason.trim(),
-    });
-    coefDecisionError.value = null;
-    coefDecisionResult.value = null;
-    message.success('系数变更申请已提交，可在下方对变更单执行确认/驳回');
-  } catch (cause) {
-    coefResult.value = null;
-    coefError.value = ipdApiErrorText(cause);
-  } finally {
-    coefSubmitting.value = false;
-  }
-}
-
-async function submitCoefDecision() {
-  if (!coefResult.value) return;
-  coefDecisionSubmitting.value = true;
-  coefDecisionError.value = null;
-  try {
-    coefDecisionResult.value = await decideCoefficientChange(
-      coefResult.value.id,
-      coefDecision.approve,
-      coefDecision.opinion.trim() || null,
-    );
-    message.success(coefDecision.approve ? '已确认通过' : '已驳回');
-  } catch (cause) {
-    if (cause instanceof IpdRequestError && cause.code === 50002) {
-      coefDecisionError.value = '该变更单已被处理或状态已变更，请联系产品组长或超级管理员确认。';
-    } else {
-      coefDecisionError.value = ipdApiErrorText(cause);
-    }
-  } finally {
-    coefDecisionSubmitting.value = false;
-  }
 }
 
 // ---------- 上市日期变更（真实端点；R11 双签：须指定第二签确认人） ----------
@@ -328,38 +233,6 @@ async function loadReqList() {
   }
 }
 
-// ---------- P1-2：本项目系数变更单列表（按 projectId）----------
-const coefList = ref<CoefficientChangeRequest[]>([]);
-const coefListLoading = ref(false);
-const coefListError = ref('');
-
-async function loadCoefList() {
-  const id = projectId.value.trim();
-  if (!id) {
-    coefList.value = [];
-    return;
-  }
-  coefListLoading.value = true;
-  coefListError.value = '';
-  try {
-    coefList.value = await listCoefficientChanges(id);
-  } catch (cause) {
-    coefList.value = [];
-    coefListError.value = ipdApiErrorText(cause);
-  } finally {
-    coefListLoading.value = false;
-  }
-}
-
-const coefListColumns = [
-  { title: '变更单编号', dataIndex: 'id', key: 'id', width: 100 },
-  { title: '建议系数', dataIndex: 'proposedCoefficient', key: 'proposedCoefficient', width: 100 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 110 },
-  { title: '提议人 PM', dataIndex: 'proposerId', key: 'proposerId', width: 110 },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 160 },
-  { title: '变更原因', dataIndex: 'reason', key: 'reason' },
-];
-
 // ---------- P1-2：本项目上市日期变更单列表（按 projectId）----------
 const launchList = ref<LaunchDateChangeRequest[]>([]);
 const launchListLoading = ref(false);
@@ -479,9 +352,8 @@ const reqListColumns = [
 ];
 
 onMounted(() => {
-  // 首次进入预拉需求变更列表（Tab3）+ P1-2 新增：Tab1 系数变更 + Tab2 上市日期 列表
+  // 首次进入预拉需求变更列表 + P1-2 新增：上市日期变更列表
   void loadReqList();
-  void loadCoefList();
   void loadLaunchList();
   // R215 A13：未闭环变更单（P2-6.2 门禁提示；失败静默——门禁提示缺失不阻断工作流）
   listOpenRequirementChanges(projectId.value.trim())
@@ -497,137 +369,12 @@ onMounted(() => {
 <template>
   <div class="flex flex-col gap-4">
     <Alert
-      message="发起系数/上市日期变更后即可在同卡片内对变更单执行确认/驳回；本项目历史变更单在对应 Tab 的「变更单列表」卡片中按创建时间倒序展示。"
+      message="发起上市日期变更后即可在同卡片内对变更单执行第二签；本项目历史变更单在对应 Tab 的「变更单列表」卡片中按创建时间倒序展示。"
       show-icon
       type="info"
     />
 
-    <Tabs default-active-key="coefficient">
-      <TabPane key="coefficient" tab="系数变更（S/B 级）">
-        <Card title="本项目系数变更单列表">
-          <template #extra>
-            <Button :loading="coefListLoading" size="small" @click="loadCoefList">刷新</Button>
-          </template>
-          <Table
-            :columns="coefListColumns"
-            :data-source="coefList"
-            :loading="coefListLoading"
-            :pagination="false"
-            row-key="id"
-            size="small"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'status'">
-                <Tag :color="statusToneFor(record.status)">{{ statusLabelFor(record.status) }}</Tag>
-              </template>
-              <template v-else-if="column.key === 'createTime'">
-                {{ record.createTime ? record.createTime.replace('T', ' ') : PENDING_TEXT }}
-              </template>
-              <template v-else-if="column.key === 'proposedCoefficient'">
-                {{ record.proposedCoefficient ?? PENDING_TEXT }}
-              </template>
-            </template>
-            <template #emptyText>
-              <Empty :description="coefListError || '该项目暂无系数变更单'" />
-            </template>
-          </Table>
-        </Card>
-
-        <Card class="mt-4" title="发起系数变更（双PM 联合提议）">
-          <Alert
-            class="mb-4"
-            message="仅 S/B 级项目适用差异化系数定值；提交后由产品组长确认写入项目档案。双方提交前请先行线下对齐。"
-            show-icon
-            type="info"
-          />
-          <Form layout="horizontal" :label-col="{ style: { width: '130px' } }">
-            <FormItem label="建议系数" required>
-              <InputNumber
-                v-model:value="proposedCoefficientModel"
-                :min="0"
-                :precision="2"
-                placeholder="如 1.20"
-                style="width: 200px"
-              />
-            </FormItem>
-            <FormItem label="市场PM 账号 ID" required>
-              <Input v-model:value="coefForm.marketPmId" placeholder="市场PM 的账号 ID（纯数字）" style="width: 280px" />
-            </FormItem>
-            <FormItem label="研发PM 账号 ID" required>
-              <Input v-model:value="coefForm.rdPmId" placeholder="研发PM 的账号 ID（纯数字）" style="width: 280px" />
-            </FormItem>
-            <FormItem label="变更原因" required>
-              <Textarea
-                v-model:value="coefForm.reason"
-                :maxlength="500"
-                :rows="4"
-                placeholder="请说明系数调整依据"
-                show-count
-              />
-            </FormItem>
-            <FormItem label=" " :colon="false">
-              <Button :loading="coefSubmitting" type="primary" @click="submitCoefficient">提交系数变更申请</Button>
-            </FormItem>
-          </Form>
-          <Alert v-if="coefError" class="mt-2" show-icon type="error" role="alert" :message="coefError" />
-          <Alert v-if="coefResult" class="mt-2" show-icon type="success">
-            <template #message>系数变更申请已提交</template>
-            <template #description>
-              <p>变更单 ID：{{ coefResult.id }}</p>
-              <p>状态：{{ statusText(coefResult.status) }}</p>
-              <p class="text-muted-foreground text-xs">发起成功后请在下方操作卡片内执行产品组长确认/驳回。</p>
-            </template>
-          </Alert>
-
-          <Card v-if="coefResult" class="mt-3" title="产品组长决策（针对上方变更单）">
-            <template v-if="!coefDecisionResult">
-              <Alert
-                class="mb-3"
-                message="由产品组长或超级管理员执行；确认通过后写入项目档案；重复处理将由后端按 409 状态冲突裁决。"
-                show-icon
-                type="info"
-              />
-              <Form layout="horizontal" :label-col="{ style: { width: '110px' } }">
-                <FormItem label="决策" required>
-                  <RadioGroup v-model:value="coefDecision.approve">
-                    <Radio :value="true">确认通过</Radio>
-                    <Radio :value="false">驳回</Radio>
-                  </RadioGroup>
-                </FormItem>
-                <FormItem label="决策意见">
-                  <Textarea
-                    v-model:value="coefDecision.opinion"
-                    :maxlength="500"
-                    :rows="3"
-                    placeholder="选填，不超过 500 字"
-                    show-count
-                  />
-                </FormItem>
-                <FormItem label=" " :colon="false">
-                  <Space>
-                    <Button :loading="coefDecisionSubmitting" type="primary" @click="submitCoefDecision">提交决策</Button>
-                  </Space>
-                </FormItem>
-              </Form>
-              <Alert v-if="coefDecisionError" class="mt-2" show-icon type="error" role="alert" :message="coefDecisionError" />
-            </template>
-            <template v-else>
-              <Descriptions :column="2" size="small" bordered>
-                <DescriptionsItem label="变更单 ID">{{ coefDecisionResult.id }}</DescriptionsItem>
-                <DescriptionsItem label="状态">{{ statusText(coefDecisionResult.status) }}</DescriptionsItem>
-                <DescriptionsItem label="组长决策">{{ decisionText(coefDecisionResult.leaderDecision) }}</DescriptionsItem>
-                <DescriptionsItem label="决策时间">
-                  {{ coefDecisionResult.leaderDecidedAt ? coefDecisionResult.leaderDecidedAt.replace('T', ' ') : PENDING_TEXT }}
-                </DescriptionsItem>
-                <DescriptionsItem label="决策意见" :span="2">
-                  {{ coefDecisionResult.leaderOpinion || PENDING_TEXT }}
-                </DescriptionsItem>
-              </Descriptions>
-            </template>
-          </Card>
-        </Card>
-      </TabPane>
-
+    <Tabs default-active-key="launch-date">
       <TabPane key="launch-date" tab="上市日期变更">
         <Card title="本项目上市日期变更单列表">
           <template #extra>

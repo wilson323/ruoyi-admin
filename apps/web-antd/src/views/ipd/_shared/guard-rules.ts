@@ -9,7 +9,8 @@
  *
  * <p>消费边界（本期，见口径文档 §4）：
  * <ul>
- *   <li>bonus_pool / requirement_change → deriveTransitions 派生（词表一致）</li>
+ *   <li>requirement_change → deriveTransitions 派生（词表一致）</li>
+ *   <li>bonus_pool / coefficient_change → 已随「算钱」层下线（后端种子规则 93→86），本层不再收录</li>
  *   <li>deletion_request / gate_review → KNOWN_DRIFT，词表收敛另案（C7），禁止直接派生</li>
  *   <li>其余前端机器无后端守卫规则，保持手写</li>
  * </ul>
@@ -46,7 +47,6 @@ export const GUARD_RULES: readonly GuardRule[] = Object.freeze([...contract.rule
 
 /** 后端守卫表里的实体类型名（仅收录前端已消费的）。 */
 export const GUARD_ENTITY_TYPES = {
-  bonusPool: 'bonus_pool',
   requirementChange: 'requirement_change',
 } as const;
 

@@ -1,34 +1,20 @@
 /**
  * 变更单接口（页25 项目详情-需求与变更 / 页26 变更单详情 / 原型 /changes 变更管理页）。
  *
- * 真值：CoefficientChangeController（S/B 级系数定值，AC-INC-15c）与
- * LaunchDateChangeController（上市日期双签，AC-INC-33 / P1-2.2）、
+ * 真值：LaunchDateChangeController（上市日期双签，AC-INC-33 / P1-2.2）、
  * RequirementChangeController（需求变更双签否决，P2-6.1，BR-GATE-07）。
- * 已交付端点：系数/上市日期两类各自的「发起」与「决策」共 4 个 POST，无 GET 列表/详情
- * （列表与详情读取区由项目详情 changes 页签挂占位，G-06）。
+ * 上市日期变更 4 端点：POST /launch-date-change-requests、
+ * POST /{id}/second-decision、GET 列表（按项目）、GET /{id} 详情。
  * 需求变更 6 端点已交付（2026-09-06 磁盘核实，旧头注「仅 domain 类」作废）：
  * POST /requirement-changes、PUT /{id}/submit、PUT /{id}/sign、GET /{id}、
  * GET /requirement-changes?pageNo&pageSize&projectId&status、GET /requirement-changes/open。
+ *
+ * 2026-10-03 拆除（业绩窗口域）：后端 CoefficientChangeController（S/B 级系数定值，AC-INC-15c）
+ * 已删除，本文件系数变更 4 端点与相关类型 / 解析函数同步移除，不再向下游暴露。
  */
 import { IpdRequestError } from './auth';
 import { normalizeDateTime } from './ai-document';
 import { ipdGet, ipdPost, ipdPut } from './http';
-
-export type ChangeType = 'coefficient' | 'launch-date';
-
-/** S/B 级差异化系数定值申请（PENDING_LEADER → CONFIRMED/REJECTED）。 */
-export interface CoefficientChangeRequest {
-  createTime: null | string;
-  id: string;
-  leaderDecision: null | string;
-  leaderDecidedAt: null | string;
-  leaderId: null | string;
-  leaderOpinion: null | string;
-  /** BigDecimal 原样保留（string | number），展示统一走 formatMoney/formatPercent。 */
-  proposedCoefficient: null | number | string;
-  reason: null | string;
-  status: string;
-}
 
 /** 上市日期双签申请（PENDING_SECOND → CONFIRMED/REJECTED）。 */
 export interface LaunchDateChangeRequest {
@@ -47,16 +33,6 @@ export interface LaunchDateChangeRequest {
   reason: null | string;
   status: string;
   version: null | number;
-}
-
-/** 发起系数变更入参（CoefficientChangeController.ProposeReq）。 */
-export interface CoefficientChangeProposeInput {
-  marketPmId: string;
-  /** 十进制字符串（来自 InputNumber 的 toString），避免浮点误差。 */
-  proposedCoefficient: string;
-  rdPmId: string;
-  projectId: string;
-  reason: string;
 }
 
 /** 第二签确认人角色（后端 LaunchDateChangeService.CONFIRMER_ROLES 白名单）。 */
@@ -81,34 +57,6 @@ const isIdString = (value: unknown): value is string =>
 
 const parseDate = (value: unknown): null | string =>
   typeof value === 'string' ? normalizeDateTime(value) : null;
-
-/** 收敛为前端契约；格式异常直接拒绝，不做静默修补。 */
-export function parseCoefficientChangeRequest(data: unknown): CoefficientChangeRequest {
-  const record = data !== null && typeof data === 'object' && !Array.isArray(data)
-    ? (data as Record<string, unknown>)
-    : null;
-  if (
-    !record ||
-    !isIdString(record.id) ||
-    !isIdString(record.projectId) ||
-    typeof record.status !== 'string'
-  ) {
-    throw new IpdRequestError('变更单数据格式异常，请稍后重试');
-  }
-  return {
-    createTime: parseDate(record.createTime),
-    id: record.id,
-    leaderDecision: typeof record.leaderDecision === 'string' ? record.leaderDecision : null,
-    leaderDecidedAt: parseDate(record.leaderDecidedAt),
-    leaderId: isIdString(record.leaderId) ? record.leaderId : null,
-    leaderOpinion: typeof record.leaderOpinion === 'string' ? record.leaderOpinion : null,
-    proposedCoefficient: typeof record.proposedCoefficient === 'number' || typeof record.proposedCoefficient === 'string'
-      ? record.proposedCoefficient
-      : null,
-    reason: typeof record.reason === 'string' ? record.reason : null,
-    status: record.status,
-  };
-}
 
 /** 收敛为前端契约；格式异常直接拒绝，不做静默修补。 */
 export function parseLaunchDateChangeRequest(data: unknown): LaunchDateChangeRequest {
@@ -141,28 +89,6 @@ export function parseLaunchDateChangeRequest(data: unknown): LaunchDateChangeReq
   };
 }
 
-/** 双PM 联合提议系数变更 → 待产品组长确认。 */
-export async function proposeCoefficientChange(input: CoefficientChangeProposeInput): Promise<CoefficientChangeRequest> {
-  return parseCoefficientChangeRequest(await ipdPost('/coefficient-change-requests', {
-    marketPmId: input.marketPmId,
-    proposedCoefficient: input.proposedCoefficient,
-    rdPmId: input.rdPmId,
-    projectId: input.projectId,
-    reason: input.reason,
-  }));
-}
-
-/** 产品组长确认或驳回（approve 用 @RequestParam，走查询串）。 */
-export async function decideCoefficientChange(
-  requestId: string,
-  approve: boolean,
-  opinion?: null | string,
-): Promise<CoefficientChangeRequest> {
-  return parseCoefficientChangeRequest(await ipdPost(
-    `/coefficient-change-requests/${requestId}/leader-decision?approve=${approve ? 'true' : 'false'}${opinion ? `&opinion=${encodeURIComponent(opinion)}` : ''}`,
-  ));
-}
-
 /** 上市日期变更第一签提议 → 待对方（另一侧PM）确认；须指定第二签确认人（同组）。 */
 export async function proposeLaunchDateChange(input: LaunchDateChangeProposeInput): Promise<LaunchDateChangeRequest> {
   return parseLaunchDateChangeRequest(await ipdPost('/launch-date-change-requests', {
@@ -186,36 +112,14 @@ export async function decideLaunchDateChange(
   ));
 }
 
-// ---------- P1-2：补 4 个只读 GET（按项目列表 + 按 ID 详情） ----------
+// ---------- P1-2：只读 GET（按项目列表 + 按 ID 详情） ----------
 //
-// 后端 4 端点已交付（与既有 propose/decide 同一 controller 路径前缀）：
-// - GET  /api/v1/coefficient-change-requests?projectId=…
-// - GET  /api/v1/coefficient-change-requests/{id}
+// 后端端点已交付（与既有 propose/decide 同一 controller 路径前缀）：
 // - GET  /api/v1/launch-date-change-requests?projectId=…
 // - GET  /api/v1/launch-date-change-requests/{id}
 //
-// 用途：changes.vue Tab1（系数变更）+ Tab2（上市日期变更）的本项目变更单列表
-// 替代原本 backend-pending 占位。Tab3（需求变更）保持原有 listRequirementChanges/getRequirementChange。
-
-/** P1-2：本项目系数变更单列表（按 {@code projectId} 过滤；缺省返回全量，按创建时间倒序）。 */
-export async function listCoefficientChanges(
-  projectId?: null | number | string,
-): Promise<CoefficientChangeRequest[]> {
-  const query = projectId === null || projectId === undefined || projectId === ''
-    ? undefined
-    : { projectId };
-  const raw = await ipdGet<unknown>('/coefficient-change-requests', query);
-  return Array.isArray(raw) ? raw.map(parseCoefficientChangeRequest) : [];
-}
-
-/** P1-2：按 ID 取系数变更单详情。 */
-export async function getCoefficientChange(
-  requestId: string | number,
-): Promise<CoefficientChangeRequest> {
-  return parseCoefficientChangeRequest(
-    await ipdGet<unknown>(`/coefficient-change-requests/${encodeURIComponent(String(requestId))}`),
-  );
-}
+// 用途：changes.vue Tab（上市日期变更）的本项目变更单列表。
+// Tab（需求变更）保持原有 listRequirementChanges/getRequirementChange。
 
 /** P1-2：本项目上市日期变更单列表（按 {@code projectId} 过滤；缺省返回全量，按创建时间倒序）。 */
 export async function listLaunchDateChanges(

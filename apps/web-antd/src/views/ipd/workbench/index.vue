@@ -142,9 +142,10 @@ const myPendingApprovals = ref<MyInitiatedTaskView[]>([]);
 
 // 后端 WorkbenchService 常量值为短形式（TASK_TYPE_DELETION_REQUEST = "DELETION" 等，实测 16039 响应）；
 // 常量名/javadoc 的长形式是命名误导，以此处短形式为准。
+// 2026-10-03 拆除：系数变更单已随业绩窗口域下线，后端 myInitiated() 现只聚合删除 + 上市日期两表
+// （WorkbenchService.TASK_TYPE_* 已无 COEFFICIENT 常量），故移除 COEFFICIENT 标签键。
 const MY_INITIATED_SOURCE_TEXT: Record<string, string> = {
   DELETION: '删除申请',
-  COEFFICIENT: '系数变更',
   LAUNCH_DATE: '上市日期变更',
   STAGE_ACTION: '阶段动作',
 };

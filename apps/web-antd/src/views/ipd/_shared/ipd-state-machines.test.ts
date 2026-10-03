@@ -5,7 +5,6 @@ import {
   ACTION_STATUS_MACHINE,
   BID_RESPONSE_STATUS_MACHINE,
   BID_STATUS_MACHINE,
-  BONUS_STATUS_MACHINE,
   CHANGE_STATUS_MACHINE,
   DELETION_STATUS_MACHINE,
   DEMAND_STATUS_MACHINE,
@@ -36,18 +35,6 @@ describe('PROJECT_STATUS 5 态', () => {
     expect(isState(PROJECT_STATUS_MACHINE, 'UNKNOWN')).toBe(false);
     expect(stateLabel(PROJECT_STATUS_MACHINE, 'UNKNOWN')).toBe('待补充');
     expect(stateLabel(PROJECT_STATUS_MACHINE, 'UNKNOWN', '兜底')).toBe('兜底');
-  });
-});
-
-describe('BONUS_STATUS 3 态', () => {
-  it('DRAFT → CONFIRMED/DISTRIBUTED（直分为后端契约规则，§5-1 JSON 派生补齐）', () => {
-    expect(nextStates(BONUS_STATUS_MACHINE, 'DRAFT')).toEqual(['CONFIRMED', 'DISTRIBUTED']);
-    expect(nextStates(BONUS_STATUS_MACHINE, 'CONFIRMED')).toEqual(['DISTRIBUTED']);
-    expect(nextStates(BONUS_STATUS_MACHINE, 'DISTRIBUTED')).toEqual([]);
-  });
-
-  it('DISTRIBUTED tone = success（终态高亮）', () => {
-    expect(stateTone(BONUS_STATUS_MACHINE, 'DISTRIBUTED')).toBe('success');
   });
 });
 

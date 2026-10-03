@@ -1,7 +1,79 @@
 {
-  "generated_from": "ruoyi-ai@4f0866e2",
+  "generated_from": "ruoyi-ai@b1fd9af9",
   "note": "由 gen-ipd-backend-contract.py 从后端 Controller 注解生成；后端接口变更后须重新生成并提交",
   "endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/permanent-delete/audit"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/permanent-delete/{entityType}/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/agent-runs/{runId}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/agent-runs/{runId}/artifacts/versions/{versionId}/download"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/agent-runs/{runId}/artifacts/{artifactId}/apply"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/agent-runs/{runId}/cancel"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/agent-runs/{runId}/events"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/agent-runs/{runId}/events/stream"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/agent-runs/{runId}/resume"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/agent-runs/{runId}/reverify"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/agent-runs/{runId}/skill-reviews"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/agent-runs/{runId}/skill-reviews/{candidateSeq}/review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai-agent-tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai-agent-tasks/{taskId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai-copilot/chat"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai-copilot/chat/stream"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai-copilot/runs/{runId}/cancel"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ai-documents"
+    },
     {
       "method": "POST",
       "path": "/api/v1/ai-documents"
@@ -32,11 +104,19 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/ai-documents/{id}/versions/{versionId}/rebuild-index"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/ai-documents/{id}/versions/{versionId}/reject"
     },
     {
       "method": "POST",
       "path": "/api/v1/ai-documents/{id}/versions/{versionId}/review"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/ai-feedback/{targetType}/{targetId}"
     },
     {
       "method": "GET",
@@ -64,11 +144,19 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/ai/suggest"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/allowance/auto-scan"
     },
     {
       "method": "GET",
       "path": "/api/v1/allowance/ledger"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/allowance/ledgers/{id}/confirm-stop"
     },
     {
       "method": "GET",
@@ -99,6 +187,10 @@
       "path": "/api/v1/audit-logs/verify"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/audit-rollback-counter"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/auth/change-password"
     },
@@ -116,7 +208,15 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/auth/platform-token"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/auth/refresh"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/wecom/qr-login"
     },
     {
       "method": "GET",
@@ -125,6 +225,14 @@
     {
       "method": "POST",
       "path": "/api/v1/bid-invitations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bid-invitations/ai-draft"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bid-invitations/expire-scan"
     },
     {
       "method": "POST",
@@ -137,6 +245,14 @@
     {
       "method": "PUT",
       "path": "/api/v1/bid-invitations/{id}/admin-assign"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bid-invitations/{id}/ai-compare"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bid-invitations/{id}/ai-completeness-check"
     },
     {
       "method": "PUT",
@@ -171,36 +287,24 @@
       "path": "/api/v1/bid-responses"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/bid-responses/by-rd-pm/{rdPmId}"
+    },
+    {
       "method": "PUT",
       "path": "/api/v1/bid-responses/{id}/withdraw"
     },
     {
-      "method": "POST",
-      "path": "/api/v1/bonus-pool/auto-compute"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/bonus-pool/coefficient/preview"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/bonus-pool/compute"
+      "method": "DELETE",
+      "path": "/api/v1/business-config"
     },
     {
       "method": "GET",
-      "path": "/api/v1/bonus-pool/list"
-    },
-    {
-      "method": "GET",
-      "path": "/api/v1/bonus-pool/{id}"
+      "path": "/api/v1/business-config"
     },
     {
       "method": "POST",
-      "path": "/api/v1/bonus-pool/{id}/distribute"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/bonus-pool/{id}/freeze"
+      "path": "/api/v1/business-config"
     },
     {
       "method": "GET",
@@ -221,14 +325,6 @@
     {
       "method": "POST",
       "path": "/api/v1/cert-templates/{id}/remove"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/coefficient-change-requests"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/coefficient-change-requests/{id}/leader-decision"
     },
     {
       "method": "GET",
@@ -284,7 +380,15 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/deletion-requests/my-requests"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/deletion-requests/overdue-admin-review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/deletion-requests/review-queue"
     },
     {
       "method": "POST",
@@ -303,8 +407,20 @@
       "path": "/api/v1/deletion-requests/{id}/withdraw"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/deliverables/upload"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/deliverables/{id}/download"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/demands"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/demands/{id}"
     },
     {
       "method": "POST",
@@ -323,6 +439,10 @@
       "path": "/api/v1/gate-elements"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/gate-elements/manage"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/gate-elements/{id}/archive"
     },
@@ -336,7 +456,15 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/gate-elements/{id}/duplicate"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/gate-elements/{id}/publish"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gate-elements/{id}/restore"
     },
     {
       "method": "POST",
@@ -361,6 +489,10 @@
     {
       "method": "POST",
       "path": "/api/v1/gates/{gateId}/arbitrate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/{gateId}/arbitration-divergences"
     },
     {
       "method": "POST",
@@ -391,6 +523,10 @@
       "path": "/api/v1/gates/{gateId}/materials"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/gates/{gateId}/materials/upload"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/gates/{gateId}/observers"
     },
@@ -401,6 +537,10 @@
     {
       "method": "POST",
       "path": "/api/v1/gates/{gateId}/observers/{observerId}/opinion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/gates/{gateId}/precheck"
     },
     {
       "method": "POST",
@@ -420,6 +560,10 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/guest-demands/overdue-scan"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/handovers"
     },
     {
@@ -431,12 +575,24 @@
       "path": "/api/v1/handovers/inbox"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/handovers/monthly-attribution"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/handovers/scan-overdue"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/handovers/super-admin"
     },
     {
       "method": "POST",
       "path": "/api/v1/handovers/{id}/accept"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/handovers/{id}/archive"
     },
     {
       "method": "POST",
@@ -447,6 +603,10 @@
       "path": "/api/v1/hr-sync/escalate-stale-resignations"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/hr-sync/last-run"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/hr-sync/mark-resigned"
     },
@@ -455,12 +615,132 @@
       "path": "/api/v1/hr-sync/pending-handovers"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/hr-sync/sync-now"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/hr-sync/sync-one"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipd/product-lines"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ipd/product-lines"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipd/product-lines/discoverable"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/ipd/product-lines/{lineId}/deactivate"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipd/product-lines/{lineId}/demands"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipd/product-lines/{lineId}/join-applications"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ipd/product-lines/{lineId}/join-applications"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ipd/product-lines/{lineId}/join-applications/{personId}/review"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/ipd/product-lines/{lineId}/leader/{personId}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ipd/product-lines/{lineId}/leave"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ipd/product-lines/{lineId}/members/{personId}/remove"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/ipd/product-lines/{lineId}/name"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipd/product-lines/{lineId}/products"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/ipd/product-lines/{lineId}/products/{productId}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/ipd/product-lines/{lineId}/products/{productId}/unassign"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipd/product-lines/{lineId}/projects"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipd/stage/sub-stages"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ipd/stage/sub-stages/advance"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipd/stage/sub-stages/guide-events"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ipd/stage/sub-stages/progress"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/kpi/functional"
     },
     {
       "method": "GET",
+      "path": "/api/v1/kpi/functional-metrics"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/kpi/functional-metrics"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/kpi/functional-metrics/codes"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/kpi/functional-metrics/{id}"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/kpi/performance"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/kpi/raw-records"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/kpi/raw-records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/kpi/raw-records/types"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/kpi/rules"
     },
     {
       "method": "GET",
@@ -469,6 +749,10 @@
     {
       "method": "POST",
       "path": "/api/v1/kpi/shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/kpi/shared/confirms"
     },
     {
       "method": "GET",
@@ -479,12 +763,24 @@
       "path": "/api/v1/kpi/shared/deadline-scan"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/kpi/shared/{id}/confirm"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/kpi/trend"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/launch-date-change-requests"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/launch-date-change-requests"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/launch-date-change-requests/{id}"
     },
     {
       "method": "POST",
@@ -500,7 +796,19 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/negative-feedbacks/by-project/{projectId}"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/negative-feedbacks/by-project/{projectId}/effective"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/negative-feedbacks/by-severity/{severity}"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/negative-feedbacks/{id}"
     },
     {
       "method": "GET",
@@ -544,6 +852,18 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/p0/escalation-chain"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/p0/escalation-chain/check"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/p0/escalation-chain/{id}/resolve"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/person-sync/jobs"
     },
     {
@@ -563,6 +883,10 @@
       "path": "/api/v1/person-sync/jobs/{id}/retry"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/persons/active"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/persons/{id}/rehire"
     },
@@ -577,6 +901,18 @@
     {
       "method": "GET",
       "path": "/api/v1/pm-directory"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/post-launch-reviews"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/post-launch-reviews/pending"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/post-launch-reviews/{id}/complete"
     },
     {
       "method": "GET",
@@ -704,6 +1040,10 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/projects/{id}/approve-start"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/projects/{id}/baselines"
     },
     {
@@ -727,6 +1067,10 @@
       "path": "/api/v1/projects/{id}/gate-checklist"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/projects/{id}/gates"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/projects/{id}/gates"
     },
@@ -736,7 +1080,35 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/projects/{id}/reject-start"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/resubmit-start"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{id}/stage-acceptance"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects/{id}/stages"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/projects/{id}/status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/agent-capabilities"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects/{projectId}/agent-runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects/{projectId}/agent-runs"
     },
     {
       "method": "GET",
@@ -755,28 +1127,28 @@
       "path": "/api/v1/public/demands/{code}"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/public/demands/{code}/supplement"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/public/demands/{code}/withdraw"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/public/products"
     },
     {
       "method": "POST",
-      "path": "/api/v1/receipt-ledgers"
+      "path": "/api/v1/recovery/check-90d"
     },
     {
       "method": "GET",
-      "path": "/api/v1/receipt-ledgers/by-project/{projectId}"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/receipt-ledgers/{projectId}/refunds"
+      "path": "/api/v1/recovery/warnings"
     },
     {
       "method": "GET",
       "path": "/api/v1/report/export/allowance"
-    },
-    {
-      "method": "GET",
-      "path": "/api/v1/report/export/bonus"
     },
     {
       "method": "GET",
@@ -812,11 +1184,51 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/resource/sse"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/role-permissions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/role-permissions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/role-permissions/effective"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/role-permissions/reload"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/role-permissions/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/scenarios/landed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/scenarios/landed"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/scenarios/landed/import"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/sop-templates"
     },
     {
       "method": "GET",
       "path": "/api/v1/sop-templates/current"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sop-templates/instances"
     },
     {
       "method": "GET",
@@ -839,6 +1251,10 @@
       "path": "/api/v1/sop-templates/{id}/update"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/sop-templates/{templateId}/instantiate"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/stage-actions"
     },
@@ -849,6 +1265,18 @@
     {
       "method": "POST",
       "path": "/api/v1/stage-actions/instantiate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/stage-actions/overdue-scan"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/stage-actions/{id}/accept"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/stage-actions/{id}/ai-execute"
     },
     {
       "method": "POST",
@@ -899,12 +1327,40 @@
       "path": "/api/v1/system-configs/{key:.+}/as-of"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/system-configs/{key:.+}/revert"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/system-configs/{key:.+}/versions"
     },
     {
       "method": "GET",
+      "path": "/api/v1/system/menu/getRouters"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workbench/my-initiated"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workbench/my-pending-approvals"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/workbench/summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workbench/tasks"
+    },
+    {
+      "method": "POST",
+      "path": "/copilotkit/agent/{agentId}/run"
+    },
+    {
+      "method": "GET",
+      "path": "/copilotkit/info"
     }
   ]
 }

@@ -19,7 +19,6 @@ import {
   ACTION_STATUS_MACHINE,
   BID_RESPONSE_STATUS_MACHINE,
   BID_STATUS_MACHINE,
-  BONUS_STATUS_MACHINE,
   CHANGE_STATUS_MACHINE,
   DELETION_STATUS_MACHINE,
   DEMAND_STATUS_MACHINE,
@@ -267,13 +266,6 @@ export const demandStateLabel = (code: null | string | undefined, fallback?: str
 
 export const demandStateTone = (code: null | string | undefined, fallback?: string) =>
   stateTone(DEMAND_STATUS_MACHINE, code, fallback);
-
-/** 奖金池状态中文。 */
-export const bonusStateLabel = (code: null | string | undefined, fallback?: string) =>
-  stateLabel(BONUS_STATUS_MACHINE, code, fallback);
-
-export const bonusStateTone = (code: null | string | undefined, fallback?: string) =>
-  stateTone(BONUS_STATUS_MACHINE, code, fallback);
 
 /** 删除申请状态中文。 */
 export const deletionStateLabel = (code: null | string | undefined, fallback?: string) =>

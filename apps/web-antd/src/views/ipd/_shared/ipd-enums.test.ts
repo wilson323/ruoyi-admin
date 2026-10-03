@@ -30,8 +30,6 @@ import {
   actionStatusLabel,
   bidResponseStatusLabel,
   bidStatusLabel,
-  bonusStateLabel,
-  bonusStateTone,
   changeStateLabel,
   changeStateTone,
   demandStateLabel,
@@ -109,11 +107,6 @@ describe('业务状态机 label/tone 转发', () => {
     expect(projectStateLabel('ACTIVE')).toBe('进行中');
     expect(projectStateLabel('ARCHIVED')).toBe('已归档');
     expect(projectStateTone('SUSPENDED')).toBe('warning');
-  });
-
-  it('bonus 状态转发', () => {
-    expect(bonusStateLabel('DISTRIBUTED')).toBe('已分配');
-    expect(bonusStateTone('DRAFT')).toBe('default');
   });
 
   it('change / gate / demand / deletion 状态转发', () => {

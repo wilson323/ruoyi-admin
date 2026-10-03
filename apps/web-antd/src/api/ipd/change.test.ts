@@ -2,16 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
 import {
-  decideCoefficientChange,
   decideLaunchDateChange,
-  getCoefficientChange,
   getLaunchDateChange,
-  listCoefficientChanges,
   listLaunchDateChanges,
   listOpenRequirementChanges,
-  parseCoefficientChangeRequest,
   parseLaunchDateChangeRequest,
-  proposeCoefficientChange,
   proposeLaunchDateChange,
 } from './change';
 import { IpdRequestError } from './auth';
@@ -24,20 +19,6 @@ const response = (data: unknown, status = 200, code = 0) =>
       status,
     },
   );
-
-const coefficientFixture = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
-  createTime: '2026-09-05 10:00:00',
-  id: '8001',
-  leaderDecision: null,
-  leaderDecidedAt: null,
-  leaderId: null,
-  leaderOpinion: null,
-  projectId: '100',
-  proposedCoefficient: 1.2,
-  reason: 'S 级上调',
-  status: 'PENDING_LEADER',
-  ...overrides,
-});
 
 const launchFixture = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   confirmerId: null,
@@ -64,37 +45,16 @@ afterEach(() => {
 });
 
 describe('变更单接口', () => {
-  it('系数变更联合提议走 POST /coefficient-change-requests，系数以字符串提交', async () => {
-    const fetcher = vi.fn().mockResolvedValue(response(coefficientFixture()));
-    vi.stubGlobal('fetch', fetcher);
-    const result = await proposeCoefficientChange({
-      marketPmId: '11',
-      proposedCoefficient: '1.20',
-      rdPmId: '22',
-      projectId: '100',
-      reason: 'S 级上调',
-    });
-    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/coefficient-change-requests');
-    expect(JSON.parse(fetcher.mock.calls[0]?.[1].body)).toEqual({
-      marketPmId: '11',
-      proposedCoefficient: '1.20',
-      rdPmId: '22',
-      projectId: '100',
-      reason: 'S 级上调',
-    });
-    expect(result.status).toBe('PENDING_LEADER');
-  });
-
   it('决策动作 approve/opinion 走查询串且 opinion 做编码', async () => {
     const fetcher = vi
       .fn()
       .mockImplementation(() =>
-        Promise.resolve(response(coefficientFixture({ status: 'CONFIRMED' }))),
+        Promise.resolve(response(launchFixture({ status: 'CONFIRMED' }))),
       );
     vi.stubGlobal('fetch', fetcher);
-    await decideCoefficientChange('8001', true, '意见&备注');
+    await decideLaunchDateChange('8002', true, '意见&备注');
     expect(fetcher.mock.calls[0]?.[0]).toBe(
-      '/api/v1/coefficient-change-requests/8001/leader-decision?approve=true&opinion=%E6%84%8F%E8%A7%81%26%E5%A4%87%E6%B3%A8',
+      '/api/v1/launch-date-change-requests/8002/second-decision?approve=true&opinion=%E6%84%8F%E8%A7%81%26%E5%A4%87%E6%B3%A8',
     );
     fetcher.mockImplementation(() => Promise.resolve(response(launchFixture({ status: 'REJECTED' }))));
     await decideLaunchDateChange('8002', false);
@@ -123,46 +83,13 @@ describe('变更单接口', () => {
   });
 
   it('parse 拒绝非对象与缺失 ID/status 的数据', () => {
-    expect(() => parseCoefficientChangeRequest(null)).toThrow(IpdRequestError);
-    expect(() => parseCoefficientChangeRequest({ id: '1' })).toThrow(IpdRequestError);
+    expect(() => parseLaunchDateChangeRequest(null)).toThrow(IpdRequestError);
+    expect(() => parseLaunchDateChangeRequest({ id: '1' })).toThrow(IpdRequestError);
     expect(() => parseLaunchDateChangeRequest({ id: '1', projectId: '100' })).toThrow(IpdRequestError);
   });
 });
 
-// ---------- P1-2：4 个新 GET（按项目列表 + 按 ID 详情）契约测试 ----------
-
-describe('P1-2 系数变更列表与详情 GET', () => {
-  it('listCoefficientChanges(projectId=100) → GET /api/v1/coefficient-change-requests?projectId=100', async () => {
-    const fetcher = vi.fn().mockResolvedValue(response([coefficientFixture({ id: '8001' }), coefficientFixture({ id: '8002', status: 'CONFIRMED' })]));
-    vi.stubGlobal('fetch', fetcher);
-    const rows = await listCoefficientChanges(100);
-    expect(rows).toHaveLength(2);
-    expect(rows[0]!.id).toBe('8001');
-    expect(rows[1]!.status).toBe('CONFIRMED');
-    const called = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
-    expect(called.pathname).toBe('/api/v1/coefficient-change-requests');
-    expect(called.searchParams.get('projectId')).toBe('100');
-  });
-
-  it('listCoefficientChanges() 不带 projectId → 查询串不含 projectId 参数', async () => {
-    const fetcher = vi.fn().mockResolvedValue(response([]));
-    vi.stubGlobal('fetch', fetcher);
-    const rows = await listCoefficientChanges();
-    expect(rows).toEqual([]);
-    const called = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
-    expect(called.pathname).toBe('/api/v1/coefficient-change-requests');
-    expect(called.searchParams.has('projectId')).toBe(false);
-  });
-
-  it('getCoefficientChange(id=8001) → GET /api/v1/coefficient-change-requests/8001，解析并返回实体', async () => {
-    const fetcher = vi.fn().mockResolvedValue(response(coefficientFixture({ id: '8001', status: 'CONFIRMED' })));
-    vi.stubGlobal('fetch', fetcher);
-    const row = await getCoefficientChange(8001);
-    expect(row.id).toBe('8001');
-    expect(row.status).toBe('CONFIRMED');
-    expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/coefficient-change-requests/8001');
-  });
-});
+// ---------- P1-2：只读 GET（按项目列表 + 按 ID 详情）契约测试 ----------
 
 describe('P1-2 上市日期变更列表与详情 GET', () => {
   it('listLaunchDateChanges(projectId=200) → GET /api/v1/launch-date-change-requests?projectId=200', async () => {

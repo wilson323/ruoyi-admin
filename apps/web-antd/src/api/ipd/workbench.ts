@@ -16,8 +16,9 @@ export interface WorkbenchStats {
   unread: number;
   completed: number;
   /**
-   * 「我发起的」计数（P1-4）：当前人在 deletion_requests / coefficient_change_requests /
-   * launch_date_change_requests 三表 create_by = 当前人的总数。
+   * 「我发起的」计数（P1-4）：当前人在 deletion_requests /
+   * launch_date_change_requests 两表 create_by = 当前人的总数
+   * （2026-10-03 拆除：系数变更为第三张表，后端 myInitiated() 已不再聚合）。
    * 旧后端（16039 未重启）无此键时为 undefined；前端以 undefined 兜底 0。
    * 计数一律 int 装箱：避免全局 Long→String 序列化把 Long 计数变字符串。
    */
@@ -71,12 +72,13 @@ export function fetchWorkbenchSummary(projectId?: string): Promise<WorkbenchSumm
 
 /**
  * 我发起 / 待我审批聚合任务卡（R27 P0-6；后端 MyInitiatedTask 投影，R215 A10 接线）。
- * 三张审批单据（deletion_requests / coefficient_change_requests / launch_date_change_requests）
+ * 两批审批单据（deletion_requests / launch_date_change_requests）
  * + 阶段动作（stage_actions）的统一视图；personId 缺省 = 当前登录人（SEC-API-01 会话推导）。
+ * 2026-10-03 拆除：coefficient_change_requests 已随后端 myInitiated() 下线，不再出现在本视图。
  */
 export interface MyInitiatedTaskView {
   id: string;
-  /** 实测短形式：DELETION / COEFFICIENT / LAUNCH_DATE / STAGE_ACTION（后端常量名长形式但值为短，以响应为准） */
+  /** 实测短形式：DELETION / LAUNCH_DATE / STAGE_ACTION（后端常量名长形式但值为短，以响应为准） */
   taskType: string;
   sourceId: string;
   sourceTable: string;
