@@ -3,7 +3,7 @@
  *
  * 覆盖：swarm-progress.vue 挂载渲染（汇总计数 / 任务名 / 状态 / 耗时 / 产出 / 失败 / 步骤 / 空态）+
  * 源码红线扫描（颜色三级机制走 --ipd-* 令牌、宿主复用 agentId 走 subscribe 订阅不进 card-registry、
- * 零 TODO）。fixture 帧形状=后端 AgUiEvents 工厂 wire（前后端锁同一契约）。
+ * 零 TODO）。fixture 帧形状=官方 AG-UI 2.0.3 STEP_* wire（SUBAGENT_* 类型官方不存在，已删）。
  */
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -15,36 +15,31 @@ import { describe, expect, it } from 'vitest';
 import { foldSwarmEvents, type SwarmEvent } from './swarm-progress';
 import SwarmProgressCard from './swarm-progress.vue';
 
-/** 两子智能体样本：sa-1 走完（含步骤+产出+耗时），sa-2 失败。wire 形状=后端工厂。 */
+/** 两任务样本：sa-1 带两步骤（一完成一执行中），sa-2 单步骤。wire 形状=官方 STEP_*。 */
 const EVENTS: SwarmEvent[] = [
-  { type: 'SUBAGENT_STARTED', subagentRunId: 'sa-1', name: '痛点访谈员', description: '负责 JTBD 访谈', timestamp: 1000 },
   { type: 'STEP_STARTED', stepName: '准备提纲', subagentRunId: 'sa-1' },
+  { type: 'STEP_STARTED', stepName: '执行访谈', subagentRunId: 'sa-1' },
   { type: 'STEP_FINISHED', stepName: '准备提纲', subagentRunId: 'sa-1' },
-  { type: 'SUBAGENT_FINISHED', subagentRunId: 'sa-1', result: '访谈纪要已生成', timestamp: 3000 },
-  { type: 'SUBAGENT_STARTED', subagentRunId: 'sa-2', name: '竞品分析员' },
-  { type: 'SUBAGENT_ERROR', subagentRunId: 'sa-2', message: '超时', code: '50002' },
+  { type: 'STEP_STARTED', stepName: '竞品扫描', subagentRunId: 'sa-2' },
 ];
 
 describe('swarm-progress.vue 渲染', () => {
-  it('挂载渲染：汇总计数 + 任务名/状态/耗时/产出/失败/步骤', () => {
+  it('挂载渲染：汇总计数 + 任务（id 命名）+ 状态 + 步骤节拍', () => {
     const wrapper = mount(SwarmProgressCard, { props: { vm: foldSwarmEvents(EVENTS) } });
     expect(wrapper.find('[data-testid="ipd-swarm-progress"]').exists()).toBe(true);
 
     const counts = wrapper.get('[data-testid="ipd-swarm-counts"]').text();
     expect(counts).toContain('共 2');
-    expect(counts).toContain('已完成 1');
-    expect(counts).toContain('失败 1');
+    expect(counts).toContain('执行中 2');
 
-    expect(wrapper.get('[data-testid="ipd-swarm-task-sa-1"]').text()).toContain('痛点访谈员');
-    expect(wrapper.get('[data-testid="ipd-swarm-task-sa-2"]').text()).toContain('竞品分析员');
+    // STEP_* 惰性建任务以 subagentRunId 命名（无 SUBAGENT_* 后不再有业务任务名）
+    expect(wrapper.find('[data-testid="ipd-swarm-task-sa-1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="ipd-swarm-task-sa-2"]').exists()).toBe(true);
 
     const text = wrapper.text();
-    expect(text).toContain('负责 JTBD 访谈'); // 描述
-    expect(text).toContain('访谈纪要已生成'); // 产出摘要（面板 force-render）
-    expect(text).toContain('准备提纲'); // 步骤节拍
-    expect(text).toContain('超时（50002）'); // 失败信息
-    expect(text).toContain('2.0s'); // sa-1 耗时（3000-1000）
-    expect(wrapper.get('[data-testid="ipd-swarm-output-sa-1"]').text()).toContain('访谈纪要已生成');
+    expect(text).toContain('准备提纲'); // 已完成步骤节拍
+    expect(text).toContain('执行访谈'); // 执行中步骤节拍
+    expect(text).toContain('竞品扫描'); // sa-2 步骤节拍
   });
 
   it('空 VM → Empty 空态、无任务面板（优雅降级）', () => {

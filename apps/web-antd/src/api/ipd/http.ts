@@ -44,3 +44,9 @@ export async function ipdDelete<T = unknown>(path: string): Promise<T> {
   const auth = useIpdAuthStore();
   return (await auth.authenticatedRequest(path, { method: 'DELETE' })) as T;
 }
+
+/** 二进制下载仍复用真实 Person 会话与原有换票重试。 */
+export async function ipdDownload(path: string): Promise<Blob> {
+  const auth = useIpdAuthStore();
+  return (await auth.authenticatedRequest(path, { responseType: 'blob' })) as Blob;
+}

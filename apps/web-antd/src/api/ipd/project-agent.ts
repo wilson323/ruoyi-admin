@@ -17,7 +17,7 @@
  *
  * 与既有 ai-copilot.ts（副驾 SSE 流）是两条独立链路：本模块不回落到副驾流。
  */
-import { ipdGet, ipdPost, ipdPut } from './http';
+import { ipdDownload, ipdGet, ipdPost, ipdPut } from './http';
 
 /** 运行状态（后端状态机 7 态）。 */
 export type AgentRunStatus =
@@ -341,6 +341,11 @@ export function applyAgentRunArtifact(
   return ipdPost<ApplyAgentArtifactReceipt>(
     `/agent-runs/${seg(runId)}/artifacts/${seg(artifactId)}/apply`,
   );
+}
+
+/** 只下载服务器 ARTIFACT 事件对应的版本附件，字符串 ID 原样编码。 */
+export function downloadAgentRunArtifact(runId: string, versionId: string): Promise<Blob> {
+  return ipdDownload(`/agent-runs/${seg(runId)}/artifacts/versions/${seg(versionId)}/download`);
 }
 
 /**

@@ -11,6 +11,7 @@ import { streamCopilot } from '../../../../api/ipd/ai-copilot';
 import { IpdRequestError } from '../../../../api/ipd/auth';
 import {
   cancelAgentRun,
+  downloadAgentRunArtifact,
   resumeAgentRun,
   createProjectAgentRun,
   fetchAgentRun,
@@ -26,6 +27,7 @@ import { useIpdAiWorkspace } from '../ai-workspace/use-ai-workspace';
 vi.mock('../../../../api/ipd/project-agent', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   cancelAgentRun: vi.fn(),
+  downloadAgentRunArtifact: vi.fn(),
   resumeAgentRun: vi.fn(),
   createProjectAgentRun: vi.fn(),
   fetchAgentRun: vi.fn(),
@@ -127,6 +129,39 @@ afterEach(() => {
 });
 
 describe('ProjectAgentPanel', () => {
+  it('downloads only delivered string versions and keeps plain artifact previews', async () => {
+    vi.mocked(listProjectAgentRuns).mockResolvedValue([historyRow('run-1')]);
+    vi.mocked(fetchAgentRun).mockResolvedValue(detailOf('SUCCEEDED'));
+    vi.mocked(fetchAgentRunEvents).mockResolvedValue({ events: [
+      { seq: 1, type: 'ARTIFACT', createdAt: 'x', payload: { artifactId: 'plain', versionId: 'plain-version', title: '原文报告', version: 1 } },
+      { seq: 2, type: 'ARTIFACT', createdAt: 'x', payload: { artifactId: 'native', versionId: '9007199254740993', title: '证据.bin', attachmentOrigin: 'IPD_NATIVE_DELIVERY_V1' } },
+      { seq: 3, type: 'ARTIFACT', createdAt: 'x', payload: { artifactId: 'invalid', versionId: 42, title: '错误编号', attachmentOrigin: 'IPD_NATIVE_DELIVERY_V1' } },
+    ], nextSeq: 3, terminal: true });
+    vi.mocked(downloadAgentRunArtifact).mockResolvedValue(new Blob(['attachment']));
+    const createUrl = vi.fn().mockReturnValue('blob:download');
+    const revokeUrl = vi.fn();
+    vi.stubGlobal('URL', class extends URL { static override createObjectURL = createUrl; static override revokeObjectURL = revokeUrl; });
+    const clicked = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const wrapper = await mountPanel();
+    try {
+      await wrapper.find('.run-history button').trigger('click');
+      await flushPromises();
+      expect(wrapper.findAll('[data-testid="agent-artifact-download"]')).toHaveLength(1);
+      expect(wrapper.text()).toContain('原文报告');
+      await wrapper.find('[data-testid="agent-artifact-download"]').trigger('click');
+      await flushPromises();
+      expect(downloadAgentRunArtifact).toHaveBeenCalledWith('run-1', '9007199254740993');
+      expect(clicked).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(revokeUrl).toHaveBeenCalledWith('blob:download');
+      vi.mocked(downloadAgentRunArtifact).mockRejectedValueOnce(new IpdRequestError('无权访问该项目', 403, 30001, 'http', '无权访问该项目'));
+      await wrapper.find('[data-testid="agent-artifact-download"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[data-testid="agent-artifact-downloads"] [role="alert"]').text()).toBe('无权访问该项目');
+      expect(clicked).toHaveBeenCalledTimes(1);
+    } finally { wrapper.unmount(); clicked.mockRestore(); vi.unstubAllGlobals(); }
+  });
+
   it('prepares an editable new attempt after failure without resuming or guessing the historical prompt', async () => {
     const failed = { ...detailOf('FAILED'), errorCode: 'COMPLETION_REJECTED' };
     vi.mocked(listProjectAgentRuns).mockResolvedValue([{ ...historyRow('run-1'), status: 'FAILED' }]);

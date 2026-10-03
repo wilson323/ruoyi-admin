@@ -124,6 +124,7 @@ export type IpdRequestOptions = {
   body?: object;
   formData?: FormData;
   method?: 'DELETE' | 'GET' | 'POST' | 'PUT';
+  responseType?: 'blob';
 };
 
 /** IPD has its own code=0 envelope and keeps IDs/decimal strings unchanged. */
@@ -134,7 +135,7 @@ export async function requestIpd(
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), 15_000);
   try {
-    const headers: Record<string, string> = { Accept: 'application/json' };
+    const headers: Record<string, string> = { Accept: options.responseType === 'blob' ? 'application/octet-stream, application/json' : 'application/json' };
     if (options.body && !options.formData) headers['Content-Type'] = 'application/json';
     if (options.token) headers.Authorization = `Bearer ${options.token}`;
     const response = await fetch(`/api/v1${path}`, {
@@ -144,7 +145,11 @@ export async function requestIpd(
       method: options.method ?? 'GET',
       signal: abort.signal,
     });
-    if (!response.headers.get('content-type')?.includes('application/json')) {
+    const contentType = response.headers.get('content-type') ?? '';
+    if (options.responseType === 'blob' && response.ok && contentType.includes('application/octet-stream')) {
+      return await response.blob();
+    }
+    if (!contentType.includes('application/json')) {
       throw new IpdRequestError('服务暂时不可用，请稍后重试', response.status);
     }
     const envelope: unknown = await response.json();
@@ -208,6 +213,10 @@ export async function requestIpd(
                   : '服务暂时不可用，请稍后重试');
       throw new IpdRequestError(message, response.status, envelope.code, 'http', envelope.message,
         typeof envelope.traceId === 'string' ? envelope.traceId : undefined);
+    }
+    // 下载口必须返回实际附件；即使 code=0 的 JSON 也不是下载成功。
+    if (options.responseType === 'blob') {
+      throw new IpdRequestError('附件响应格式异常，请重试', response.status);
     }
     return envelope.data;
   } catch (error) {

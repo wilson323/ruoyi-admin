@@ -12,6 +12,7 @@ import { IpdRequestError } from './auth';
 import {
   agentRunStatusMeta,
   applyAgentRunArtifact,
+  downloadAgentRunArtifact,
   cancelAgentRun,
   resumeAgentRun,
   createProjectAgentRun,
@@ -57,6 +58,21 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('project agent API contract', () => {
+  it('downloads exact string version bytes with Person authorization, never treating error JSON as a file', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response(new Uint8Array([0, 1, 255]), {
+      headers: { 'Content-Type': 'application/octet-stream' },
+    })).mockResolvedValueOnce(failure(403, 30001, '无权访问该项目'))
+      .mockResolvedValueOnce(envelope({ fake: 'attachment' }));
+    vi.stubGlobal('fetch', fetcher);
+    const blob = await downloadAgentRunArtifact('9007199254740993', '0019007199254740995');
+    expect(call(fetcher)[0]).toBe('/api/v1/agent-runs/9007199254740993/artifacts/versions/0019007199254740995/download');
+    expect(call(fetcher)[1].headers).toMatchObject({ Authorization: 'Bearer test-session' });
+    expect(blob).toBeInstanceOf(Blob);
+    expect(Array.from(new Uint8Array(await blob.arrayBuffer()))).toEqual([0, 1, 255]);
+    await expect(downloadAgentRunArtifact('9007199254740993', '0019007199254740995')).rejects.toMatchObject({ status: 403 });
+    await expect(downloadAgentRunArtifact('9007199254740993', '0019007199254740995')).rejects.toThrow('附件响应格式异常');
+  });
+
   it('GET agent-capabilities under the project path and unwraps the envelope', async () => {
     const data = {
       packs: [

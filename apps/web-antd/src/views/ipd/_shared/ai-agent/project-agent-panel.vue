@@ -15,6 +15,7 @@ import { Alert, Button, Input, Tag } from 'ant-design-vue';
 
 import {
   agentRunStatusMeta,
+  downloadAgentRunArtifact,
   isAgentRunCancellable,
   listProjectAgentRuns,
   type AgentRunListItem,
@@ -251,6 +252,45 @@ const canSubmit = computed(
 const canCancel = computed(() => active.value && status.value !== null && isAgentRunCancellable(status.value));
 const statusMeta = computed(() => (status.value ? agentRunStatusMeta(status.value) : null));
 const artifactEvents = computed(() => events.value.filter((event) => event.type === 'ARTIFACT'));
+/** 下载资格只来自服务器已交付事件；版本 ID 不做数值转换。 */
+const deliveredAttachments = computed(() => artifactEvents.value.flatMap((event) => {
+  const payload = event.payload;
+  if (!payload || typeof payload !== 'object') return [];
+  const data = payload as Record<string, unknown>;
+  if (data.attachmentOrigin !== 'IPD_NATIVE_DELIVERY_V1' ||
+      typeof data.versionId !== 'string' || !data.versionId.trim()) return [];
+  return [{ versionId: data.versionId, title: typeof data.title === 'string' ? data.title : '产物附件' }];
+}));
+const downloadingVersion = ref('');
+const downloadError = ref('');
+async function downloadAttachment(versionId: string, title: string): Promise<void> {
+  const owningRun = runId.value;
+  const owningProject = props.projectId;
+  if (!owningRun || downloadingVersion.value) return;
+  downloadingVersion.value = versionId;
+  downloadError.value = '';
+  try {
+    const blob = await downloadAgentRunArtifact(owningRun, versionId);
+    if (runId.value !== owningRun || props.projectId !== owningProject) return;
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = title.replace(/[\\/\u0000-\u001f]/g, '_') || '产物附件';
+    document.body.append(anchor);
+    try { anchor.click(); } finally {
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+  } catch (error) {
+    if (runId.value === owningRun && props.projectId === owningProject) {
+      downloadError.value = ipdErrorText(error, { fallback: '附件下载失败，请重试' });
+    }
+  } finally {
+    downloadingVersion.value = '';
+  }
+}
+watch([runId, () => props.projectId], () => { downloadError.value = ''; });
+
 /** 中间栏挂上本次运行锚点后，完整时间线挪过去；定档留在左侧产物列。 */
 const readoutReady = ref(false);
 /** 工作台把选择器锚点放进输入框加号菜单时为 true，左侧不再放能力表单和任务框。 */
@@ -518,6 +558,16 @@ function onMessageKeydown(event: KeyboardEvent): void {
         </li>
       </ul>
     </section>
+    <div v-if="deliveredAttachments.length" data-testid="agent-artifact-downloads">
+      <Button v-for="attachment in deliveredAttachments" :key="attachment.versionId"
+        :loading="downloadingVersion === attachment.versionId"
+        :disabled="downloadingVersion !== ''"
+        data-testid="agent-artifact-download"
+        @click="downloadAttachment(attachment.versionId, attachment.title)">
+        下载 {{ attachment.title }}
+      </Button>
+      <p v-if="downloadError" role="alert">{{ downloadError }}</p>
+    </div>
     <section v-if="readoutReady" class="run-artifacts" data-testid="agent-run-artifacts">
       <h4>AI 产物</h4>
       <p v-if="artifactEvents.length === 0" data-testid="agent-run-artifacts-empty">本次运行还没有可定档产物。</p>
