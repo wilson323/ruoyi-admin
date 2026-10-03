@@ -20,7 +20,7 @@
  * full 变体在生成当时另挂一块预览（文档安全Markdown，HTML 用 sandbox="" 的 iframe），
  * 不等定档。artifacts 变体不挂这块预览。
  */
-import { computed, reactive } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { Alert, Button, Tag } from 'ant-design-vue';
 
 import AiLoadingState from '../ai-loading-state.vue';
@@ -33,20 +33,21 @@ import {
 } from '../../../../api/ipd/project-agent';
 import { listAiDocumentVersions } from '../../../../api/ipd/ai-document';
 import { ipdErrorText } from '../ipd-error-text';
-import { modelMessageParts } from '../ai-workspace/model-message';
 import AssistantTurn from '../assistant-turn.vue';
 import SafeMarkdown from '../safe-markdown';
+import { verificationGaps } from './verification-gaps';
 import { archiveResultText } from './artifact-archive';
-import { liveGeneratedPreview } from './artifact-live-preview';
+import { deliveredDocumentPreview } from './artifact-live-preview';
 import ArtifactLivePreview from './artifact-live-preview.vue';
 import type { ClarificationChoice } from './clarification-choices';
 import FeedbackBar from './feedback-bar.vue';
 import IntentCard from './intent-card.vue';
 import AguiInterruptForm from './agui-interrupt-form.vue';
+import SkillsReviewPanel from './skills-review-panel.vue';
 import type { AgentInterruptPause } from './agui-interrupt';
 import ToolCallCard from './tool-call-card.vue';
 import { foldTimelineRows } from './tool-call-rows';
-import { buildTimelineItems, timelineTranscript, type TimelineItem } from './timeline-model';
+import { buildTimelineItems, type TimelineItem } from './timeline-model';
 
 /** 单条产物「工作成果定档」的交互态。 */
 interface ArtifactApplyState {
@@ -67,6 +68,9 @@ interface Props {
   artifactArchives?: Array<{ artifactId: string; documentId: string }>;
   /** 是否已发起运行。 */
   hasRun: boolean;
+  verifying?: boolean;
+  reverifying?: boolean;
+  reverifyErrorText?: string;
   /** 当前运行 ID；空时不渲染「工作成果定档」（路径需要 runId）。 */
   runId?: null | string;
   /** 是否仍在轮询事件。 */
@@ -95,18 +99,32 @@ const emit = defineEmits<{
   choose: [choice: ClarificationChoice];
   execute: [steps: string[]];
   retry: [];
+  reverify: [];
   rework: [association: { previousRunId: string; targetDocumentId: string; baseVersionId: string; comment: string }];
   revise: [];
 }>();
+
+const skillReviewRefreshSeq = computed(() => props.events.filter(event => event.type === 'RUN_FINISHED'
+  || event.type === 'TOOL_RESULT' || event.type === 'STEP').at(-1)?.seq ?? 0);
+const verification = computed(() => verificationGaps(props.events));
+const evidenceRoot = ref<HTMLElement | null>(null);
+const timelineRoot = ref<HTMLElement | null>(null);
+function locateEvidence(path: string): void {
+  if (path !== 'artifact:body') return;
+  const target = livePreview.value ? evidenceRoot.value
+    : timelineRoot.value?.querySelector<HTMLElement>('[data-kind="artifact"], [data-kind="text"]');
+  target?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  if (target) { target.tabIndex = -1; target.focus(); }
+}
 
 const shownEvents = computed(() =>
   props.variant === 'artifacts' ? props.events.filter((event) => event.type === 'ARTIFACT') : props.events,
 );
 const items = computed(() => buildTimelineItems(shownEvents.value));
-/** 仅 full：用回答正文判定生成预览。思考段不进入预览，也不另拉接口。 */
+/** 仅 full：可信父交付事件生成即预览；普通回答和澄清不靠标题推断文档。 */
 const livePreview = computed(() => {
   if (props.variant !== 'full') return null;
-  return liveGeneratedPreview(modelMessageParts(timelineTranscript(props.events)).answer);
+  return deliveredDocumentPreview(props.events);
 });
 const rows = computed(() => foldTimelineRows(items.value, props.loading));
 /** 只有最后一段正文显示输入光标，避免前面已经写完的段落一起闪。 */
@@ -129,6 +147,7 @@ const KIND_LABEL: Record<TimelineItem['kind'], string> = {
   'artifact': '产物',
   'error': '错误',
   'intent': '意图',
+  'memory-note': '记忆',
   'run-finished': '运行结束',
   'run-started': '运行开始',
   'source': '来源',
@@ -233,9 +252,24 @@ async function onReworkArtifact(artifactId: string): Promise<void> {
     />
     <p v-else-if="isEmptyRun" class="timeline-hint" data-testid="timeline-empty">本次运行暂无事件。</p>
 
-    <ArtifactLivePreview v-if="livePreview" :loading="loading" :preview="livePreview" />
+    <SkillsReviewPanel v-if="variant === 'full' && persistentRunId()" :run-id="persistentRunId()!" :refresh-seq="skillReviewRefreshSeq" />
+    <section v-if="variant === 'full' && verifying" data-testid="verification-gaps" aria-label="需要补充的内容">
+      <strong>这些内容还需要补充</strong>
+      <ul>
+        <li v-for="check in verification?.checks ?? []" :key="check.id" :data-check-id="check.id">
+          <span>{{ check.gapSummary }}</span>
+          <Button v-if="check.evidencePath === 'artifact:body'" size="small" @click="locateEvidence(check.evidencePath)">查看对应正文</Button>
+        </li>
+      </ul>
+      <p>重新检查只核对当前正文。需要补充或改写正文时，请取消本次运行，再说明需要补充的内容并重新发起；原记录会保留。</p>
+      <Button v-if="verification" :loading="reverifying" :disabled="reverifying" data-testid="verification-recheck" @click="emit('reverify')">重新检查</Button>
+      <p v-if="reverifyErrorText" role="alert">{{ reverifyErrorText }}</p>
+    </section>
+    <div ref="evidenceRoot" tabindex="-1" aria-label="当前产物正文" data-testid="verification-evidence">
+      <ArtifactLivePreview v-if="livePreview" :loading="loading && !verifying" :preview="livePreview" />
+    </div>
 
-    <ol v-if="items.length > 0" class="timeline-list" aria-live="polite" aria-relevant="additions">
+    <ol v-if="items.length > 0" ref="timelineRoot" class="timeline-list" aria-live="polite" aria-relevant="additions">
       <li
         v-for="row in rows"
         :key="row.kind === 'tool' ? row.card.key : row.item.key"

@@ -1,13 +1,14 @@
-// 共担 KPI 归集（页30）组件级验证：mock 真实 /api/v1/kpi/shared +
-// /api/v1/bonus-pool/list 契约，断言 revision DESC 分组、双 PM 列渲染、
-// 空态、奖金池关联列表以及查询参数形态。
+// 共担 KPI 归集（页30）组件级验证：mock 真实 /api/v1/kpi/shared 契约，断言
+// revision DESC 分组、双 PM 列渲染、空态以及查询参数形态。
+//
+// 2026-10-03 owner 裁决移除「回款台账 + 奖金池 + 业绩窗口」，原 /api/v1/bonus-pool/list
+// mock 与「关联奖金池」用例同批摘除。
 
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IpdRequestError } from '../../../../api/ipd/auth';
-import type { BonusPool } from '../../../../api/ipd/bonus';
 import type { SharedKpiConfirmRow, SharedKpiDeadlineConfig, SharedKpiRecord } from '../../../../api/ipd/kpi';
 import SharedKpi from './index.vue';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
@@ -19,9 +20,7 @@ const kpiApi = vi.hoisted(() => ({
   getSharedDeadlineConfig: vi.fn(),
   confirmSharedKpi: vi.fn(),
 }));
-const bonusApi = vi.hoisted(() => ({ listBonusPools: vi.fn() }));
 vi.mock('../../../../api/ipd/kpi', () => kpiApi);
-vi.mock('../../../../api/ipd/bonus', () => bonusApi);
 
 const routerMock = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 const routeState = vi.hoisted(() => ({ params: {} as Record<string, unknown>, query: {} as Record<string, string> }));
@@ -40,16 +39,6 @@ function record(overrides: Partial<SharedKpiRecord> = {}): SharedKpiRecord {
   };
 }
 
-function pool(overrides: Partial<BonusPool> = {}): BonusPool {
-  return {
-    achievementRate: '0.95', basePool: '23750.00', coefficient: '1.05',
-    finalPool: '24937.50', id: 'BP-1',
-    poolRate: '0.05', projectId: '1001', status: 'CONFIRMED',
-    targetSales: '475000.00', tierCoefficient: '1.00',
-    ...overrides,
-  } as BonusPool;
-}
-
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date(2026, 8, 15, 12));
@@ -58,7 +47,6 @@ beforeEach(() => {
   kpiApi.listSharedConfirms.mockReset();
   kpiApi.getSharedDeadlineConfig.mockReset();
   kpiApi.confirmSharedKpi.mockReset();
-  bonusApi.listBonusPools.mockReset();
   // ORPHAN-A7 默认值：确认行空 + 截止配置 fixture（既有用例不感知新卡数据）
   kpiApi.listSharedConfirms.mockResolvedValue([]);
   kpiApi.getSharedDeadlineConfig.mockResolvedValue({
@@ -92,7 +80,6 @@ describe('IPD 共担 KPI 归集页 (page 30 / P0-10.30)', () => {
       record({ id: 'r-rd-2', revision: 2, segment: 'RD_PM', scoredBy: '研发 PM-乙', comprehensiveScore: '83.40', status: 'DRAFT' }),
       record({ id: 'r-mkt-1', revision: 1, segment: 'MARKET_PM', scoredBy: '市场 PM-甲', comprehensiveScore: '80.00', status: 'DRAFT' }),
     ]);
-    bonusApi.listBonusPools.mockResolvedValueOnce([]);
     const wrapper = mount(SharedKpi);
 
     // 等真实数据（FINALIZED 综合分 92.50 load 完成才渲染）
@@ -119,14 +106,13 @@ describe('IPD 共担 KPI 归集页 (page 30 / P0-10.30)', () => {
     expect(pos2).toBeGreaterThan(pos3);
     expect(pos1).toBeGreaterThan(pos2);
 
-    // API 形态：projectId 字符串透传（与 listBonusPools 统一）、period trim
+    // API 形态：projectId 字符串透传、period trim
     expect(kpiApi.listSharedKpis).toHaveBeenCalledWith('1001', '2026-09');
     wrapper.unmount();
   });
 
   it('empty data: [] records shows dedicated empty description, not the rejection alert', async () => {
     kpiApi.listSharedKpis.mockResolvedValueOnce([]);
-    bonusApi.listBonusPools.mockResolvedValueOnce([]);
     const wrapper = mount(SharedKpi);
 
     // 等空态描述渲染（loaded=true 且 recordsData=[] 才显示 Empty）
@@ -134,8 +120,8 @@ describe('IPD 共担 KPI 归集页 (page 30 / P0-10.30)', () => {
 
     // 真缺口登记文案仍在（不展示任何模拟数据 G-06）
     expect(wrapper.text()).toContain('共担 KPI 归集');
-    // 奖金池空态
-    expect(wrapper.text()).toContain('该项目当期暂无奖金池');
+    // 已移除的关联奖金池卡片不再出现
+    expect(wrapper.text()).not.toContain('该项目当期暂无奖金池');
     // 拒绝态错误条不应出现
     expect(wrapper.text()).not.toContain('共担 KPI 加载失败');
     wrapper.unmount();
@@ -146,7 +132,6 @@ describe('IPD 共担 KPI 归集页 (page 30 / P0-10.30)', () => {
       record({ id: 'r-mkt', revision: 2, segment: 'MARKET_PM', scoredBy: '市场 PM-甲', comprehensiveScore: '91.00', status: 'FINALIZED' }),
       record({ id: 'r-rd', revision: 2, segment: 'RD_PM', scoredBy: '研发 PM-乙', comprehensiveScore: '86.00', status: 'FINALIZED' }),
     ]);
-    bonusApi.listBonusPools.mockResolvedValueOnce([]);
     const wrapper = mount(SharedKpi);
 
     // 等真实数据（91.00 load 完成）
@@ -166,7 +151,6 @@ describe('IPD 共担 KPI 归集页 (page 30 / P0-10.30)', () => {
     kpiApi.listSharedKpis.mockResolvedValueOnce([
       record({ id: 'r-rd', revision: 1, segment: 'RD_PM', scoredBy: '研发 PM-乙', comprehensiveScore: '77.30', status: 'FINALIZED' }),
     ]);
-    bonusApi.listBonusPools.mockResolvedValueOnce([]);
     const wrapper = mount(SharedKpi);
 
     // 等真实数据（77.30 load 完成）
@@ -183,7 +167,6 @@ describe('IPD 共担 KPI 归集页 (page 30 / P0-10.30)', () => {
       record({ id: 'r-mkt', revision: 2, segment: 'MARKET_PM', scoredBy: '市场 PM-甲', comprehensiveScore: '88.00', status: 'FINALIZED' }),
       record({ id: 'r-rd', revision: 2, segment: 'RD_PM', scoredBy: '研发 PM-乙', comprehensiveScore: '82.00', status: 'FINALIZED' }),
     ]);
-    bonusApi.listBonusPools.mockResolvedValueOnce([]);
     const wrapper = mount(SharedKpi);
 
     // 等真实数据
@@ -203,41 +186,8 @@ describe('IPD 共担 KPI 归集页 (page 30 / P0-10.30)', () => {
     wrapper.unmount();
   });
 
-  it('bonus pool link: each linked pool row shows id, actual receipts, coefficients and status', async () => {
-    kpiApi.listSharedKpis.mockResolvedValueOnce([
-      record({ id: 'r-mkt', revision: 1, segment: 'MARKET_PM', comprehensiveScore: '90.00', status: 'FINALIZED' }),
-    ]);
-    bonusApi.listBonusPools.mockResolvedValueOnce([
-      pool({ id: 'BP-1', status: 'DRAFT', finalPool: '12000.50', targetSales: '240010.00', tierCoefficient: '0.50' }),
-      pool({ id: 'BP-2', status: 'CONFIRMED', finalPool: '30000.00', targetSales: '600020.00', tierCoefficient: '0.80' }),
-      pool({ id: 'BP-3', status: 'DISTRIBUTED', finalPool: '18000.00', targetSales: '360030.00', tierCoefficient: '1.00' }),
-    ]);
-    const wrapper = mount(SharedKpi);
-
-    // 等奖金池任一 ID 出现（load 完成才渲染）
-    await vi.waitFor(() => expect(wrapper.text()).toContain('BP-2'));
-
-    // 奖金池三行 ID（dataIndex 命中，列直接渲染）
-    expect(wrapper.text()).toContain('BP-1');
-    expect(wrapper.text()).toContain('BP-2');
-    expect(wrapper.text()).toContain('BP-3');
-    // 实际回款三行（后端 DRAFT 行 targetSales = actualReceipts）
-    expect(wrapper.text()).toContain('240010');
-    expect(wrapper.text()).toContain('600020');
-    // 阶梯系数列
-    expect(wrapper.text()).toContain('0.5');
-    // 状态映射：草稿 / 已确认 / 已发放
-    expect(wrapper.text()).toContain('草稿');
-    expect(wrapper.text()).toContain('已确认');
-    expect(wrapper.text()).toContain('已发放');
-    // 奖金池列表 URL 调用形态
-    expect(bonusApi.listBonusPools).toHaveBeenCalledWith('1001');
-    wrapper.unmount();
-  });
-
   it('rejection: IpdRequestError surfaced via inline Alert with rejectText mapping (transport kind)', async () => {
     kpiApi.listSharedKpis.mockRejectedValueOnce(new IpdRequestError('network', 0, 0, 'transport'));
-    bonusApi.listBonusPools.mockResolvedValueOnce([]);
     const wrapper = mount(SharedKpi);
 
     // 等拒绝态文案（rejectText → transport → 「无法连接服务」）
@@ -274,7 +224,6 @@ function confirmRow(overrides: Partial<SharedKpiConfirmRow> = {}): SharedKpiConf
 describe('页30 双组长确认 + 截止配置（ORPHAN-A7）', () => {
   it('#79 确认列表渲染：K01-K04 行 + 状态映射 + 首签/次签列 + 查询参数形态', async () => {
     kpiApi.listSharedKpis.mockResolvedValueOnce([record()]);
-    bonusApi.listBonusPools.mockResolvedValueOnce([]);
     kpiApi.listSharedConfirms.mockResolvedValueOnce([
       confirmRow({ id: '9101', metricCode: 'K01', status: 'PENDING' }),
       confirmRow({ id: '9102', metricCode: 'K02', status: 'CONFIRMED', firstConfirmedBy: '9001', firstConfirmedAt: '2026-09-28 10:00:00', secondConfirmedBy: '9002', secondConfirmedAt: '2026-09-29 11:00:00', confirmedByMe: true }),
@@ -299,7 +248,6 @@ describe('页30 双组长确认 + 截止配置（ORPHAN-A7）', () => {
 
   it('#79 状态筛选：OVERDUE 选中后 status 参数透传', async () => {
     kpiApi.listSharedKpis.mockResolvedValueOnce([record()]);
-    bonusApi.listBonusPools.mockResolvedValueOnce([]);
     kpiApi.listSharedConfirms.mockResolvedValue([]);
     const wrapper = mount(SharedKpi);
     await vi.waitFor(() => expect(kpiApi.listSharedConfirms).toHaveBeenCalled());
@@ -317,7 +265,6 @@ describe('页30 双组长确认 + 截止配置（ORPHAN-A7）', () => {
   it('#82 签署动作：组长身份可见按钮 → Popconfirm 确认 → confirmSharedKpi + 列表刷新', async () => {
     signIn('GROUP_LEADER');
     kpiApi.listSharedKpis.mockResolvedValueOnce([record()]);
-    bonusApi.listBonusPools.mockResolvedValueOnce([]);
     kpiApi.listSharedConfirms.mockResolvedValue([confirmRow({ status: 'PENDING', confirmedByMe: false })]);
     const wrapper = mount(SharedKpi);
 
@@ -335,7 +282,6 @@ describe('页30 双组长确认 + 截止配置（ORPHAN-A7）', () => {
   it('#82 权限闸：PM 身份（无 ipd:kpi-shared:confirm）不渲染签署按钮，PENDING 行显示占位', async () => {
     signIn('MARKET_PM');
     kpiApi.listSharedKpis.mockResolvedValueOnce([record()]);
-    bonusApi.listBonusPools.mockResolvedValueOnce([]);
     kpiApi.listSharedConfirms.mockResolvedValue([confirmRow({ status: 'PENDING', confirmedByMe: false })]);
     const wrapper = mount(SharedKpi);
 
@@ -346,7 +292,6 @@ describe('页30 双组长确认 + 截止配置（ORPHAN-A7）', () => {
 
   it('#80 截止配置卡：dayOfMonth/cutoff/source 渲染 + 写路径未交付标注', async () => {
     kpiApi.listSharedKpis.mockResolvedValueOnce([record()]);
-    bonusApi.listBonusPools.mockResolvedValueOnce([]);
     kpiApi.getSharedDeadlineConfig.mockResolvedValueOnce({
       dayOfMonth: 7, cutoffTime: '2026-10-09 18:00:00', version: 3, source: 'DB_ACTIVE', configuredValue: '7',
     } satisfies SharedKpiDeadlineConfig);
@@ -361,7 +306,6 @@ describe('页30 双组长确认 + 截止配置（ORPHAN-A7）', () => {
 
   it('#79/#80 拒绝路径：confirms 拒绝走 Alert、deadline 拒绝独立报错（互不拖垮）', async () => {
     kpiApi.listSharedKpis.mockResolvedValueOnce([record()]);
-    bonusApi.listBonusPools.mockResolvedValueOnce([]);
     kpiApi.listSharedConfirms.mockRejectedValueOnce(new IpdRequestError('network', 0, 0, 'transport'));
     kpiApi.getSharedDeadlineConfig.mockRejectedValueOnce(new IpdRequestError('boom', 500, 50000, 'http'));
     const wrapper = mount(SharedKpi);

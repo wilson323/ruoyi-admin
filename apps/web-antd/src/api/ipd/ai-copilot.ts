@@ -287,85 +287,91 @@ export async function streamCopilot(
       ? crypto.randomUUID()
       : `run-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   params.set('runId', runId);
-  signal?.addEventListener('abort', () => {
+  if (signal?.aborted) return;
+  const onAbort = () => {
     cancelCopilotRun(runId).catch(() => undefined);
-  });
-  const token = useIpdAuthStore().token;
-  const headers: Record<string, string> = { Accept: 'text/event-stream' };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  let response: Response;
+  };
+  signal?.addEventListener('abort', onAbort, { once: true });
   try {
-    response = await fetch(`/api/v1/ai-copilot/chat/stream?${params.toString()}`, {
-      credentials: 'omit',
-      headers,
-      method: 'GET',
-      signal,
-    });
-  } catch (cause) {
-    if (signal?.aborted) return;
-    handlers.onError({ code: 'TRANSPORT', message: cause instanceof Error ? cause.message : '网络异常' });
-    return;
-  }
-  if (!response.ok || !response.headers.get('content-type')?.includes('text/event-stream')) {
+    const token = useIpdAuthStore().token;
+    const headers: Record<string, string> = { Accept: 'text/event-stream' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    let response: Response;
     try {
-      await response.body?.cancel();
-    } catch {
-      // 网关错误体仅用于状态判断，取消失败不改变统一错误反馈。
+      response = await fetch(`/api/v1/ai-copilot/chat/stream?${params.toString()}`, {
+        credentials: 'omit',
+        headers,
+        method: 'GET',
+        signal,
+      });
+    } catch (cause) {
+      if (signal?.aborted) return;
+      handlers.onError({ code: 'TRANSPORT', message: cause instanceof Error ? cause.message : '网络异常' });
+      return;
     }
-    handlers.onError({ code: String(response.status), message: 'AI 副驾暂不可用，请稍后重试' });
-    return;
-  }
-  const parse = createSseFrameParser();
-  const reader = response.body?.getReader();
-  if (!reader) {
-    handlers.onError({ code: 'NO_BODY', message: '响应流为空' });
-    return;
-  }
-  const decoder = new TextDecoder();
-  let reachedEof = false;
-  let terminalFrame = false;
-  try {
-    for (;;) {
-      let result: ReadableStreamReadResult<Uint8Array>;
+    if (!response.ok || !response.headers.get('content-type')?.includes('text/event-stream')) {
       try {
-        result = await reader.read();
+        await response.body?.cancel();
       } catch {
-        if (!signal?.aborted) {
-          handlers.onError({
-            code: 'TRANSPORT',
-            message: '响应流中断，请重试',
-          });
+        // 网关错误体仅用于状态判断，取消失败不改变统一错误反馈。
+      }
+      handlers.onError({ code: String(response.status), message: 'AI 副驾暂不可用，请稍后重试' });
+      return;
+    }
+    const parse = createSseFrameParser();
+    const reader = response.body?.getReader();
+    if (!reader) {
+      handlers.onError({ code: 'NO_BODY', message: '响应流为空' });
+      return;
+    }
+    const decoder = new TextDecoder();
+    let reachedEof = false;
+    let terminalFrame = false;
+    try {
+      for (;;) {
+        let result: ReadableStreamReadResult<Uint8Array>;
+        try {
+          result = await reader.read();
+        } catch {
+          if (!signal?.aborted) {
+            handlers.onError({
+              code: 'TRANSPORT',
+              message: '响应流中断，请重试',
+            });
+          }
+          break;
         }
-        break;
-      }
-      const { done, value } = result;
-      if (done) {
-        reachedEof = true;
-        break;
-      }
-      for (const frame of parse(decoder.decode(value, { stream: true }))) {
-        if (frame.event === 'meta') handlers.onMeta(frame.data as CopilotChatView);
-        else if (frame.event === 'delta') handlers.onDelta(String(frame.data));
-        else if (frame.event === 'done') {
-          handlers.onDone(parseStreamDone(frame.data));
-          terminalFrame = true;
-        } else if (frame.event === 'error') {
-          handlers.onError(frame.data as CopilotStreamError);
-          terminalFrame = true;
+        const { done, value } = result;
+        if (done) {
+          reachedEof = true;
+          break;
+        }
+        for (const frame of parse(decoder.decode(value, { stream: true }))) {
+          if (frame.event === 'meta') handlers.onMeta(frame.data as CopilotChatView);
+          else if (frame.event === 'delta') handlers.onDelta(String(frame.data));
+          else if (frame.event === 'done') {
+            handlers.onDone(parseStreamDone(frame.data));
+            terminalFrame = true;
+          } else if (frame.event === 'error') {
+            handlers.onError(frame.data as CopilotStreamError);
+            terminalFrame = true;
+          }
+          if (terminalFrame) break;
         }
         if (terminalFrame) break;
       }
-      if (terminalFrame) break;
+    } finally {
+      // done/error、读流异常或 handler 抛错时明确关闭未到 EOF 的连接。
+      if (!reachedEof) {
+        try {
+          await reader.cancel();
+        } catch {
+          // 已异常或已中止的流可能拒绝取消，仍需释放 reader 锁。
+        }
+      }
+      reader.releaseLock();
     }
   } finally {
-    // done/error、读流异常或 handler 抛错时明确关闭未到 EOF 的连接。
-    if (!reachedEof) {
-      try {
-        await reader.cancel();
-      } catch {
-        // 已异常或已中止的流可能拒绝取消，仍需释放 reader 锁。
-      }
-    }
-    reader.releaseLock();
+    signal?.removeEventListener('abort', onAbort);
   }
 }

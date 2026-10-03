@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Engineering start/resume/failure/completion uses `.harness/skills/ipd-engineering-feedback/SKILL.md` and the current repository's `scripts/engineering_harness.py intake/verify/check`. Use the existing master canvas and kanban, not a new plan. The runner archives failures and enables only predefined procedural checks after same-task regression; it never changes permissions, business approvals or Git history. A local hook is not a universal enforcement boundary.
+
 ## What this repo is
 
 IPD (Integrated Product Development) is the **single product** this codebase serves. It is the RuoYi Vue admin frontend (forked from `ageerle/ruoyi-admin`, Vben 5.5.9 + Ant Design Vue + Vite 7) wired to a Java backend at `/Users/mac/Documents/ruoyi-ai`. The framework's AI admin / chat / knowledge base surfaces are not the product here — IPD is.

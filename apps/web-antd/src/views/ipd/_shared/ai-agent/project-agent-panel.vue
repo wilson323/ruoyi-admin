@@ -157,6 +157,8 @@ watch(historyQuery, () => {
 const agent = useProjectAgentRun(() => props.projectId, { pollIntervalMs: props.pollIntervalMs });
 const {
   active,
+  reverifying,
+  reverifyErrorText,
   pendingInterrupt,
   responding,
   responseErrorText,
@@ -677,6 +679,10 @@ function onMessageKeydown(event: KeyboardEvent): void {
       <RunTimeline
         v-if="!readoutReady"
         :events="events"
+        :verifying="status === 'VERIFYING'"
+        :reverifying="reverifying"
+        :reverify-error-text="reverifyErrorText"
+        @reverify="agent.reverify()"
         :artifact-archives="detail?.artifactArchives"
         @rework="reworkArtifact"
         :has-run="runId !== null"
@@ -697,6 +703,10 @@ function onMessageKeydown(event: KeyboardEvent): void {
         <RunTimeline
           :show-archive="false"
           :events="events"
+        :verifying="status === 'VERIFYING'"
+        :reverifying="reverifying"
+        :reverify-error-text="reverifyErrorText"
+        @reverify="agent.reverify()"
         :artifact-archives="detail?.artifactArchives"
         @rework="reworkArtifact"
           :has-run="runId !== null"

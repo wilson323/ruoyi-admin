@@ -12,21 +12,21 @@ import {
 } from './ipd-permission-codes';
 
 describe('IPD 权限码常量（与后端 IpdPermissionCode 镜像对账由后端仓 scripts/check-permission-mirror-fe-be.sh 门禁承担（R234））', () => {
-  it('导出 98 个 key / 97 distinct 码（含产品线五码；STAGE_ACTION 双码同值）', () => {
+  it('导出 94 个 key / 93 distinct 码（含产品线五码；STAGE_ACTION 双码同值；2026-10-03 摘奖金池 4 码）', () => {
     // 与后端 IpdPermissionCode 镜像对账由后端仓 scripts/check-permission-mirror-fe-be.sh 门禁承担（R234）；
     // 本用例只锁前端自身计数，不宣称「与后端一一镜像已验证」。
     // 演进史：R215 权限可配置化 +2 distinct（commit 3764830）→ GAP-F4/F5 +3（keys 71→74、distinct 70→73）
     //   → GAP-F10 +1（keys 74→75、distinct 73→74）→ R234 补镜像 18 个后端孤码（keys 75→93、distinct 74→92）
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(98);
-    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(97);
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(94);
+    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(93);
   });
 
-  it('keys 数组长度 98、distinct 97（唯一同值双键是 STAGE_ACTION 双码，白名单见碰撞断言）', () => {
+  it('keys 数组长度 94、distinct 93（唯一同值双键是 STAGE_ACTION 双码，白名单见碰撞断言）', () => {
     const set = new Set(ALL_IPD_PERMISSION_CODES);
-    expect(set.size).toBe(97);
+    expect(set.size).toBe(93);
     // 数组长度 93 = 92 distinct + 1（STAGE_ACTION_DELIVERABLE 与 STAGE_ACTION_INSTANTIATE 同码；
     //   演进史：R175-A +1 GATE_ELEMENT_RESTORE、R215 权限可配置化 +2、GAP-F4/F5 +3、GAP-F10 +1、R234 补镜像后端孤码 +18）
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(98);
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(94);
   });
 
   it('全部码遵循 ipd:资源:动作 命名规范', () => {
@@ -41,9 +41,6 @@ describe('IPD 权限码常量（与后端 IpdPermissionCode 镜像对账由后�
     expect(IPD_PERMISSION_CODES.SWITCHING_ACCEPTANCE_LOCK).toBe('ipd:switching-acceptance:lock');
     expect(IPD_PERMISSION_CODES.SWITCHING_ACCEPTANCE_UNLOCK).toBe('ipd:switching-acceptance:unlock');
     expect(IPD_PERMISSION_CODES.PERMANENT_DELETE_EXECUTE).toBe('ipd:permanent-delete:execute'); // R215 GAP-F10（镜像 IpdPermissionCode.java:207）
-    expect(IPD_PERMISSION_CODES.BONUS_POOL_COMPUTE).toBe('ipd:bonus-pool:compute');
-    expect(IPD_PERMISSION_CODES.BONUS_POOL_FREEZE).toBe('ipd:bonus-pool:freeze');
-    expect(IPD_PERMISSION_CODES.BONUS_POOL_DISTRIBUTE).toBe('ipd:bonus-pool:distribute');
     expect(IPD_PERMISSION_CODES.AI_DOCUMENT_REVIEW).toBe('ipd:ai-document:review');
     expect(IPD_PERMISSION_CODES.HANDOVER_CANCEL).toBe('ipd:handover:cancel');
   });
@@ -95,9 +92,8 @@ describe('PAGE_PERMISSIONS 49 页权限矩阵', () => {
     expect(PAGE_PERMISSIONS['/ipd/bids/create']).toEqual([IPD_PERMISSION_CODES.BID_INVITATION_CREATE]);
     expect(PAGE_PERMISSIONS['/ipd/kpi/functional']).toContain(IPD_PERMISSION_CODES.KPI_QUERY);
     expect(PAGE_PERMISSIONS['/ipd/incentive/allowance']).toBeDefined();
-    expect(PAGE_PERMISSIONS['/ipd/incentive/bonus-pool']).toContain(
-      IPD_PERMISSION_CODES.BONUS_POOL_DISTRIBUTE,
-    );
+    // 页34 奖金池核算已于 2026-10-03 随功能移除，路由与权限码同批摘除
+    expect(PAGE_PERMISSIONS['/ipd/incentive/bonus-pool']).toBeUndefined();
     expect(PAGE_PERMISSIONS['/ipd/incentive/negative-feedback']).toContain(
       IPD_PERMISSION_CODES.NEGATIVE_FEEDBACK_DECIDE,
     );
@@ -268,7 +264,7 @@ describe('A23 9 个零引用权限码已处置（reserved 注释 8 + 碰撞 doc 
     expect(reservedCodes.length).toBe(9);
   });
 
-  it('产品线五码接入后：distinct count = 97、数组长度 98', () => {
+  it('产品线五码接入后（并于 2026-10-03 摘奖金池 4 码）：distinct count = 93、数组长度 94', () => {
     // A13 增补 5 项（4 转 + 1 新），A23 移除 4 项，ALL_IPD_PERMISSION_CODES 净增 1；
     //   distinct count 由 67（R149 后）提升到 68（R175-A）。
     // R215 权限可配置化新增 ROLE_PERMISSION_QUERY / ROLE_PERMISSION_EDIT：distinct 68 → 70、数组长度 69 → 71（commit 3764830）
@@ -276,8 +272,8 @@ describe('A23 9 个零引用权限码已处置（reserved 注释 8 + 碰撞 doc 
     // R215 GAP-F10 登记 PERMANENT_DELETE_EXECUTE：distinct 73 → 74、数组长度 74 → 75
     // R234 补镜像 18 个后端孤码（13+5）：distinct 74 → 92、数组长度 75 → 93
     //   （与后端 IpdPermissionCode 镜像对账由后端仓 scripts/check-permission-mirror-fe-be.sh 门禁承担（R234））
-    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(97);
-    expect(ALL_IPD_PERMISSION_CODES.length).toBe(98);
+    expect(new Set(ALL_IPD_PERMISSION_CODES).size).toBe(93);
+    expect(ALL_IPD_PERMISSION_CODES.length).toBe(94);
   });
 
   for (const code of reservedCodes) {

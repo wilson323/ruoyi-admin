@@ -8,7 +8,7 @@
  * <pre>
  * import { IPD_PERMISSION_CODES } from '../_shared/ipd-permission-codes';
  * meta: { access: [IPD_PERMISSION_CODES.PROJECT_LIST] }
- * &lt;Button v-access:code="IPD_PERMISSION_CODES.BONUS_POOL_DISTRIBUTE"&gt;分配&lt;/Button&gt;
+ * &lt;Button v-access:code="IPD_PERMISSION_CODES.PROJECT_QUERY"&gt;查看&lt;/Button&gt;
  * </pre>
  *
  * <p>新增流程：后端加新码 → 同步在本表加 key+value（与后端常量名保持一致）；
@@ -104,11 +104,7 @@ export const IPD_PERMISSION_CODES = {
   SCENARIO_LANDED_CREATE: 'ipd:scenario:landed:create', // R234 镜像后端孤码
   SCENARIO_LANDED_QUERY: 'ipd:scenario:landed:query', // R234 镜像后端孤码
 
-  // 奖金池（P3-4.4）
-  BONUS_POOL_QUERY: 'ipd:bonus-pool:query',
-  BONUS_POOL_COMPUTE: 'ipd:bonus-pool:compute',
-  BONUS_POOL_FREEZE: 'ipd:bonus-pool:freeze',
-  BONUS_POOL_DISTRIBUTE: 'ipd:bonus-pool:distribute',
+  // 奖金池（P3-4.4）—— 2026-10-03 随奖金池功能整体移除
 
   // 上市后复盘（R234 镜像后端孤码）
   POST_LAUNCH_REVIEW_CREATE: 'ipd:post-launch-review:create', // R234 镜像后端孤码
@@ -206,13 +202,8 @@ export const PAGE_PERMISSIONS: Record<string, readonly IpdPermissionCode[]> = {
   '/ipd/kpi/raw-records': [IPD_PERMISSION_CODES.KPI_QUERY],
   // 页33 津贴台账
   '/ipd/incentive/allowance': [IPD_PERMISSION_CODES.SYSTEM_CONFIG_READ],
-  // 页34 奖金池核算
-  '/ipd/incentive/bonus-pool': [
-    IPD_PERMISSION_CODES.BONUS_POOL_QUERY,
-    IPD_PERMISSION_CODES.BONUS_POOL_COMPUTE,
-    IPD_PERMISSION_CODES.BONUS_POOL_FREEZE,
-    IPD_PERMISSION_CODES.BONUS_POOL_DISTRIBUTE,
-  ],
+  // 页34 奖金池核算 —— 2026-10-03 owner 裁决移除「回款台账 + 奖金池 + 业绩窗口」，
+  //   权限码与路由同批删除；若后续恢复需重新登记后端 BonusPoolController 的注解码。
   // 页35 贡献度评定
   '/ipd/incentive/contribution': [
     IPD_PERMISSION_CODES.CONTRIBUTION_QUERY,

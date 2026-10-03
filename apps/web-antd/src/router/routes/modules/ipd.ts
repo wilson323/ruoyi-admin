@@ -114,13 +114,8 @@ const ipdLayoutRoute: RouteRecordRaw = {
               name: 'IpdProjectKpi',
               path: 'kpi',
             },
-            // 项目详情-激励台账 —— 2026-09-06 复用 IpdBonusPool 真组件（/incentive/bonus-pool 同页；
-            //    BonusPoolController list/compute 已交付；freeze/distribute 后端有端点页面未接在页内登记）
-            {
-              component: () => import('#/views/ipd/incentive/bonus-pool/index.vue'),
-              meta: { activePath: '/ipd/projects', hideInMenu: true, ipdBackend: 'BonusPoolController 已交付：GET /bonus-pool/list?projectId&status、GET /{id}。算/冻/分操作在 /ipd/incentive/bonus-pool 页。', ipdCard: 'P0-10.37', title: '激励台账' },
-              name: 'IpdProjectIncentive', path: 'incentive',
-            },
+            // 项目详情-激励台账 —— 2026-10-03 owner 裁决移除「回款台账 + 奖金池 + 业绩窗口」，
+            //    奖金池核算组件与其路由（IpdProjectIncentive / IpdBonusPool）同批删除。
             {
               component: () => import('#/views/ipd/project/detail/documents.vue'),
               meta: { activePath: '/ipd/projects', hideInMenu: true, title: '文档与交付物' },
@@ -260,8 +255,8 @@ const ipdLayoutRoute: RouteRecordRaw = {
       path: 'reviews',
     },
     // ⑨ 协同绩效（原型 /performance 单页）—— 2026-09-06 菜单入口改直连真 KPI 页：子页
-    //    functional/project-score/bonus-pool 等真组件已挂 /ipd/kpi|incentive 隐藏路由，原 pending
-    //    占位会让菜单点进去停在占位页；V3.1 回款台账与津贴读端点缺已登记（W3-Backend-B1）
+    //    functional/project-score/allowance 等真组件已挂 /ipd/kpi|incentive 隐藏路由，原 pending
+    //    占位会让菜单点进去停在占位页；津贴读端点缺已登记（W3-Backend-B1）
     {
       meta: { hideInMenu: true, icon: 'lucide:bar-chart-3', title: '协同绩效' },
       name: 'IpdPerformance',
@@ -269,10 +264,10 @@ const ipdLayoutRoute: RouteRecordRaw = {
       redirect: '/ipd/kpi/functional',
     },
     // ⑩ 全流程轨迹（原型 /timeline；无 timeline 聚合端点，audit-logs 已交付）
-    //    2026-09-06 真实现：审计日志 + 工作台待办 + 奖金池三源融合，五态齐全。
+    //    2026-09-06 真实现：审计日志 + 工作台待办两源融合，五态齐全（奖金池源已于 2026-10-03 摘除）。
     {
       component: () => import('#/views/ipd/timeline/index.vue'),
-      meta: { hideInMenu: true, icon: 'lucide:book-open', ipdBackend: '无 timeline 聚合端点；以审计日志（GET /audit-logs/scope）+ 工作台（GET /workbench/summary）+ 奖金池（GET /bonus-pool/list）三源融合按时间倒序。', ipdCard: 'ZK-D2', title: '全流程轨迹' },
+      meta: { hideInMenu: true, icon: 'lucide:book-open', ipdBackend: '无 timeline 聚合端点；以审计日志（GET /audit-logs/scope）+ 工作台（GET /workbench/summary）两源融合按时间倒序。', ipdCard: 'ZK-D2', title: '全流程轨迹' },
       name: 'IpdTimeline', path: 'timeline',
     },
     // ⑪ 报表分析（原型 /reports；2026-09-06 复刻：P4-4.1 月度绩效汇总+三类台账导出已交付为页面主区，
@@ -339,7 +334,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
     // ⑧ 激励管理（页33-36）：并入协同绩效，路由保留降为隐藏
     {
       // 纯分组/重定向父路由：省略 component，子页由 ipd.vue plain <router-view> depth-skip 渲染；
-      // 勿挂 not-found.vue（无 outlet 会吞掉 allowance/bonus-pool/contribution/negative-feedback 子页 → 404）。
+      // 勿挂 not-found.vue（无 outlet 会吞掉 allowance/contribution/negative-feedback 子页 → 404）。
       meta: { hideInMenu: true, icon: 'lucide:coins', title: '激励管理' },
       name: 'IpdIncentive',
       path: 'incentive',
@@ -356,12 +351,7 @@ const ipdLayoutRoute: RouteRecordRaw = {
           path: 'allowance',
         },
         {
-          component: () => import('#/views/ipd/incentive/bonus-pool/index.vue'),
-          meta: { access: [...(PAGE_PERMISSIONS['/ipd/incentive/bonus-pool'] ?? [])], activePath: '/ipd/projects', hideInMenu: true, ipdBackend: 'BonusPoolController：GET /bonus-pool/page（ORPHAN-A4 切量，PERF-P0-2）、POST /compute、POST /auto-compute、POST /coefficient/preview、POST /{id}/freeze、POST /{id}/distribute、GET /{id}；ReceiptLedgerController（ORPHAN-A5）：GET /receipt-ledgers/by-project/{projectId}、POST /receipt-ledgers、POST /receipt-ledgers/{projectId}/refunds。', ipdCard: 'P0-10.34', title: '奖金池核算' },
-          name: 'IpdBonusPool',
-          path: 'bonus-pool',
-        },
-        {
+          // 页34 奖金池核算 —— 2026-10-03 owner 裁决移除「回款台账 + 奖金池 + 业绩窗口」，本路由同批删除。
           // 页35 贡献度评定 —— 2026-09-06 复刻：ContributionController 已交付为真组件，市场 PM 40-65%/
           //    研发 PM 35-60% / preview-save-confirm 端点已就位，原型 marketShare 70/30 默认已改
           component: () => import('#/views/ipd/incentive/contribution/index.vue'),

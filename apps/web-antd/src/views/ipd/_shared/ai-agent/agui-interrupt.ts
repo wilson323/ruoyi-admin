@@ -5,6 +5,20 @@ export interface InterruptField { name: string; title: string; type: 'string' | 
 export interface InterruptInput { fields: InterruptField[]; scalar: boolean; error: string }
 function record(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 
+/** A clarification tool asks for answers; it never grants permission to execute another tool. */
+export function isClarificationInterrupt(interrupt: AgentRunInterrupt): boolean {
+  return interrupt.reason === 'tool_call' && interrupt.metadata?.toolName === 'request_clarification';
+}
+
+export function clarificationOptionLabel(interrupt: AgentRunInterrupt, questionId: string, optionId: unknown): string {
+  const input = interrupt.metadata?.toolInput;
+  if (!isClarificationInterrupt(interrupt) || !record(input) || input.kind !== 'CLARIFICATION' || !Array.isArray(input.questions)) return String(optionId);
+  const question = input.questions.find(value => record(value) && value.id === questionId);
+  if (!record(question) || !Array.isArray(question.options)) return String(optionId);
+  const option = question.options.find(value => record(value) && value.id === optionId);
+  return record(option) && typeof option.label === 'string' ? option.label : String(optionId);
+}
+
 /** 只取持久化等待事件；当前是否仍等待由权威运行状态另行裁决。 */
 export function agentInterruptPause(events: readonly AgentRunEvent[]): AgentInterruptPause | null {
   const waiting = [...events].reverse().find((event) => event.type === 'STEP' && record(event.payload) && event.payload.kind === 'AWAIT_USER');
@@ -24,6 +38,7 @@ export function interruptInput(interrupt: AgentRunInterrupt): InterruptInput {
   const raw = interrupt.responseSchema;
   const schema = raw == null ? { type: 'string' } : raw;
   const unsupported = '这个问题的回答格式暂不支持，请保留本次运行并联系负责人处理。';
+  if (isClarificationInterrupt(interrupt) && (!record(raw) || raw.type !== 'object' || raw.additionalProperties !== false)) return { fields: [], scalar: false, error: unsupported };
   if (!record(schema)) return { fields: [], scalar: false, error: unsupported };
   const object = schema.type === 'object' || (schema.type === undefined && record(schema.properties));
   const properties = object ? schema.properties : { answer: schema };
@@ -42,18 +57,41 @@ export function interruptInput(interrupt: AgentRunInterrupt): InterruptInput {
     fields.push({ name, title: typeof rawField.title === 'string' ? rawField.title : name === 'answer' ? '回答' : name, type: type as InterruptField['type'], required: required.includes(name), ...(choices ? { enum: choices as InterruptField['enum'] } : {}), schema: rawField });
   }
   if (required.some((name) => typeof name !== 'string' || !fields.some((field) => field.name === name))) return { fields: [], scalar: !object, error: unsupported };
+  if (isClarificationInterrupt(interrupt)) {
+    const request = interrupt.metadata?.toolInput;
+    if (!record(request) || request.kind !== 'CLARIFICATION' || !Array.isArray(request.questions)
+      || !request.questions.length || request.questions.length !== fields.length) return { fields: [], scalar: false, error: unsupported };
+    const ids = new Set<string>();
+    for (const question of request.questions) {
+      if (!record(question) || typeof question.id !== 'string' || !question.id || ids.has(question.id)
+        || typeof question.prompt !== 'string' || !question.prompt.trim() || !Array.isArray(question.options)) return { fields: [], scalar: false, error: unsupported };
+      ids.add(question.id);
+      const field = fields.find(item => item.name === question.id);
+      if (!field || !field.required || field.type !== 'string' || field.title !== question.prompt) return { fields: [], scalar: false, error: unsupported };
+      if (question.options.length === 0) {
+        if (field.enum || field.schema.minLength !== 1 || field.schema.maxLength !== 4000) return { fields: [], scalar: false, error: unsupported };
+        continue;
+      }
+      if (question.options.length < 2 || question.options.length > 12) return { fields: [], scalar: false, error: unsupported };
+      const optionIds = question.options.map(option => record(option) && typeof option.id === 'string'
+        && option.id && typeof option.label === 'string' && option.label.trim() ? option.id : null);
+      if (!field.enum || optionIds.includes(null) || new Set(optionIds).size !== optionIds.length
+        || field.enum.length !== optionIds.length || field.enum.some((id, index) => id !== optionIds[index])) return { fields: [], scalar: false, error: unsupported };
+    }
+  }
   return { fields, scalar: !object, error: '' };
 }
 
 export function validateInterruptPayload(interrupt: AgentRunInterrupt, payload: unknown): string {
-  if (interrupt.reason === 'tool_call') return record(payload) && typeof payload.approved === 'boolean' ? '' : '请选择允许或拒绝。';
-  if (interrupt.reason !== 'input_required') return '这个问题的处理方式暂不支持，请联系负责人处理。';
+  if (interrupt.reason === 'tool_call' && !isClarificationInterrupt(interrupt)) return record(payload) && typeof payload.approved === 'boolean' ? '' : '请选择允许或拒绝。';
+  if (interrupt.reason !== 'input_required' && !isClarificationInterrupt(interrupt)) return '这个问题的处理方式暂不支持，请联系负责人处理。';
   const input = interruptInput(interrupt);
   if (input.error) return input.error;
   if (!input.scalar && !record(payload)) return '请按问题填写回答。';
   if (!input.scalar && interrupt.responseSchema?.additionalProperties === false && Object.keys(payload as Record<string, unknown>).some((key) => !input.fields.some((field) => field.name === key))) return '回答包含问题之外的字段。';
   for (const field of input.fields) {
     const value = input.scalar ? payload : (payload as Record<string, unknown>)[field.name];
+    if (isClarificationInterrupt(interrupt) && !field.enum && typeof value === 'string' && !value.trim()) return `请填写${field.title}。`;
     if (value === undefined || value === '' || value === null) { if (field.required) return `请填写${field.title}。`; continue; }
     const expected = field.type === 'integer' ? 'number' : field.type;
     if (typeof value !== expected || (typeof value === 'number' && (!Number.isFinite(value) || (field.type === 'integer' && !Number.isInteger(value))))) return `${field.title}的回答格式不正确。`;

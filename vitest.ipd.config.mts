@@ -12,6 +12,12 @@ export default defineConfig({
     testTimeout: 15_000,
     hookTimeout: 15_000,
     include: [
+      'apps/web-antd/src/utils/file/base64Conver.test.ts',
+      'apps/web-antd/src/components/cropper/src/cropper-modal.test.ts',
+      'apps/web-antd/src/components/upload/src/hook.test.ts',
+      'apps/web-antd/src/components/tree/src/menu-select-table.test.ts',
+      'apps/web-antd/src/views/_core/social-callback/index.test.ts',
+      'apps/web-antd/src/views/_core/profile/profile-panel.test.ts',
       'apps/web-antd/src/packages/workflow-designer/properties/GenericNodeProperty.test.ts',
       'apps/web-antd/src/api/ipd/**/*.test.ts',
       'apps/web-antd/src/router/ipd-guard.test.ts',

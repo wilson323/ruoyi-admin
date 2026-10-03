@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { AuthApi } from '#/api';
 
-import { onMounted } from 'vue';
+import { onBeforeUnmount, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { DEFAULT_TENANT_ID, LOGIN_PATH } from '@vben/constants';
@@ -39,6 +39,14 @@ const accessStore = useAccessStore();
 const authStore = useAuthStore();
 
 const router = useRouter();
+let disposed = false;
+let redirectTimer: ReturnType<typeof setTimeout> | undefined;
+onBeforeUnmount(() => {
+  disposed = true;
+  if (redirectTimer !== undefined) {
+    clearTimeout(redirectTimer);
+  }
+});
 
 onMounted(async () => {
   // 2026-09-18 修复：state/code/source 任一缺失表示不是真正的第三方回调
@@ -85,8 +93,9 @@ onMounted(async () => {
   } catch (error) {
     console.error(error);
     // 500 你还没有绑定第三方账号，绑定后才可以登录！
-    setTimeout(() => {
-      router.push(LOGIN_PATH);
+    if (disposed) return;
+    redirectTimer = setTimeout(() => {
+      if (!disposed) router.push(LOGIN_PATH);
     }, 1500);
   }
 });

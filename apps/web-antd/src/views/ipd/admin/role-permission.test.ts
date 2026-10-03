@@ -25,17 +25,18 @@ const envelope = (data: unknown, code = 0, messageText = 'success') => new Respo
 );
 
 const grantRow = {
-  id: 'RP-1', personType: 'GROUP_LEADER', permissionCode: 'ipd:bonus-pool:compute',
+  id: 'RP-1', personType: 'GROUP_LEADER', permissionCode: 'ipd:contribution:save',
   effect: 'GRANT', remark: 'N1 拍板 2026-09-24', createTime: '2026-09-25 01:00:00',
 };
 const revokeRow = {
-  id: 'RP-2', personType: 'GROUP_LEADER', permissionCode: 'ipd:bonus-pool:freeze',
+  id: 'RP-2', personType: 'GROUP_LEADER', permissionCode: 'ipd:contribution:confirm',
   effect: 'REVOKE', remark: '回收测试', createTime: '2026-09-25 01:10:00',
 };
 
 const snapshotStub = {
-  SUPER_ADMIN: { javaDefault: ['ipd:bonus-pool:compute', 'ipd:bonus-pool:freeze'], dbGrant: [], dbRevoke: [], effective: ['ipd:bonus-pool:compute', 'ipd:bonus-pool:freeze'] },
-  GROUP_LEADER: { javaDefault: ['ipd:bonus-pool:freeze'], dbGrant: ['ipd:bonus-pool:compute'], dbRevoke: [], effective: ['ipd:bonus-pool:compute', 'ipd:bonus-pool:freeze'] },
+  // 2026-10-03 奖金池权限码随功能移除，示例码改用贡献度评定（仍在册且有中文名）
+  SUPER_ADMIN: { javaDefault: ['ipd:contribution:save', 'ipd:contribution:confirm'], dbGrant: [], dbRevoke: [], effective: ['ipd:contribution:save', 'ipd:contribution:confirm'] },
+  GROUP_LEADER: { javaDefault: ['ipd:contribution:confirm'], dbGrant: ['ipd:contribution:save'], dbRevoke: [], effective: ['ipd:contribution:save', 'ipd:contribution:confirm'] },
   MARKET_PM: { javaDefault: ['ipd:product:query'], dbGrant: [], dbRevoke: [], effective: ['ipd:product:query'] },
   RD_PM: { javaDefault: ['ipd:product:query'], dbGrant: [], dbRevoke: [], effective: ['ipd:product:query'] },
 };
@@ -125,13 +126,13 @@ describe('角色权限配置页 (R215)', () => {
     setIdentity('SUPER_ADMIN');
     const wrapper = mount(RolePermission);
     await vi.waitFor(() => {
-      expect(wrapper.text()).toContain('核算奖金池');
+      expect(wrapper.text()).toContain('保存贡献度评定');
     }, { timeout: 3000 });
     const text = wrapper.text();
-    expect(text).toContain('冻结奖金池');
+    expect(text).toContain('确认贡献度评定');
     // 中文名在前、英文码随行保留可追溯
-    expect(text).toContain('ipd:bonus-pool:compute');
-    expect(text).toContain('ipd:bonus-pool:freeze');
+    expect(text).toContain('ipd:contribution:save');
+    expect(text).toContain('ipd:contribution:confirm');
     expect(text).toContain('额外开通');
     expect(text).toContain('额外禁止');
     expect(text).toContain('N1 拍板 2026-09-24');

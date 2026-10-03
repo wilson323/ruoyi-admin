@@ -496,3 +496,24 @@ describe('R232 P2-03 fillContext：pageContext 随请求上送', () => {
     ).toEqual({ actionCode: 'C08', scene: 'stage-action-fields', stageActionId: 9001 });
   });
 });
+
+describe('副驾取消监听生命周期', () => {
+  it.each(['eof', 'done', 'http-error', 'transport-error'])('%s完成后abort不取消旧运行', async (outcome) => {
+    const controller = new AbortController();
+    const remove = vi.spyOn(controller.signal, 'removeEventListener');
+    const fetcher = vi.fn().mockImplementation(async () => {
+      if (outcome === 'transport-error') throw new Error('offline');
+      if (outcome === 'http-error') return new Response('bad', { status: 503 });
+      return new Response(outcome === 'done' ? frame('done', {}) : '', { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    await streamCopilot({ message: 'x' }, { onDelta: vi.fn(), onDone: vi.fn(), onMeta: vi.fn(), onError: vi.fn() }, controller.signal);
+    expect(remove.mock.calls.some(([type]) => type === 'abort')).toBe(true);
+    controller.abort(); await Promise.resolve(); expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it('已中止signal不会创建运行请求', async () => {
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher); const controller = new AbortController(); controller.abort();
+    await streamCopilot({ message: 'x' }, { onDelta: vi.fn(), onDone: vi.fn(), onMeta: vi.fn(), onError: vi.fn() }, controller.signal);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+});

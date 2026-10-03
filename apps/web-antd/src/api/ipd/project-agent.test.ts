@@ -14,6 +14,9 @@ import {
   applyAgentRunArtifact,
   downloadAgentRunArtifact,
   cancelAgentRun,
+  reverifyAgentRun,
+  listAgentRunSkillReviews,
+  reviewAgentRunSkill,
   resumeAgentRun,
   createProjectAgentRun,
   fetchAgentRun,
@@ -58,6 +61,28 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('project agent API contract', () => {
+  it('reads and reviews a skill candidate on the original run with string sequence and digest', async () => {
+    const item = { candidateSeq: '9007199254740993', skillName: 'source-check', sha256: 'abc', status: 'PENDING', files: [], scanSummary: '安全检查已执行' };
+    const fetcher = vi.fn().mockResolvedValueOnce(envelope([item])).mockResolvedValueOnce(envelope({ ...item, status: 'PUBLISHED' }));
+    vi.stubGlobal('fetch', fetcher);
+    expect(await listAgentRunSkillReviews('run-8')).toEqual([item]);
+    expect(call(fetcher)[0]).toContain('/api/v1/agent-runs/run-8/skill-reviews');
+    await reviewAgentRunSkill('run-8', item.candidateSeq, { approved: true, sha256: 'abc', comment: '已查看' });
+    const [url, init] = call(fetcher, 1);
+    expect(url).toContain('/agent-runs/run-8/skill-reviews/9007199254740993/review');
+    expect(init.method).toBe('POST');
+    expect(bodyOf(init)).toEqual({ approved: true, sha256: 'abc', comment: '已查看' });
+  });
+
+  it('rechecks the same string run through the existing code0 contract', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(envelope({ runId: '9007199254740993', status: 'VERIFYING' }));
+    vi.stubGlobal('fetch', fetcher);
+    expect(await reverifyAgentRun('9007199254740993')).toEqual({ runId: '9007199254740993', status: 'VERIFYING' });
+    const [url, init] = call(fetcher);
+    expect(url).toContain('/api/v1/agent-runs/9007199254740993/reverify');
+    expect(init.method).toBe('POST');
+    expect(bodyOf(init)).toEqual({});
+  });
   it('downloads exact string version bytes with Person authorization, never treating error JSON as a file', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(new Response(new Uint8Array([0, 1, 255]), {
       headers: { 'Content-Type': 'application/octet-stream' },

@@ -8,7 +8,8 @@
  * - 综合分（comprehensiveScore）按 revision DESC 取最新条；
  * - segment 维度由后端解析（市场 PM 段 / 研发 PM 段）。
  *
- * 五态：加载 / 成功（双 PM 列表 + 关联奖金池）/ 拒绝与断网 / 空态（无归集）/ 网络异常；
+ * 五态：加载 / 成功（双 PM 列表）/ 拒绝与断网 / 空态（无归集）/ 网络异常；
+ * （2026-10-03 owner 裁决移除奖金池，原「关联奖金池」卡片同批摘除。）
  * 不展示任何模拟数据（G-06）。
  *
  * 路由：/ipd/kpi/shared?projectId=&period=
@@ -50,10 +51,6 @@ import {
   listSharedConfirms,
   listSharedKpis,
 } from '../../../../api/ipd/kpi';
-import {
-  type BonusPool,
-  listBonusPools,
-} from '../../../../api/ipd/bonus';
 import { IpdRequestError } from '../../../../api/ipd/auth';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { formatDateTime, PENDING_TEXT } from '../../_shared/format';
@@ -84,12 +81,9 @@ const filters = reactive({
 });
 
 const recordsData = ref<SharedKpiRecord[]>([]);
-const bonusEntries = ref<BonusPool[]>([]);
 
 const loadingRecords = ref(false);
-const loadingBonus = ref(false);
 const recordsError = ref('');
-const bonusError = ref('');
 const loaded = ref(false);
 
 function rejectText(cause: unknown): string {
@@ -123,23 +117,6 @@ async function loadShared(): Promise<void> {
     recordsError.value = rejectText(cause);
   } finally {
     loadingRecords.value = false;
-  }
-}
-
-async function loadBonus(): Promise<void> {
-  if (!canQuery.value) {
-    bonusEntries.value = [];
-    return;
-  }
-  loadingBonus.value = true;
-  bonusError.value = '';
-  try {
-    bonusEntries.value = await listBonusPools(String(filters.projectId));
-  } catch (cause) {
-    bonusEntries.value = [];
-    bonusError.value = rejectText(cause);
-  } finally {
-    loadingBonus.value = false;
   }
 }
 
@@ -224,7 +201,7 @@ async function loadDeadlineConfig(): Promise<void> {
 async function load(): Promise<void> {
   if (!canQuery.value) return;
   loaded.value = true;
-  await Promise.all([loadShared(), loadBonus(), loadConfirms(), loadDeadlineConfig()]);
+  await Promise.all([loadShared(), loadConfirms(), loadDeadlineConfig()]);
 }
 
 onMounted(() => {
@@ -253,16 +230,6 @@ const recordsColumns = [
   { title: '综合分', key: 'comprehensiveScore', width: 120 },
   { title: '状态', key: 'status', width: 100 },
   { title: '归集时间', key: 'scoredAt', width: 160 },
-];
-
-const bonusColumns = [
-  { title: '奖金池编号', dataIndex: 'id', key: 'id', width: 120 },
-  { title: '实际回款', dataIndex: 'targetSales', key: 'targetSales', width: 130 },
-  { title: '基数（5%）', dataIndex: 'basePool', key: 'basePool', width: 130 },
-  { title: 'S/A/B 系数', dataIndex: 'coefficient', key: 'coefficient', width: 100 },
-  { title: '阶梯系数', dataIndex: 'tierCoefficient', key: 'tierCoefficient', width: 90 },
-  { title: '终算奖池', dataIndex: 'finalPool', key: 'finalPool', width: 140 },
-  { title: '状态', key: 'status', width: 100 },
 ];
 
 function segmentLabel(segment: null | string | undefined): string {
@@ -317,7 +284,7 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
   <div class="ipd-kpi-shared p-4">
     <Alert
       class="mb-4"
-      :message="`共担 KPI 归集：后端 SharedKpiController.listShared 已交付（W4-E）—— GET /api/v1/kpi/shared?projectId&period 返回 List<KpiRecord>（按 revision DESC）。本视图承载双 PM 各自归集 + 关联奖金池 + revision 维度时间线。`"
+      :message="`共担 KPI 归集：后端 SharedKpiController.listShared 已交付（W4-E）—— GET /api/v1/kpi/shared?projectId&period 返回 List<KpiRecord>（按 revision DESC）。本视图承载双 PM 各自归集 + revision 维度时间线。`"
       show-icon
       type="info"
     />
@@ -348,7 +315,7 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
             class="ipd-input"
           />
         </div>
-        <Button type="primary" :loading="loadingRecords || loadingBonus" :disabled="!canQuery" @click="load">查询</Button>
+        <Button type="primary" :loading="loadingRecords" :disabled="!canQuery" @click="load">查询</Button>
         <Button @click="router.replace({ path: '/ipd/kpi/shared', query: { projectId: filters.projectId, period: filters.period } })">同步 URL</Button>
       </div>
       <div class="mt-2 text-xs text-gray-500">{{ rules }}</div>
@@ -504,38 +471,8 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
       </template>
     </Card>
 
-    <Card title="关联奖金池（GET /bonus-pool/list?projectId）" class="mb-4">
-      <Spin v-if="loadingBonus" tip="加载中...">
-        <div style="min-height: 120px"></div>
-      </Spin>
-      <Empty v-else-if="!loadingBonus && bonusEntries.length === 0 && !bonusError" description="该项目当期暂无奖金池" />
-      <template v-else>
-        <Alert
-          v-if="bonusError"
-          class="mb-3"
-          :message="'奖金池关联加载失败'"
-          :description="bonusError"
-          type="error"
-          show-icon
-        />
-        <Table
-          :columns="bonusColumns"
-          :data-source="bonusEntries"
-          :pagination="{ pageSize: 10, showTotal: (total: number) => `共 ${total} 条`, showSizeChanger: false }"
-          :row-key="(record: Record<string, any>) => String(record.id ?? '')"
-          size="small"
-          bordered
-        >
-          <template #bodyCell="{ column, record }: { column: Record<string, any>; record: Record<string, any> }">
-            <template v-if="column.key === 'status'">
-              <Tag :color="record.status === 'DISTRIBUTED' ? 'success' : record.status === 'CONFIRMED' ? 'processing' : 'warning'">
-                {{ record.status === 'DISTRIBUTED' ? '已发放' : record.status === 'CONFIRMED' ? '已确认' : '草稿' }}
-              </Tag>
-            </template>
-          </template>
-        </Table>
-      </template>
-    </Card>
+    <!-- 关联奖金池卡片：2026-10-03 owner 裁决移除奖金池，随 BonusPoolController 同批摘除。 -->
+
 
   </div>
 </template>

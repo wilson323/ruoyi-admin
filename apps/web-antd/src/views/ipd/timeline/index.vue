@@ -4,8 +4,8 @@
  *
  * 后端真值：
  * - 无 timeline 聚合端点；本视图以审计日志（GET /audit-logs/scope，分层范围）作为时间线主轴，
- *   工作台待办（GET /workbench/summary，2026-09-06 交付）与奖金池列表
- *   （GET /bonus-pool/list，参数 projectId）三源融合，按时间倒序呈现「全流程轨迹」语义；
+ *   工作台待办（GET /workbench/summary，2026-09-06 交付）两源融合，按时间倒序呈现「全流程轨迹」语义；
+ *   （2026-10-03 owner 裁决移除奖金池，原第三源 GET /bonus-pool/list 已摘除。）
  * - 服务端不支持按 entity/action 过滤，本页筛选仅作用于当前页（前端叠加）；
  * - 时间戳来源审计事件 createTime（毫秒数）与业务时间戳需统一为可比较的时间字符串。
  *
@@ -36,33 +36,28 @@ import {
   type WorkbenchTask,
   fetchWorkbenchSummary,
 } from '../../../api/ipd/workbench';
-import {
-  type BonusPool,
-  listBonusPools,
-} from '../../../api/ipd/bonus';
 import { IpdRequestError } from '../../../api/ipd/auth';
 import { formatDateTime, PENDING_TEXT } from '../_shared/format';
 defineOptions({
   name: 'IpdTimeline',
   meta: {
-    ipdBackend: '无 timeline 聚合端点；以审计日志（GET /audit-logs/scope）+ 工作台（GET /workbench/summary）+ 奖金池（GET /bonus-pool/list）三源融合按时间倒序。',
+    ipdBackend: '无 timeline 聚合端点；以审计日志（GET /audit-logs/scope）+ 工作台（GET /workbench/summary）两源融合按时间倒序。',
     ipdCard: 'ZK-D2',
   },
 });
 
 const keyword = ref('');
-const scopeFilter = ref<'ALL' | 'AUDIT' | 'WORKBENCH' | 'BONUS'>('ALL');
+const scopeFilter = ref<'ALL' | 'AUDIT' | 'WORKBENCH'>('ALL');
 const loading = ref(false);
 const errorMsg = ref('');
 const isNetwork = ref(false);
 
 const auditData = ref<AuditScopePage | null>(null);
 const workbenchData = ref<WorkbenchSummary | null>(null);
-const bonusEntries = ref<BonusPool[]>([]);
 
 interface TimelineEntry {
   at: null | number | string;
-  category: 'AUDIT' | 'BONUS' | 'WORKBENCH';
+  category: 'AUDIT' | 'WORKBENCH';
   key: string;
   scope?: string;
   summary: string;
@@ -111,17 +106,6 @@ function workbenchTaskToEntry(task: WorkbenchTask): TimelineEntry {
   };
 }
 
-function bonusToEntry(pool: BonusPool): TimelineEntry {
-  return {
-    at: pool.createTime ?? null,
-    category: 'BONUS',
-    detail: `项目 ${pool.projectId} · 生成于 ${formatDateTime(pool.createTime)}`,
-    key: `bonus-${pool.id}`,
-    status: pool.status,
-    summary: `奖金池 #${pool.id} 状态：${pool.status} · 基数 ${pool.basePool ?? PENDING_TEXT} · 系数 ${pool.coefficient ?? PENDING_TEXT}`,
-  };
-}
-
 function toMillis(at: null | number | string): number {
   if (at === null || at === undefined) return 0;
   if (typeof at === 'number') return at < 1e12 ? at * 1000 : at;
@@ -138,7 +122,6 @@ const entries = computed<TimelineEntry[]>(() => {
   if (workbenchData.value?.tasks) {
     for (const task of workbenchData.value.tasks) out.push(workbenchTaskToEntry(task));
   }
-  for (const pool of bonusEntries.value) out.push(bonusToEntry(pool));
   out.sort((a, b) => toMillis(b.at) - toMillis(a.at));
   return out;
 });
@@ -154,14 +137,13 @@ const filteredEntries = computed<TimelineEntry[]>(() => {
 });
 
 const entryCounts = computed(() => {
-  const counts = { AUDIT: 0, BONUS: 0, WORKBENCH: 0 };
+  const counts = { AUDIT: 0, WORKBENCH: 0 };
   for (const entry of entries.value) counts[entry.category] += 1;
   return counts;
 });
 
-const CATEGORY_TEXT: Record<'AUDIT' | 'BONUS' | 'WORKBENCH', { color: string; label: string }> = {
+const CATEGORY_TEXT: Record<'AUDIT' | 'WORKBENCH', { color: string; label: string }> = {
   AUDIT: { color: 'blue', label: '审计事件' },
-  BONUS: { color: 'gold', label: '奖金池' },
   WORKBENCH: { color: 'green', label: '工作台待办' },
 };
 
@@ -176,18 +158,6 @@ async function load(): Promise<void> {
     ]);
     auditData.value = audit.status === 'fulfilled' ? audit.value : null;
     workbenchData.value = summary.status === 'fulfilled' ? summary.value : null;
-    // 奖金池：尝试从 audit/summary 中找到最近 projectId；无则跳过（避免误跨项目）。
-    bonusEntries.value = [];
-    let projectId: null | string = null;
-    if (workbenchData.value?.currentAdvance?.projectId) projectId = workbenchData.value.currentAdvance.projectId;
-    else if (workbenchData.value?.tasks.length) projectId = workbenchData.value.tasks[0]?.projectId ?? null;
-    if (projectId) {
-      try {
-        bonusEntries.value = await listBonusPools(projectId);
-      } catch {
-        bonusEntries.value = [];
-      }
-    }
     // 全部失败时，给出合并错误文案
     if (audit.status === 'rejected' && summary.status === 'rejected') {
       throw audit.reason;
@@ -207,7 +177,7 @@ onMounted(load);
   <div class="ipd-timeline p-4">
     <Alert
       class="mb-4"
-      :message="`全流程轨迹：审计日志（GET /audit-logs/scope，分层范围）+ 工作台待办（GET /workbench/summary）+ 奖金池（GET /bonus-pool/list?projectId）三源融合，按时间倒序。无 timeline 聚合端点，本页以审计为时间线主轴；后端不支持按 entity/action 过滤，关键词仅作用于当前页。`"
+      :message="`全流程轨迹：审计日志（GET /audit-logs/scope，分层范围）+ 工作台待办（GET /workbench/summary）两源融合，按时间倒序。无 timeline 聚合端点，本页以审计为时间线主轴；后端不支持按 entity/action 过滤，关键词仅作用于当前页。`"
       show-icon
       type="info"
     />
@@ -220,7 +190,6 @@ onMounted(load);
             <SelectOption value="ALL">全部</SelectOption>
             <SelectOption value="AUDIT">仅审计事件</SelectOption>
             <SelectOption value="WORKBENCH">仅工作台待办</SelectOption>
-            <SelectOption value="BONUS">仅奖金池</SelectOption>
           </Select>
         </div>
         <div>
@@ -232,7 +201,6 @@ onMounted(load);
       <div class="mt-3 flex flex-wrap gap-2 text-xs">
         <Tag color="blue">审计：{{ entryCounts.AUDIT }}</Tag>
         <Tag color="green">工作台待办：{{ entryCounts.WORKBENCH }}</Tag>
-        <Tag color="gold">奖金池：{{ entryCounts.BONUS }}</Tag>
         <span class="ml-2 text-gray-500">审计分层：{{ auditData?.scope ?? '—' }}</span>
       </div>
     </Card>
@@ -246,7 +214,7 @@ onMounted(load);
         <TimelineItem
           v-for="entry in filteredEntries"
           :key="entry.key"
-          :color="entry.category === 'AUDIT' ? 'blue' : entry.category === 'BONUS' ? 'gold' : 'green'"
+          :color="entry.category === 'AUDIT' ? 'blue' : 'green'"
         >
           <div class="flex flex-wrap items-center gap-2">
             <Tag :color="CATEGORY_TEXT[entry.category].color">{{ CATEGORY_TEXT[entry.category].label }}</Tag>

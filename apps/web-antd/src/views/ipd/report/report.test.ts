@@ -1,5 +1,6 @@
 // 报表分析页组件级验证：mock 真实 /api/v1/report 契约（project-summary/export/*），
-// 断言月度汇总表渲染、month 必填查询参数、项目汇总导出、奖金导出权限位
+// 断言月度汇总表渲染、month 必填查询参数、项目汇总导出
+// （2026-10-03 奖金池移除：奖金列与奖金导出权限位用例同批摘除）
 // （非组长隐藏）与原型 analytics 区登记文案。
 
 import { mount } from '@vue/test-utils';
@@ -21,8 +22,6 @@ const summaryRow = {
   allowanceFinalAmount: '12800.50',
   allowanceRowCount: 2,
   avgWeightedScore: '86.4',
-  bonusFinalPool: '36000',
-  bonusRowCount: 1,
   month: '2026-08',
   projectCode: 'P-001',
   projectId: '1',
@@ -35,7 +34,7 @@ const exportResult = {
   exportedBy: '超级管理员',
   exportType: 'PROJECT_SUMMARY',
   filters: { month: '2026-08' },
-  headers: ['项目编号', '项目名称', '津贴核算', '奖金池'],
+  headers: ['项目编号', '项目名称', '津贴核算'],
   rows: [{ '项目编号': 'P-001' }],
   totalCount: 1,
 };
@@ -72,10 +71,9 @@ describe('IPD report page (prototype ProcessAnalyticsPage adaptation)', () => {
     // 汇总行：金额两位小数 + 行数 + 加权分
     expect(wrapper.text()).toContain('P-001');
     expect(wrapper.text()).toContain('12,800.50');
-    expect(wrapper.text()).toContain('36,000.00');
     expect(wrapper.text()).toContain('86.4');
-    // 奖金导出权限位：未登录（无身份）不显示导出按钮
-    expect(wrapper.text()).toContain('奖金台账仅组长/超管可导出');
+    // 已移除的奖金池列不再出现在汇总表
+    expect(wrapper.text()).not.toContain('36,000.00');
     wrapper.unmount();
   });
 
@@ -160,11 +158,11 @@ describe('L2 AI 入口（report.trend-analyze）', () => {
 
     // ② 触发 scene 正确（needsPrompt：先填素材再发起）
     await wrapper.get('[data-testid="report-ai-trend"] [data-testid="ai-suggest-prompt"]')
-      .setValue('近三月奖金池 30k→33k→36k');
+      .setValue('近三月津贴 30k→33k→36k');
     await runBtn.trigger('click');
     await vi.waitFor(() => expect(aiSuggestMock).toHaveBeenCalledWith(
       'report.trend-analyze',
-      expect.objectContaining({ userPrompt: '近三月奖金池 30k→33k→36k' }),
+      expect.objectContaining({ userPrompt: '近三月津贴 30k→33k→36k' }),
     ));
 
     // ③ adopt 回传宿主（仅本地提示，不写库）

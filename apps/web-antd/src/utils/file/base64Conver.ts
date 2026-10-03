@@ -29,18 +29,30 @@ export function urlToBase64(url: string, mineType?: string): Promise<string> {
 
     const img = new Image();
     img.crossOrigin = '';
-    img.addEventListener('load', () => {
-      if (!canvas || !ctx) {
-        // eslint-disable-next-line prefer-promise-reject-errors
-        return reject();
-      }
-      canvas.height = img.height;
-      canvas.width = img.width;
-      ctx.drawImage(img, 0, 0);
-      const dataURL = canvas.toDataURL(mineType || 'image/png');
+    const cleanup = () => {
+      img.removeEventListener('load', onLoad);
+      img.removeEventListener('error', onError);
       canvas = null;
-      resolve(dataURL);
-    });
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error('图片加载失败'));
+    };
+    const onLoad = () => {
+      try {
+        if (!canvas || !ctx) throw new Error('图片画布不可用');
+        canvas.height = img.height;
+        canvas.width = img.width;
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL(mineType || 'image/png'));
+      } catch (error) {
+        reject(error);
+      } finally {
+        cleanup();
+      }
+    };
+    img.addEventListener('load', onLoad, { once: true });
+    img.addEventListener('error', onError, { once: true });
     img.src = url;
   });
 }

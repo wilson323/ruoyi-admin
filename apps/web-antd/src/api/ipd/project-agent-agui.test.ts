@@ -8,6 +8,22 @@ const frame = (value: unknown, id = 1) => `id: ${id}\r\ndata: ${JSON.stringify(v
 const custom = (value: unknown) => ({ type: 'CUSTOM', name: 'ipd_event', value });
 
 describe('AG-UI persisted projection', () => {
+  it('ignores native interrupted RUN_FINISHED and delivers the durable clarification wait with trailing SSE ids', async () => {
+    const interrupt = { id: 'q1', reason: 'tool_call', metadata: { toolName: 'request_clarification', toolInput: { kind: 'CLARIFICATION', questions: [] } } };
+    const native = { type: 'RUN_FINISHED', outcome: { state: 'interrupted', interrupts: [interrupt] } };
+    const agui = { ...event, seq: 51, type: 'STEP', payload: { kind: 'AGUI', events: [JSON.stringify(native)] } };
+    const waiting = { ...event, seq: 52, type: 'STEP', payload: { kind: 'AWAIT_USER', reason: 'AGUI_INTERRUPT', interrupts: { q1: interrupt } } };
+    const wire = `data:${JSON.stringify(native)}\n\ndata:${JSON.stringify(custom(agui))}\nid:51\n\ndata:${JSON.stringify(custom(waiting))}\nid:52\n\n`;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(wire, { headers: { 'content-type': 'text/event-stream' } })));
+    const seen: unknown[] = [];
+    await streamAgentRunEvents('r', 50, value => { seen.push(value); return value.seq === 52; }, new AbortController().signal);
+    expect(seen).toEqual([agui, waiting]);
+    for (let split = 0; split <= wire.length; split += 1) {
+      const parse = createAgentAguiParser();
+      expect([...parse(wire.slice(0, split)), ...parse(wire.slice(split))]).toEqual([agui, waiting]);
+    }
+  });
+
   it('ignores official mapped frames and buffers split CRLF until the persisted projection is complete', () => {
     const parse = createAgentAguiParser();
     const wire = frame({ type: 'TEXT_MESSAGE_CONTENT', delta: '中文' }) + frame(custom(event));

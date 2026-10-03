@@ -1,5 +1,5 @@
 {
-  "_comment": "Layer 3 — 硬闸门。Anthropic: 前两层告诉 AI 该怎么做，hooks 守住不能越过的红线。hooks 是确定性脚本，每次必跑，不依赖模型自觉。v2：新增发布命令闸门（Deploy 阶段人授权）+ 审计日志（可归因）；移除 git add -A 拦截（owner 工作流为自动 commit）。v3：发布闸门支持 RELEASE_APPROVAL 凭证（Anthropic production-gate 语义）——命令内标记或会话环境变量任一存在即放行并提示审计；同版修正 mvn/gradle 匹配（mvn clean deploy / gradle clean publish 等不再漏过，按任务分隔符精确化）。",
+  "_comment": "Project hooks cover only actual host events; not a universal enforcement boundary. Existing permission guards unchanged. No automatic commit/push. Engineering SessionStart intake presents evidence and bounded learned checks.",
   "hooks": {
     "PreToolUse": [
       {
@@ -69,6 +69,16 @@
           {
             "type": "command",
             "command": "bash -c 'if [ -f docs/api.md ]; then cat docs/api.md 2>/dev/null; fi; if [ -f docs/database.md ]; then cat docs/database.md 2>/dev/null; fi; exit 0'"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-$PWD}/scripts/engineering_harness.py\" --root \"${CLAUDE_PROJECT_DIR:-$PWD}\" intake",
+            "timeout": 30
           }
         ]
       }

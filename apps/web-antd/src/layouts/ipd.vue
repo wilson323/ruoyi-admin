@@ -45,7 +45,7 @@ const route = useRoute();
 const router = useRouter();
 const projects = ref<Project[]>([]);
 const CURRENT_PROJECT_KEY = 'ipd:current-project';
-/** 子页（如奖金池）表单改项目时派发，项目页只改路由，不整页 reload。 */
+/** 子页表单改项目时派发，项目页只改路由，不整页 reload。 */
 const PROJECT_SYNC_EVENT = 'ipd:current-project-changed';
 const { mode: aiMode } = useIpdAiWorkspace();
 

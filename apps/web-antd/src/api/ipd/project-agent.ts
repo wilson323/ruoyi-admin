@@ -30,10 +30,11 @@ export type AgentRunStatus =
   | 'VERIFYING'
   | 'WAITING_APPROVAL';
 
-/** 运行事件类型（9 种，时间线只按这些真实事件渲染）。 */
+/** 运行事件类型（10 种，时间线只按这些真实事件渲染）。 */
 export type AgentRunEventType =
   | 'ARTIFACT'
   | 'ERROR'
+  | 'MEMORY_RECEIPT'
   | 'RUN_FINISHED'
   | 'RUN_STARTED'
   | 'SOURCE'
@@ -146,6 +147,26 @@ export function resumeAgentRun(runId: string, input: ResumeAgentRunInput): Promi
 /** 对同一运行的现有正文重新检查；不新建运行，不修改已结束记录。 */
 export function reverifyAgentRun(runId: string): Promise<AgentRunReceipt> {
   return ipdPost<AgentRunReceipt>(`/agent-runs/${seg(runId)}/reverify`, {});
+}
+
+/** 当前运行提议的技能审核；与文档审核及动作批准分别保留。 */
+export interface AgentSkillReview {
+  candidateSeq: string;
+  skillName: string;
+  sha256: string;
+  status: 'PENDING' | 'PUBLISHED' | 'REJECTED' | 'PUBLISH_FAILED';
+  files: Array<{ path: string; content: string; sha256: string; encoding?: string }>;
+  scanSummary: string;
+  reviewComment?: null | string;
+}
+
+export function listAgentRunSkillReviews(runId: string): Promise<AgentSkillReview[]> {
+  return ipdGet<AgentSkillReview[]>(`/agent-runs/${seg(runId)}/skill-reviews`);
+}
+
+export function reviewAgentRunSkill(runId: string, candidateSeq: string,
+  input: { approved: boolean; sha256: string; comment?: string }): Promise<AgentSkillReview> {
+  return ipdPost<AgentSkillReview>(`/agent-runs/${seg(runId)}/skill-reviews/${seg(candidateSeq)}/review`, input);
 }
 
 /** 运行列表查询。字段均可空；cursor 是上一页最后的 runId。 */

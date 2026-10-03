@@ -1,9 +1,12 @@
 /**
- * 生成当时的文档 / HTML 预览判定。
+ * 可信文档交付后的正文展示。
  *
- * 输入是时间线 TEXT_DELTA 拼出的回答（思考段由调用方用 modelMessageParts 剥掉）。
- * 只有整页 HTML 或 markdown 文档才返回预览；短回答和 img 片段返回 null。
+ * deliveredDocumentPreview 仅从服务端持久化的父交付回执确认 DOCUMENT 身份，生成交付即预览。
+ * liveGeneratedPreview 只解析已确认正文的展示形态；标题、HTML 和模型自报不能授予文档身份。
+ * 普通回答与澄清不进入文档预览；可信文档没有标题时仍由交付消费者以纯文本展示。
  */
+
+import type { AgentRunEvent } from '../../../../api/ipd/project-agent';
 
 /** 可挂到「本次运行」的一块生成预览。 */
 export interface LiveGeneratedPreview {
@@ -15,20 +18,39 @@ export interface LiveGeneratedPreview {
   body: string;
 }
 
+/** Only a persisted parent delivery receipt identifies a document; headings and model claims do not. */
+export function deliveredDocumentPreview(events: readonly AgentRunEvent[]): LiveGeneratedPreview | null {
+  const delivered = [...events].reverse().find(event => {
+    if (event.type !== 'ARTIFACT' || !event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload)) return false;
+    const payload = event.payload as Record<string, unknown>;
+    return payload.outputKind === 'DOCUMENT' && payload.attachmentOrigin === 'IPD_NATIVE_DELIVERY_V1'
+      && typeof payload.versionId === 'string' && !!payload.versionId
+      && typeof payload.contentHash === 'string' && !!payload.contentHash
+      && typeof payload.content === 'string' && !!payload.content.trim();
+  });
+  if (!delivered) return null;
+  const payload = delivered.payload as Record<string, unknown>;
+  const content = payload.content as string;
+  const preview = liveGeneratedPreview(content);
+  const title = typeof payload.title === 'string' && payload.title.trim() ? payload.title : preview?.title ?? '文档';
+  return preview ? { ...preview, title } : { kind: 'document', title, body: content };
+}
+
 const HTML_START = /^(?:<!doctype\s+html\b|<html\b)/i;
 const HEADING_START = /^(#{1,2})(?!#)[ \t]+(\S[^\n]*)/;
 const PREVIEW_LANG = new Set(['html', 'markdown', 'md']);
 
 /**
- * 判断回答要不要在定档前做生成预览。
+ * 解析可信文档正文的 HTML 或纯文本展示形态，不决定其文档身份。
  *
  * HTML 三种里只认两种前缀加一种围栏：去掉首尾空白后以 `<!doctype html` 或 `<html`
  * 开头（忽略大小写），或出现 ```html 围栏。`<img` 这类片段不是页面。
- * 文档：以 `#` / `##` 标题开头，或 ```md / ```markdown 围栏；正文保持纯文本。
- * 普通短回答返回 null。HTML 正文会先去掉 script 标签和 on* 事件属性。
+ * 标题：从开头的 `#` / `##` 或 ```md / ```markdown 围栏提取；正文保持纯文本。
+ * 未识别形态返回 null，由 deliveredDocumentPreview 按真实回执标题和全文回退为纯文本。
+ * HTML 正文会先去掉 script 标签和 on* 事件属性。
  *
- * @param answer 模型回答，不应再含未闭合思考段
- * @returns 预览；不该展示时为 null
+ * @param answer 已确认的文档正文
+ * @returns 已识别的展示形态；未识别时为 null，不表示该正文不是文档
  *
  * @example
  * liveGeneratedPreview('# 概念说明书\n正文');

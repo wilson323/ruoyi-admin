@@ -1438,3 +1438,29 @@ it('移除动作深链后不残留上一动作绑定', async () => {
   await flushPromises();
   expect(assistantWrapper!.findComponent({ name: 'ProjectAgentPanel' }).props('actionCode')).toBeUndefined();
 });
+
+describe('正文滚动监听归属', () => {
+  it('本实例监听在模式替换与卸载时移除，并不绑定同ID外部节点', async () => {
+    window.localStorage.setItem('ipd:current-project', 'P-1');
+    useIpdAiWorkspace().setMode('ai');
+    await mountAssistant();
+    const first = bodyQuery('[data-testid="ipd-ai-run-readout"]')!.closest('.ws-body')!;
+    const removeFirst = vi.spyOn(first, 'removeEventListener');
+    useIpdAiWorkspace().setMode('classic'); await flushPromises();
+    expect(removeFirst.mock.calls.some(([type]) => type === 'scroll')).toBe(true);
+    const foreign = document.createElement('div');
+    foreign.className = 'ws-body';
+    const foreignChild = document.createElement('div');
+    foreignChild.id = 'ipd-ai-run-readout';
+    foreign.append(foreignChild);
+    document.body.prepend(foreign);
+    const foreignAdd = vi.spyOn(foreign, 'addEventListener');
+    useIpdAiWorkspace().setMode('ai'); await flushPromises();
+    const second = bodyQuery('[data-testid="ipd-ai-run-readout"]')!.closest('.ws-body')!;
+    expect(foreignAdd.mock.calls.some(([type]) => type === 'scroll')).toBe(false);
+    const removeSecond = vi.spyOn(second, 'removeEventListener');
+    assistantWrapper!.unmount(); assistantWrapper = null;
+    expect(removeSecond.mock.calls.some(([type]) => type === 'scroll')).toBe(true);
+    removeFirst.mockRestore(); removeSecond.mockRestore(); foreignAdd.mockRestore(); foreign.remove();
+  });
+});

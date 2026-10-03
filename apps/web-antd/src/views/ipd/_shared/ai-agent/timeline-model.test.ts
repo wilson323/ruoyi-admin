@@ -343,4 +343,48 @@ describe('buildTimelineItems', () => {
     expect(item).toMatchObject({ evidence: [{ kindLabel: '产品知识库', sourceName: '产品手册' }] });
   });
 
+  it('记忆写入失败只给信息性提示，不改判本轮运行终态', () => {
+    const items = buildTimelineItems([
+      ev(1, 'RUN_STARTED'),
+      ev(2, 'TEXT_DELTA', { text: '研发费用率 12.83%' }),
+      ev(3, 'RUN_FINISHED', { status: 'SUCCEEDED' }),
+      ev(4, 'MEMORY_RECEIPT', {
+        status: 'WRITE_FAILED', errorType: 'TimeoutException', retryable: true, extracted: 0, saved: 0,
+      }),
+    ]);
+    expect(items.map((i) => i.kind)).toEqual(['run-started', 'text', 'run-finished', 'memory-note']);
+    const note = items[3]!;
+    expect(note.kind).toBe('memory-note');
+    expect(note).not.toMatchObject({ kind: 'error' });
+    expect(items.filter((i) => i.kind === 'error')).toHaveLength(0);
+    expect(items[2]).toMatchObject({ kind: 'run-finished', status: 'SUCCEEDED' });
+    if (note.kind !== 'memory-note') throw new Error('kind 不是 memory-note');
+    expect(note.retryable).toBe(true);
+    expect(note.text).toBe('本次记忆没有写入，系统会稍后自动补写');
+    expect(note.text).toContain('记忆');
+    expect(JSON.stringify(note)).not.toMatch(/TimeoutException|WRITE_FAILED/);
+  });
+
+  it('记忆写入成功不打扰用户', () => {
+    const before = buildTimelineItems([ev(1, 'TEXT_DELTA', { text: '答复' })]);
+    const after = buildTimelineItems([
+      ev(1, 'TEXT_DELTA', { text: '答复' }),
+      ev(2, 'MEMORY_RECEIPT', { saved: 1, status: 'WRITTEN', extracted: 1, retryable: false }),
+    ]);
+    expect(after).toHaveLength(before.length);
+    expect(after).toEqual(before);
+  });
+
+  it('记忆回执缺字段时不抛异常，也不编成提示或失败', () => {
+    for (const payload of [{}, null, { status: 'WRITTEN' }, { status: 'WRITE_FAILED' }, { retryable: true }]) {
+      const items = buildTimelineItems([ev(1, 'MEMORY_RECEIPT', payload)]);
+      const notes = items.filter((i) => i.kind === 'memory-note');
+      expect(notes.length).toBeLessThanOrEqual(1);
+      expect(items.some((i) => i.kind === 'error')).toBe(false);
+    }
+    // 明确说 WRITE_FAILED 但没有 retryable 时，只说没写入，不替系统承诺补写。
+    const [noRetryable] = buildTimelineItems([ev(1, 'MEMORY_RECEIPT', { status: 'WRITE_FAILED' })]);
+    expect(noRetryable).toMatchObject({ kind: 'memory-note', retryable: false, text: '本次记忆没有写入' });
+  });
+
 });

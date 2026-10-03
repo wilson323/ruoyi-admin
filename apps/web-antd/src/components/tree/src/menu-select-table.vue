@@ -217,7 +217,7 @@ onMounted(() => {
    */
   watch(
     () => props.checkedKeys,
-    (value) => {
+    (value, _previous, onCleanup) => {
       const allCheckedKeys = uniq([...value]);
       // 获取表格data 如果checkedKeys在menus的watch之前触发 这里会拿到空 导致勾选异常
       const records = tableApi.grid.getData();
@@ -225,7 +225,8 @@ onMounted(() => {
       updateCheckedNumber();
 
       // 全屏引导
-      setTimeout(openGuide, 1000);
+      const guideTimer = setTimeout(openGuide, 1000);
+      onCleanup(() => clearTimeout(guideTimer));
     },
   );
 });

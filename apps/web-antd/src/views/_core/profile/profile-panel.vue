@@ -52,7 +52,7 @@ const poetrySrc = computed(() => {
             {{ profile.user.nickName ?? '未知' }}
           </span>
           <!-- https://www.jinrishici.com/doc/#image -->
-          <img :src="poetrySrc" />
+          <img :src="poetrySrc" alt="今日推荐诗词" />
         </div>
       </div>
       <div class="px-[24px]">

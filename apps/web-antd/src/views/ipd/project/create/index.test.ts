@@ -117,18 +117,18 @@ describe('页08 新建项目', () => {
     expect(isTransportError(err)).toBe(true);
   });
 
-describe('ZK-IPD 业务规则显示对齐 Prompt §二.10/§三.2/§三.1', () => {
-  it('渲染 ZK-IPD 业务规则提示 Alert（含归档只读/奖金池/津贴封顶三段）', async () => {
+describe('ZK-IPD 业务规则显示对齐 Prompt §二.10/§三.1', () => {
+  it('渲染 ZK-IPD 业务规则提示 Alert（含归档只读 / 津贴封顶两段；奖金池段已于 2026-10-03 移除）', async () => {
     const wrapper = mount(Create);
     await flushPromises();
     const html = wrapper.html();
     // 归档后只读（§二.10）—— 规则文案：「项目归档后…资料只读」
     expect(html).toContain('归档后');
     expect(html).toContain('只读');
-    // 奖金池（§三.2.1）—— 实际回款 + 5% + S/A/B
-    expect(html).toContain('实际回款');
-    expect(html).toContain('5%');
-    expect(html).toContain('S/A/B');
+    // 奖金池（§三.2.1）—— 随奖金池功能移除，建项目页不再提示该口径
+    //（注：项目差异化系数 S/A/B 字段本身保留，属后端口径裁决范围，不在此断言内）
+    expect(html).not.toContain('奖金池 =');
+    expect(html).not.toContain('上市后连续 6 个月实际回款');
     // 津贴封顶（§三.1.2）—— 多项目 + 2 倍
     expect(html).toContain('封顶');
     expect(html).toContain('2 倍');

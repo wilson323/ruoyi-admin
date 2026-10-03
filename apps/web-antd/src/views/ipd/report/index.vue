@@ -10,8 +10,9 @@
      analytics 端点：四卡外壳与空态按原型渲染、数值显示「—」，灰色登记条如实说明，
      不做假数据。
   2. 后端已交付 P4-4.1 项目月度绩效汇总（GET /report/project-summary，month 必填）
-     与三类台账导出（allowance/project 全员，bonus 仅组长+超管）：作为页面主数据区
-     渲染（月份过滤 + 分页表格 + 导出结果卡），补足原型缺失的真实报表能力。
+     与台账导出（allowance/project 全员）：作为页面主数据区渲染（月份过滤 + 分页表格 +
+     导出结果卡）。2026-10-03 owner 裁决移除「回款台账 + 奖金池 + 业绩窗口」后，奖金池列与
+     奖金台账导出入口（原本仅组长+超管可见）同批摘除。
 -->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
@@ -19,12 +20,10 @@ import { computed, onMounted, ref } from 'vue';
 import { message } from 'ant-design-vue';
 import { BarChartOutlined, ClockCircleOutlined, FileTextOutlined, SafetyOutlined, WarningOutlined } from '@ant-design/icons-vue';
 
-import { useIpdAuthStore } from '../../../store/ipd-auth';
 import { formatDateTime, formatMoney } from '../_shared/format';
 import { ipdErrorText } from '../_shared/ipd-error-text';
 import {
   exportAllowance,
-  exportBonus,
   exportProjectSummary,
   getProjectSummary,
   type ReportExportResult,
@@ -32,13 +31,6 @@ import {
   type ReportSummaryRow,
 } from '../../../api/ipd/report';
 import AiSuggest from '../_shared/ai-suggest.vue';
-
-const auth = useIpdAuthStore();
-const personType = computed(() => auth.identity?.person.personType ?? '');
-/** 奖金台账属资金敏感：仅产品组长/超管可见导出入口（AC-INC-34 权限梯度）。 */
-const canExportBonus = computed(
-  () => personType.value === 'GROUP_LEADER' || personType.value === 'SUPER_ADMIN',
-);
 
 function currentMonth(): string {
   const now = new Date();
@@ -79,15 +71,13 @@ async function load(reset = false): Promise<void> {
 
 onMounted(() => { void load(true); });
 
-async function runExport(kind: 'allowance' | 'bonus' | 'project', row?: ReportSummaryRow): Promise<void> {
+async function runExport(kind: 'allowance' | 'project'): Promise<void> {
   if (exporting.value) return;
   exporting.value = kind;
   try {
-    const result = kind === 'bonus'
-      ? await exportBonus({ projectId: row?.projectId ?? '' })
-      : kind === 'allowance'
-        ? await exportAllowance({ month: month.value })
-        : await exportProjectSummary({ keyword: keyword.value.trim() || undefined, month: month.value });
+    const result = kind === 'allowance'
+      ? await exportAllowance({ month: month.value })
+      : await exportProjectSummary({ keyword: keyword.value.trim() || undefined, month: month.value });
     exportResult.value = result;
     message.success(`${result.exportType} 导出完成，共 ${result.totalCount} 行`);
   } catch (cause) {
@@ -146,7 +136,7 @@ function onAiAdopt(payload: { markdown: string; scene: string }): void {
       <div class="section-title">
         <div>
           <h2>项目月度绩效汇总</h2>
-          <p>津贴核算、奖金池与加权绩效分按月汇总（P4-4.1，AC-INC-34）。</p>
+          <p>津贴核算与加权绩效分按月汇总（P4-4.1，AC-INC-34）。</p>
         </div>
         <div class="inline-actions">
           <button
@@ -187,7 +177,7 @@ function onAiAdopt(payload: { markdown: string; scene: string }): void {
       <template v-if="rows.length">
         <div class="business-table">
           <div class="business-row head">
-            <span>项目</span><span>月份</span><span>津贴核算</span><span>奖金池</span><span>平均加权分</span><span>操作</span>
+            <span>项目</span><span>月份</span><span>津贴核算</span><span>平均加权分</span><span>操作</span>
           </div>
           <div v-for="row in rows" :key="`${row.projectId}-${row.month}`" class="business-row">
             <span>
@@ -200,25 +190,10 @@ function onAiAdopt(payload: { markdown: string; scene: string }): void {
               <small>{{ row.allowanceRowCount ?? 0 }} 行台账</small>
             </span>
             <span>
-              <strong class="tabular-nums">¥{{ formatMoney(row.bonusFinalPool) }}</strong>
-              <small>{{ row.bonusRowCount ?? 0 }} 行台账</small>
-            </span>
-            <span>
               <strong>{{ row.avgWeightedScore ?? '—' }}</strong>
               <small>{{ row.scoreRowCount ?? 0 }} 人评分</small>
             </span>
-            <span>
-              <button
-                v-if="canExportBonus"
-                :disabled="Boolean(exporting)"
-                class="panel-action"
-                type="button"
-                @click="runExport('bonus', row)"
-              >
-                奖金台账导出
-              </button>
-              <span v-else class="muted">奖金台账仅组长/超管可导出</span>
-            </span>
+            <span></span>
           </div>
         </div>
         <div class="pager">
@@ -239,7 +214,7 @@ function onAiAdopt(payload: { markdown: string; scene: string }): void {
       <div v-else-if="!loading && !loadError" class="empty-state">
         <div><BarChartOutlined /></div>
         <strong>本月暂无汇总数据</strong>
-        <p>选择月份后查询项目月度津贴、奖金池与绩效分汇总。</p>
+        <p>选择月份后查询项目月度津贴与绩效分汇总。</p>
       </div>
       <div v-if="loading" class="report-loading">正在汇总项目月度数据…</div>
     </section>
@@ -306,7 +281,7 @@ function onAiAdopt(payload: { markdown: string; scene: string }): void {
       <div class="report-pending">
         原型流程分析（/api/analytics/process：质量通过率、审批退回率、招募周期、任务周期分布、流程事件流）后端未交付，数值区不做假数据；已交付的项目月度汇总与台账导出见上方。
       </div>
-      <div class="report-note"><SafetyOutlined /> 报表数据遵循资金敏感权限梯度：奖金台账仅产品组长与超级管理员可导出。</div>
+      <div class="report-note"><SafetyOutlined /> 报表数据遵循资金敏感权限梯度，导出动作逐笔留审计痕迹。</div>
     </section>
   </div>
 </template>

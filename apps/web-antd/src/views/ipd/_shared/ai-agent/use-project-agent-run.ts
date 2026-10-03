@@ -28,6 +28,7 @@ import {
 
 import {
   cancelAgentRun,
+  reverifyAgentRun,
   resumeAgentRun,
   createProjectAgentRun,
   fetchAgentRun,
@@ -128,6 +129,8 @@ export function useProjectAgentRun(
   const polling = ref(false);
   const submitting = ref(false);
   const cancelling = ref(false);
+  const reverifying = ref(false);
+  const reverifyError = shallowRef<unknown>(null);
   const submitError = shallowRef<unknown>(null);
   const pollError = shallowRef<unknown>(null);
   const cancelError = shallowRef<unknown>(null);
@@ -183,6 +186,8 @@ export function useProjectAgentRun(
     polling.value = false;
     submitting.value = false;
     cancelling.value = false;
+    reverifying.value = false;
+    reverifyError.value = null;
     submitError.value = null;
     pollError.value = null;
     cancelError.value = null;
@@ -276,7 +281,7 @@ export function useProjectAgentRun(
       }
       if (changed) await refreshDetail(token, id);
       if (!alive(token)) return;
-      if (pendingInterrupt.value) { polling.value = false; return; }
+      if (pendingInterrupt.value || status.value === 'VERIFYING') { polling.value = false; return; }
       schedule(token, pollIntervalMs);
     } catch (error) {
       if (!alive(token)) return;
@@ -298,8 +303,9 @@ export function useProjectAgentRun(
         if (!alive(token)) return true;
         if (!mergeEvents([event])) return false;
         if (event.type === 'ERROR' || event.type === 'RUN_FINISHED') terminal.value = true;
-        const payload = event.payload as { kind?: string; status?: string } | null;
-        paused = status.value === 'WAITING_APPROVAL' && event.seq === detail.value?.pauseSeq
+        const payload = event.payload as { kind?: string; status?: string; verdict?: string } | null;
+        paused = event.type === 'STEP' && payload?.kind === 'VERIFY_GAPS' && payload?.verdict !== 'PASS'
+          || status.value === 'WAITING_APPROVAL' && event.seq === detail.value?.pauseSeq
           && event.type === 'STEP' && (payload?.kind === 'AWAIT_USER' || payload?.status === 'WAITING_APPROVAL');
         return terminal.value || paused;
       }, controller.signal);
@@ -320,6 +326,7 @@ export function useProjectAgentRun(
           return event.seq === detail.value?.pauseSeq && event.type === 'STEP'
             && (payload?.kind === 'AWAIT_USER' || payload?.status === 'WAITING_APPROVAL');
         });
+        if (!detailError.value && status.value === 'VERIFYING') { polling.value = false; pollError.value = null; return; }
         if (!detailError.value && status.value === 'WAITING_APPROVAL' && typeof detail.value?.pauseSeq === 'number'
           && detail.value.pauseSeq <= cursor && hasAwaitEvent) {
           polling.value = false;
@@ -457,6 +464,33 @@ export function useProjectAgentRun(
     }
   }
 
+  /** 只检查现有正文；服务端仍校验所属人、状态及并发版本。 */
+  async function reverify(): Promise<boolean> {
+    const id = runId.value;
+    if (!id || terminal.value || status.value !== 'VERIFYING' || reverifying.value || cancelling.value) return false;
+    const token = runToken;
+    reverifying.value = true;
+    reverifyError.value = null;
+    clearTimer();
+    streamController?.abort();
+    polling.value = false;
+    try {
+      const receipt = await reverifyAgentRun(id);
+      if (!alive(token)) return false;
+      if (receipt.runId !== id) throw new IpdRequestError('复检运行编号不一致', 0, 0, 'protocol');
+      status.value = receipt.status;
+      await refreshDetail(token, id);
+      if (!alive(token)) return false;
+      pollError.value = null;
+      reconnects = 0;
+      void readEvents(token);
+      return true;
+    } catch (error) {
+      if (alive(token)) reverifyError.value = error;
+      return false;
+    } finally { if (alive(token)) reverifying.value = false; }
+  }
+
   /** 回答官方中断，在同一 runId 与已消费游标上继续；读取重试 resume() 不承载业务回答。 */
   async function respondToInterrupt(entries: AgentRunResumeEntry[]): Promise<boolean> {
     const pause = pendingInterrupt.value;
@@ -542,6 +576,9 @@ export function useProjectAgentRun(
 
   return {
     active,
+    reverify,
+    reverifying,
+    reverifyErrorText: computed(() => textOf(reverifyError.value, '重新检查失败')),
     pendingInterrupt,
     responding,
     responseErrorText: computed(() => textOf(responseError.value, '回答提交失败')),

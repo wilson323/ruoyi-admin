@@ -11,6 +11,8 @@
  * - ARTIFACT 内容预览按常见字段名防御性取值（content / preview / summary / text / snippet），
  *   取不到则留空，不另开预览页、不编造正文；
  * - STEP 且 kind===INTENT 时保留计划 / 澄清布尔值，以及字符串数组 questions / steps；
+ * - MEMORY_RECEIPT 只在 WRITE_FAILED 时留一条信息性提示（memory-note，非 error）；
+ *   WRITTEN 是系统内部账，不产生任何可见条目；
  * - 运行时出现合同外的新 type 时跳过，不崩页面；编译期 never 检查保证合同内类型全部处理。
  */
 import type { AgentRunEvent, AgentRunStatus } from '../../../../api/ipd/project-agent';
@@ -62,6 +64,7 @@ export type TimelineItem =
       versionId: null | string;
     })
   | (TimelineBase & { kind: 'error'; code: string; message: string })
+  | (TimelineBase & { kind: 'memory-note'; retryable: boolean; text: string })
   | (TimelineBase & { kind: 'run-finished'; status: AgentRunStatus | null })
   | (TimelineBase & { kind: 'intent' } & AgentIntentView)
   | (TimelineBase & { kind: 'run-started' })
@@ -392,6 +395,19 @@ export function buildTimelineItems(events: readonly AgentRunEvent[]): TimelineIt
       }
       case 'RUN_FINISHED': {
         items.push({ ...base, kind: 'run-finished', status: finishedStatus(payload) });
+        break;
+      }
+      case 'MEMORY_RECEIPT': {
+        // 长期记忆写入是回答交付之后的后台副作用，失败不改判本轮运行终态。
+        if (pickText(payload, 'status') !== 'WRITE_FAILED') break;
+        // retryable 表示系统会稍后自动补写；缺失时只说没写入，不替系统承诺补写。
+        const retryable = payload.retryable === true;
+        items.push({
+          ...base,
+          kind: 'memory-note',
+          retryable,
+          text: retryable ? '本次记忆没有写入，系统会稍后自动补写' : '本次记忆没有写入',
+        });
         break;
       }
       default: {

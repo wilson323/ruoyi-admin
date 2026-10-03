@@ -1,10 +1,19 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 
-import { liveGeneratedPreview } from './artifact-live-preview';
+import { deliveredDocumentPreview, liveGeneratedPreview } from './artifact-live-preview';
 import ArtifactLivePreview from './artifact-live-preview.vue';
 
 describe('liveGeneratedPreview', () => {
+  it('requires the trusted parent delivery projection rather than a title or a model-declared kind', () => {
+    const event = (type: 'ARTIFACT' | 'TEXT_DELTA', payload: unknown) => ({ seq: 1, type, payload, createdAt: '' });
+    const receipt = { outputKind: 'DOCUMENT', attachmentOrigin: 'IPD_NATIVE_DELIVERY_V1', versionId: 'v1', contentHash: 'sha', title: '正文文档', content: '没有标题的真实正文' };
+    expect(deliveredDocumentPreview([event('ARTIFACT', receipt)])).toEqual({ kind: 'document', title: '正文文档', body: receipt.content });
+    expect(deliveredDocumentPreview([event('TEXT_DELTA', { text: '# 澄清问题', outputKind: 'DOCUMENT' })])).toBeNull();
+    expect(deliveredDocumentPreview([event('ARTIFACT', { ...receipt, attachmentOrigin: 'CHILD_DELIVERY' })])).toBeNull();
+    expect(deliveredDocumentPreview([event('ARTIFACT', { ...receipt, outputKind: 'CLARIFICATION' })])).toBeNull();
+    expect(deliveredDocumentPreview([event('ARTIFACT', { ...receipt, versionId: 1 })])).toBeNull();
+  });
   it('treats a doctype or html document as an HTML page', () => {
     const preview = liveGeneratedPreview(
       '  <!DOCTYPE html>\n<html><head><title>概念页</title></head><body><p>正文</p></body></html>',

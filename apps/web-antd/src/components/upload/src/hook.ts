@@ -32,17 +32,51 @@ import { ossInfo } from '#/api/system/oss';
  * @returns 预览
  */
 export function useImagePreview() {
-  /**
-   * 获取base64字符串
-   * @param file 文件
-   * @returns base64字符串
-   */
-  function getBase64(file: File) {
+  let generation = 0;
+  let disposed = false;
+  let cancelRead: (() => void) | undefined;
+  function stopRead() {
+    generation++;
+    cancelRead?.();
+    cancelRead = undefined;
+  }
+  onUnmounted(() => {
+    disposed = true;
+    stopRead();
+  });
+
+  function getBase64(file: File): Promise<string | undefined> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.addEventListener('load', () => resolve(reader.result));
-      reader.addEventListener('error', (error) => reject(error));
+      const cleanup = () => {
+        reader.removeEventListener('load', onLoad);
+        reader.removeEventListener('error', onError);
+        reader.removeEventListener('abort', cancel);
+        if (cancelRead === cancel) cancelRead = undefined;
+      };
+      const cancel = () => {
+        cleanup();
+        if (reader.readyState === FileReader.LOADING) reader.abort();
+        resolve(undefined);
+      };
+      const onLoad = () => {
+        cleanup();
+        resolve(typeof reader.result === 'string' ? reader.result : undefined);
+      };
+      const onError = () => {
+        cleanup();
+        reject(reader.error ?? new Error('图片读取失败'));
+      };
+      cancelRead = cancel;
+      reader.addEventListener('load', onLoad, { once: true });
+      reader.addEventListener('error', onError, { once: true });
+      reader.addEventListener('abort', cancel, { once: true });
+      try {
+        reader.readAsDataURL(file);
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
     });
   }
 
@@ -54,6 +88,7 @@ export function useImagePreview() {
   const previewTitle = ref('');
 
   function handleCancel() {
+    stopRead();
     previewVisible.value = false;
     previewTitle.value = '';
   }
@@ -62,10 +97,16 @@ export function useImagePreview() {
     if (!file) {
       return;
     }
+    if (disposed) return;
+    stopRead();
+    const current = generation;
     // 文件预览 取base64
     if (!file.url && !file.preview && file.originFileObj) {
-      file.preview = (await getBase64(file.originFileObj)) as string;
+      const preview = await getBase64(file.originFileObj);
+      if (disposed || current !== generation || preview === undefined) return;
+      file.preview = preview;
     }
+    if (disposed || current !== generation) return;
     // 这里不可能为空
     const url = file.url ?? '';
     previewImage.value = url || file.preview || '';

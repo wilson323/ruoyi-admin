@@ -10,8 +10,6 @@ import {
   ZK_RULE_BID_CONDITIONS_CHANGE_NOTIFY,
   ZK_RULE_BID_EXPIRED_NOTIFY,
   ZK_RULE_BID_REJECT_NO_TRACE,
-  ZK_RULE_BONUS_DISTRIBUTION,
-  ZK_RULE_BONUS_POOL_FORMULA,
   ZK_RULE_DEMAND_POOL_DUAL_REVIEW,
   ZK_RULE_HANDOVER_KEEP_HISTORY,
   ZK_RULE_LONG_NO_OUTPUT_ALERT,
@@ -25,21 +23,6 @@ describe('ZK-IPD 业务规则显示文案与 Prompt 强一致', () => {
     expect(ZK_RULE_ARCHIVED_READONLY.rule).toContain('归档');
     expect(ZK_RULE_ARCHIVED_READONLY.rule).toContain('只读');
     expect(ZK_RULE_ARCHIVED_READONLY.chapter).toBe('§二.10');
-  });
-
-  it('§三.2.1 奖金池公式：实际回款 + 5% + S/A/B 系数三要素齐全', () => {
-    expect(ZK_RULE_BONUS_POOL_FORMULA.rule).toContain('实际回款');
-    expect(ZK_RULE_BONUS_POOL_FORMULA.rule).toContain('5%');
-    expect(ZK_RULE_BONUS_POOL_FORMULA.rule).toContain('S/A/B');
-    expect(ZK_RULE_BONUS_POOL_FORMULA.chapter).toBe('§三.2.1');
-  });
-
-  it('§三.2.4 奖金分配比例：市场 40-65% / 研发 35-60% 区间完整', () => {
-    expect(ZK_RULE_BONUS_DISTRIBUTION.rule).toContain('40%');
-    expect(ZK_RULE_BONUS_DISTRIBUTION.rule).toContain('65%');
-    expect(ZK_RULE_BONUS_DISTRIBUTION.rule).toContain('35%');
-    expect(ZK_RULE_BONUS_DISTRIBUTION.rule).toContain('60%');
-    expect(ZK_RULE_BONUS_DISTRIBUTION.chapter).toBe('§三.2.4');
   });
 
   it('§三.1.2 津贴 2 倍封顶：L1~L5 等级 + 2 倍两要素', () => {
@@ -101,10 +84,9 @@ describe('ZK-IPD 业务规则显示文案与 Prompt 强一致', () => {
 });
 
 describe('ZK-IPD 业务规则按页面归类', () => {
-  it('projectCreate 至少 3 条核心规则', () => {
-    expect(RULES_BY_PAGE.projectCreate).toHaveLength(3);
+  it('projectCreate 至少 2 条核心规则（奖金池公式已于 2026-10-03 摘除）', () => {
+    expect(RULES_BY_PAGE.projectCreate).toHaveLength(2);
     expect(RULES_BY_PAGE.projectCreate).toContain(ZK_RULE_ARCHIVED_READONLY);
-    expect(RULES_BY_PAGE.projectCreate).toContain(ZK_RULE_BONUS_POOL_FORMULA);
     expect(RULES_BY_PAGE.projectCreate).toContain(ZK_RULE_ALLOWANCE_CAP);
   });
 
@@ -132,10 +114,10 @@ describe('ZK-IPD 业务规则按页面归类', () => {
 
 describe('renderRulesDescription：拼接多规则为 Alert description', () => {
   it('用换行分段、章节标注前置', () => {
-    const desc = renderRulesDescription([ZK_RULE_BONUS_POOL_FORMULA, ZK_RULE_ALLOWANCE_CAP]);
+    const desc = renderRulesDescription([ZK_RULE_ARCHIVED_READONLY, ZK_RULE_ALLOWANCE_CAP]);
     expect(desc).toContain('1.');
     expect(desc).toContain('2.');
-    expect(desc).toContain('§三.2.1');
+    expect(desc).toContain('§二.10');
     expect(desc).toContain('§三.1.2');
     expect(desc.split('\n')).toHaveLength(2);
   });

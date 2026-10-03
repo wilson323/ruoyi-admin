@@ -116,11 +116,7 @@ export const IPD_PERMISSION_TEXT: Record<string, string> = {
   'ipd:kpi:raw:query': 'KPI 原始数据查询',
   'ipd:kpi:config': '功能指标量表录入',
   'ipd:kpi:config:query': '功能指标量表查询',
-  // 奖金池
-  'ipd:bonus-pool:query': '查看奖金池',
-  'ipd:bonus-pool:compute': '核算奖金池',
-  'ipd:bonus-pool:freeze': '冻结奖金池',
-  'ipd:bonus-pool:distribute': '分配奖金池',
+  // 奖金池权限码 —— 2026-10-03 随奖金池功能整体移除
   // 上市后复盘
   'ipd:post-launch-review:create': '创建上市后复盘',
   'ipd:post-launch-review:complete': '完成上市后复盘',

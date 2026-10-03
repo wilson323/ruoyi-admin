@@ -3,7 +3,7 @@ import type { PropType } from 'vue';
 
 import type { CropendResult, Cropper } from './typing';
 
-import { ref } from 'vue';
+import { onBeforeUnmount, ref } from 'vue';
 
 import { useVbenModal } from '@vben/common-ui';
 import { $t as t } from '@vben/locales';
@@ -32,6 +32,12 @@ const props = defineProps({
 const emit = defineEmits(['uploadSuccess', 'uploadError', 'register']);
 
 let filename = '';
+let cancelRead: (() => void) | undefined;
+function stopRead() {
+  cancelRead?.();
+  cancelRead = undefined;
+}
+onBeforeUnmount(stopRead);
 const src = ref(props.src || '');
 const previewSource = ref('');
 const cropper = ref<Cropper>();
@@ -46,6 +52,7 @@ const [BasicModal, modalApi] = useVbenModal({
     if (isOpen) {
       modalLoading(true);
     } else {
+      stopRead();
       // 关闭时候清空右侧预览
       previewSource.value = '';
       modalLoading(false);
@@ -63,14 +70,42 @@ function handleBeforeUpload(file: File) {
     emit('uploadError', { msg: t('component.cropper.imageTooBig') });
     return false;
   }
+  stopRead();
   const reader = new FileReader();
-  reader.readAsDataURL(file);
+  let active = true;
+  const cleanup = () => {
+    active = false;
+    reader.removeEventListener('load', onLoad);
+    reader.removeEventListener('error', onError);
+    reader.removeEventListener('abort', cleanup);
+    if (cancelRead === cancel) cancelRead = undefined;
+  };
+  const cancel = () => {
+    cleanup();
+    if (reader.readyState === FileReader.LOADING) reader.abort();
+  };
+  const onLoad = () => {
+    if (!active) return;
+    src.value = typeof reader.result === 'string' ? reader.result : '';
+    filename = file.name;
+    cleanup();
+  };
+  const onError = () => {
+    if (!active) return;
+    cleanup();
+    emit('uploadError', { msg: '图片读取失败' });
+  };
+  cancelRead = cancel;
   src.value = '';
   previewSource.value = '';
-  reader.addEventListener('load', (e) => {
-    src.value = (e.target?.result as string) ?? '';
-    filename = file.name;
-  });
+  reader.addEventListener('load', onLoad, { once: true });
+  reader.addEventListener('error', onError, { once: true });
+  reader.addEventListener('abort', cleanup, { once: true });
+  try {
+    reader.readAsDataURL(file);
+  } catch {
+    onError();
+  }
   return false;
 }
 

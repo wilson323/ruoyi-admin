@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IpdRequestError } from '../../../../api/ipd/auth';
 import {
   cancelAgentRun,
+  reverifyAgentRun,
   resumeAgentRun,
   createProjectAgentRun,
   fetchAgentRun,
@@ -26,6 +27,7 @@ vi.mock('../../../../api/ipd/project-agent', async (importOriginal) => {
   return {
     ...actual,
     cancelAgentRun: vi.fn(),
+    reverifyAgentRun: vi.fn(),
     resumeAgentRun: vi.fn(),
     createProjectAgentRun: vi.fn(),
     fetchAgentRun: vi.fn(),
@@ -77,6 +79,7 @@ beforeEach(() => {
   sessionStorage.clear();
   vi.mocked(streamAgentRunEvents).mockReset();
   vi.mocked(resumeAgentRun).mockReset();
+  vi.mocked(reverifyAgentRun).mockReset();
   vi.useFakeTimers();
   vi.mocked(fetchProjectAgentCapabilities).mockResolvedValue({ packs: [], models: [] });
   vi.mocked(createProjectAgentRun).mockResolvedValue({ runId: 'run-1', status: 'PENDING' });
@@ -559,6 +562,25 @@ describe('default AG-UI transport and session recovery', () => {
     second.scope.stop();
   });
 
+  it('opens a numeric pause after native interrupted completion without a stream failure', async () => {
+    const base = await fetchAgentRun('run-1');
+    vi.mocked(fetchAgentRun).mockResolvedValue({ ...base, status: 'WAITING_APPROVAL', pauseSeq: 52 });
+    const interrupt = { id: 'question', reason: 'tool_call', metadata: { toolName: 'request_clarification' } };
+    vi.mocked(streamAgentRunEvents).mockImplementationOnce(async (_id, _cursor, consume) => {
+      expect(consume({ ...ev(51), payload: { kind: 'AGUI', events: [JSON.stringify({ type: 'RUN_FINISHED', outcome: { interrupts: [interrupt] } })] } })).toBe(false);
+      expect(consume({ ...ev(52), payload: { kind: 'AWAIT_USER', reason: 'AGUI_INTERRUPT', interrupts: { question: interrupt } } })).toBe(true);
+    });
+    const { scope, state } = setupAgui();
+    expect(await state.openRun('run-1')).toBe(true);
+    await vi.waitFor(() => expect(state.polling.value).toBe(false));
+    expect(state.terminal.value).toBe(false);
+    expect(state.pendingInterrupt.value?.seq).toBe(52);
+    expect(state.events.value.map(row => row.seq)).toEqual([51, 52]);
+    expect(state.pollError.value).toBeNull();
+    expect(streamAgentRunEvents).toHaveBeenCalledTimes(1);
+    scope.stop();
+  });
+
   it('replays old waiting and resumed events before displaying only the authoritative current pause', async () => {
     const base = await fetchAgentRun('run-1');
     vi.mocked(fetchAgentRun).mockResolvedValue({ ...base, status: 'WAITING_APPROVAL', pauseSeq: 9 });
@@ -706,6 +728,37 @@ describe('default AG-UI transport and session recovery', () => {
     await Promise.resolve();
     expect(state.runId.value).toBeNull();
     expect(streamAgentRunEvents).not.toHaveBeenCalled();
+    scope.stop();
+  });
+});
+
+
+describe('same run verification', () => {
+  it('blocks duplicate rechecks and terminal records while preserving the run', async () => {
+    const { state, scope } = setup();
+    state.runId.value = 'run-1'; state.status.value = 'VERIFYING';
+    const pending = deferred<{ runId: string; status: 'VERIFYING' }>();
+    vi.mocked(reverifyAgentRun).mockReturnValueOnce(pending.promise);
+    vi.mocked(fetchAgentRunEvents).mockResolvedValue(page([]));
+    const first = state.reverify();
+    expect(await state.reverify()).toBe(false);
+    expect(reverifyAgentRun).toHaveBeenCalledTimes(1);
+    pending.resolve({ runId: 'run-1', status: 'VERIFYING' });
+    expect(await first).toBe(true);
+    expect(state.runId.value).toBe('run-1');
+    state.status.value = 'SUCCEEDED'; state.terminal.value = true;
+    expect(await state.reverify()).toBe(false);
+    scope.stop();
+  });
+  it('discards a recheck receipt after a project switch', async () => {
+    const { state, projectId, scope } = setup();
+    state.runId.value = 'run-1'; state.status.value = 'VERIFYING';
+    const pending = deferred<{ runId: string; status: 'VERIFYING' }>();
+    vi.mocked(reverifyAgentRun).mockReturnValueOnce(pending.promise);
+    const result = state.reverify(); projectId.value = 'p-2';
+    pending.resolve({ runId: 'run-1', status: 'VERIFYING' });
+    expect(await result).toBe(false);
+    expect(state.runId.value).toBeNull();
     scope.stop();
   });
 });

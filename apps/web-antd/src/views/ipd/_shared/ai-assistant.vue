@@ -862,9 +862,19 @@ function followStream(el: HTMLElement | null | undefined, slot: 'chat' | 'readou
   el.style.scrollBehavior = previous;
 }
 
+const readoutRef = ref<HTMLElement | null>(null);
 function readoutScroller(): HTMLElement | null {
-  return document.getElementById('ipd-ai-run-readout')?.closest('.ws-body') ?? null;
+  return readoutRef.value?.closest('.ws-body') ?? null;
 }
+watch(readoutRef, (el, _previous, onCleanup) => {
+  const readout = el?.closest<HTMLElement>('.ws-body');
+  if (!readout) return;
+  const onScroll = () => {
+    streamPinned.readout = readout.scrollHeight - readout.scrollTop - readout.clientHeight <= 80;
+  };
+  readout.addEventListener('scroll', onScroll, { passive: true });
+  onCleanup(() => readout.removeEventListener('scroll', onScroll));
+});
 
 watch(listRef, (el, _previous, onCleanup) => {
   if (!el) return;
@@ -875,17 +885,13 @@ watch(listRef, (el, _previous, onCleanup) => {
   onCleanup(() => el.removeEventListener('scroll', onScroll));
 });
 
-watch(agentReply, async () => {
+watch(agentReply, async (_value, _previous, onCleanup) => {
+  let active = true;
+  onCleanup(() => { active = false; });
   await nextTick();
+  if (!active) return;
   followStream(listRef.value, 'chat');
-  const readout = readoutScroller();
-  if (readout && readout.dataset.streamFollow !== '1') {
-    readout.dataset.streamFollow = '1';
-    readout.addEventListener('scroll', () => {
-      streamPinned.readout = readout.scrollHeight - readout.scrollTop - readout.clientHeight <= 80;
-    }, { passive: true });
-  }
-  followStream(readout, 'readout');
+  followStream(readoutScroller(), 'readout');
 });
 
 watch(workspaceMode, () => {
@@ -1477,6 +1483,7 @@ defineExpose({ clearConversation, send });
               <div
                 v-if="workspaceMode === 'ai'"
                 id="ipd-ai-run-readout"
+                ref="readoutRef"
                 data-testid="ipd-ai-run-readout"
               />
               <div

@@ -70,3 +70,7 @@ apps/web-antd/types/components.d.ts
 # Python 编译缓存（脚本取证产物，非交付件）
 __pycache__/
 *.pyc
+
+.harness/runs/
+
+.harness/evolve/

@@ -26,6 +26,7 @@ import { useIpdAiWorkspace } from '../ai-workspace/use-ai-workspace';
 
 vi.mock('../../../../api/ipd/project-agent', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
+  listAgentRunSkillReviews: vi.fn().mockResolvedValue([]),
   cancelAgentRun: vi.fn(),
   downloadAgentRunArtifact: vi.fn(),
   resumeAgentRun: vi.fn(),

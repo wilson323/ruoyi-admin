@@ -25,21 +25,8 @@ export const ZK_RULE_ARCHIVED_READONLY: ZkIpdRule = {
   promptRef: 'IPD产品经理管理系统·最终完整版AI开发Prompt §二.10',
 };
 
-/** ZK-IPD §三.2.1：奖金池公式 = 实际回款 × 5% × S/A/B 系数 */
-export const ZK_RULE_BONUS_POOL_FORMULA: ZkIpdRule = {
-  key: 'bonus-pool-formula',
-  chapter: '§三.2.1',
-  rule: '奖金池 = 上市后连续 6 个月实际回款金额 × 5% × 项目 S/A/B 差异化系数。',
-  promptRef: 'IPD产品经理管理系统·最终完整版AI开发Prompt §三.2.1',
-};
-
-/** ZK-IPD §三.2.4：分配比例市场 40-65% / 研发 35-60% */
-export const ZK_RULE_BONUS_DISTRIBUTION: ZkIpdRule = {
-  key: 'bonus-distribution',
-  chapter: '§三.2.4',
-  rule: '市场 PM 分配比例 40%-65%；研发 PM 分配比例 35%-60%。上市 90 天复盘后由双 PM + 上级三方最终评定。',
-  promptRef: 'IPD产品经理管理系统·最终完整版AI开发Prompt §三.2.4',
-};
+// ZK-IPD §三.2.1（奖金池公式）与 §三.2.4（奖金分配比例）—— 2026-10-03 owner 裁决
+//   移除「回款台账 + 奖金池 + 业绩窗口」，两条提示文案随功能同批摘除。
 
 /** ZK-IPD §三.1.2：多项目津贴叠加封顶 2 倍 */
 export const ZK_RULE_ALLOWANCE_CAP: ZkIpdRule = {
@@ -139,7 +126,7 @@ export const ZK_RULE_SHARED_KPI_REVISION: ZkIpdRule = {
 
 /** 所有规则按页面归类（用于不同页面渲染不同集合） */
 export const RULES_BY_PAGE = {
-  projectCreate: [ZK_RULE_ARCHIVED_READONLY, ZK_RULE_BONUS_POOL_FORMULA, ZK_RULE_ALLOWANCE_CAP],
+  projectCreate: [ZK_RULE_ARCHIVED_READONLY, ZK_RULE_ALLOWANCE_CAP],
   bidRespond: [ZK_RULE_BID_REJECT_NO_TRACE],
   adminConfig: [ZK_RULE_SUPER_ADMIN_TRANSFER, ZK_RULE_AUDIT_EXPORTABLE],
   bidList: [ZK_RULE_BID_EXPIRED_NOTIFY, ZK_RULE_BID_CONDITIONS_CHANGE_NOTIFY, ZK_RULE_BID_ADMIN_ASSIGN_30D],

@@ -13,6 +13,7 @@ import RunTimeline from './run-timeline.vue';
 
 vi.mock('../../../../api/ipd/project-agent', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
+  listAgentRunSkillReviews: vi.fn().mockResolvedValue([]),
   applyAgentRunArtifact: vi.fn(),
   saveAiFeedback: vi.fn(),
 }));
@@ -23,6 +24,22 @@ function ev(seq: number, type: AgentRunEvent['type'], payload: unknown = {}): Ag
 }
 
 describe('RunTimeline', () => {
+  it('shows addressable server gaps and allows rechecking only while verification is waiting', async () => {
+    const wrapper = mount(RunTimeline, { props: { hasRun: true, runId: '8', verifying: true,
+      events: [ev(1, 'STEP', { kind: 'VERIFY_GAPS', checks: [
+        { id: 'price', status: 'FAIL', severity: 'BLOCK', evidencePath: 'artifact:body', gapSummary: '价格需要来源' },
+      ] }), ev(2, 'ARTIFACT', { artifactId: 'a', title: '报告', preview: '价格正文' })] } });
+    expect(wrapper.find('[data-check-id="price"]').text()).toContain('价格需要来源');
+    expect(wrapper.find('[data-check-id="price"]').text()).toContain('查看对应正文');
+    await wrapper.find('[data-testid="verification-recheck"]').trigger('click');
+    expect(wrapper.emitted('reverify')).toHaveLength(1);
+    expect(wrapper.text()).toContain('重新检查只核对当前正文');
+    await wrapper.setProps({ reverifying: true });
+    expect(wrapper.find('[data-testid="verification-recheck"]').attributes('disabled')).toBeDefined();
+    await wrapper.setProps({ verifying: false });
+    expect(wrapper.find('[data-testid="verification-gaps"]').exists()).toBe(false);
+  });
+
   it('renders the user error message without exposing its audit code', () => {
     const event = ev(1, 'ERROR', { code: 'COMPLETION_REJECTED', message: '检索依据不足，产物未生成' });
     const wrapper = mount(RunTimeline, { props: { events: [event], hasRun: true } });
@@ -282,11 +299,11 @@ describe('RunTimeline', () => {
     expect(wrapper.find('[data-testid="ai-tool-call-body"]').text()).toContain('找到 2 条');
   });
 
-  it('shows a live document preview on the full timeline and does not frame an img fragment', () => {
+  it('previews a delivered document before archiving and does not infer a document from ordinary text', () => {
     const full = mount(RunTimeline, {
       props: {
         hasRun: true,
-        events: [ev(1, 'TEXT_DELTA', { text: '# 概念说明书\n正文' })],
+        events: [ev(1, 'ARTIFACT', { outputKind: 'DOCUMENT', attachmentOrigin: 'IPD_NATIVE_DELIVERY_V1', versionId: 'v1', contentHash: 'hash', title: '概念说明书', content: '# 概念说明书\n正文' })],
       },
     });
     const preview = full.get('[data-testid="artifact-live-preview"]');
@@ -298,11 +315,17 @@ describe('RunTimeline', () => {
       props: {
         hasRun: true,
         loading: true,
-        events: [ev(1, 'TEXT_DELTA', { text: '# 概念说明书\n正' })],
+        events: [ev(1, 'ARTIFACT', { outputKind: 'DOCUMENT', attachmentOrigin: 'IPD_NATIVE_DELIVERY_V1', versionId: 'v1', contentHash: 'hash', title: '概念说明书', content: '# 概念说明书\n正' })],
       },
     });
     expect(streaming.get('.live-preview-title').text()).toBe('正在生成');
     expect(streaming.get('[data-testid="artifact-live-preview"] .live-preview-doc').text()).toContain('概念说明书');
+
+    for (const text of ['# 需要你的回答\n请选择国家', '# 普通答案\n结论', '<html><body>普通回答</body></html>']) {
+      const ordinary = mount(RunTimeline, { props: { hasRun: true, events: [ev(1, 'TEXT_DELTA', { text })] } });
+      expect(ordinary.find('[data-testid="artifact-live-preview"]').exists()).toBe(false);
+      ordinary.unmount();
+    }
 
     const img = mount(RunTimeline, {
       props: { hasRun: true, events: [ev(1, 'TEXT_DELTA', { text: '<img src=x onerror=alert(1)>' })] },
@@ -315,7 +338,7 @@ describe('RunTimeline', () => {
       props: {
         hasRun: true,
         variant: 'artifacts',
-        events: [ev(1, 'TEXT_DELTA', { text: '# 概念说明书\n正文' })],
+        events: [ev(1, 'ARTIFACT', { outputKind: 'DOCUMENT', attachmentOrigin: 'IPD_NATIVE_DELIVERY_V1', versionId: 'v1', contentHash: 'hash', title: '概念说明书', content: '# 概念说明书\n正文' })],
       },
     });
     expect(archived.find('[data-testid="artifact-live-preview"]').exists()).toBe(false);
