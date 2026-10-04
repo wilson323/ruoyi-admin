@@ -43,7 +43,9 @@ const TABS = [
   { key: 'gates', title: 'Gate 评审' },
   { key: 'changes', title: '需求与变更' },
   { key: 'kpi', title: 'KPI 考核' },
-  { key: 'incentive', title: '激励台账' },
+  // 激励台账页签已移除：owner 2026-10-03 裁决退役「回款台账 + 奖金池 + 业绩窗口」，
+  // 其路由（IpdProjectIncentive / IpdBonusPool）同批删除（见 router/routes/modules/ipd.ts
+  // IpdProjectDetail.children 处注释）。此处漏删会让用户点进 404 兜底页。
   { key: 'documents', title: '文档与交付物' },
   { key: 'audit', title: '项目日志' },
   // 协作圈（看板卡 c5254e23）：ProjectCircleController /api/v1/project-circle 6 端点唯一数据源
