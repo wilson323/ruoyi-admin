@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { Upload } from 'ant-design-vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter, type Router } from 'vue-router';
@@ -267,3 +268,38 @@ async function fillValidForm(wrapper: ReturnType<typeof mount>) {
   await openSelectAndPickOther(wrapper);
   await wrapper.find('textarea').setValue('希望支持批量导出报表功能');
 }
+
+describe('需求附件真实上传与恢复', () => {
+  it('保留文件字节，部分失败只重试原需求的未完成文件', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/attachments')) expect(init?.body).toBeInstanceOf(FormData);
+      const url = String(input);
+      if (url.endsWith('/products')) return jsonResponse(productsFixture);
+      if (url.endsWith('/demands')) return jsonResponse({ code: 'AB12CD34', status: 'SUBMITTED', uploadToken: 'memory-only-token' });
+      const calls = fetcher.mock.calls.filter(([path]) => String(path).includes('/attachments'));
+      if (calls.length === 2) return jsonResponse(null, 500, 50000);
+      return jsonResponse({ fileName: '附件.pdf', fileSize: 3 });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = await mountPage(PortalSubmit);
+    const beforeUpload = wrapper.findComponent(Upload.Dragger).props('beforeUpload') as (file: File) => boolean;
+    const first = new File(['first-content'], 'first.pdf', { type: 'application/pdf' });
+    const second = new File(['second-content'], 'second.pdf', { type: 'application/pdf' });
+    beforeUpload(first); beforeUpload(second);
+    await fillValidForm(wrapper);
+    await wrapper.find('form').trigger('submit'); await flushPromises();
+    expect(wrapper.find('[data-testid="portal-attachment-results"]').text()).toContain('附件已上传 1/2 份');
+    const uploads = fetcher.mock.calls.filter(([url]) => String(url).includes('/attachments'));
+    expect(uploads).toHaveLength(2);
+    const body = uploads[0]![1]!.body as FormData;
+    expect(await (body.get('file') as File).text()).toBe('first-content');
+    expect((uploads[0]![1]!.headers as Record<string,string>)['X-Upload-Token']).toBe('memory-only-token');
+    expect((uploads[0]![1]!.headers as Record<string,string>)['Content-Type']).toBeUndefined();
+    await wrapper.findAll('button').find((button) => button.text() === '重试未上传附件')!.trigger('click'); await flushPromises();
+    const retried = fetcher.mock.calls.filter(([url]) => String(url).includes('/attachments'));
+    expect(retried).toHaveLength(3); expect(retried[2]![0]).toBe(retried[1]![0]);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith('/demands'))).toHaveLength(1);
+    expect(wrapper.find('[data-testid="portal-attachment-results"]').text()).toContain('附件已上传 2/2 份');
+    expect(localStorage.getItem('uploadToken')).toBeNull(); wrapper.unmount();
+  });
+});

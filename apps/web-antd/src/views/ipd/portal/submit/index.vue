@@ -1,14 +1,14 @@
 <script setup lang="ts">
 // 卡片 P0-10.38：需求门户-游客提交（免登录顶层页，不套后台布局）。
 // 五态：成功（查询码大字展示）/ 拒绝（业务码中文文案）/ 空态（产品列表空，仅「其他/未找到」）/ 加载 / 断网。
-import type { PortalProduct } from '../../../../api/ipd/portal';
+import type { PortalProduct, PortalDemandSubmitted } from '../../../../api/ipd/portal';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { Alert, Button, Form, Input, Select, Upload, message } from 'ant-design-vue';
 import { CheckCircleFilled } from '@ant-design/icons-vue';
 
-import { fetchPortalProducts, submitPortalDemand } from '../../../../api/ipd/portal';
+import { fetchPortalProducts, submitPortalDemand, uploadPortalDemandAttachment } from '../../../../api/ipd/portal';
 import PortalShell from '../portal-shell.vue';
 import {
   DEFAULT_THROTTLE_SECONDS,
@@ -34,8 +34,10 @@ const form = reactive({
   /** 蜜罐字段：对人不渲染为可见控件，非空即判定为机器人（页38 用例4）。 */
   website: '',
 });
-/** 附件列表（占位）。ZK-IPD 设计稿要求：≤5 份、单份 ≤20MB、支持图片/Word/Excel/PPT/PDF/常见视频。 */
-const attachments = ref<Array<{ name: string; size: number; uid: string }>>([]);
+/** 附件列表保留真实文件，ZK-IPD 设计稿要求：≤5 份、单份 ≤20MB、支持图片/Word/Excel/PPT/PDF/常见视频。 */
+const attachments = ref<Array<{ name: string; size: number; uid: string; file: File; uploaded: boolean; error: string }>>([]);
+const attachmentBusy = ref(false);
+const uploadedCount = computed(() => attachments.value.filter((item) => item.uploaded).length);
 /** 附件单份 20MB 上限（ZK-IPD 设计稿规定）。 */
 const ATTACHMENT_MAX_SIZE = 20 * 1024 * 1024;
 /** 附件允许类型（与 ZK-IPD 一致）。 */
@@ -74,7 +76,7 @@ const productOptions = computed(() => [
 const submitting = ref(false);
 const errorText = ref('');
 /** 非空 = 提交成功，整卡切换为成功态（不再显示表单）。 */
-const result = ref<null | { code: string; status: string }>(null);
+const result = ref<null | PortalDemandSubmitted>(null);
 const copied = ref(false);
 
 /** 规格字段模型：rawModel 仅在第③类（其他/未找到）可空，其余情形必填。 */
@@ -136,6 +138,7 @@ async function submitDemand() {
       website: form.website,
     });
     throttle.stopThrottle();
+    await uploadAttachments();
   } catch (cause) {
     // A6 R4：限流错误识别（业务码 40011 / HTTP 429 / 文本匹配）→ 启动 5s UI 节流倒计时。
     // 连续限流：active 为 true 时 triggerThrottle 内部幂等忽略叠加。
@@ -149,6 +152,29 @@ async function submitDemand() {
     }
   } finally {
     submitting.value = false;
+  }
+}
+
+async function uploadAttachments() {
+  if (!result.value || attachmentBusy.value) return;
+  attachmentBusy.value = true;
+  try {
+    for (const attachment of attachments.value) {
+      if (attachment.uploaded) continue;
+      attachment.error = '';
+      if (!result.value.uploadToken) {
+        attachment.error = '本次提交未返回上传凭据，请保留查询码并联系工作人员';
+        continue;
+      }
+      try {
+        await uploadPortalDemandAttachment(result.value.code, result.value.uploadToken, attachment.uid, attachment.file);
+        attachment.uploaded = true;
+      } catch (cause) {
+        attachment.error = cause instanceof Error ? cause.message : '附件上传失败，请重试';
+      }
+    }
+  } finally {
+    attachmentBusy.value = false;
   }
 }
 
@@ -170,7 +196,7 @@ function resetForAnother() {
 
 /**
  * 附件上传前校验：单份 ≤20MB、总数 ≤5（ZK-IPD 设计稿规定）。
- * 当前仅做前端占位与格式校验；multipart 实际上传由后端聚合接口 P-3 接入。
+ * 提交需求取得凭据后逐份上传；重试复用原查询码与文件标识。
  */
 function handleBeforeUpload(file: File): boolean {
   if (attachments.value.length >= ATTACHMENT_MAX_COUNT) {
@@ -181,9 +207,14 @@ function handleBeforeUpload(file: File): boolean {
     errorText.value = `${file.name} 超过 20MB，无法上传`;
     return false;
   }
+  const extension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+  if (!ATTACHMENT_ACCEPT.split(',').includes(extension)) {
+    errorText.value = '不支持此附件格式';
+    return false;
+  }
   errorText.value = '';
-  attachments.value.push({ name: file.name, size: file.size, uid: `${file.name}-${file.size}` });
-  return false; // 阻止 ant 自动上传；后端 P-3 接入后改为 true
+  attachments.value.push({ name: file.name, size: file.size, uid: crypto.randomUUID(), file, uploaded: false, error: '' });
+  return false; // 需求创建成功取得凭据后上传
 }
 
 async function copyCode() {
@@ -223,9 +254,16 @@ function navToTrack(code: string): void {
         message="请截图或抄写保存查询码，离开本页后系统不再展示此码。" />
       <Alert v-if="result.status === 'SUBMITTED'" class="mb-3 w-full" type="info" show-icon
         message="需求已进入待受理队列，工作人员会尽快处理。" />
+      <div v-if="attachments.length" class="mb-3 w-full text-left" data-testid="portal-attachment-results">
+        <p>附件已上传 {{ uploadedCount }}/{{ attachments.length }} 份</p>
+        <p v-for="attachment in attachments" :key="attachment.uid">
+          {{ attachment.name }}：{{ attachment.uploaded ? '已上传' : attachment.error || '等待上传' }}
+        </p>
+        <Button v-if="uploadedCount < attachments.length" :loading="attachmentBusy" :disabled="submitting" @click="uploadAttachments">重试未上传附件</Button>
+      </div>
       <div class="mt-2 flex gap-3">
         <Button data-testid="portal-goto-track" @click="navToTrack(result.code)">前往查询进度</Button>
-        <Button type="primary" @click="resetForAnother">再提交一条</Button>
+        <Button type="primary" :disabled="attachmentBusy || submitting" @click="resetForAnother">再提交一条</Button>
       </div>
     </div>
 
@@ -259,7 +297,7 @@ function navToTrack(code: string): void {
         <Input.TextArea v-model:value="form.functionalRequirement" :maxlength="4000" show-count :rows="6" :disabled="submitting"
           placeholder="至少 6 个字，请描述使用场景与期望功能" />
       </Form.Item>
-      <!-- 附件上传（ZK-IPD 设计稿：≤5 份、单份 ≤20MB；后端聚合上传待 P-3 交付） -->
+      <!-- 附件上传（ZK-IPD 设计稿：≤5 份、单份 ≤20MB；提交后取得凭据逐份上传） -->
       <Form.Item label="附件（可选）" name="attachments" extra="支持图片、Word、Excel、PPT、PDF 和常见视频；最多 5 份、单份不超过 20MB。">
         <Upload.Dragger
           :multiple="true"
@@ -267,6 +305,7 @@ function navToTrack(code: string): void {
           :accept="ATTACHMENT_ACCEPT"
           :before-upload="(file) => handleBeforeUpload(file)"
           :file-list="attachments"
+          @remove="(file) => { attachments = attachments.filter((item) => item.uid !== file.uid); }"
           :disabled="submitting"
           list-type="text"
           data-testid="portal-attachment-upload"

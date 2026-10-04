@@ -30,6 +30,7 @@ export interface PortalProduct {
 export interface PortalDemandSubmitted {
   code: string;
   status: string;
+  uploadToken?: string;
 }
 
 /** 页38 提交请求（GuestDemandSubmitReq 白名单字段；website 为蜜罐字段，正常用户恒为空）。 */
@@ -105,16 +106,17 @@ const asString = (value: unknown): null | string =>
 
 async function requestPortal<T>(
   path: string,
-  init: { body?: object; method: 'GET' | 'POST' } = { method: 'GET' },
+  init: { body?: object; headers?: Record<string, string>; method: 'GET' | 'POST' } = { method: 'GET' },
 ): Promise<T> {
   const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), 15_000);
+  const timer = setTimeout(() => abort.abort(), init.body instanceof FormData ? 60_000 : 15_000);
   try {
-    const headers: Record<string, string> = { Accept: 'application/json' };
-    if (init.body) headers['Content-Type'] = 'application/json';
+    const headers: Record<string, string> = { Accept: 'application/json', ...init.headers };
+    const multipart = init.body instanceof FormData;
+    if (init.body && !multipart) headers['Content-Type'] = 'application/json';
     // 与 requestIpd 唯一的本职差异：游客请求不携带任何会话凭据
     const response = await fetch(`/api/v1/public${path}`, {
-      body: init.body ? JSON.stringify(init.body) : undefined,
+      body: init.body instanceof FormData ? init.body : init.body ? JSON.stringify(init.body) : undefined,
       credentials: 'omit',
       headers,
       method: init.method,
@@ -189,7 +191,7 @@ function parseSubmitted(data: unknown): PortalDemandSubmitted {
   if (!code || !PORTAL_CODE_PATTERN.test(code) || !status) {
     throw new IpdRequestError(MALFORMED_ERROR_TEXT);
   }
-  return { code, status };
+  return { code, status, ...(typeof data.uploadToken === 'string' ? { uploadToken: data.uploadToken } : {}) };
 }
 
 function parseTrace(data: unknown): PortalDemandTrace {
@@ -269,4 +271,13 @@ export function supplementDemand(code: string, payload: PortalSupplementInput): 
 export function withdrawDemand(code: string): Promise<PortalDemandTrace> {
   const body: PortalDemandUpdateReq = { action: 'WITHDRAW' };
   return requestPortal<unknown>(`/demands/${encodeURIComponent(code)}/withdraw`, { body, method: 'POST' }).then(parseTrace);
+}
+
+/** 每份附件使用稳定 fileKey，重试不会重复占用份数；上传凭据只保存在成功页内存。 */
+export async function uploadPortalDemandAttachment(code: string, uploadToken: string, fileKey: string, file: File): Promise<void> {
+  const body = new FormData();
+  body.append('file', file);
+  await requestPortal(`/demands/${encodeURIComponent(code)}/attachments?fileKey=${encodeURIComponent(fileKey)}`, {
+    body, headers: { 'X-Upload-Token': uploadToken }, method: 'POST',
+  });
 }
