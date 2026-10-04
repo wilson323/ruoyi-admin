@@ -72,13 +72,16 @@ export function fetchWorkbenchSummary(projectId?: string): Promise<WorkbenchSumm
 
 /**
  * 我发起 / 待我审批聚合任务卡（R27 P0-6；后端 MyInitiatedTask 投影，R215 A10 接线）。
- * 两批审批单据（deletion_requests / launch_date_change_requests）
- * + 阶段动作（stage_actions）的统一视图；personId 缺省 = 当前登录人（SEC-API-01 会话推导）。
+ * 后端只聚合两批审批单据（deletion_requests / launch_date_change_requests）。
+ * 阶段动作（stage_actions）不在本视图：myInitiated() 无此生产者，前端 MY_INITIATED_SOURCE_TEXT
+ * 里的同名标签位收不到值；阶段动作以「阶段签署」（taskType=stage_sign）出现在待办队列
+ * （GET /workbench/tasks），由后端 StageSignAggregator 按责任角色投递。
+ * personId 已随 SEC-API-01 收口移除：查询范围只取会话身份，客户端无法指定他人（后端也不受理该参数）。
  * 2026-10-03 拆除：coefficient_change_requests 已随后端 myInitiated() 下线，不再出现在本视图。
  */
 export interface MyInitiatedTaskView {
   id: string;
-  /** 实测短形式：DELETION / LAUNCH_DATE / STAGE_ACTION（后端常量名长形式但值为短，以响应为准） */
+  /** 实测短形式：DELETION / LAUNCH_DATE（后端常量名长形式但值为短，以响应为准）；阶段动作不经本视图 */
   taskType: string;
   sourceId: string;
   sourceTable: string;
@@ -89,20 +92,14 @@ export interface MyInitiatedTaskView {
   createdAt: number | string;
 }
 
-/** 我发起的（GET /workbench/my-initiated）。 */
-export function fetchMyInitiated(personId?: string): Promise<MyInitiatedTaskView[]> {
-  return ipdGet<MyInitiatedTaskView[]>(
-    '/workbench/my-initiated',
-    personId ? { personId } : undefined,
-  );
+/** 我发起的（GET /workbench/my-initiated；范围只取会话身份，无客户端可传的 person 参数）。 */
+export function fetchMyInitiated(): Promise<MyInitiatedTaskView[]> {
+  return ipdGet<MyInitiatedTaskView[]>('/workbench/my-initiated');
 }
 
-/** 待我审批的（GET /workbench/my-pending-approvals；审批态单据聚合）。 */
-export function fetchMyPendingApprovals(personId?: string): Promise<MyInitiatedTaskView[]> {
-  return ipdGet<MyInitiatedTaskView[]>(
-    '/workbench/my-pending-approvals',
-    personId ? { personId } : undefined,
-  );
+/** 待我审批的（GET /workbench/my-pending-approvals；审批态单据聚合，范围同上）。 */
+export function fetchMyPendingApprovals(): Promise<MyInitiatedTaskView[]> {
+  return ipdGet<MyInitiatedTaskView[]>('/workbench/my-pending-approvals');
 }
 
 /* ---------- WB-17-1 S0：任务队列过滤视图（GET /workbench/tasks，2026-09-27 后端已交付） ---------- */

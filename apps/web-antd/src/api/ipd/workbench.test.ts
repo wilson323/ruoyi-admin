@@ -5,7 +5,7 @@
  * - fetchWorkbenchSummary：projectId 可选；不带时不发查询串，带时编码；
  * - 载荷透传 stats / tasks / deletionPending / currentAdvance；
  * - 错误传播。
- * - R215 A10：fetchMyInitiated / fetchMyPendingApprovals（personId 可选 + 载荷透传）。
+ * - R215 A10 / SEC-API-01：fetchMyInitiated / fetchMyPendingApprovals（范围只取会话身份，不接受 person 参数）。
  */
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -190,8 +190,8 @@ const initiatedFixture = (overrides: Record<string, unknown> = {}): Record<strin
   ...overrides,
 });
 
-describe('workbench API — fetchMyInitiated / fetchMyPendingApprovals（R215 A10）', () => {
-  it('无 personId：GET /workbench/my-initiated 不带查询串（后端会话推导当前人）', async () => {
+describe('workbench API — fetchMyInitiated / fetchMyPendingApprovals（R215 A10 / SEC-API-01 收口）', () => {
+  it('GET /workbench/my-initiated 不带查询串（范围只取会话身份）', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope([initiatedFixture()]));
     vi.stubGlobal('fetch', fetcher);
     const rows = await fetchMyInitiated();
@@ -203,22 +203,26 @@ describe('workbench API — fetchMyInitiated / fetchMyPendingApprovals（R215 A1
     expect(rows[0]!.createdAt).toBe(1789992000000);
   });
 
-  it('传 personId：编码进查询串', async () => {
-    const fetcher = vi.fn().mockResolvedValue(envelope([]));
+  it('SEC-API-01：不接受客户端指定 person——形参已移除，谁加回来谁转红', async () => {
+    // 形参个数须为 0：可选参数同样计入 Function.length，重新加回 personId 会让本行立刻失败
+    expect(fetchMyInitiated.length).toBe(0);
+    expect(fetchMyPendingApprovals.length).toBe(0);
+
+    // 每次调用都要造新的 Response：body 只能读一次，mockResolvedValue 会让第二次读到空
+    const fetcher = vi.fn().mockImplementation(() => Promise.resolve(envelope([])));
     vi.stubGlobal('fetch', fetcher);
-    await fetchMyInitiated('9007199254740993');
-    expect(fetcher.mock.calls[0]?.[0]).toBe(
-      '/api/v1/workbench/my-initiated?personId=9007199254740993',
-    );
+    await fetchMyInitiated();
+    await fetchMyPendingApprovals();
+    // 两个端点都不带任何查询串——「按会话推导」在 URL 层同样成立
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/workbench/my-initiated');
+    expect(fetcher.mock.calls[1]?.[0]).toBe('/api/v1/workbench/my-pending-approvals');
   });
 
   it('fetchMyPendingApprovals：GET /workbench/my-pending-approvals，空数组正常返回', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope([]));
     vi.stubGlobal('fetch', fetcher);
-    const rows = await fetchMyPendingApprovals('9007199254740993');
-    expect(fetcher.mock.calls[0]?.[0]).toBe(
-      '/api/v1/workbench/my-pending-approvals?personId=9007199254740993',
-    );
+    const rows = await fetchMyPendingApprovals();
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/workbench/my-pending-approvals');
     expect(rows).toEqual([]);
   });
 
