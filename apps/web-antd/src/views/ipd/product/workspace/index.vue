@@ -7,7 +7,7 @@
  * 数据层适配（详见 api/ipd/product-workspace.ts 头注）：
  * - 需求主题与反馈归并（demand-themes）后端未落地：主题区恒空态、反馈行不渲染归并 checkbox、
  *   不渲染「确认归并」按钮；
- * - 产品退市面板（/retirement/readiness）后端未交付：整块不渲染；
+ * - 产品退市复用现有产品退市记录、负责人审批和审计历史；
  * - hero 的版本/负责人字段后端无载荷：以产品组名 + 产品状态映射呈现；
  * - 「切换并查看」适配：原型切全局当前项目，本项目跳该项目详情页。
 -->
@@ -22,6 +22,7 @@ import { fetchProductWorkspace } from '../../../../api/ipd/product-workspace';
 import type { ProductWorkspace } from '../../../../api/ipd/product-workspace';
 import { PRODUCT_STATUS_TEXT } from '../../_shared/ipd-enums';
 import '../../_shared/ipd-theme.css';
+import RetirementPanel from './retirement-panel.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -206,6 +207,8 @@ watch(isIndexRoute, (isIndex) => {
           </div>
         </section>
       </div>
+
+      <RetirementPanel :key="productId" :product-id="productId" @changed="loadWorkspace" />
 
       <!-- 原始客户反馈（无归并 checkbox：后端无 theme 归并接口） -->
       <section class="ipd-pw-surface ipd-pw-feedback" data-testid="pw-feedback">
