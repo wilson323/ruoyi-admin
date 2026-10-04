@@ -3,6 +3,7 @@
 // 查询参数形态（period + periods）与真缺口登记文案。
 
 import { mount } from '@vue/test-utils';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -37,6 +38,17 @@ const trendPoints = [
   { period: '2026-06', recordId: 'r-003', source: 'DATA', value: '85.0' },
 ];
 
+function mountKpiPage() {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/ipd/kpi/shared', component: { template: '<div />' } },
+    ],
+  });
+  return mount(KpiPage, { global: { plugins: [router] } });
+}
+
 beforeEach(() => { sessionStorage.clear(); setActivePinia(createPinia()); });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
@@ -60,7 +72,7 @@ function stubApi() {
 describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
   it('renders performance summary six cards with real contract data', async () => {
     stubApi();
-    const wrapper = mount(KpiPage);
+    const wrapper = mountKpiPage();
     // 等真实金额（L1 津贴 12,000.00，load 完成才渲染）—— 不锁 label（label 立即可见会假绿）
     await vi.waitFor(() => expect(wrapper.text()).toContain('12,000.00'));
     // 标题与说明
@@ -78,7 +90,7 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
 
   it('renders functional KPI source table with three sources and weight percent', async () => {
     stubApi();
-    const wrapper = mount(KpiPage);
+    const wrapper = mountKpiPage();
     // 等真实加权贡献（contribution=value×weight，load 完成才渲染）
     await vi.waitFor(() => expect(wrapper.text()).toContain('36.96'));
     // 中文映射
@@ -95,7 +107,7 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
 
   it('renders KPI trend with MISSING rows dimmed and period default 12', async () => {
     const calls = stubApi();
-    const wrapper = mount(KpiPage);
+    const wrapper = mountKpiPage();
     // 等真实数据月份（trend 月份字符串，load 完成才渲染）
     await vi.waitFor(() => expect(wrapper.text()).toContain('2026-04'));
     // 三个月份
@@ -116,7 +128,7 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
 
   it('queries with month parameter and changes periods on selection', async () => {
     const calls = stubApi();
-    const wrapper = mount(KpiPage);
+    const wrapper = mountKpiPage();
     // 等真实数据（4 月趋势行 value=78.50，load 完成才渲染）—— 不锁 label
     await vi.waitFor(() => expect(wrapper.text()).toContain('78.50'));
     // period 形态
@@ -139,7 +151,7 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
 
   it('GAP-F11 面板：首屏不请求 /kpi/rules（懒拉防冷启动多请求），展开后才拉并渲染 ruleKey/ruleValue 两列', async () => {
     const calls = stubApi();
-    const wrapper = mount(KpiPage);
+    const wrapper = mountKpiPage();
     await vi.waitFor(() => expect(wrapper.text()).toContain('12,000.00'));
     expect(calls.some((c) => c.url.includes('/kpi/rules'))).toBe(false); // 未展开零请求
     // 注：既有 stubApi 对 /kpi/rules 走 fallback response(null, 40400)→data null→守卫归 []→空态；
@@ -165,7 +177,7 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
       ]);
       return response(null, 40400);
     }));
-    const wrapper = mount(KpiPage);
+    const wrapper = mountKpiPage();
     await vi.waitFor(() => expect(wrapper.text()).toContain('12,000.00'));
     await wrapper.findAll('button').find((b) => b.text().includes('展开'))!.trigger('click');
     await vi.waitFor(() => {
@@ -187,7 +199,7 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
       if (url.includes('/kpi/rules')) return response([]);
       return response(null, 40400);
     }));
-    const wrapper = mount(KpiPage);
+    const wrapper = mountKpiPage();
     await vi.waitFor(() => expect(wrapper.text()).toContain('12,000.00'));
     await wrapper.findAll('button').find((b) => b.text().includes('展开'))!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('当前无生效规则快照'));
@@ -209,7 +221,7 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
       );
       return response(null, 40400);
     }));
-    const wrapper = mount(KpiPage);
+    const wrapper = mountKpiPage();
     await vi.waitFor(() => expect(wrapper.text()).toContain('12,000.00'));
     await wrapper.findAll('button').find((b) => b.text().includes('展开'))!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('无权访问该项目'));
@@ -218,14 +230,15 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
 
   it('renders the registration section for prototype features without backend', async () => {
     stubApi();
-    const wrapper = mount(KpiPage);
+    const wrapper = mountKpiPage();
     // 等真实数据（L1 卡有具体金额才说明 load 已完）
     await vi.waitFor(() => expect(wrapper.text()).toContain('12,000.00'));
     // 真缺口登记
     expect(wrapper.text()).toContain('待后端补齐的能力');
     expect(wrapper.text()).toContain('原型 12 项项目 KPI 表格');
     expect(wrapper.text()).toContain('KpiDrawer');
-    expect(wrapper.text()).toContain('共担 KPI 双组长确认读端点');
+    expect(wrapper.find('a[href="/ipd/kpi/shared"]').text()).toBe('查看共担指标并确认');
+    expect(wrapper.text()).not.toContain('GET /kpi/shared 读端点缺');
     wrapper.unmount();
   });
 });
@@ -233,7 +246,7 @@ describe('IPD KPI page (prototype PerformancePage adaptation)', () => {
 describe('已接通页不再挂整页未交付占位', () => {
   it('主列表已接真实 KPI 接口时，不渲染「后端尚未交付」横幅', async () => {
     stubApi();
-    const wrapper = mount(KpiPage);
+    const wrapper = mountKpiPage();
     await vi.waitFor(() => expect(wrapper.text()).toContain('待后端补齐的能力'));
     expect(wrapper.text()).not.toContain('该页面已登记，后端接口尚未交付');
     wrapper.unmount();
@@ -265,7 +278,7 @@ describe('L2 AI 入口（kpi.monthly-summary / kpi.contributor-summary）', () =
       aiModel: 'mock-mini', card: null, completionTokens: 1, degraded: false,
       latencyMs: 5, markdown: '## 月度总结\n- L1 合计 12,000', promptTokens: 1, scene: 'kpi.monthly-summary',
     });
-    const wrapper = mount(KpiPage);
+    const wrapper = mountKpiPage();
 
     const runBtn = wrapper.find('[data-testid="kpi-ai-monthly"] [data-testid="ai-suggest-run"]');
     expect(runBtn.exists()).toBe(true);
@@ -297,7 +310,7 @@ describe('L2 AI 入口（kpi.monthly-summary / kpi.contributor-summary）', () =
       aiModel: 'mock-mini', card: null, completionTokens: 1, degraded: false,
       latencyMs: 5, markdown: '## 贡献者总结\n- 张三主导交付', promptTokens: 1, scene: 'kpi.contributor-summary',
     });
-    const wrapper = mount(KpiPage);
+    const wrapper = mountKpiPage();
 
     const runBtn = wrapper.find('[data-testid="kpi-ai-contributor"] [data-testid="ai-suggest-run"]');
     expect(runBtn.exists()).toBe(true);

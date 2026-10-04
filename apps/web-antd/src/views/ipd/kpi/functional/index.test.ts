@@ -13,11 +13,27 @@
 import { message } from 'ant-design-vue';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import FunctionalPage from '../index.vue';
+import { ipdLayoutRoute } from '../../../../router/routes/modules/ipd';
 import { KPI_FUNCTIONAL_METRIC_CODES } from '../../../../api/ipd/kpi';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
+
+function mountFunctionalPage() {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      ipdLayoutRoute,
+    ],
+  });
+  expect(router.resolve('/ipd/kpi/shared').matched.map((route) => route.name)).toContain('IpdKpiShared');
+  const wrapper = mount(FunctionalPage, { global: { plugins: [router] } });
+  expect(wrapper.get('a[href="/ipd/kpi/shared"]').text()).toBe('查看共担指标并确认');
+  return wrapper;
+}
 
 const envelope = (data: unknown) =>
   new Response(
@@ -76,7 +92,7 @@ describe('页29 功能指标量表录入入口（A2 P1）', () => {
   it('写入角色（市场 PM）：可见「录入 / 编辑」入口 + 可录入标记', async () => {
     signIn('MARKET_PM');
     const calls = stubApi();
-    const wrapper = mount(FunctionalPage);
+    const wrapper = mountFunctionalPage();
     await vi.waitFor(() => expect(wrapper.text()).toContain('功能指标量表（8 项人工录入）'));
     const text = wrapper.text();
     expect(text).toContain('可录入');
@@ -90,7 +106,7 @@ describe('页29 功能指标量表录入入口（A2 P1）', () => {
   it('只读角色（产品组长）：无「录入 / 编辑」入口，仅只读标记', async () => {
     signIn('GROUP_LEADER');
     stubApi();
-    const wrapper = mount(FunctionalPage);
+    const wrapper = mountFunctionalPage();
     await vi.waitFor(() => expect(wrapper.text()).toContain('功能指标量表（8 项人工录入）'));
     const text = wrapper.text();
     expect(text).toContain('只读');
@@ -104,7 +120,7 @@ describe('页29 功能指标量表录入入口（A2 P1）', () => {
   it('未选项目：量表空态提示先选项目', async () => {
     signIn('RD_PM');
     stubApi();
-    const wrapper = mount(FunctionalPage);
+    const wrapper = mountFunctionalPage();
     await vi.waitFor(() => expect(wrapper.text()).toContain('功能指标量表（8 项人工录入）'));
     expect(wrapper.text()).toContain('请先在上方选择项目，再加载功能指标量表');
     // 未选项目不得发过量表行查询（ORPHAN-A6 #39 后 mount 会合法拉取 /codes 权威枚举，需排除）
@@ -117,7 +133,7 @@ describe('页29 功能指标量表录入入口（A2 P1）', () => {
   it('只读区（P0-10.29）渲染不回归：来源文案 + 加权贡献', async () => {
     signIn('MARKET_PM');
     stubApi();
-    const wrapper = mount(FunctionalPage);
+    const wrapper = mountFunctionalPage();
     await vi.waitFor(() => expect(wrapper.text()).toContain('46'));
     expect(wrapper.text()).toContain('津贴台账');
     wrapper.unmount();
@@ -127,7 +143,7 @@ describe('页29 功能指标量表录入入口（A2 P1）', () => {
     signIn('MARKET_PM');
     const errorSpy = vi.spyOn(message, 'error');
     stubApi({ functionalReject: true });
-    const wrapper = mount(FunctionalPage);
+    const wrapper = mountFunctionalPage();
     await vi.waitFor(() => expect(wrapper.text()).toContain('功能指标量表（8 项人工录入）'));
     await vi.waitFor(() => expect(errorSpy).toHaveBeenCalledWith('无法连接服务，请检查网络后重试'));
     expect(wrapper.text()).not.toContain('46');
@@ -189,7 +205,7 @@ describe('页29 功能指标量表（ORPHAN-A6：DELETE 接线 + codes 权威枚
   it('#39 codes 权威枚举：mount 即拉取 /codes 端点', async () => {
     signIn('SUPER_ADMIN');
     const calls = stubA6({ codes: ['MKT_WINDOW_HIT_RATE'] });
-    const wrapper = mount(FunctionalPage);
+    const wrapper = mountFunctionalPage();
     await vi.waitFor(() => expect(wrapper.text()).toContain('功能指标量表（8 项人工录入）'));
     expect(calls.some((c) => c.url.includes('/kpi/functional-metrics/codes'))).toBe(true);
     wrapper.unmount();
@@ -198,7 +214,7 @@ describe('页29 功能指标量表（ORPHAN-A6：DELETE 接线 + codes 权威枚
   it('#39 权威编码替换本地清单：未知编码行 Tag 回显 code 本身（证实数据源已切换）', async () => {
     signIn('SUPER_ADMIN');
     stubA6({ codes: ['MKT_NEW_CODE_9'] });
-    const wrapper = mount(FunctionalPage);
+    const wrapper = mountFunctionalPage();
     // 未选项目时量表区不渲染行——先断言 mount 稳定，权威清单仅作下拉数据源（契约由 api 层覆盖）
     await vi.waitFor(() => expect(wrapper.text()).toContain('功能指标量表（8 项人工录入）'));
     // codes 拉取成功且非空 → metricCodes 被权威清单替换；无 UI 直接暴露内部数组，
@@ -210,7 +226,7 @@ describe('页29 功能指标量表（ORPHAN-A6：DELETE 接线 + codes 权威枚
   it('#37 删除全流程：可写角色行内删除按钮 + Popconfirm 确认 → DELETE 端点 + 列表刷新', async () => {
     signIn('SUPER_ADMIN');
     const calls = stubA6({ codes: [] });
-    const wrapper = mount(FunctionalPage);
+    const wrapper = mountFunctionalPage();
     // 选择项目（antd Select 下拉点击在 DOM 层不可靠——按既有测试哲学 emit update:value + change）
     const projectSelect = wrapper.findComponent({ name: 'ASelect' });
     projectSelect.vm.$emit('update:value', '201');
@@ -241,7 +257,7 @@ describe('页29 功能指标量表（ORPHAN-A6：DELETE 接线 + codes 权威枚
   it('#37 权限闸：只读角色（GROUP_LEADER）行内不渲染删除按钮', async () => {
     signIn('GROUP_LEADER');
     stubA6({ codes: [] });
-    const wrapper = mount(FunctionalPage);
+    const wrapper = mountFunctionalPage();
     const projectSelect = wrapper.findComponent({ name: 'ASelect' });
     projectSelect.vm.$emit('update:value', '201');
     projectSelect.vm.$emit('change', '201');

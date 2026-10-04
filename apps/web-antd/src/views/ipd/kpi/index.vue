@@ -7,13 +7,13 @@
   必要适配（原型 /api/performance/kpis/* 按项目维度，后端 /api/v1/kpi/* 按月维度，逐条登记）：
   1. 原型 12 项项目 KPI 表格 + KpiDrawer（填报/证据上传/编辑）后端无对应写端点：
      此页仅渲染月度聚合读端点，原型表格/Drawer 在页内如实登记待后端增量。
-  2. 共担 KPI 双组长确认读端点（原型 /api/performance/shared-kpis）后端仅
-     POST /kpi/shared/deadline-scan 扫描触发，读端点缺：登记条维持真缺口。
+  2. 共担指标归集与确认复用 IpdKpiShared 专用页面。
   3. 项目绩效评定明细/结算端点已交付，挂在同模块隐藏路由
      IpdKpiScore，本页不展开（保持按月聚合 KPI 单职责）。
 -->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 
 import { message } from 'ant-design-vue';
 import { FundOutlined, LineChartOutlined, ProfileOutlined, RiseOutlined, TableOutlined } from '@ant-design/icons-vue';
@@ -319,7 +319,7 @@ onMounted(() => { void load(); });
       <div class="section-title">
         <div>
           <h2><TableOutlined /> 待后端补齐的能力</h2>
-          <p>原型 12 项项目 KPI 表格与共担 KPI 确认链后端尚未交付，登记不假绿。</p>
+          <p>项目指标填报仍待补齐；共担指标归集与确认已有专用页面。</p>
         </div>
       </div>
       <ul class="gap-list">
@@ -328,8 +328,8 @@ onMounted(() => { void load(); });
           <span>后端无 PUT /performance/kpis/{projectId}/{metricCode} 写端点；KpiDrawer 填报 / 证据上传 / 编辑均未交付。</span>
         </li>
         <li>
-          <strong>共担 KPI 双组长确认读端点</strong>
-          <span>后端仅 POST /kpi/shared/deadline-scan 扫描触发；GET /kpi/shared 读端点缺。</span>
+          <strong>共担指标归集与确认</strong>
+          <RouterLink to="/ipd/kpi/shared">查看共担指标并确认</RouterLink>
         </li>
         <li>
           <strong>项目绩效评定明细 / 结算</strong>
