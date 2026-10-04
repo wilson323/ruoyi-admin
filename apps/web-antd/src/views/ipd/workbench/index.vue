@@ -4,7 +4,7 @@
  *
  * 真值源：ZK-IPD LIVE URL http://127.0.0.1:4173/workspace（2026-09-06 chrome-devtools 实地抓取）。
  * 形态：身份问候（按时辰）+ 4 metric 卡 + 责任任务队列 + 我的当前推进 + 删除审批数 + 无实质产出提醒。
- * 无实质产出名单依赖绩效域月度资格规则（P1 substantive-output），当前展示真实空态。
+ * 无实质产出名单依赖绩效域月度资格规则（P1 substantive-output），后端未交付，仅如实提示不渲染名单。
  */
 import { computed, onMounted, ref, watch } from 'vue';
 import { Alert, Tag } from 'ant-design-vue';
@@ -32,6 +32,7 @@ import {
   DECISION_BUCKET_ACTION,
   DECISION_BUCKET_TEXT,
   WORKBENCH_TASK_STATUS_TEXT,
+  WORKBENCH_TASK_TYPE_TEXT,
   decisionBucket,
   taskTypeText,
 } from '../_shared/ipd-enums';
@@ -115,6 +116,69 @@ const queueTabs = computed<QueueTab[]>(() => {
   ];
 });
 
+/* ---------- 面板文案：只陈述后端真交付到的程度，不与徽标互相否认 ----------
+ * 「已完成」徽标数是真的（/summary stats.completed），但 /workbench/tasks 对 bucket=completed
+ * 显式 400（WorkbenchService.tasks：「无卡级数据源契约：completed 仅有计数」）——面板必须说明
+ * 只有计数、没有逐条明细，不得回答「当前没有待处理事项」（那是另一件事，且与徽标打架）。
+ * 「我的关注」更彻底：前端源码（apps/ 各子包的 src）无收藏入口，后端无收藏实体/聚合器
+ * （saved_items 全仓仅见 2026-09-25 建表草稿，该草稿自注真库无此表；本行未对真库实测），
+ * 原文案「在动作工作区点击收藏后…」属指令型假信息——用户会去找一个不存在的按钮。 */
+const NON_QUEUE_TAB_NOTICE: Record<'completed' | 'followed', string> = {
+  completed:
+    '已完成仅提供计数（见上方徽标，聚合接口 stats.completed）；逐条完成明细后端未交付，此处不列出具体单据，也不做假数据。',
+  followed:
+    '我的关注后端未交付（无业务对象收藏数据模型，也未提供收藏入口）；此处不展示收藏列表，也不做假数据。',
+};
+
+/** 只有「已完成」「我的关注」两个 tab 停在提示上。
+ *  「我发起的」走 /workbench/my-initiated 真明细（既有渲染路径），不属本提示覆盖范围。
+ *  模板 v-else-if 直接用本判断，条件只此一处，避免两处各写一遍又漂移。 */
+const showsNonQueueNotice = computed(
+  () => activeTab.value === 'completed' || activeTab.value === 'followed',
+);
+
+const nonQueueNotice = computed(() => {
+  const tab = activeTab.value;
+  if (tab === 'completed') return NON_QUEUE_TAB_NOTICE.completed;
+  if (tab === 'followed') return NON_QUEUE_TAB_NOTICE.followed;
+  return '';
+});
+
+/** 队列卡空态文案。必须按 tab 区分：
+ *  - 「我发起的」用「暂无责任任务」是套错口径，且未拉到数据时不得渲染成「没有」；
+ *  - 其余 tab 保留责任任务口径，并限定在已接入聚合器的类型内。 */
+const queueEmptyNotice = computed(() => {
+  if (activeTab.value !== 'initiated') {
+    return '暂无责任任务；已接入聚合器的任务到达会按责任链实时投递到这里。';
+  }
+  if (!myInitiatedLoaded.value) {
+    return myInitiatedError.value
+      ? '我发起的明细加载失败（/workbench/my-initiated）；此处不显示 0，也不做假数据。'
+      : '我发起的明细加载中…';
+  }
+  return '暂无我发起的单据。';
+});
+
+/* ---------- 跨角色接力链路的真实覆盖范围 ----------
+ * 真值源：docs/ipd-系统说明/workbench-tasktype-契约登记.yaml（后端仓）
+ * 「已实现 9 类 / 未实现 7 类（PLANNED）」+ WorkbenchService.ALL_TASK_TYPES 现役 16 类。
+ * 下列 7 类契约已登记但无聚合器（无生产者）→ 状态变化后下游无人接手，
+ * 原「每次状态变化会同时完成当前任务、投递下一责任人…」对这几类是空头承诺。 */
+const UNWIRED_TASK_TYPES = [
+  'capacity_approval',
+  'change_implementation',
+  'change_verify',
+  'rd_replacement',
+  'receipt_review',
+  'retirement_review',
+  'waiver_review',
+] as const;
+
+const handoffScopeNotice = computed(() => {
+  const names = UNWIRED_TASK_TYPES.map((k) => WORKBENCH_TASK_TYPE_TEXT[k]).join('、');
+  return `状态变化会完成当前任务、投递下一责任人、生成通知并写入审计——仅限已接入聚合器的任务类型；${names}共 ${UNWIRED_TASK_TYPES.length} 类聚合器未交付，状态变化后不会自动投递待办。`;
+});
+
 /** 待办与超期按三类决定分组；我发起的仍是单组。项目名留在每条卡片上。 */
 interface TaskGroup {
   projectName: string;
@@ -138,6 +202,9 @@ const STATUS_TEXT: Record<string, string> = WORKBENCH_TASK_STATUS_TEXT;
 /** R215 A10：my-initiated / my-pending-approvals 聚合卡（三单据+阶段动作统一视图）。 */
 const myInitiatedTasks = ref<MyInitiatedTaskView[]>([]);
 const myInitiatedLoaded = ref(false);
+/** my-initiated 拉取失败标记：区分「确实没有」与「没拉到」——失败不得渲染成 0/空。
+ *  徽标在未加载时回退 stats.myInitiated，故失败态必须显式说出来，否则与徽标打架。 */
+const myInitiatedError = ref(false);
 const myPendingApprovals = ref<MyInitiatedTaskView[]>([]);
 
 // 后端 WorkbenchService 常量值为短形式（TASK_TYPE_DELETION_REQUEST = "DELETION" 等，实测 16039 响应）；
@@ -166,6 +233,16 @@ function formatDue(iso: null | number | string | undefined): string {
   return `${mm}/${dd} 截止`;
 }
 
+/** 仅日期（MM/DD）。用于「我发起的」的 createdAt：那是发起时间，
+ *  不是期限——套 formatDue 会把它渲染成「09/20 截止」，凭空造出一个不存在的截止日。 */
+function formatDateOnly(iso: null | number | string | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${mm}/${dd}`;
+}
+
 /** WB-17-1 S0：任务队列过滤视图（GET /workbench/tasks?bucket=pending|overdue）。
  *  端点失败/旧后端缺路由时回退 /summary tasks 平铺（overdue 仍走 priority=high 旧口径），不造假数据。 */
 const queueTasks = ref<WorkbenchTask[]>([]);
@@ -191,7 +268,7 @@ const taskGroups = computed<TaskGroup[]>(() => {
       desc: `${MY_INITIATED_SOURCE_TEXT[t.taskType] ?? t.taskType} · ${t.sourceTable}`,
       code: '',
       initiator: '',
-      time: t.createdAt ? formatDue(t.createdAt) : '—',
+      time: t.createdAt ? `发起 ${formatDateOnly(t.createdAt)}` : '—',
       overdue: false,
       deepLink: '',
       actionLabel: '',
@@ -293,7 +370,9 @@ onMounted(async () => {
       myInitiatedTasks.value = rows;
       myInitiatedLoaded.value = true;
     })
-    .catch(() => {});
+    .catch(() => {
+      myInitiatedError.value = true;
+    });
   fetchMyPendingApprovals()
     .then((rows) => {
       myPendingApprovals.value = rows;
@@ -445,12 +524,12 @@ watch(activeTab, (tab) => {
             <span class="ipd-wb-section-meta">{{ taskGroups.reduce((n, g) => n + g.count, 0) }} 项</span>
           </header>
           <p v-if="loadError" class="ipd-wb-empty">聚合接口加载失败：{{ loadError }}</p>
-          <div v-else-if="activeTab !== 'pending' && activeTab !== 'overdue'" class="ipd-wb-empty">
-            {{ activeTab === 'followed' ? '尚未收藏业务对象；在动作工作区点击收藏后，会集中显示在这里。' : '当前没有待处理事项；新的动作、审批、移交、绩效或整改责任会自动投递到这里。' }}
+          <div v-else-if="showsNonQueueNotice" class="ipd-wb-empty">
+            {{ nonQueueNotice }}
           </div>
           <template v-else>
           <div v-if="taskGroups.every((g) => g.count === 0)" class="ipd-wb-empty">
-            暂无责任任务；任务到达会按责任链实时投递到这里。
+            {{ queueEmptyNotice }}
           </div>
           <div v-for="g in taskGroups" :key="g.projectName" class="ipd-wb-group">
             <h3 class="ipd-wb-group-title">
@@ -502,7 +581,7 @@ watch(activeTab, (tab) => {
               <p class="ipd-wb-current-code">{{ currentAdvance.projectCode ?? currentAdvance.projectName }}</p>
               <h3 class="ipd-wb-current-title">{{ currentAdvance.actionName ?? '当前阶段无待办动作' }}</h3>
               <p class="ipd-wb-current-meta">
-                {{ currentAdvance.projectName }} · {{ currentAdvance.actionStatus ?? 'IDLE' }} · 深入业务详情办理
+                {{ currentAdvance.projectName }} · {{ currentAdvance.actionStatus ?? '当前没有在途动作命中你的角色' }} · 深入业务详情办理
               </p>
               <button type="button" class="ipd-wb-coach-btn" @click="$router.push(currentAdvance.deepLink).catch(() => {})">
                 打开任务教练
@@ -523,7 +602,7 @@ watch(activeTab, (tab) => {
               <h2 class="ipd-wb-section-title">跨角色工作不再失联</h2>
             </header>
             <p class="ipd-wb-handoff-desc">
-              每次状态变化会同时完成当前任务、投递下一责任人、生成通知并写入审计。
+              {{ handoffScopeNotice }}
             </p>
           </section>
 
@@ -578,7 +657,7 @@ watch(activeTab, (tab) => {
             <span class="ipd-wb-section-meta">仅提醒，不自动停发</span>
           </header>
           <div class="ipd-wb-empty ipd-wb-empty-tight">
-            本月暂无待复核名单；月度资格规则扫描后自动展示（P1 substantive-output 接入）。
+            无实质产出名单（P1 substantive-output，月度资格规则扫描）后端未交付；此处不展示名单，也不做假数据。
           </div>
         </section>
       </div>
