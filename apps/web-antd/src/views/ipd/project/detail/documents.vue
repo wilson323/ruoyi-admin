@@ -10,7 +10,7 @@
  * P1-3 已交付：GET /api/v1/ai-documents?projectId=X → onMounted 自动加载项目下文档链头列表（页14 列表区）。
  */
 import { computed, reactive, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import {
   Alert,
   Button,
@@ -54,6 +54,35 @@ const DOC_TYPE_OPTIONS = [
   { label: '测试验证报告', value: 'TEST_REPORT' },
   { label: '发布说明', value: 'RELEASE_NOTE' },
   { label: '评审材料', value: 'REVIEW' },
+  { label: '项目等级评定', value: 'PROJECT_GRADE_ASSESSMENT' },
+  { label: '知识产权检索报告', value: 'IP_FTO_SEARCH_REPORT' },
+  { label: '版本规划', value: 'VERSION_ROADMAP' },
+  { label: '试用反馈', value: 'BETA_FEEDBACK_REPORT' },
+  { label: '包装说明指南', value: 'PACKAGING_USER_GUIDE' },
+  { label: '试点交付验证', value: 'PILOT_DELIVERY_REPORT' },
+  { label: '跨人种年龄验证', value: 'DEMOGRAPHIC_VALIDATION_REPORT' },
+  { label: '本地化验证', value: 'LOCALIZATION_VALIDATION_REPORT' },
+  { label: '上市策略', value: 'GTM_PLAN' },
+  { label: '渠道价格政策', value: 'CHANNEL_PRICE_POLICY' },
+  { label: '销售工具包', value: 'SALES_TOOLKIT' },
+  { label: '渠道培训材料', value: 'CHANNEL_TRAINING_MATERIAL' },
+  { label: '上架记录', value: 'CATALOG_LISTING_RECORD' },
+  { label: '双PM评定', value: 'PM_CONTRIBUTION_ASSESSMENT' },
+  { label: '客户质量反馈', value: 'CUSTOMER_QUALITY_FEEDBACK' },
+  { label: '生命周期记录', value: 'LIFECYCLE_CHANGE_RECORD' },
+  { label: '归档包', value: 'PROJECT_ARCHIVE_PACKAGE' },
+  { label: '指标证据报告', value: 'KPI_EVIDENCE_REPORT' },
+  { label: '技术可行性预研', value: 'TECHNICAL_FEASIBILITY_REPORT' },
+  { label: '系统架构', value: 'SYSTEM_ARCHITECTURE' },
+  { label: '硬件设计方案', value: 'HARDWARE_DESIGN_PLAN' },
+  { label: '软件设计方案', value: 'SOFTWARE_DESIGN_PLAN' },
+  { label: '方案集成设计', value: 'SOLUTION_INTEGRATION_PLAN' },
+  { label: '器件供应评估', value: 'COMPONENT_SUPPLY_ASSESSMENT' },
+  { label: '项目里程碑计划', value: 'PROJECT_MILESTONE_PLAN' },
+  { label: '资源预算评估', value: 'RESOURCE_BUDGET_PLAN' },
+  { label: '风险应对计划', value: 'PROJECT_RISK_PLAN' },
+  { label: '详细设计', value: 'DETAILED_DESIGN' },
+  { label: '售后维修方案', value: 'AFTERSALES_REPAIR_PLAN' },
   { label: '其他', value: 'OTHER' },
 ];
 
@@ -69,6 +98,10 @@ const STATUS_META: Record<string, { color: string; text: string }> = {
 };
 
 const route = useRoute();
+const router = useRouter();
+function openProjectAgent(): void {
+  void router.push({ path: '/ipd/ai-assistant', query: { projectId: projectId.value } });
+}
 const projectId = computed(() => String(route.params.projectId ?? ''));
 
 // ---------- 项目下文档列表（P1-3） ----------
@@ -400,7 +433,7 @@ watch(projectId, (pid) => {
       </Table>
       <Empty
         v-else-if="documentsLoaded"
-        description="该项目暂无已登记 AI 文档，请使用下方「登记 AI 输出」创建首版。"
+        description="该项目暂无已登记文档。可从项目智能体生成并定档，或登记已有输出。"
       />
       <Empty
         v-else
@@ -409,11 +442,13 @@ watch(projectId, (pid) => {
       <p class="text-muted-foreground mt-2 text-xs">版本/历史/对比按钮保持原样，请使用下方「版本链」区按文档 ID 加载。</p>
     </Card>
 
+    <Button class="mb-4" :disabled="!projectId" @click="openProjectAgent">在项目智能体生成交付物</Button>
+
     <!-- 登记 AI 输出 v1 -->
     <Card title="登记 AI 输出（版本链 v1 锚点）">
       <Alert
         class="mb-4"
-        message="AI 模型生成（P4-2）尚未交付；当前可在此登记已获得的 AI 原始输出，作为不可丢失版本链的 v1 锚点。"
+        message="项目智能体可生成交付物，定档后进入本项目文档版本链。已有输出也可在此登记，登记后仍须审核。"
         show-icon
         type="info"
       />

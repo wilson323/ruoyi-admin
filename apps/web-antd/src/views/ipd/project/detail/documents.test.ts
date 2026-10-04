@@ -39,7 +39,7 @@ function deferred<T>() {
 async function mountAt(projectId: string) {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/ipd/projects/:projectId/documents', component: { template: '<div />' } }],
+    routes: [{ path: '/ipd/projects/:projectId/documents', component: { template: '<div />' } }, { path: '/ipd/ai-assistant', component: { template: '<div />' } }],
   });
   await router.push(`/ipd/projects/${projectId}/documents`);
   await router.isReady();
@@ -172,6 +172,20 @@ describe('当前版本退回修改', () => {
     confirm.click();
     await flushPromises();
     expect(rejectAiDocumentVersion).toHaveBeenCalledWith('1001', '1002', { comment: '事实不对' });
+    wrapper.unmount();
+  });
+});
+
+describe('生成入口', () => {
+  it('从当前项目打开既有项目智能体，不在文档页创建运行', async () => {
+    const { router, wrapper } = await mountAt('101');
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('AI 模型生成（P4-2）尚未交付');
+    await wrapper.findAll('button').find((button) => button.text() === '在项目智能体生成交付物')!.trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/ipd/ai-assistant');
+    expect(router.currentRoute.value.query.projectId).toBe('101');
+    expect(registerAiDocument).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });

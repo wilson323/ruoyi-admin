@@ -338,7 +338,7 @@ describe('阶段清单 GET /projects/{id}/stages（P3-6.1 接线）', () => {
     expect(workspace.get('[data-testid="site-awaiting-review"]').text()).toBe('没有待审核成果');
     expect(workspace.get('[data-testid="site-blocking"]').text()).toBe('没有未满足的门禁项或未完成的阻断动作');
     expect(workspace.text()).toContain('阶段目的');
-    expect(workspace.text()).toContain('这一阶段要完成的事，系统还没有单独说明');
+    expect(workspace.text()).toContain('验证市场机会与产品概念，形成商业计划并完成立项评审。');
     expect(workspace.text()).toContain('这一阶段还没有单独的成果说明');
     expect(workspace.text()).not.toMatch(/接口|字段|API/);
     expect(workspace.text()).not.toContain('待接入');
@@ -400,8 +400,8 @@ describe('阶段清单 GET /projects/{id}/stages（P3-6.1 接线）', () => {
     const blocking = wrapper.get('[data-testid="site-blocking"]').text();
     expect(blocking).toBe('Charter立项评审会：还没开始；生物特征数据合规审查：还没完成');
     expect(blocking).not.toMatch(/status=|NOT_STARTED|IN_PROGRESS|gate\.a_level_block_codes|超管配置|未开始/);
-    expect(wrapper.text()).toContain('完成本阶段列出的工作后，才能考虑进入下一阶段');
-    expect(wrapper.text()).toContain('要完成：Charter立项评审会、生物特征数据合规审查');
+    expect(wrapper.text()).toContain('验证市场机会与产品概念，形成商业计划并完成立项评审。');
+    expect(wrapper.text()).toContain('应交付：市场调研报告、商业计划书 Charter');
     expect(wrapper.text()).not.toContain('阶段接口没有目的字段');
     expect(wrapper.text()).not.toContain('阶段接口没有必需成果字段');
     expect(wrapper.text()).not.toContain('待接入');

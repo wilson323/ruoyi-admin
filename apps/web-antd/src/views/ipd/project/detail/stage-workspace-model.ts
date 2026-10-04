@@ -1,9 +1,7 @@
 /**
  * 项目流程页的阶段视图：只汇总已经加载的阶段、动作、运行、待办和门禁。
- * 阶段目的、必需成果没有单独说明。有这一阶段已取到的未完成动作时，
- * 目的用一句白话概括这些动作还要做完，成果只列出这些动作名。
- * 没有可列的动作时，写明系统还没有单独说明。
- * 不把 skillHint 或模型推测写成目的、认证、销量或国家。
+ * 阶段目的与成果名称来自六阶段标准动作合同；成果仅列当前项目适用动作。
+ * 这些是业务要求，不表示文档已生成或阶段已批准；实际缺口仍来自动作和门禁。
  */
 import type { GateChecklistItem } from '../../../../api/ipd/project';
 import { agentRunStatusMeta } from '../../../../api/ipd/project-agent';
@@ -19,7 +17,55 @@ import {
 } from '../../_shared/ipd-enums';
 import { actionStatusText, stageText } from '../project-display';
 
-const PURPOSE_FROM_OPEN_ACTIONS = '完成本阶段列出的工作后，才能考虑进入下一阶段';
+// 来源：后端 docs/ipd-系统说明/外部资源/IPD系统_六阶段标准动作清单_v3.md。
+// 仅描述各阶段工作范围，具体通过条件始终以当前后端门禁回读为准。
+const STAGE_PURPOSE: Record<string, string> = {
+  CONCEPT: '验证市场机会与产品概念，形成商业计划并完成立项评审。',
+  PLAN: '明确产品需求、版本规划、技术方案与资源安排，完成差异化确认。',
+  DEV: '完成产品设计与开发，处理需求变更并开展开发评审。',
+  VALID: '验证产品质量、认证和客户适用性，准备量产与交付。',
+  LAUNCH: '完成上市策略、销售物料、渠道准备与上市发布。',
+  LIFECYCLE: '开展上市复盘、反馈处理和维护迭代，管理产品生命周期并归档。',
+};
+const ACTION_OUTCOMES: Record<string, string> = {
+  "C01": "市场调研报告",
+  "C02": "竞品分析报告",
+  "C03": "目标客户画像",
+  "C04": "区域市场差异清单",
+  "C06": "产品概念说明书",
+  "C07": "成本与定价测算表",
+  "C08": "商业计划书 Charter",
+  "C09": "项目等级评定记录",
+  "C10": "检索报告（强制）",
+  "C12": "合规审查清单（强制）",
+  "C11": "会议纪要 + 评审材料",
+  "P01": "产品需求规格书 PRD",
+  "P02": "版本规划表",
+  "P12": "差异化卖点清单、定价策略",
+  "P13": "会议纪要 + 评审材料",
+  "D05": "双周评审纪要",
+  "D06": "需求变更单",
+  "V03": "Beta试用报告",
+  "V06": "量产准入评审纪要",
+  "V07": "包装设计稿、用户手册",
+  "V09": "试点交付验收报告",
+  "V10": "分人群测试报告（强制）",
+  "V11": "登记对接范围与通过结论",
+  "V12": "本地化验收清单逐项打勾（强制）",
+  "L01": "GTM上市方案",
+  "L02": "渠道价格政策",
+  "L03": "销售工具包清单 + 物料",
+  "L04": "培训材料、培训签到记录",
+  "L06": "上架确认记录",
+  "L07": "会议纪要 + 评审材料",
+  "L08": "上市发布记录",
+  "LC02": "90天复盘报告 + 会议纪要",
+  "LC04": "贡献度评定表",
+  "LC05": "问题处理记录",
+  "LC07": "生命周期状态变更记录",
+  "LC08": "停产公告",
+  "LC09": "项目归档包"
+};
 const PURPOSE_UNSTATED = '这一阶段要完成的事，系统还没有单独说明';
 const OUTCOMES_UNSTATED = '这一阶段还没有单独的成果说明';
 const NO_CURRENT_STAGE = '项目详情没有当前阶段';
@@ -104,6 +150,7 @@ export interface StageWorkspaceView {
 }
 
 interface StageSlice {
+  stageCode: string;
   codes: Set<string>;
   scoped: boolean;
   stageActions: StageAction[];
@@ -138,6 +185,7 @@ function sliceFor(
   const codes = new Set(subStages.flatMap((stage) => stage.actions.map((action) => action.code)));
   const scoped = input.catalogLoaded && (subStages.length > 0 || !!stageId);
   return {
+    stageCode,
     codes,
     scoped,
     stageActions: scoped ? input.actions.filter((action) => actionInStage(action, stageId, codes)) : [],
@@ -365,29 +413,19 @@ function aiWork(input: StageWorkspaceInput, slice: StageSlice): string {
   return '没有 AI 任务或运行';
 }
 
-/** 这一阶段已经取到、且还没做完的动作名。已完成的、别的阶段的、没有名字的都不列。 */
-function openActionNames(actions: StageAction[]): string[] {
-  const names: string[] = [];
-  for (const action of actions) {
-    if (accepted(action)) continue;
-    const name = action.actionName?.trim();
-    if (!name) continue;
-    names.push(name);
-  }
-  return names;
-}
-
-/** 没有单独的目的说明时，用这一阶段未完成动作概括；没有可列动作时不编造目的。 */
+/** 阶段目的不会因动作已完成而消失，不代表通过条件已满足。 */
 function purposeText(slice: StageSlice): string {
-  const listed = slice.stageActions.some((action) => !accepted(action));
-  return listed ? PURPOSE_FROM_OPEN_ACTIONS : PURPOSE_UNSTATED;
+  return STAGE_PURPOSE[slice.stageCode] ?? PURPOSE_UNSTATED;
 }
 
-/** 没有单独的成果说明时，只列出这一阶段未完成动作的名字。 */
+/** 仅从已加载的适用动作取合同交付物；不把动作名当成交付物。 */
 function requiredOutcomesText(slice: StageSlice): string {
-  const names = openActionNames(slice.stageActions);
-  if (names.length === 0) return OUTCOMES_UNSTATED;
-  return `要完成：${names.join('、')}`;
+  const outcomes = [...new Set(slice.stageActions.flatMap((action) => {
+    const outcome = ACTION_OUTCOMES[action.actionCode ?? ''];
+    return outcome ? [outcome] : [];
+  }))];
+  if (!outcomes.length) return OUTCOMES_UNSTATED;
+  return `应交付：${outcomes.join('、')}`;
 }
 
 function passAndGaps(input: StageWorkspaceInput, slice: StageSlice): { gaps: string; passConditions: string } {

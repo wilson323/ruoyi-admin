@@ -47,7 +47,7 @@ function input(partial: Partial<StageWorkspaceInput> = {}): StageWorkspaceInput 
 }
 
 describe('buildStageWorkspace', () => {
-  it('没有可列动作时，目的和必需成果用白话说明还没有单独说明', () => {
+  it('没有可列动作时保留阶段目的，不编造适用交付物', () => {
     const view = buildStageWorkspace(input({
       checklistItems: [],
       checklistLoaded: true,
@@ -56,7 +56,7 @@ describe('buildStageWorkspace', () => {
       currentChecklistLoaded: true,
       currentChecklistStage: 'CONCEPT',
     }));
-    expect(view.purpose).toBe('这一阶段要完成的事，系统还没有单独说明');
+    expect(view.purpose).toBe('验证市场机会与产品概念，形成商业计划并完成立项评审。');
     expect(view.requiredOutcomes).toBe('这一阶段还没有单独的成果说明');
     expect(`${view.purpose} ${view.requiredOutcomes}`).not.toMatch(/接口|字段|API/);
     expect(view.nowStage).toBe('概念阶段，小阶段尚未开始');
@@ -142,8 +142,8 @@ describe('buildStageWorkspace', () => {
     expect(view.myDuty).toContain('竞品分析待办');
     expect(view.passConditions).toBe('概念门禁：待产线负责人批准');
     expect(view.gaps).toContain('概念门禁：待产线负责人批准');
-    expect(view.purpose).toBe('完成本阶段列出的工作后，才能考虑进入下一阶段');
-    expect(view.requiredOutcomes).toBe('要完成：竞品分析');
+    expect(view.purpose).toBe('验证市场机会与产品概念，形成商业计划并完成立项评审。');
+    expect(view.requiredOutcomes).toBe('应交付：竞品分析报告');
     expect(`${view.purpose} ${view.requiredOutcomes}`).not.toMatch(/接口|字段|API/);
     expect(view.purpose).not.toContain('不要当成阶段目的');
     expect(view.subStages[0]?.name).toBe('机会识别');
@@ -173,7 +173,7 @@ describe('buildStageWorkspace', () => {
     expect(view.blockingAdvance).toBe('当前阶段门禁清单没加载');
     expect(view.nowStage).toBe('概念阶段');
     expect(view.subStages).toEqual([]);
-    expect(view.purpose).toBe('这一阶段要完成的事，系统还没有单独说明');
+    expect(view.purpose).toBe('明确产品需求、版本规划、技术方案与资源安排，完成差异化确认。');
     expect(view.requiredOutcomes).toBe('这一阶段还没有单独的成果说明');
     expect(view.requiredOutcomes).not.toContain('竞品分析');
   });
@@ -221,7 +221,7 @@ describe('buildStageWorkspace', () => {
     expect(view.gaps).not.toContain('概念门禁');
     expect(view.blockingAdvance).toBe('概念门禁：待产线负责人批准');
     expect(view.myDuty).toBe('责任角色 市场PM');
-    expect(view.purpose).toBe('这一阶段要完成的事，系统还没有单独说明');
+    expect(view.purpose).toBe('明确产品需求、版本规划、技术方案与资源安排，完成差异化确认。');
     expect(view.requiredOutcomes).toBe('这一阶段还没有单独的成果说明');
   });
 
@@ -325,12 +325,28 @@ describe('buildStageWorkspace', () => {
     expect(view.blockingAdvance.match(/Charter立项评审会/g)).toHaveLength(1);
     expect(view.blockingAdvance.match(/生物特征数据合规审查/g)).toHaveLength(1);
     expect(view.blockingAdvance).not.toMatch(/status=|NOT_STARTED|IN_PROGRESS|gate\.a_level_block_codes|超管配置|未开始/);
-    expect(view.purpose).toBe('完成本阶段列出的工作后，才能考虑进入下一阶段');
-    expect(view.requiredOutcomes).toBe('要完成：Charter立项评审会、生物特征数据合规审查、已提交待批');
+    expect(view.purpose).toBe('验证市场机会与产品概念，形成商业计划并完成立项评审。');
+    expect(view.requiredOutcomes).toBe('应交付：市场调研报告、商业计划书 Charter、项目等级评定记录');
     expect(`${view.purpose} ${view.requiredOutcomes}`).not.toMatch(/接口|字段|API/);
     expect(view.passConditions).toBe('Charter立项评审会：还没开始');
     expect(view.gaps).toContain('Charter立项评审会：还没开始');
     expect(view.gaps).not.toContain(source);
     expect(`${view.passConditions} ${view.gaps}`).not.toMatch(/status=|gate\.a_level_block_codes|超管配置/);
+  });
+});
+
+describe('阶段合同成果', () => {
+  it('已批准动作仍显示交付物要求，不能因完成变成没有阶段目的', () => {
+    const view = buildStageWorkspace(input({
+      stageId: 's1',
+      actions: [action({ id: 'a1', actionCode: 'C02', stageId: 's1', status: 'DONE', confirmedBy: 'owner' })],
+    }));
+    expect(view.purpose).toContain('验证市场机会');
+    expect(view.requiredOutcomes).toBe('应交付：竞品分析报告');
+  });
+  it('未知阶段不猜目的或成果，退役动作不复活', () => {
+    const view = buildStageWorkspace(input({ stageCode: 'UNKNOWN', stageId: 's1', actions: [action({ id: 'a1', actionCode: 'LC01', stageId: 's1' })] }));
+    expect(view.purpose).toBe('这一阶段要完成的事，系统还没有单独说明');
+    expect(view.requiredOutcomes).toBe('这一阶段还没有单独的成果说明');
   });
 });
