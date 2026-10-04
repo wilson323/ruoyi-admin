@@ -13,7 +13,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IpdRequestError } from './auth';
-import { fetchDemandDetail, fetchDemands, linkDemandProject, triageDemand } from './demand';
+import { fetchDemandDetail, fetchDemands, linkDemandProject, triageDemand, listDemandAttachments, downloadDemandAttachment } from './demand';
 
 const envelope = (data: unknown, status = 200, code = 0): Response =>
   new Response(
@@ -209,5 +209,16 @@ describe('demand API — 错误传播', () => {
     const fetcher = vi.fn().mockResolvedValue(envelope(null, 403, 30001));
     vi.stubGlobal('fetch', fetcher);
     await expect(linkDemandProject('101', 'p-500')).rejects.toBeInstanceOf(IpdRequestError);
+  });
+});
+describe('需求附件受保护契约', () => {
+  it('清单使用字符串需求编号，下载拒绝不会当文件成功', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(envelope([{ key: 'filekey01', fileName: '规格.pdf', fileSize: 9 }]))
+      .mockResolvedValueOnce(envelope(null, 403, 30001));
+    vi.stubGlobal('fetch', fetcher);
+    expect(await listDemandAttachments('9007199254740993')).toEqual([{ key: 'filekey01', fileName: '规格.pdf', fileSize: 9 }]);
+    expect(fetcher.mock.calls[0]![0]).toBe('/api/v1/demands/9007199254740993/attachments');
+    await expect(downloadDemandAttachment('9007199254740993','file/key')).rejects.toBeInstanceOf(IpdRequestError);
+    expect(fetcher.mock.calls[1]![0]).toBe('/api/v1/demands/9007199254740993/attachments/file%2Fkey/download');
   });
 });

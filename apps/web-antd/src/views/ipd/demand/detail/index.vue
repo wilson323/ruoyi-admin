@@ -13,7 +13,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { Alert, Button, Card, Descriptions, DescriptionsItem, Spin, Tag } from 'ant-design-vue';
 
 import { IpdRequestError } from '../../../../api/ipd/auth';
-import { type IpdDemand, fetchDemandDetail } from '../../../../api/ipd/demand';
+import { type IpdDemand, type DemandAttachment, fetchDemandDetail, listDemandAttachments, downloadDemandAttachment } from '../../../../api/ipd/demand';
 import { PENDING_TEXT, formatDateTime } from '../../_shared/format';
 import { demandStateLabel } from '../../_shared/ipd-enums';
 
@@ -28,6 +28,30 @@ const loading = ref(false);
 const errorMsg = ref('');
 const isNetwork = ref(false);
 const detail = ref<IpdDemand | null>(null);
+const attachments = ref<DemandAttachment[]>([]);
+const attachmentsError = ref('');
+const downloading = ref('');
+async function loadAttachments() {
+  attachmentsError.value = '';
+  attachments.value = [];
+  try { attachments.value = await listDemandAttachments(demandId.value); }
+  catch (cause) { attachmentsError.value = errorText(cause); }
+}
+async function downloadAttachment(file: DemandAttachment) {
+  if (downloading.value) return;
+  downloading.value = file.key;
+  attachmentsError.value = '';
+  try {
+    const blob = await downloadDemandAttachment(demandId.value, file.key);
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = file.fileName;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (cause) { attachmentsError.value = errorText(cause); }
+  finally { downloading.value = ''; }
+}
 
 function errorText(cause: unknown): string {
   if (cause instanceof IpdRequestError) {
@@ -48,6 +72,7 @@ async function load() {
   isNetwork.value = false;
   try {
     detail.value = await fetchDemandDetail(demandId.value);
+    await loadAttachments();
   } catch (cause) {
     detail.value = null;
     isNetwork.value = cause instanceof IpdRequestError && cause.kind === 'transport';
@@ -104,6 +129,16 @@ onMounted(load);
         <DescriptionsItem label="研发PM">{{ detail.rdPmName ?? PENDING_TEXT }}</DescriptionsItem>
       </Descriptions>
       <p v-else class="text-xs text-gray-500">暂无数据</p>
+      <section v-if="detail && !loading" class="mt-4" data-testid="demand-attachments">
+        <h2>需求附件</h2>
+        <Alert v-if="attachmentsError" type="warning" :message="attachmentsError" show-icon />
+        <Button v-if="attachmentsError" size="small" @click="loadAttachments">重新加载附件</Button>
+        <p v-for="file in attachments" :key="file.key">
+          {{ file.fileName }}（{{ file.fileSize }} 字节）
+          <Button size="small" :loading="downloading === file.key" :disabled="!!downloading" @click="downloadAttachment(file)">下载</Button>
+        </p>
+        <p v-if="!attachmentsError && !attachments.length">没有附件</p>
+      </section>
     </Card>
   </div>
 </template>

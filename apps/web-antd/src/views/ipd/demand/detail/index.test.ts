@@ -14,13 +14,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 
 import { IpdRequestError } from '../../../../api/ipd/auth';
-import { fetchDemandDetail } from '../../../../api/ipd/demand';
+import { fetchDemandDetail, listDemandAttachments, downloadDemandAttachment } from '../../../../api/ipd/demand';
 import type { IpdDemand } from '../../../../api/ipd/demand';
 import { ipdLayoutRoute } from '../../../../router/routes/modules/ipd';
 import DemandDetail from './index.vue';
 
 vi.mock('../../../../api/ipd/demand', () => ({
   fetchDemandDetail: vi.fn(),
+  listDemandAttachments: vi.fn(),
+  downloadDemandAttachment: vi.fn(),
 }));
 
 const fetchDetailMock = vi.mocked(fetchDemandDetail);
@@ -63,6 +65,8 @@ async function mountAt(id: string) {
 beforeEach(() => {
   setActivePinia(createPinia());
   fetchDetailMock.mockReset();
+  vi.mocked(listDemandAttachments).mockReset().mockResolvedValue([]);
+  vi.mocked(downloadDemandAttachment).mockReset();
 });
 
 afterEach(() => {
@@ -119,5 +123,25 @@ describe('需求详情视图', () => {
     expect(wrapper.text()).toContain('需求不存在');
     expect(wrapper.findComponent(DemandDetail).text()).toContain('重新加载');
     wrapper.unmount();
+  });
+});
+
+describe('附件对象授权读取与下载', () => {
+  it('清单显示文件名大小，下载走受保护接口，失败可见', async () => {
+    fetchDetailMock.mockResolvedValue(detailFixture());
+    vi.mocked(listDemandAttachments).mockResolvedValue([{ key: 'filekey01', fileName: '规格.pdf', fileSize: 9 }]);
+    vi.mocked(downloadDemandAttachment).mockRejectedValue(new IpdRequestError('无权读取此需求附件', 403, 30001));
+    const wrapper = await mountAt(SNOWFLAKE); await flushPromises();
+    expect(listDemandAttachments).toHaveBeenCalledWith(SNOWFLAKE);
+    expect(wrapper.find('[data-testid="demand-attachments"]').text()).toContain('规格.pdf（9 字节）');
+    await wrapper.findAll('button').find((button) => button.text().replace(/\s/g, '') === '下载')!.trigger('click'); await flushPromises();
+    expect(downloadDemandAttachment).toHaveBeenCalledWith(SNOWFLAKE, 'filekey01');
+    expect(wrapper.text()).toContain('无权读取此需求附件'); wrapper.unmount();
+  });
+  it('附件权限拒绝不会显示可下载文件', async () => {
+    fetchDetailMock.mockResolvedValue(detailFixture()); vi.mocked(listDemandAttachments).mockRejectedValue(new IpdRequestError('权限不足',403,30001));
+    const wrapper = await mountAt(SNOWFLAKE); await flushPromises();
+    expect(wrapper.find('[data-testid="demand-attachments"]').text()).toContain('权限不足');
+    expect(wrapper.findAll('button').some((button) => button.text().replace(/\s/g, '') === '下载')).toBe(false); wrapper.unmount();
   });
 });

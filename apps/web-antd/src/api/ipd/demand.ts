@@ -18,7 +18,7 @@
  *   （productId 仅 GuestDemandService 提交时自动匹配），该交互不实现；
  * - 原型需求卡 attachments：后端 demands 无附件载荷，不展示。
  */
-import { ipdGet, ipdPost } from './http';
+import { ipdDownload, ipdGet, ipdPost } from './http';
 
 export type DemandStatus =
   | 'ACCEPTED'
@@ -79,4 +79,12 @@ export function linkDemandProject(
     `/demands/${encodeURIComponent(id)}/link-project`,
     { projectId },
   );
+}
+
+export interface DemandAttachment { key: string; fileName: string; fileSize: number }
+export function listDemandAttachments(id: string): Promise<DemandAttachment[]> {
+  return ipdGet(`/demands/${encodeURIComponent(id)}/attachments`);
+}
+export function downloadDemandAttachment(id: string, key: string): Promise<Blob> {
+  return ipdDownload(`/demands/${encodeURIComponent(id)}/attachments/${encodeURIComponent(key)}/download`);
 }
