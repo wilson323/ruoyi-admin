@@ -48,7 +48,7 @@ describe('产品线团队空间目录', () => {
     const line = { id: '101', code: 'ACCESS', name: '门禁', leaderPersonId: '7', status: 'ACTIVE' };
     vi.mocked(listProductLines).mockResolvedValue([line]);
     vi.mocked(listDiscoverableProductLines).mockResolvedValue([line]);
-    vi.mocked(listProductLineProducts).mockResolvedValue([{ id: '201', code: 'P201', name: '门禁产品' }]);
+    vi.mocked(listProductLineProducts).mockResolvedValue([{ id: '201', code: 'P201', name: '门禁产品', status: 'ON_SALE' }, { id: '202', code: 'P202', name: '在研产品', status: 'IN_RD' }]);
     vi.mocked(listProductLineDemands).mockResolvedValue([]);
     vi.mocked(listProductLineProjects).mockResolvedValue([{
       id: '301', code: 'J301', name: '门禁项目', currentStage: '概念', status: 'ACTIVE',
@@ -64,6 +64,7 @@ describe('产品线团队空间目录', () => {
       await vi.waitFor(() => expect(wrapper.text()).toContain('审批接口暂不可用'));
       expect(wrapper.text()).toContain('门禁产品');
       expect(wrapper.text()).toContain('门禁项目');
+      expect(wrapper.text()).toContain('在售 1 个，在研 1 个，其他状态 0 个');
       expect(wrapper.text()).not.toContain('空间目录加载失败');
       expect(wrapper.text()).not.toContain('暂无待审批申请');
 

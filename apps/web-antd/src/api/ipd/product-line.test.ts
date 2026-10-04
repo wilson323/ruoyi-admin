@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ipdGet, ipdPost } from './http';
-import { listProductLines, reviewProductLineApplication } from './product-line';
+import { listProductLineProducts, listProductLines, reviewProductLineApplication } from './product-line';
 
 vi.mock('./http', () => ({ ipdGet: vi.fn(), ipdPost: vi.fn(), ipdPut: vi.fn() }));
 
@@ -11,6 +11,10 @@ beforeEach(() => {
 });
 
 describe('产品线合同', () => {
+  it('空间产品保留真实在售和在研状态', async () => {
+    vi.mocked(ipdGet).mockResolvedValue([{ id: '201', code: 'P201', name: '产品', status: 'IN_RD' }]);
+    expect(await listProductLineProducts('101')).toEqual([{ id: '201', code: 'P201', name: '产品', status: 'IN_RD' }]);
+  });
   it('大整数 ID 以服务端字符串原样传递，不映射产品组', async () => {
     const id = '9007199254740993123';
     vi.mocked(ipdGet).mockResolvedValue([{ id, code: 'ACCESS', name: '门禁', leaderPersonId: null, status: 'ACTIVE' }]);

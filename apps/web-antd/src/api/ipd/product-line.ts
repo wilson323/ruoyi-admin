@@ -19,6 +19,7 @@ export interface ProductLineProduct {
   id: string;
   code: string;
   name: string;
+  status?: string;
 }
 
 export interface ProductLineProject {
@@ -29,10 +30,18 @@ export interface ProductLineProject {
   status: string;
 }
 
+export interface DemandTriageStatus {
+  state: string;
+  message: string;
+  runId: null | string;
+  retryable: boolean;
+}
+
 export interface ProductLineDemand {
   id: string;
   title: string;
   status: string;
+  triage?: DemandTriageStatus;
 }
 
 const object = (value: unknown): Record<string, unknown> =>
@@ -54,11 +63,12 @@ const member = (raw: unknown): ProductLineMember => {
 };
 const product = (raw: unknown): ProductLineProduct => {
   const value = object(raw);
-  return { id: string(value.id), code: string(value.code), name: string(value.name) };
+  return { id: string(value.id), code: string(value.code), name: string(value.name), status: string(value.status) };
 };
 const demand = (raw: unknown): ProductLineDemand => {
   const value = object(raw);
-  return { id: string(value.id), title: string(value.title), status: string(value.status) };
+  const triage = object(value.triage);
+  return { id: string(value.id), title: string(value.title), status: string(value.status), triage: value.triage == null ? undefined : { state: string(triage.state), message: string(triage.message), runId: nullableString(triage.runId), retryable: triage.retryable === true } };
 };
 const project = (raw: unknown): ProductLineProject => {
   const value = object(raw);
@@ -97,3 +107,6 @@ export const listProductLineProjects = (lineId: string): Promise<ProductLineProj
   ipdGet<unknown>(`/ipd/product-lines/${encodeURIComponent(lineId)}/projects`).then((value) => list(value, project));
 export const listProductLineDemands = (lineId: string): Promise<ProductLineDemand[]> =>
   ipdGet<unknown>(`/ipd/product-lines/${encodeURIComponent(lineId)}/demands`).then((value) => list(value, demand));
+
+export const retryProductLineDemandTriage = (lineId: string, demandId: string): Promise<DemandTriageStatus> =>
+  ipdPost(`/ipd/product-lines/${encodeURIComponent(lineId)}/demands/${encodeURIComponent(demandId)}/triage-retry`);

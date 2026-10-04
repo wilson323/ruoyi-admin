@@ -18,6 +18,7 @@ import {
   listProductLines,
   renameProductLine,
   reviewProductLineApplication,
+  retryProductLineDemandTriage,
   unassignProductFromLine,
 } from '../../../api/ipd/product-line';
 import type { Product } from '../../../api/ipd/product';
@@ -61,6 +62,13 @@ const isAdmin = computed(() => auth.identity?.person.personType === 'SUPER_ADMIN
 const personId = computed(() => auth.identity?.person.id ?? '');
 const selected = computed(() => lines.value.find((line) => line.id === selectedId.value));
 const canReview = computed(() => isAdmin.value || selected.value?.leaderPersonId === personId.value);
+const productCounts = computed(() => ({
+  onSale: products.value.filter((product) => product.status === 'ON_SALE').length,
+  inResearch: products.value.filter((product) => product.status === 'IN_RD').length,
+  other: products.value.filter((product) => !['ON_SALE', 'IN_RD'].includes(product.status ?? '')).length,
+}));
+const productStatusLabels: Record<string, string> = { ON_SALE: '在售', IN_RD: '在研', INACTIVE: '已停用', ACTIVE: '状态待核实' };
+const productStatusText = (status?: string) => productStatusLabels[status ?? ''] ?? '状态待核实';
 const triageProject = computed(() => projects.value.find((project) => project.code === 'PRJ-2026-900') ?? null);
 const canDecideStart = computed(() => {
   const leader = selected.value?.leaderPersonId;
@@ -295,9 +303,10 @@ onMounted(() => { void loadLines(); });
         <p v-if="detailLoading" role="status">空间目录加载中…</p>
         <template v-else-if="!detailError">
           <Card title="产品目录" size="small">
+            <p aria-label="产品线经营汇总">在售 {{ productCounts.onSale }} 个，在研 {{ productCounts.inResearch }} 个，其他状态 {{ productCounts.other }} 个；需求反馈 {{ demands.length }} 条，可见项目 {{ projects.length }} 个。</p>
             <p v-if="!products.length">暂无归属该产品线的产品。</p>
             <ul v-else><li v-for="product in products" :key="product.id">
-              {{ product.name }}（{{ product.code }}）
+              {{ product.name }}（{{ product.code }}）— {{ productStatusText(product.status) }}
               <Popconfirm v-if="isAdmin" title="确认解除产品线归属？仅停用且无活动项目的产品可解除。" @confirm="perform(() => unassignProductFromLine(selectedId, product.id), '已解除产品线归属')">
                 <Button size="small" danger :disabled="acting">解除归属</Button>
               </Popconfirm>
@@ -308,6 +317,9 @@ onMounted(() => { void loadLines(); });
             <ul v-else>
               <li v-for="demand in demands" :key="demand.id">
                 {{ demand.title || '未命名需求' }}（{{ demand.status }}）
+                <span v-if="demand.triage">{{ demand.triage.message }}</span>
+                <Button v-if="canReview && demand.triage?.retryable" size="small" :disabled="acting" @click="perform(() => retryProductLineDemandTriage(selectedId, demand.id), '已重试分拣')">重试分拣</Button>
+                <RouterLink v-if="triageProject && demand.triage?.runId" :to="`/ipd/ai-assistant?projectId=${triageProject.id}`">查看分拣历史</RouterLink>
                 <RouterLink v-if="triageProject" :to="`/ipd/projects/${triageProject.id}/flow?requirementId=${demand.id}`">用项目智能体理解</RouterLink>
               </li>
             </ul>
