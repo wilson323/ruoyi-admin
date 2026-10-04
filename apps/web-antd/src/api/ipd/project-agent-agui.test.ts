@@ -8,6 +8,24 @@ const frame = (value: unknown, id = 1) => `id: ${id}\r\ndata: ${JSON.stringify(v
 const custom = (value: unknown) => ({ type: 'CUSTOM', name: 'ipd_event', value });
 
 describe('AG-UI persisted projection', () => {
+  it('replays the real successful memory receipt before the durable terminal without losing the cursor', async () => {
+    // 运行 2106434621112623106 的已核数据库顺序：回执 112，终态 115。
+    const receipt = { ...event, seq: 112, type: 'MEMORY_RECEIPT', payload: {
+      status: 'WRITTEN', saved: 0, extracted: 0, retryable: false,
+    } };
+    const finish = { ...event, seq: 115, type: 'RUN_FINISHED', payload: { status: 'SUCCEEDED' } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      frame(custom(receipt), 112) + frame(custom(finish), 115),
+      { headers: { 'content-type': 'text/event-stream' } },
+    )));
+    const seen: unknown[] = [];
+    await streamAgentRunEvents('2106434621112623106', 111, value => {
+      seen.push(value); return value.type === 'RUN_FINISHED';
+    }, new AbortController().signal);
+    expect(seen).toEqual([receipt, finish]);
+    expect(() => createAgentAguiParser()(frame(custom({ ...event, type: 'UNKNOWN_EVENT' })))).toThrow('序号或内容异常');
+  });
+
   it('ignores native interrupted RUN_FINISHED and delivers the durable clarification wait with trailing SSE ids', async () => {
     const interrupt = { id: 'q1', reason: 'tool_call', metadata: { toolName: 'request_clarification', toolInput: { kind: 'CLARIFICATION', questions: [] } } };
     const native = { type: 'RUN_FINISHED', outcome: { state: 'interrupted', interrupts: [interrupt] } };

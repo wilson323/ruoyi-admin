@@ -1,3 +1,4 @@
+import { agentRunFailureText } from './timeline-model';
 /**
  * 时间线折叠纯函数：只由真实事件驱动，不补造步骤；文本增量合并；链接协议白名单；产物持久 ID 判定。
  */
@@ -360,7 +361,7 @@ describe('buildTimelineItems', () => {
     expect(items[2]).toMatchObject({ kind: 'run-finished', status: 'SUCCEEDED' });
     if (note.kind !== 'memory-note') throw new Error('kind 不是 memory-note');
     expect(note.retryable).toBe(true);
-    expect(note.text).toBe('本次记忆没有写入，系统会稍后自动补写');
+    expect(note.text).toBe('本次记忆没有写入');
     expect(note.text).toContain('记忆');
     expect(JSON.stringify(note)).not.toMatch(/TimeoutException|WRITE_FAILED/);
   });
@@ -387,4 +388,14 @@ describe('buildTimelineItems', () => {
     expect(noRetryable).toMatchObject({ kind: 'memory-note', retryable: false, text: '本次记忆没有写入' });
   });
 
+});
+
+describe('历史运行失败原因安全回读', () => {
+  it('已知原因与后端安全文案一致，未知码不泄漏内部细节', () => {
+    expect(agentRunFailureText('RUN_TIMEOUT')).toBe('运行超时，已终止');
+    expect(agentRunFailureText('MODEL_UNAVAILABLE')).toBe('所选模型当前不可用');
+    expect(agentRunFailureText('SQL_SECRET_INTERNAL')).toBe('智能体执行失败，请稍后重试');
+    expect(agentRunFailureText(null)).toBe('智能体执行失败，请稍后重试');
+    expect(agentRunFailureText('__proto__')).toBe('智能体执行失败，请稍后重试');
+  });
 });

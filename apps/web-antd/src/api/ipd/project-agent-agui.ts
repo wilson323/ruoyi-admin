@@ -8,7 +8,20 @@ export function projectAgentSessionOwner(): string | null {
   return useIpdAuthStore().identity?.person.id ?? null;
 }
 
-const EVENT_TYPES = new Set(['ARTIFACT', 'ERROR', 'RUN_FINISHED', 'RUN_STARTED', 'SOURCE', 'STEP', 'TEXT_DELTA', 'TOOL_CALL', 'TOOL_RESULT']);
+// 与持久化事件合同穷尽对齐，新增合同类型时编译检查提示补齐解析器。
+const EVENT_TYPE_CONTRACT: Record<AgentRunEvent['type'], true> = {
+  ARTIFACT: true,
+  ERROR: true,
+  MEMORY_RECEIPT: true,
+  RUN_FINISHED: true,
+  RUN_STARTED: true,
+  SOURCE: true,
+  STEP: true,
+  TEXT_DELTA: true,
+  TOOL_CALL: true,
+  TOOL_RESULT: true,
+};
+const EVENT_TYPES = new Set(Object.keys(EVENT_TYPE_CONTRACT));
 
 /** 兼容 CRLF、分片 UTF-8、多行 data；只在完整 CUSTOM 投影被消费后推进游标。 */
 export function createAgentAguiParser(): (chunk: string) => AgentRunEvent[] {

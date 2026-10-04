@@ -24,6 +24,22 @@ function ev(seq: number, type: AgentRunEvent['type'], payload: unknown = {}): Ag
 }
 
 describe('RunTimeline', () => {
+  it('renders failed memory receipts as a status note while preserving the successful answer', async () => {
+    const wrapper = mount(RunTimeline, { props: { hasRun: true, events: [
+      ev(1, 'TEXT_DELTA', { text: '回答已交付' }),
+      ev(2, 'MEMORY_RECEIPT', { status: 'WRITE_FAILED', retryable: true }),
+      ev(3, 'RUN_FINISHED', { status: 'SUCCEEDED' }),
+    ] } });
+    expect(wrapper.find('[data-testid="memory-receipt-note"]').text()).toBe('本次记忆没有写入');
+    expect(wrapper.find('[data-testid="memory-receipt-note"]').attributes('role')).toBe('status');
+    expect(wrapper.text()).toContain('回答已交付');
+    expect(wrapper.findAll('[data-kind="error"]')).toHaveLength(0);
+    expect(wrapper.text()).not.toContain('自动补写');
+    await wrapper.setProps({ events: [ev(1, 'MEMORY_RECEIPT', { status: 'WRITTEN', saved: 1 })] });
+    expect(wrapper.find('[data-testid="memory-receipt-note"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it('shows addressable server gaps and allows rechecking only while verification is waiting', async () => {
     const wrapper = mount(RunTimeline, { props: { hasRun: true, runId: '8', verifying: true,
       events: [ev(1, 'STEP', { kind: 'VERIFY_GAPS', checks: [

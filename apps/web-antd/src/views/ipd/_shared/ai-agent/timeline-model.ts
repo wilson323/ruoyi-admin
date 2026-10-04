@@ -400,13 +400,13 @@ export function buildTimelineItems(events: readonly AgentRunEvent[]): TimelineIt
       case 'MEMORY_RECEIPT': {
         // 长期记忆写入是回答交付之后的后台副作用，失败不改判本轮运行终态。
         if (pickText(payload, 'status') !== 'WRITE_FAILED') break;
-        // retryable 表示系统会稍后自动补写；缺失时只说没写入，不替系统承诺补写。
+        // retryable 只表示允许重试，不证明存在自动调度；页面不承诺自动补写。
         const retryable = payload.retryable === true;
         items.push({
           ...base,
           kind: 'memory-note',
           retryable,
-          text: retryable ? '本次记忆没有写入，系统会稍后自动补写' : '本次记忆没有写入',
+          text: '本次记忆没有写入',
         });
         break;
       }
@@ -467,4 +467,20 @@ export function intentFromEvents(events: readonly AgentRunEvent[]): AgentIntentV
  */
 export function intentStepMarks(_events: readonly AgentRunEvent[], count: number): IntentStepMark[] {
   return Array.from({ length: Math.max(0, count) }, () => '待核实');
+}
+
+/** 与后端 ProjectAgentErrorTexts 固定安全文案一致；历史详情没有 ERROR 事件时也能说明原因。 */
+export function agentRunFailureText(code: string | null | undefined): string {
+  const texts: Readonly<Record<string, string>> = {
+    SCOPE_REJECTED: '运行身份校验失败',
+    MODEL_UNAVAILABLE: '所选模型当前不可用',
+    KERNEL_ERROR: '智能体装配失败，请稍后重试',
+    STREAM_ERROR: '模型输出中断，请稍后重试',
+    RUN_TIMEOUT: '运行超时，已终止',
+    AGENT_BUSY: '智能体繁忙，请稍后重试',
+    ARTIFACT_PERSIST: '产物没有保存下来，请稍后重试',
+    COMPLETION_REJECTED: '没有取得可交付正文、检索依据不足或结论越权，产物未生成',
+  };
+  return code && Object.prototype.hasOwnProperty.call(texts, code)
+    ? texts[code]! : '智能体执行失败，请稍后重试';
 }

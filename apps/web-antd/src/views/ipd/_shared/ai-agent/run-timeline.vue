@@ -375,6 +375,9 @@ async function onReworkArtifact(artifactId: string): Promise<void> {
               :label="`产物${row.item.title ? `：${row.item.title}` : ''}`"
             />
           </template>
+          <template v-else-if="row.item.kind === 'memory-note'">
+            <span role="status" data-testid="memory-receipt-note">{{ row.item.text }}</span>
+          </template>
           <template v-else-if="row.item.kind === 'error'">
             <span class="item-error" role="alert">
               {{ row.item.message || '智能体返回错误' }}

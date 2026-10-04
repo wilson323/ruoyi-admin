@@ -172,6 +172,7 @@ describe('ProjectAgentPanel', () => {
     await wrapper.find('.run-history button').trigger('click');
     await flushPromises();
     expect(wrapper.text()).not.toContain('COMPLETION_REJECTED');
+    expect(wrapper.text()).toContain('没有取得可交付正文、检索依据不足或结论越权，产物未生成');
     expect(wrapper.find('[data-testid="panel-restart"]').text()).toBe('重新开始');
     await wrapper.find('[data-testid="panel-restart"]').trigger('click');
     expect(createProjectAgentRun).not.toHaveBeenCalled();
@@ -183,7 +184,7 @@ describe('ProjectAgentPanel', () => {
     const input = vi.mocked(createProjectAgentRun).mock.calls[0]![1];
     expect(input).toMatchObject({ message: '重新核对这次资料', actionCode: 'A-01' });
     expect(input.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
-    expect(input).not.toHaveProperty('previousRunId');
+    expect(input.previousRunId).toBe('run-1');
     expect(input).not.toHaveProperty('targetDocumentId');
     expect(input).not.toHaveProperty('baseVersionId');
     expect(failed.errorCode).toBe('COMPLETION_REJECTED');

@@ -37,6 +37,7 @@ import type { ClarificationChoice } from './clarification-choices';
 import { confirmedPlanMessage } from './plan-confirm';
 import { interruptTextResponse } from './agui-interrupt';
 import RunTimeline from './run-timeline.vue';
+import { agentRunFailureText } from './timeline-model';
 import { createIdempotencyKey, useProjectAgentRun } from './use-project-agent-run';
 import { useIpdAiWorkspace } from '../ai-workspace/use-ai-workspace';
 import { ipdErrorText } from '../ipd-error-text';
@@ -199,7 +200,7 @@ const messageBox = ref<{ focus: () => void } | null>(null);
 const selection = ref<AgentCapabilitySelection>(emptySelection());
 const message = ref('');
 let pendingKey: null | string = null;
-const reworkAssociation = ref<null | { previousRunId: string; targetDocumentId: string; baseVersionId: string }>(null);
+const reworkAssociation = ref<null | { previousRunId: string; targetDocumentId?: string; baseVersionId?: string }>(null);
 const reworkActionCode = ref<null | string>(null);
 watch(() => props.projectId, () => { reworkAssociation.value = null; reworkActionCode.value = null; });
 
@@ -408,10 +409,10 @@ function focusTaskInput(): void {
   messageBox.value?.focus();
 }
 
-/** 失败后的新尝试只准备当前输入框；不猜历史提问、不续跑或绑定旧文档链。 */
+/** 失败后的新尝试关联原运行并只准备当前输入框；不猜历史提问、不续跑或绑定旧文档链。 */
 function prepareNewAttempt(): void {
-  if (status.value !== 'FAILED' || active.value || submitting.value) return;
-  reworkAssociation.value = null;
+  if (status.value !== 'FAILED' || !runId.value || active.value || submitting.value) return;
+  reworkAssociation.value = { previousRunId: runId.value };
   reworkActionCode.value = detail.value?.actionCode?.trim() || null;
   pendingKey = null;
   selection.value = sanitizeSelection(capabilities.value, selection.value);
@@ -480,7 +481,7 @@ async function answerClarification(
 }
 
 /** 明确选择已定档产物后，仍走原 submitText/create 发送路径。 */
-async function reworkArtifact(association: { previousRunId: string; targetDocumentId: string; baseVersionId: string; comment: string }): Promise<void> {
+async function reworkArtifact(association: { previousRunId: string; targetDocumentId?: string; baseVersionId?: string; comment: string }): Promise<void> {
   if (active.value || submitting.value || !runActionCode.value) return;
   selection.value = applyEntryDefaults(capabilities.value, selection.value, runActionCode.value, []);
   reworkActionCode.value = runActionCode.value;
@@ -726,7 +727,7 @@ function onMessageKeydown(event: KeyboardEvent): void {
       </Teleport>
 
       <div v-if="status === 'FAILED'" class="panel-warn" data-testid="panel-new-attempt">
-        <p>本次运行未能生成产物。重新开始会创建新尝试，原运行仍保留；请在输入框说明这次任务后发送。</p>
+        <p>{{ agentRunFailureText(detail?.errorCode) }}。重新开始会创建关联的新尝试，原运行仍保留；请在输入框说明这次任务后发送。</p>
         <Button size="small" :disabled="submitting || active" data-testid="panel-restart" @click="prepareNewAttempt">
           重新开始
         </Button>
