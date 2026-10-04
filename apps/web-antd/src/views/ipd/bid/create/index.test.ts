@@ -10,7 +10,8 @@ import { IpdRequestError } from '../../../../api/ipd/auth';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import Create from './index.vue';
 
-const api = vi.hoisted(() => ({ createBidInvitationP231: vi.fn() }));
+const api = vi.hoisted(() => ({ createBidInvitationP231: vi.fn(), getPmDirectory: vi.fn() }));
+vi.mock('../../../../api/ipd/handover', () => ({ getPmDirectory: api.getPmDirectory }));
 vi.mock('../../../../api/ipd/bid', () => api);
 
 const routerMock = vi.hoisted(() => ({ push: vi.fn() }));
@@ -20,6 +21,7 @@ beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   setActivePinia(createPinia());
   api.createBidInvitationP231.mockReset();
+  api.getPmDirectory.mockReset().mockResolvedValue({ directory: [{ id: '9007199254740993', name: '研发负责人', personType: 'RD_PM', groupName: '研发组', level: 'L3' }, { id: '2', name: '市场负责人', personType: 'MARKET_PM' }], total: 2 });
   routerMock.push.mockReset();
 });
 
@@ -37,6 +39,11 @@ async function fillTextareas(wrapper: ReturnType<typeof mount>, idx: number, val
 }
 
 async function fillById(wrapper: ReturnType<typeof mount>, id: string, value: string): Promise<void> {
+  if (id === 'bid-target-person-id') {
+    await wrapper.findComponent(Select).vm.$emit('update:value', value);
+    await flushPromises();
+    return;
+  }
   const el = wrapper.find(`#${id}`);
   await el.setValue(value);
 }
@@ -85,7 +92,7 @@ describe('页20 发起招标 - 校验与提交（GAP-F2 校验型入口）', () 
     await fillTextareas(wrapper, 0, '超过四字的招标内容，包含客户问题、应用场景与核心功能');
     await findSubmit(wrapper).trigger('click');
     await flushPromises();
-    expect(wrapper.html()).toContain('定向邀请须填写受邀研发PM 的人员 ID（纯数字）');
+    expect(wrapper.html()).toContain('请选择人员目录中的研发负责人');
   });
 
   it('合法 ONE_TO_ONE 提交：走 p231 新入口并跳转；projectId 19 位雪花 string 逐字符无损（禁 Number 塌缩）', async () => {
@@ -192,5 +199,27 @@ describe('页20 发起招标 - 校验与提交（GAP-F2 校验型入口）', () 
     };
     const wrapper = await mountCreate();
     expect(wrapper.html()).toContain('仅市场PM、产品组长或超级管理员可发起招标');
+  });
+});
+
+describe('研发负责人目录', () => {
+  it('只允许目录内研发负责人，保持字符串 ID', async () => {
+    const wrapper = await mountCreate();
+    const select = wrapper.findComponent(Select);
+    expect(select.props('options')).toEqual([{ value: '9007199254740993', label: '研发负责人 · 研发组 · L3' }]);
+    await fillOneToOne(wrapper);
+    await select.vm.$emit('update:value', '2');
+    await findSubmit(wrapper).trigger('click');
+    await flushPromises();
+    expect(api.createBidInvitationP231).not.toHaveBeenCalled();
+  });
+  it('目录失败可见并可重新加载', async () => {
+    api.getPmDirectory.mockRejectedValueOnce(new Error('目录暂时不可用'));
+    const wrapper = await mountCreate();
+    expect(wrapper.text()).toContain('人员目录加载失败，请重试');
+    await wrapper.findAll('button').find((button) => button.text() === '重新加载人员')!.trigger('click');
+    await flushPromises();
+    expect(api.getPmDirectory).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).not.toContain('人员目录加载失败，请重试');
   });
 });

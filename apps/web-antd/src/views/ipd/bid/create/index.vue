@@ -123,21 +123,24 @@
 
         <Form.Item
           v-if="form.mode === 'ONE_TO_ONE'"
-          label="指定研发PM ID"
+          label="受邀研发负责人"
           required
           :validate-status="errors.targetPersonId ? 'error' : ''"
           :help="errors.targetPersonId"
         >
-          <Input
+          <Select
             id="bid-target-person-id"
             v-model:value="form.targetPersonId"
-            :maxlength="24"
-            placeholder="请输入受邀研发PM 的人员 ID（纯数字）"
-            :disabled="submitting"
+            :options="rdPersonOptions"
+            :loading="directoryLoading"
+            :disabled="submitting || directoryLoading"
+            show-search
+            option-filter-prop="label"
+            placeholder="请选择受邀研发负责人"
           />
-          <p class="text-muted-foreground mt-1 text-xs">
-            系统暂未提供研发PM 花名册查询，请向受邀研发PM 获取其人员 ID 后填入。
-          </p>
+          <p v-if="directoryError" class="text-red-500 mt-1 text-xs">{{ directoryError }}</p>
+          <Button v-if="directoryError" size="small" @click="loadDirectory">重新加载人员</Button>
+          <p v-else-if="!directoryLoading && !rdPersonOptions.length" class="text-muted-foreground mt-1 text-xs">当前没有可邀请的研发负责人。</p>
         </Form.Item>
 
         <Form.Item v-if="form.mode === 'PUBLIC'" label="应标等级门槛（选填）">
@@ -200,6 +203,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Radio, Select, message } from 'ant-design-vue';
+import { getPmDirectory, type PmDirectoryEntry } from '../../../../api/ipd/handover';
 import { createBidInvitationP231 } from '../../../../api/ipd/bid';
 import { draftBidInvitationDoc, type BidDraftView } from '../../../../api/ipd/bid-ai-suite';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
@@ -213,6 +217,25 @@ const Textarea = Input.TextArea;
 const canCreateBid = computed(() => ['MARKET_PM', 'GROUP_LEADER', 'SUPER_ADMIN'].includes(auth.identity?.person.personType ?? ''));
 
 const submitting = ref(false);
+const directory = ref<PmDirectoryEntry[]>([]);
+const directoryLoading = ref(false);
+const directoryError = ref('');
+const rdPersonOptions = computed(() => directory.value
+  .filter((person) => person.personType === 'RD_PM')
+  .map((person) => ({ value: person.id, label: `${person.name}${person.groupName ? ` · ${person.groupName}` : ''}${person.level ? ` · ${person.level}` : ''}` })));
+async function loadDirectory(): Promise<void> {
+  if (directoryLoading.value) return;
+  directoryLoading.value = true;
+  directoryError.value = '';
+  try {
+    directory.value = (await getPmDirectory()).directory;
+  } catch (cause) {
+    directory.value = [];
+    directoryError.value = ipdErrorText(cause, { domain: 'bid', fallback: '人员目录加载失败，请重试' });
+  } finally {
+    directoryLoading.value = false;
+  }
+}
 const submitError = ref('');
 
 /** AI-P2-2 #1：招标书起草（预填 → PM 确认 → 正式创建；草稿已登记版本链 v1 待审核）。 */
@@ -299,8 +322,8 @@ function validate(): boolean {
   const content = form.content.trim();
   if (content.length < 4) errors.content = '招标内容不少于 4 字';
   if (content.length > 4000) errors.content = '招标内容不超过 4000 字';
-  if (form.mode === 'ONE_TO_ONE' && !/^\d+$/.test(form.targetPersonId.trim())) {
-    errors.targetPersonId = '定向邀请须填写受邀研发PM 的人员 ID（纯数字）';
+  if (form.mode === 'ONE_TO_ONE' && !rdPersonOptions.value.some((person) => person.value === form.targetPersonId)) {
+    errors.targetPersonId = '请选择人员目录中的研发负责人';
   }
   if (!form.expireAt) {
     errors.expireAt = '请选择有效期截止时间';
@@ -350,5 +373,6 @@ async function submit(): Promise<void> {
 
 onMounted(() => {
   form.expireAt = defaultExpireAt();
+  void loadDirectory();
 });
 </script>
