@@ -2,7 +2,7 @@
 
 ## 推送铁律（必读 · 2026-10-03 owner 明令）
 
-**推送目标只有两个仓：`wilson323/ruoyi-ai`（后端）与 `wilson323/ruoyi-admin`（前端），其余一律视为"别人的仓"严禁触碰。分支名必须由 owner 逐次指定；AI 不得主动建议任何 git 推送命令（包括"给你命令自己跑"的形式），owner 说"自动推送"时也只报"本地有 N 笔未推"，命令等 owner 索要。**
+**推送目标只有两个仓：`wilson323/ruoyi-ai`（后端）与 `wilson323/ruoyi-admin`（前端），其余一律视为"别人的仓"严禁触碰。最终分支已由 owner 于 2026-10-06 固定：前端仓（ruoyi-ipd-web）为 `teardown/incentive-removal`，后端仓（ruoyi-ai）为 `baseline/pre-teardown`——后续所有工作与授权推送只落这两个分支及其同名远程分支，不新建分支、不切换分支、不向 `main` 或其他分支合并/变基作为"最终交付"；AI 不得自行挑选、推断任何其他推送分支。AI 不得主动建议任何 git 推送命令（包括"给你命令自己跑"的形式），owner 说"自动推送"时也只报"本地有 N 笔未推"，命令等 owner 索要。**
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
