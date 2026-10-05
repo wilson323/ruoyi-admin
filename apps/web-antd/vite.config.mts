@@ -103,6 +103,15 @@ export default defineConfig(async () => {
               path.startsWith('/api/v1') ? path : path.replace(/^\/api/, ''),
             target: 'http://127.0.0.1:16039',
             ws: true,
+            // 2026-10-06 E2E 测试修复：后端 cors.allowed-origins 默认空，浏览器
+            // Origin: http://127.0.0.1:15666 被原样转发 → Spring Security 判跨域 403
+            // （curl 实证：无 Origin 头 200、带 Origin 403；log.md:14959 已登记）。
+            // 代理层删 Origin 头后后端按同源处理，不动后端配置与进程。
+            configure: (proxy) => {
+              proxy.on('proxyReq', (proxyReq) => {
+                proxyReq.removeHeader('origin');
+              });
+            },
           },
           // 2026-09-11 修复：ipd-auth.logout 中平台会话 best-effort 退出调裸 /auth/logout
           // （vben 上游 SSO 端点约定，无 /api 前缀），vite 不代理该路径 → 浏览器 console

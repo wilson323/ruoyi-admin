@@ -6,8 +6,14 @@
  * （ORPHAN-A6 #40，R212 看板卡 8338f2fa，2026-09-25 接线；此前硬编码 8 项）；
  * 拉取失败/为空回退本地清单（REVENUE/CHANNEL_COUNT/NPS/SCENE_COUNT/BUG_COUNT/
  * COMPLAINT_COUNT/CERT_COUNT/COMPLETION_RATE，与后端 listSupportedTypes 同源口径）；
- * 按 projectId + kpiType 筛选已录入记录；
+ * 按项目（必选，接入查询参数）+ KPI 类型（前端过滤）展示已录入记录；
  * 顶部表单新增一条（项目下拉 + KPI 类型下拉 + 期间日期 + 原始值数字 + 备注）。
+ *
+ * 2026-10-06 E2E 修复（全量真浏览器测试发现，后端 GET /kpi/raw-records 的 projectId
+ * 实测必填，缺参必 400「缺少必需参数： projectId」，与 API 注释「可选」不符，以后端为准）：
+ * ① 首屏未选项目不再发请求（新增 idle 引导态）；
+ * ② 「按项目筛选」下拉接入查询参数（此前仅本地过滤，点刷新后仍无参 400）；
+ * ③ 顶部枚举文案改为中性描述（权威枚举由 /types 下发，非固定 8 项）。
  *
  * 权限：仅 GROUP_LEADER（产品组长）可见可写；超管可在审批链上看到本组数据但本页面限定组长；
  * 其他角色访问走 no-access.vue 占位（与 admin/org 同模式，五态齐全）。
@@ -48,7 +54,7 @@ import { listProjects, type Project } from '../../../api/ipd/project';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
 import { PENDING_TEXT } from '../_shared/format';
 
-type Phase = 'error' | 'loading' | 'ready';
+type Phase = 'error' | 'idle' | 'loading' | 'ready';
 
 const auth = useIpdAuthStore();
 const personType = computed(() => auth.identity?.person.personType ?? '');
@@ -136,7 +142,7 @@ const createRules = computed<Record<string, RuleObject[]>>(() => ({
 }));
 
 /** 列表 + 筛选。 */
-const phase = ref<Phase>('loading');
+const phase = ref<Phase>('idle');
 const offline = ref(false);
 const errorMsg = ref('');
 const rows = ref<RawKpiRecord[]>([]);
@@ -145,7 +151,6 @@ const filterKpiType = ref<undefined | string>(undefined);
 
 const visibleRows = computed(() => {
   return rows.value.filter((row) => {
-    if (filterProjectId.value && row.projectId !== filterProjectId.value) return false;
     if (filterKpiType.value && row.kpiType !== filterKpiType.value) return false;
     return true;
   });
@@ -211,11 +216,17 @@ function dateInputToIso(value: unknown): string {
 }
 
 async function load(): Promise<void> {
+  // 2026-10-06：后端 projectId 必填；未选项目不发请求，停留 idle 引导态
+  if (!filterProjectId.value) {
+    phase.value = 'idle';
+    rows.value = [];
+    return;
+  }
   phase.value = 'loading';
   offline.value = false;
   errorMsg.value = '';
   try {
-    rows.value = await listRawKpiRecords();
+    rows.value = await listRawKpiRecords({ projectId: filterProjectId.value });
     phase.value = 'ready';
   } catch (cause) {
     phase.value = 'error';
@@ -228,7 +239,7 @@ onMounted(() => {
   void loadProjects();
   // ORPHAN-A6 #40：types 权威枚举（组长可见下拉/表格消费；失败回退本地 8 项）
   if (isLeader.value) void loadRawTypes();
-  if (isLeader.value) void load();
+  // 首屏无项目选择，不自动拉列表（后端 projectId 必填）
 });
 
 async function submitCreate(): Promise<void> {
@@ -265,6 +276,8 @@ async function submitCreate(): Promise<void> {
 function resetFilters(): void {
   filterProjectId.value = undefined;
   filterKpiType.value = undefined;
+  rows.value = [];
+  phase.value = 'idle';
 }
 
 function reload(): void {
@@ -275,8 +288,8 @@ function reload(): void {
 <template>
   <div class="flex flex-col gap-4 p-4">
     <Alert
-      message="KPI 原始数据录入：8 项固定类型枚举（销售/渠道/NPS/场景/缺陷/投诉/认证/完成率），按项目+期间登记"
-      description="仅产品组长（GROUP_LEADER）可写；记录只可调取不可改写（与既有 KpiRecord 不可变语义一致）。接口为 GET/POST /api/v1/kpi/raw-records，拒绝与断网按真实结果展示。"
+      message="KPI 原始数据录入：KPI 类型由权威枚举端点下发（失败回退本地清单），按项目 + 期间登记"
+      description="仅产品组长（GROUP_LEADER）可写；记录只可调取不可改写（与既有 KpiRecord 不可变语义一致）。接口为 GET/POST /api/v1/kpi/raw-records，查询须选定项目；拒绝与断网按真实结果展示。"
       show-icon
       type="info"
     />
@@ -371,10 +384,12 @@ function reload(): void {
           <Select
             v-model:value="filterProjectId"
             :options="projectOptions"
+            :loading="projectLoading"
             allow-clear
-            class="min-w-[240px]"
-            placeholder="按项目筛选"
+            class="raw-filter-project min-w-[240px]"
+            placeholder="按项目筛选（接入查询参数）"
             show-search
+            @change="reload"
           />
           <Select
             v-model:value="filterKpiType"
@@ -384,11 +399,17 @@ function reload(): void {
             placeholder="按 KPI 类型筛选"
           />
           <Button @click="resetFilters">清空筛选</Button>
-          <Button @click="reload">刷新</Button>
+          <Button :disabled="!filterProjectId" @click="reload">查询已录入记录</Button>
         </Space>
       </Card>
 
-      <Card v-if="phase === 'loading'" class="text-center">
+      <Card v-if="phase === 'idle'" class="text-center">
+        <Empty
+          description="请先在下方选择项目后点「查询已录入记录」。后端查询要求项目必选（未选项目不发起请求，避免无效 400）。"
+        />
+      </Card>
+
+      <Card v-else-if="phase === 'loading'" class="text-center">
         <Spin tip="正在加载原始记录" />
       </Card>
 

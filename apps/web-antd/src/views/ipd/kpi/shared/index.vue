@@ -52,6 +52,7 @@ import {
   listSharedKpis,
 } from '../../../../api/ipd/kpi';
 import { IpdRequestError } from '../../../../api/ipd/auth';
+import { listProjects, type Project } from '../../../../api/ipd/project';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { formatDateTime, PENDING_TEXT } from '../../_shared/format';
 import {
@@ -79,6 +80,25 @@ const filters = reactive({
   period: defaultPeriod(),
   projectId: typeof route.query.projectId === 'string' ? String(route.query.projectId) : '',
 });
+
+/** 2026-10-06 E2E 修复：项目下拉（value=后端数字 ID string），消除手输业务编号必 400 的契约陷阱。 */
+const projects = ref<Project[]>([]);
+const projectLoading = ref(false);
+async function loadProjects(): Promise<void> {
+  if (projects.value.length) return;
+  projectLoading.value = true;
+  try {
+    projects.value = await listProjects();
+  } finally {
+    projectLoading.value = false;
+  }
+}
+const projectOptions = computed(() =>
+  projects.value.map((p) => ({
+    label: p.name ? `${p.name}（${p.code ?? '#' + p.id}）` : `#${p.id}`,
+    value: p.id,
+  })),
+);
 
 const recordsData = ref<SharedKpiRecord[]>([]);
 
@@ -205,6 +225,7 @@ async function load(): Promise<void> {
 }
 
 onMounted(() => {
+  void loadProjects();
   // 若 URL 带 projectId + period 自动加载；否则等待用户填写。
   if (canQuery.value) void load();
 });
@@ -292,16 +313,19 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
     <Card title="查询条件" class="mb-4">
       <div class="flex flex-wrap items-end gap-3">
         <div>
-          <div class="mb-1 text-xs text-gray-500">项目编号</div>
-          <!-- E2E-A：禁 InputNumber（number 化致 19 位雪花截断）——string 原样输入/透传 -->
-          <input
-            id="kpi-shared-project-id"
-            v-model="filters.projectId"
-            name="kpi_shared_project_id"
-            aria-label="项目编号"
-            placeholder="如 1001，19 位雪花 ID 原样粘贴"
-            class="ipd-input"
-            style="width: 200px"
+          <div class="mb-1 text-xs text-gray-500">项目（必选）</div>
+          <!-- 2026-10-06 E2E 修复：手输业务编号（PRJ-xxx）必 400「参数类型错误」——
+               页面上无处可意 19 位数字 ID，用户照页面文字输入必错。换成项目下拉（value=后端数字 ID
+               string，避开 InputNumber 的 19 位雪花截断），与 raw-records 页同模式。 -->
+          <Select
+            v-model:value="filters.projectId"
+            :loading="projectLoading"
+            :options="projectOptions"
+            allow-clear
+            aria-label="项目"
+            class="min-w-[280px]"
+            placeholder="选择项目（按名称/编号搜索）"
+            show-search
           />
         </div>
         <div>
@@ -383,6 +407,7 @@ const showEmpty = computed(() => loaded.value && !loadingRecords.value && !recor
           id="kpi-confirm-status-filter"
           v-model:value="confirmStatusFilter"
           :options="confirmStatusOptions"
+          class="kpi-confirm-status-filter"
           style="width: 140px"
           @change="loadConfirms"
         />

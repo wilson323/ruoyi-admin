@@ -236,6 +236,16 @@ const ipdLayoutRoute: RouteRecordRaw = {
       name: 'IpdChanges',
       path: 'changes',
     },
+    {
+      // 2026-10-06 E2E 补路由（全量真浏览器测试 + 复核定性）：后端 GET /requirement-changes/{id}
+      // 返 200 有数据，但 /ipd/changes/{id} 前端 404（路由表无此形态）。详情数据完全由 changeId
+      // 拉取（组件对 projectId 参数容错，缺失仅影响面包屑展示），与 /ipd/requirements/:id
+      // （R215-E2C 先例）同模式的列表下钻别名。
+      component: () => import('#/views/ipd/project/change-detail/index.vue'),
+      meta: { activePath: '/ipd/changes', hideInMenu: true, title: '变更单详情' },
+      name: 'IpdChangeDetailAlias',
+      path: 'changes/:changeId',
+    },
     // ⑦ 资料库（原型 /documents，一级入口；2026-09-06 owner 指令：IPD 资料库基于知识库管理后端对齐，
     // 与 AI 平台「知识管理」同一份数据（knowledge_info/attach/fragment），路由级复用 knowledge 现成页面。
     // 「文档管理」详情跳 /knowledge/info/detail/:id（平台动态菜单，届时切 basic 壳，左下角可回切）；

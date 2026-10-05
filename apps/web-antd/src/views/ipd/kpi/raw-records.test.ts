@@ -8,7 +8,7 @@
  * 端点真值：GET/POST /api/v1/kpi/raw-records（R149 后端待交付）。
  * Mock 形态：依 .vue 同模块的 ipdGet/ipdPost → authenticatedRequest → fetch 链。
  */
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -83,12 +83,39 @@ function stubApi(opts: { listReject?: boolean; postReject?: boolean; skipProject
   return calls;
 }
 
+/**
+ * 2026-10-06 E2E 修复配套：后端 GET /kpi/raw-records 的 projectId 实测必填，
+ * 页面新契约为「选项目后才发请求」（首屏 idle 不拉）。用例统一走
+ * 选项目 → 点「查询已录入记录」的真实用户路径（stub 项目 id=PRJ-1）。
+ * 注意：不能 emit 'change'（ant 内部监听器把载荷当事件对象读 composing 炸）；
+ * emit 'update:value' 后需刷一层微任务 v-model 才落地。
+ */
+async function selectProjectAndQuery(wrapper: VueWrapper) {
+  const filterSelect = wrapper
+    .findAllComponents({ name: 'ASelect' })
+    .find((c) => (c.attributes('class') ?? '').includes('raw-filter-project')) as VueWrapper | undefined;
+  expect(filterSelect).toBeTruthy();
+  filterSelect!.vm.$emit('update:value', 'PRJ-1');
+  await Promise.resolve();
+  const btn = wrapper.findAll('button').find((b) => b.text().includes('查询已录入记录'));
+  expect(btn).toBeTruthy();
+  await btn!.trigger('click');
+}
+
 describe('KPI 原始数据录入页 (R149 录入/展示)', () => {
-  it('表格骨架：首屏自动 GET /kpi/raw-records 并渲染 1 行 + Alert 说明', async () => {
-    stubApi();
+  it('表格骨架：选项目后 GET /kpi/raw-records?projectId=... 渲染 1 行 + Alert 说明（首屏 idle 不发请求）', async () => {
+    const calls = stubApi();
     const wrapper = mount(RawRecords);
+    // 新契约：首屏 idle 态不调列表接口（后端 projectId 必填）
+    await new Promise((r) => setTimeout(r, 30));
+    expect(calls.filter((c) => c.url.includes('/kpi/raw-records') && !c.url.includes('/types')).length).toBe(0);
+    expect(wrapper.text()).toContain('请先在下方选择项目');
+    await selectProjectAndQuery(wrapper);
     // 等真实记录渲染（表格列展示 period=2026-08 + rawValue=1280.5）
     await vi.waitFor(() => expect(wrapper.text()).toContain('1280.5'));
+    // 查询参数携带 projectId（E2E 修复核心断言）
+    const listCall = calls.find((c) => c.url.includes('/kpi/raw-records') && c.url.includes('projectId'));
+    expect(listCall).toBeTruthy();
     const text = wrapper.text();
     // Alert 顶部说明
     expect(text).toContain('KPI 原始数据录入');
@@ -112,6 +139,7 @@ describe('KPI 原始数据录入页 (R149 录入/展示)', () => {
   it('表单校验：未填 kpiType/rawValue 时点提交触发必填校验', async () => {
     stubApi();
     const wrapper = mount(RawRecords);
+    await selectProjectAndQuery(wrapper);
     await vi.waitFor(() => expect(wrapper.text()).toContain('1280.5'));
     const submit = wrapper.findAll('button').find((b) => b.text().includes('提交录入'));
     expect(submit).toBeTruthy();
@@ -129,6 +157,7 @@ describe('KPI 原始数据录入页 (R149 录入/展示)', () => {
   it('POST 提交成功：表单填写后调 POST /kpi/raw-records 并刷新列表', async () => {
     const calls = stubApi();
     const wrapper = mount(RawRecords);
+    await selectProjectAndQuery(wrapper);
     await vi.waitFor(() => expect(wrapper.text()).toContain('1280.5'));
     const submit = wrapper.findAll('button').find((b) => b.text().includes('提交录入'));
     expect(submit).toBeTruthy();
@@ -144,6 +173,7 @@ describe('KPI 原始数据录入页 (R149 录入/展示)', () => {
   it('POST 失败（后端拒绝码）：mock 40005 拒绝响应，mount 不崩', async () => {
     stubApi({ postReject: true });
     const wrapper = mount(RawRecords);
+    await selectProjectAndQuery(wrapper);
     await vi.waitFor(() => expect(wrapper.text()).toContain('1280.5'));
     // 验证后端拒绝响应下，组件仍能渲染（强制 catch 路径可被触发时不会崩溃挂件）
     const submits = wrapper.findAll('button').filter((b) => b.text().includes('提交录入'));
@@ -179,6 +209,7 @@ describe('KPI 原始数据录入页（ORPHAN-A6：raw-records/types 权威枚举
   it('组长 mount 即拉取 GET /kpi/raw-records/types（权威枚举数据源）', async () => {
     const calls = stubA6({ types: ['REVENUE', 'NPS'] });
     const wrapper = mount(RawRecords);
+    await selectProjectAndQuery(wrapper);
     await vi.waitFor(() => expect(wrapper.text()).toContain('1280.5'));
     expect(calls.some((c) => c.url.includes('/kpi/raw-records/types'))).toBe(true);
     wrapper.unmount();
@@ -190,6 +221,7 @@ describe('KPI 原始数据录入页（ORPHAN-A6：raw-records/types 权威枚举
       rows: [{ ...rawRows[0]!, id: 'RK-X', kpiType: 'NEW_TYPE_X', rawValue: 66.6 }],
     });
     const wrapper = mount(RawRecords);
+    await selectProjectAndQuery(wrapper);
     // 未知类型不在本地字典 → 回显 code 本身（权威枚举生效的直接视图证据）
     await vi.waitFor(() => expect(wrapper.text()).toContain('NEW_TYPE_X'));
     wrapper.unmount();
@@ -198,6 +230,7 @@ describe('KPI 原始数据录入页（ORPHAN-A6：raw-records/types 权威枚举
   it('types 拉取失败：回退本地 8 项口径，页面不崩（REVENUE 行仍显示本地中文 label）', async () => {
     stubA6({ typesReject: true });
     const wrapper = mount(RawRecords);
+    await selectProjectAndQuery(wrapper);
     await vi.waitFor(() => expect(wrapper.text()).toContain('销售收入（万元）'));
     expect(wrapper.text()).toContain('1280.5');
     wrapper.unmount();

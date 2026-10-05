@@ -74,9 +74,31 @@ const myTaskColumns = [
     key: 'targetType',
   },
   { title: '被评人', dataIndex: 'personName', key: 'personName' },
+  { title: '项目 ID（查询用）', dataIndex: 'projectId', key: 'projectId' },
+  { title: '人员 ID（查询用）', dataIndex: 'personId', key: 'personId' },
   { title: '截止时间', dataIndex: 'dueAt', key: 'dueAt' },
   { title: '状态', dataIndex: 'status', key: 'status' },
+  { title: '操作', key: 'action' },
 ];
+
+/** 2026-10-06 E2E 修复：后端只收数字 projectId/personId，页面却只展示业务编码/登录名，
+ * 照页面文字手输必 400。任务行加「查询此任务」一键回填真实数字 ID；
+ * 同时补两列 ID 参照 + dueAt 毫秒值格式化（原样显示 1777651200000 不可读）。 */
+function formatDueAt(value: null | number | string): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'number') {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false });
+  }
+  return String(value);
+}
+
+function applyTask(record: Record<string, any>): void {
+  const task = record as MyScoreTask;
+  projectId.value = String(task.projectId ?? '');
+  personId.value = String(task.personId ?? '');
+  void load();
+}
 
 async function loadMyTasks(): Promise<void> {
   if (myTasksLoading.value) return;
@@ -107,12 +129,12 @@ onMounted(loadMyTasks);
     <Card class="mb-4" title="按项目 + 人员查询（双 PM 各自独立评分）">
       <div class="flex flex-wrap items-end gap-3">
         <div>
-          <div class="mb-1 text-xs text-gray-500">项目编号（必填）</div>
-          <Input v-model:value="projectId" placeholder="请输入项目编号" style="width: 200px" />
+          <div class="mb-1 text-xs text-gray-500">项目编号（必填，数字 ID；可从下方任务表一键回填）</div>
+          <Input v-model:value="projectId" placeholder="数字项目 ID，如 9150001" style="width: 200px" />
         </div>
         <div>
-          <div class="mb-1 text-xs text-gray-500">人员编号（必填，被评 PM）</div>
-          <Input v-model:value="personId" placeholder="请输入被评 PM 人员编号" style="width: 200px" />
+          <div class="mb-1 text-xs text-gray-500">人员编号（必填，被评 PM 数字 ID；可从下方任务表一键回填）</div>
+          <Input v-model:value="personId" placeholder="数字人员 ID，如 900103" style="width: 200px" />
         </div>
         <Button type="primary" :loading="loading" :disabled="!projectId.trim() || !personId.trim()" @click="load">
           查询评分
@@ -169,8 +191,17 @@ onMounted(loadMyTasks);
           </template>
           <template v-else-if="column.key === 'dueAt'">
             <span :class="record.overdue ? 'text-red-500 font-medium' : ''">
-              {{ record.dueAt ?? '—' }}{{ record.overdue ? '（已逾期）' : '' }}
+              {{ formatDueAt(record.dueAt) }}{{ record.overdue ? '（已逾期）' : '' }}
             </span>
+          </template>
+          <template v-else-if="column.key === 'projectId'">
+            <span class="tabular-nums">{{ record.projectId ?? '—' }}</span>
+          </template>
+          <template v-else-if="column.key === 'personId'">
+            <span class="tabular-nums">{{ record.personId ?? '—' }}</span>
+          </template>
+          <template v-else-if="column.key === 'action'">
+            <Button size="small" type="link" @click="applyTask(record)">查询此任务</Button>
           </template>
           <template v-else-if="column.key === 'status'">
             <Tag color="orange">{{ record.status ?? '—' }}</Tag>

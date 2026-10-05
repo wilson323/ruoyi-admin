@@ -4,7 +4,7 @@
 // 2026-10-03 owner 裁决移除「回款台账 + 奖金池 + 业绩窗口」，原 /api/v1/bonus-pool/list
 // mock 与「关联奖金池」用例同批摘除。
 
-import { mount } from '@vue/test-utils';
+import { mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -21,6 +21,11 @@ const kpiApi = vi.hoisted(() => ({
   confirmSharedKpi: vi.fn(),
 }));
 vi.mock('../../../../api/ipd/kpi', () => kpiApi);
+
+// 2026-10-06 E2E 修复配套：查询条件的项目手输 Input 换成了项目下拉 Select（组件
+// onMounted 调 listProjects），mock 掉避免真实 fetch（ECONNREFUSED 噪音/unhandled）。
+const projectApi = vi.hoisted(() => ({ listProjects: vi.fn() }));
+vi.mock('../../../../api/ipd/project', () => projectApi);
 
 const routerMock = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 const routeState = vi.hoisted(() => ({ params: {} as Record<string, unknown>, query: {} as Record<string, string> }));
@@ -47,6 +52,8 @@ beforeEach(() => {
   kpiApi.listSharedConfirms.mockReset();
   kpiApi.getSharedDeadlineConfig.mockReset();
   kpiApi.confirmSharedKpi.mockReset();
+  projectApi.listProjects.mockReset();
+  projectApi.listProjects.mockResolvedValue([]);
   // ORPHAN-A7 默认值：确认行空 + 截止配置 fixture（既有用例不感知新卡数据）
   kpiApi.listSharedConfirms.mockResolvedValue([]);
   kpiApi.getSharedDeadlineConfig.mockResolvedValue({
@@ -252,10 +259,20 @@ describe('页30 双组长确认 + 截止配置（ORPHAN-A7）', () => {
     const wrapper = mount(SharedKpi);
     await vi.waitFor(() => expect(kpiApi.listSharedConfirms).toHaveBeenCalled());
 
-    // 状态筛选 Select（extra 位置）emit change → loadConfirms 透传 OVERDUE
-    const statusSelect = wrapper.findComponent({ name: 'ASelect' });
+    // 状态筛选 Select（extra 位置，按根 DOM class 精确定位——查询区新增项目下拉后
+    // findComponent({name:'ASelect'}) 首个命中的不再是它；id 会下传内部 input 定位不到外层）。
+    // emit 'update:value' 更新 v-model 后，再点「查询」按钮走 load() → loadConfirms（status 从状态读）。
+    const statusSelect = wrapper
+      .findAllComponents({ name: 'ASelect' })
+      .find((c) => (c.attributes('class') ?? '').includes('kpi-confirm-status-filter')) as VueWrapper;
+    expect(statusSelect).toBeTruthy();
     statusSelect.vm.$emit('update:value', 'OVERDUE');
-    statusSelect.vm.$emit('change', 'OVERDUE');
+    // 刷新一层微任务：ant Select 的 v-model 更新链在微任务队列里落地，
+    // 直接同步触发「查询」会读到旧值（3 次复现验证）。
+    await Promise.resolve();
+    const queryBtn = wrapper.findAll('button').find((b) => b.text().replace(/\s/g, '').includes('查询'));
+    expect(queryBtn).toBeTruthy();
+    await queryBtn!.trigger('click');
     await vi.waitFor(() => {
       expect(kpiApi.listSharedConfirms).toHaveBeenLastCalledWith('1001', '2026-09', 'OVERDUE');
     });
