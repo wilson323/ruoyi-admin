@@ -74,3 +74,4 @@ __pycache__/
 .harness/runs/
 
 .harness/evolve/
+.codex/
