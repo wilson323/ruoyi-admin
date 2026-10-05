@@ -96,9 +96,17 @@ export interface AiDocumentRejectInput {
   comment: string;
 }
 
-/** 字段级 diff 单条（P4-2.3 AiDocumentDiffResp.FieldDiff）。 */
+/**
+ * 字段级 diff 单条（P4-2.3 GET /ai-documents/{id}/diff 归一化后的行）。
+ *
+ * 注意：`changeType` 是前端推导的，**后端 FieldDiff 没有这个字段**——后端只有
+ * `field / fromValue / toValue / fromSha256 / toSha256`（AiDocumentService.FieldDiff）。
+ * 后端 `title`/`content` 恒非空（`createGenerated` 与两条 revise 路径均强制），
+ * 因此 `added` / `removed` 目前不可达，保留作前向兼容；`unchanged` 已删除——
+ * 差异列表里不列相等行，相等行在归一化阶段直接丢弃。
+ */
 export interface AiDocumentDiffField {
-  changeType: 'added' | 'modified' | 'removed' | 'unchanged';
+  changeType: 'added' | 'modified' | 'removed';
   field: string;
   from: null | string;
   to: null | string;
@@ -178,7 +186,7 @@ export function parseAiDocument(data: unknown): AiDocument {
 }
 
 function isChangeType(value: unknown): value is AiDocumentDiffField['changeType'] {
-  return value === 'added' || value === 'modified' || value === 'removed' || value === 'unchanged';
+  return value === 'added' || value === 'modified' || value === 'removed';
 }
 
 function textOrNull(value: unknown): null | string {
@@ -202,10 +210,11 @@ function toDiffField(value: unknown): AiDocumentDiffField | null {
   if (!('fromValue' in record) && !('toValue' in record)) return null;
   const from = textOrNull(record.fromValue);
   const to = textOrNull(record.toValue);
-  let changeType: AiDocumentDiffField['changeType'] = 'modified';
-  if (from == null && to != null) changeType = 'added';
-  else if (from != null && to == null) changeType = 'removed';
-  else if (from === to) changeType = 'unchanged';
+  // 相等行不是差异：后端只产出不相等的字段（AiDocumentService#diff 的 safeEq 判据），
+  // 这里防御性丢弃，避免旧契约的「单条 unchanged」形态混进差异列表。
+  if (from === to) return null;
+  const changeType: AiDocumentDiffField['changeType'] =
+    from == null ? 'added' : to == null ? 'removed' : 'modified';
   return { changeType, field: record.field, from, to };
 }
 
@@ -345,18 +354,21 @@ export async function getAiDocumentDiff(documentId: string, fromVersionId: strin
     ? (data as Record<string, unknown>)
     : null;
   if (!record) throw new IpdRequestError('Diff 响应数据格式异常');
-  const rows = Array.isArray(record.differences)
-    ? record.differences
-    : Array.isArray(record.fields)
-      ? record.fields
-      : null;
-  if (!rows) throw new IpdRequestError('Diff 响应缺少差异列表');
-  const fields = rows.map(toDiffField).filter((field): field is AiDocumentDiffField => field !== null);
-  return {
-    fields,
-    fromVersionId: typeof record.fromVersionId === 'string' ? record.fromVersionId : fromVersionId,
-    toVersionId: typeof record.toVersionId === 'string' ? record.toVersionId : toVersionId,
-  };
+  // 只认后端真实键名 differences。原实现还有一个 fields 兜底分支，而 fields 是
+  // 归一化后的前端类型、后端从不返回——兜底会让契约变更静默通过，故删除。
+  if (!Array.isArray(record.differences)) throw new IpdRequestError('Diff 响应缺少差异列表');
+  const fields = record.differences
+    .map(toDiffField)
+    .filter((field): field is AiDocumentDiffField => field !== null);
+  // 防错配：后端回传的版本 ID 必须与本次请求一致，否则展示的就是另一对版本的对照。
+  // 后端 Long 经 @Primary ObjectMapper 恒序列化为字符串，String() 兜住数字形态。
+  if (record.fromVersionId != null && String(record.fromVersionId) !== fromVersionId) {
+    throw new IpdRequestError('Diff 响应版本与请求不一致（from）');
+  }
+  if (record.toVersionId != null && String(record.toVersionId) !== toVersionId) {
+    throw new IpdRequestError('Diff 响应版本与请求不一致（to）');
+  }
+  return { fields, fromVersionId, toVersionId };
 }
 
 /**

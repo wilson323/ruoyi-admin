@@ -268,6 +268,11 @@ describe('P4-2.3 reject Modal：comment 必填 + 双层校验', () => {
 });
 
 describe('P4-2.3 diff 视图：字段级 diff 按钮 + Drawer 渲染', () => {
+  // 后端 DiffReport 的线上形态是 differences + fromValue/toValue；content 与 contentSha256
+  // 两行的值是 64 位十六进制正文指纹——指纹不得出现在用户可见文本里（owner 2026-10-05 拍板）。
+  const HASH_A = 'a'.repeat(64);
+  const HASH_B = 'b'.repeat(64);
+
   it('chain 长度 < 2 时不渲染「与上一版对比」按钮', async () => {
     const { wrapper } = await mountWithChain([
       docFixture({ id: '1', versionNo: 1, status: 'GENERATED' }),
@@ -286,14 +291,20 @@ describe('P4-2.3 diff 视图：字段级 diff 按钮 + Drawer 渲染', () => {
       (callIndex, _target) => {
         // callIndex 0/1 = projects/versions；>= 2 = diff 调用
         if (callIndex >= 2) {
+          // 真实后端线上形态（AiDocumentService.DiffReport）。后端只会产出
+          // title / content / contentSha256 三种字段名——docType 永不出现（原 mock 里的
+          // docType 行是幻影行，已删）。且 title/content 恒非空（createGenerated 与两条
+          // revise 路径均强制），故真实数据里不可能出现 added / removed / unchanged 行。
           return {
-            fields: [
-              { field: 'title', from: 'PRD 初稿', to: 'PRD v2', changeType: 'modified' },
-              { field: 'content', from: '正文', to: '新版正文', changeType: 'modified' },
-              { field: 'docType', from: null, to: 'PRD', changeType: 'added' },
-            ],
             fromVersionId: '1',
+            fromVersionNo: 1,
             toVersionId: '2',
+            toVersionNo: 2,
+            differences: [
+              { field: 'title', fromValue: 'PRD 初稿', toValue: 'PRD v2', fromSha256: null, toSha256: null },
+              { field: 'content', fromValue: '正文', toValue: '新版正文', fromSha256: HASH_A, toSha256: HASH_B },
+              { field: 'contentSha256', fromValue: HASH_A, toValue: HASH_B, fromSha256: null, toSha256: null },
+            ],
           };
         }
         return null;
@@ -307,11 +318,21 @@ describe('P4-2.3 diff 视图：字段级 diff 按钮 + Drawer 渲染', () => {
       const drawer = document.body.querySelector('.ant-drawer');
       expect(drawer, 'diff Drawer 必须渲染').toBeTruthy();
       const drawerText = drawer?.textContent ?? '';
+      // 真实字段名（后端只产出 title / content / contentSha256 三种）
       expect(drawerText).toContain('title');
       expect(drawerText).toContain('content');
-      expect(drawerText).toContain('docType');
+      // 幻影行已删：后端 diff 永不产出 docType，它不该出现在抽屉里
+      expect(drawerText).not.toContain('docType');
+      // 版本号标题 + 归一化后的取值对照
       expect(drawerText).toContain('v1');
       expect(drawerText).toContain('v2');
+      expect(drawerText).toContain('PRD 初稿');
+      expect(drawerText).toContain('新版正文');
+      // 正文指纹（64 位十六进制）不得进入用户可见文本（owner 2026-10-05 拍板）
+      expect(drawerText).not.toContain(HASH_A);
+      expect(drawerText).not.toContain(HASH_B);
+      // 颜色绑定：真实可达的只有「变更」= 琥珀色（added/removed 后端不可达）
+      expect(drawer?.innerHTML ?? '').toContain('text-amber-700');
     });
     wrapper.unmount();
   });

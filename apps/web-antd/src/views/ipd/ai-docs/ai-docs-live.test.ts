@@ -374,7 +374,8 @@ describe.skipIf(!live)('R6 AI 文档版本链端到端真跑（login → generat
 
   it('步骤 6：diff GET /api/v1/ai-documents/:id/diff?from=&to= → 返回字段级 diff 结构', async () => {
     expect(documentId.length).toBeGreaterThan(0);
-    // 无可用 v2 时取 from=to=同一 v1，期望后端空字段列表或单条 unchanged，不抛错。
+    // 无可用 v2 时取 from=to=同一 v1：三字段全等 ⇒ 后端返回空差异列表（不是「单条 unchanged」——
+    // 后端 FieldDiff 没有 changeType 字段，也不产出相等行；见 AiDocumentService#diff 的 safeEq 判据）。
     const from = primaryVersionId;
     const to = rejectedVersionId.length > 0 ? rejectedVersionId : primaryVersionId;
     const response = await fetch(
@@ -391,7 +392,9 @@ describe.skipIf(!live)('R6 AI 文档版本链端到端真跑（login → generat
       const data = payload.data as Record<string, unknown>;
       expect(typeof data.fromVersionId).toBe('string');
       expect(typeof data.toVersionId).toBe('string');
-      expect(Array.isArray(data.fields)).toBe(true);
+      // 本步是裸 fetch，拿到的是后端原始返回，键名必须是 differences；
+      // fields 是 getAiDocumentDiff 归一化后的前端类型（见 api/ipd/ai-document.ts）。
+      expect(Array.isArray(data.differences)).toBe(true);
     } else {
       // 400 出现在 versionId 同源或后端拒绝重复 from/to 时，记录但不阻塞。
       expect(typeof payload.code).toBe('number');

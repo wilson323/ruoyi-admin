@@ -46,14 +46,23 @@ const docFixture = (overrides: Record<string, unknown> = {}): Record<string, unk
   ...overrides,
 });
 
+/** 正文指纹样本：后端 DiffReport 的 content / contentSha256 行会带 64 位十六进制。 */
+const HASH_A = 'a'.repeat(64);
+const HASH_B = 'b'.repeat(64);
+
 const diffFixture = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
-  fields: [
-    { field: 'title', from: 'PRD 初稿', to: 'PRD v2', changeType: 'modified' },
-    { field: 'content', from: '正文', to: '新版正文', changeType: 'modified' },
-    { field: 'docType', from: null, to: 'PRD', changeType: 'added' },
+  // 真实后端线上形态（AiDocumentService.DiffReport）：differences + fromValue/toValue。
+  // 后端只产出 title / content / contentSha256 三种字段名，且 title/content 恒非空
+  // （createGenerated 与两条 revise 路径均强制）⇒ 真实数据只可能出现 modified 行。
+  differences: [
+    { field: 'title', fromValue: 'PRD 初稿', toValue: 'PRD v2', fromSha256: null, toSha256: null },
+    { field: 'content', fromValue: '正文', toValue: '新版正文', fromSha256: HASH_A, toSha256: HASH_B },
+    { field: 'contentSha256', fromValue: HASH_A, toValue: HASH_B, fromSha256: null, toSha256: null },
   ],
   fromVersionId: '9007199254740993',
+  fromVersionNo: 1,
   toVersionId: '9007199254740994',
+  toVersionNo: 2,
   ...overrides,
 });
 
@@ -274,18 +283,25 @@ describe('AI 文档版本链接口', () => {
     await expect(getAiDocumentHistory('1')).rejects.toThrow(IpdRequestError);
   });
 
-  it('diff 走 GET /ai-documents/{id}/diff?from=&to=，解析 fields + changeType 分类', async () => {
+  it('diff 走 GET /ai-documents/{id}/diff?from=&to=，按真实 differences 形态解析', async () => {
     const fetcher = vi.fn().mockImplementation(() => Promise.resolve(response(diffFixture())));
     vi.stubGlobal('fetch', fetcher);
     const diff = await getAiDocumentDiff('1', '9007199254740993', '9007199254740994');
     expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/ai-documents/1/diff?from=9007199254740993&to=9007199254740994');
     expect(diff.fromVersionId).toBe('9007199254740993');
     expect(diff.toVersionId).toBe('9007199254740994');
-    expect(diff.fields).toHaveLength(3);
-    const added = diff.fields.find((field) => field.changeType === 'added');
-    expect(added?.field).toBe('docType');
-    expect(added?.from).toBeNull();
-    expect(added?.to).toBe('PRD');
+    expect(diff.fields).toEqual([
+      { changeType: 'modified', field: 'title', from: 'PRD 初稿', to: 'PRD v2' },
+      { changeType: 'modified', field: 'content', from: '正文', to: '新版正文' },
+      { changeType: 'modified', field: 'contentSha256', from: HASH_A, to: HASH_B },
+    ]);
+  });
+
+  it('diff 后端回传版本与请求不一致直接抛错，不展示另一对版本的对照', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() =>
+      Promise.resolve(response({ differences: [], fromVersionId: '999', toVersionId: '2' })),
+    ));
+    await expect(getAiDocumentDiff('1', '1', '2')).rejects.toThrow(IpdRequestError);
   });
 
   it('diff 非纯数字版本 ID 直接拒，不发请求', async () => {
@@ -324,12 +340,14 @@ describe('AI 文档版本链接口', () => {
     await expect(listAiDocumentsByProject(200)).rejects.toThrow(IpdRequestError);
   });
 
-  it('diff 响应 fields 含非法 changeType 静默剔除，不抛错', async () => {
+  it('diff 非法差异行（空字段名 / 缺 field / 值相等 / 非对象）静默剔除，不抛错', async () => {
     const fetcher = vi.fn().mockImplementation(() => Promise.resolve(response({
-      fields: [
-        { field: 'title', from: 'a', to: 'b', changeType: 'modified' },
-        { field: 'bad', from: 'x', to: 'y', changeType: 'unknown' },
-        { field: 'drop', from: 123, to: 'y', changeType: 'modified' },
+      differences: [
+        { field: 'title', fromValue: 'a', toValue: 'b' },
+        { field: '', fromValue: 'x', toValue: 'y' },
+        { fromValue: 'x', toValue: 'y' },
+        // 值相等不是差异（后端 safeEq 判据下不会产出），归一化阶段直接丢弃
+        { field: 'same', fromValue: 'z', toValue: 'z' },
         'not-an-object',
       ],
       fromVersionId: '1',
@@ -337,8 +355,7 @@ describe('AI 文档版本链接口', () => {
     })));
     vi.stubGlobal('fetch', fetcher);
     const diff = await getAiDocumentDiff('1', '1', '2');
-    expect(diff.fields).toHaveLength(1);
-    expect(diff.fields[0]?.field).toBe('title');
+    expect(diff.fields).toEqual([{ changeType: 'modified', field: 'title', from: 'a', to: 'b' }]);
   });
 
   it('diff 接受后端 differences/fromValue/toValue，空列表合法，缺列表则拒绝', async () => {

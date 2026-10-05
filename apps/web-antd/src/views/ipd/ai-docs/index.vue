@@ -384,13 +384,21 @@ const diffError = ref<null | string>(null);
 const diffFields = ref<AiDocumentDiffField[]>([]);
 const diffPair = ref<{ fromId: string; fromNo: number; toId: string; toNo: number } | null>(null);
 
-/** 字段级 diff 单行渲染：added=绿 / removed=红 / modified=黄 / unchanged=灰。 */
-function diffValueClass(changeType: 'added' | 'modified' | 'removed' | 'unchanged'): string {
+/** 字段级 diff 单行渲染：added=绿 / removed=红 / modified=黄。 */
+function diffValueClass(changeType: 'added' | 'modified' | 'removed'): string {
   if (changeType === 'added') return 'text-green-700';
   if (changeType === 'removed') return 'text-red-700 line-through';
-  if (changeType === 'modified') return 'text-amber-700';
-  return 'text-muted-foreground';
+  return 'text-amber-700';
 }
+
+/**
+ * 抽屉只展示 PM 看得懂的字段。正文指纹（contentSha256）是审计维度——它的「旧值/新值」
+ * 就是两串 64 位十六进制，对 PM 没有意义，不对用户展示（owner 2026-10-05 拍板）。
+ * 内容是否变化已由 content 行如实呈现，过滤掉指纹行不丢信息。
+ */
+const diffVisibleFields = computed(() =>
+  diffFields.value.filter((field) => field.field !== 'contentSha256'),
+);
 
 async function openDiffWithPrevious() {
   if (!head.value || chain.value.length < 2 || !currentDocId.value) {
@@ -833,7 +841,7 @@ onMounted(() => {
         type="error"
       />
       <Empty
-        v-else-if="diffFields.length === 0"
+        v-else-if="diffVisibleFields.length === 0"
         description="两版本字段完全一致，无 diff。"
       />
       <table v-else class="w-full border-collapse text-xs">
@@ -847,7 +855,7 @@ onMounted(() => {
         </thead>
         <tbody>
           <tr
-            v-for="field in diffFields"
+            v-for="field in diffVisibleFields"
             :key="field.field"
             class="border-b align-top"
           >
@@ -855,8 +863,7 @@ onMounted(() => {
             <td class="py-2 pr-2">
               <Tag v-if="field.changeType === 'added'" color="green">新增</Tag>
               <Tag v-else-if="field.changeType === 'removed'" color="red">删除</Tag>
-              <Tag v-else-if="field.changeType === 'modified'" color="orange">变更</Tag>
-              <Tag v-else color="default">未变</Tag>
+              <Tag v-else color="orange">变更</Tag>
             </td>
             <td :class="['py-2 pr-2', diffValueClass(field.changeType)]">
               <span v-if="field.from === null" class="text-muted-foreground">∅</span>

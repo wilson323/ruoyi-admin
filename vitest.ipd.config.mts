@@ -18,16 +18,20 @@ export default defineConfig({
       'apps/web-antd/src/components/tree/src/menu-select-table.test.ts',
       'apps/web-antd/src/views/_core/social-callback/index.test.ts',
       'apps/web-antd/src/views/_core/profile/profile-panel.test.ts',
-      'apps/web-antd/src/packages/workflow-designer/properties/GenericNodeProperty.test.ts',
+      // 2026-10-05 清理：删除两条命中 0 文件的死引用——
+      //   apps/web-antd/src/packages/workflow-designer/properties/GenericNodeProperty.test.ts
+      //   apps/web-antd/src/views/workflow/**/*.test.ts
+      // 两者指向的目录在仓库里已不存在。将来若重建这些目录并补测试，必须把条目加回本清单，
+      // 否则测试不会被执行（vitest 只跑 include 命中的文件，不会自动发现）。
       'apps/web-antd/src/api/ipd/**/*.test.ts',
       'apps/web-antd/src/router/ipd-guard.test.ts',
       'apps/web-antd/src/store/**/*.test.ts',
       'apps/web-antd/src/views/ipd/**/*.test.ts',
-      // E1-② formPath 注册表 fallback 契约（views/workflow 域首测，P0-2）
-      'apps/web-antd/src/views/workflow/**/*.test.ts',
       // Track E（MCP 与 Skill 配置中心）：存量页改造补测（E5-⑥ 白名单扩展）
       'apps/web-antd/src/views/mcp/**/*.test.ts',
       'apps/web-antd/src/views/agent/agent/**/*.test.ts',
+      // api/mcp 现有 4 个活源文件（market/index.ts、tool/index.ts）但尚无测试；
+      // 该条目是前瞻性的，不是死引用——删掉会让将来的 MCP 接口测试静默不跑，故保留。
       'apps/web-antd/src/api/mcp/**/*.test.ts',
     ],
     setupFiles: ['./vitest.ipd.setup.ts'],
