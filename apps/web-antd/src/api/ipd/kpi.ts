@@ -89,55 +89,69 @@ export function getKpiTrend(periods?: number): Promise<KpiTrendPoint[]> {
 
 /**
  * KPI 原始数据录入：8 项固定类型枚举（R149 录入/展示界面配套）。
- * 字段语义：销售/渠道/NPS/场景/缺陷/投诉/认证/完成率——原型 12 项 KPI 表格精简后落地；
- * COMPLETION_RATE 范围 0-1，其余为整数或万元金额（按 label 单位）。
+ * 2026-10-06 E2E 修正（D9）：本地回退清单旧口径（REVENUE/NPS/缺陷数等）与后端
+ * KpiRawRecordService.KPI_TYPES 白名单完全不同——回退时用户选的类型后端一律拒
+ * 「kpiType 不合法」。现按后端 Service Javadoc 的 8 项口径对齐（含单位语义）；
+ * 权威枚举仍由 GET /kpi/raw-records/types 下发，本表仅作拉取失败时的回退。
  */
 export const KPI_RAW_TYPES = [
-  { value: 'REVENUE', label: '销售收入（万元）' },
-  { value: 'CHANNEL_COUNT', label: '渠道数' },
-  { value: 'NPS', label: '客户满意度 NPS' },
-  { value: 'SCENE_COUNT', label: '落地场景数' },
-  { value: 'BUG_COUNT', label: '缺陷数' },
-  { value: 'COMPLAINT_COUNT', label: '投诉数' },
-  { value: 'CERT_COUNT', label: '国别认证数' },
-  { value: 'COMPLETION_RATE', label: '里程碑完成率（0-1）' },
+  { value: 'WINDOW_HIT_RATE', label: '窗口命中率（0-1）' },
+  { value: 'REQUIREMENT_ACCURACY', label: '需求准确率（0-1）' },
+  { value: 'SCENE_COMPETITIVENESS', label: '场景竞争力（0-1）' },
+  { value: 'PPM_DEFECT_RATE', label: 'PPM 缺陷率' },
+  { value: 'RELEASE_FREQUENCY', label: '发布频率（次/月）' },
+  { value: 'CHANGE_LEAD_TIME', label: '变更前置时间（小时）' },
+  { value: 'CHANGE_FAILURE_RATE', label: '变更失败率（0-1）' },
+  { value: 'MTTR', label: '平均恢复时间 MTTR（小时）' },
 ] as const;
 export type KpiRawType = (typeof KPI_RAW_TYPES)[number]['value'];
 
-/** KPI 原始记录（后端 RawKpiRecord 字段对齐；period YYYY-MM-DD；rawValue 数字）。 */
+/**
+ * 百分比类 KPI（rawValue 上限 1.0；与后端 KpiRawRecordService.PCT_KPI_TYPES 对齐）。
+ */
+export const PCT_KPI_TYPES: ReadonlySet<string> = new Set([
+  'WINDOW_HIT_RATE',
+  'REQUIREMENT_ACCURACY',
+  'SCENE_COMPETITIVENESS',
+  'CHANGE_FAILURE_RATE',
+]);
+
+/**
+ * KPI 原始记录（后端 KpiRawRecord domain 字段对齐：recordPeriod LocalDate YYYY-MM-DD；
+ * 无 remark / segment 字段——后端表与 DTO 均无此列，不虚构）。
+ */
 export interface RawKpiRecord {
   id: null | string;
   projectId: null | string;
   kpiType: KpiRawType | string;
-  period: null | string;
+  recordPeriod: null | string;
   rawValue: null | number | string;
-  remark: null | string;
   recordedBy: null | string;
-  recordedAt: null | string;
-  segment: string;
+  recordedAt: null | number | string;
 }
 
-/** 录入请求体（白名单 DTO：projectId/kpiType/period/rawValue/remark；其余服务端权威）。 */
+/** 录入请求体（后端 CreateKpiRawRecordReq 1:1：kpiType/projectId/recordPeriod/rawValue；
+ * 2026-10-06 E2E 修正（D9）：旧字段名 period 与后端 @NotNull recordPeriod 不匹配，
+ * POST 恒 400「recordPeriod 不能为空」；remark 后端 DTO 无此字段，已删）。 */
 export interface RawKpiRecordCreateReq {
   projectId: string;
   kpiType: KpiRawType;
-  period: string;
+  recordPeriod: string;
   rawValue: number;
-  remark?: null | string;
 }
 
-/** 列表查询参数（projectId/kpiType 可选；不传返回全部可见项目）。 */
+/** 列表查询参数（projectId 后端必填；kpiType 可选过滤）。 */
 export interface RawKpiRecordQuery {
   kpiType?: KpiRawType | string;
   projectId?: string;
 }
 
-/** KPI 原始记录列表（R149；后端待交付 GET /api/v1/kpi/raw-records）。 */
+/** KPI 原始记录列表（GET /api/v1/kpi/raw-records，projectId 必填；权限 ipd:kpi:raw:query）。 */
 export function listRawKpiRecords(query?: RawKpiRecordQuery): Promise<RawKpiRecord[]> {
   return ipdGet<RawKpiRecord[]>('/kpi/raw-records', query as Record<string, unknown>);
 }
 
-/** 录入一条 KPI 原始记录（R149；后端待交付 POST /api/v1/kpi/raw-records）。 */
+/** 录入一条 KPI 原始记录（R149；POST /api/v1/kpi/raw-records，权限 ipd:kpi:raw:create）。 */
 export function createRawKpiRecord(body: RawKpiRecordCreateReq): Promise<RawKpiRecord> {
   return ipdPost<RawKpiRecord>('/kpi/raw-records', body);
 }

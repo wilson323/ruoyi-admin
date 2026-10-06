@@ -22,7 +22,7 @@
  * 后端 CoefficientChangeController 已删除，原 Tab1「系数变更」整段 Tab / 表单 / 列表移除。
  */
 import { computed, onMounted, reactive, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { RouterLink, useRoute } from 'vue-router';
 import {
   Alert,
   Button,
@@ -656,7 +656,11 @@ onMounted(() => {
             size="small"
           >
             <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'status'">
+              <!-- 2026-10-06 D12：变更单编号下钻详情页（页26），此前列表行无入口 -->
+              <template v-if="column.key === 'id'">
+                <RouterLink :to="`/ipd/projects/${projectId}/change/${record.id}`">#{{ record.id }}</RouterLink>
+              </template>
+              <template v-else-if="column.key === 'status'">
                 <Tag :color="statusToneFor(record.status)">{{ statusLabelFor(record.status) }}</Tag>
               </template>
               <template v-else-if="column.key === 'createTime'">

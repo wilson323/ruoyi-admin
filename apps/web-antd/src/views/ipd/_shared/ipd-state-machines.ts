@@ -23,7 +23,17 @@
 
 import { deriveTransitions, GUARD_ENTITY_TYPES } from './guard-rules';
 
-export type ProjectStatus = 'DRAFT' | 'TEAMING' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
+export type ProjectStatus =
+  | 'DRAFT'
+  | 'TEAMING'
+  | 'ACTIVE'
+  | 'SUSPENDED'
+  | 'ARCHIVED'
+  // 2026-10-06 E2E 补齐（D2）：后端 ProjectService/ProjectStartService 已有开工治理两态
+  // （create→PENDING_START、rejectStart→START_REJECTED、resubmitStart 回 PENDING_START、
+  // approveStart→TEAMING），此前前端 5 态查不到 → 列表/详情恒显「待补充」。
+  | 'PENDING_START'
+  | 'START_REJECTED';
 export type DemandStatus =
   | 'SUBMITTED'
   | 'ACCEPTED'
@@ -68,13 +78,15 @@ function buildMachine<S extends string>(
   return { name, states, transitions };
 }
 
-// ============ 项目状态机（5 态）============
+// ============ 项目状态机（7 态：5 基础态 + 开工治理 2 态）============
 const PROJECT_STATES: readonly StateNode<ProjectStatus>[] = [
   { code: 'DRAFT', label: '草稿', tone: 'default' },
   { code: 'TEAMING', label: '组队中', tone: 'warning' },
   { code: 'ACTIVE', label: '进行中', tone: 'processing' },
   { code: 'SUSPENDED', label: '已暂停', tone: 'warning' },
   { code: 'ARCHIVED', label: '已归档', tone: 'default' },
+  { code: 'PENDING_START', label: '待开工', tone: 'warning' },
+  { code: 'START_REJECTED', label: '开工已拒绝', tone: 'default' },
 ];
 export const PROJECT_STATUS_MACHINE: StateMachine<ProjectStatus> = buildMachine(
   'PROJECT_STATUS',
@@ -85,6 +97,11 @@ export const PROJECT_STATUS_MACHINE: StateMachine<ProjectStatus> = buildMachine(
     ACTIVE: ['SUSPENDED', 'ARCHIVED'],
     SUSPENDED: ['ACTIVE', 'ARCHIVED'],
     ARCHIVED: [],
+    // 与后端 state-machine-guard-rules.json 同步：create INITIAL→PENDING_START、
+    // approveStart PENDING_START→TEAMING、rejectStart PENDING_START→START_REJECTED、
+    // resubmitStart START_REJECTED→PENDING_START。
+    PENDING_START: ['TEAMING', 'START_REJECTED'],
+    START_REJECTED: ['PENDING_START'],
   },
 );
 

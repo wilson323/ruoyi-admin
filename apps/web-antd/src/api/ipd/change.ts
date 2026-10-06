@@ -13,7 +13,7 @@
  * 已删除，本文件系数变更 4 端点与相关类型 / 解析函数同步移除，不再向下游暴露。
  */
 import { IpdRequestError } from './auth';
-import { normalizeDateTime } from './ai-document';
+import { toTimeText } from './ai-document';
 import { ipdGet, ipdPost, ipdPut } from './http';
 
 /** 上市日期双签申请（PENDING_SECOND → CONFIRMED/REJECTED）。 */
@@ -55,8 +55,15 @@ export interface LaunchDateChangeProposeInput {
 const isIdString = (value: unknown): value is string =>
   typeof value === 'string' && /^\d+$/.test(value);
 
-const parseDate = (value: unknown): null | string =>
-  typeof value === 'string' ? normalizeDateTime(value) : null;
+/**
+ * 时间字段解析（2026-10-06 D11 修正）：后端 /api/v1 链路 Date 字段序列化为
+ * epoch 毫秒数字（IpdPrimaryBeansConfig 无 DateFormat），旧 parseDate 只认字符串
+ * → createTime/confirmedAt 等恒 null → 页面全显「待补充」。现直接复用
+ * ai-document 的 toTimeText（R215 B4 同源修复）：epoch 数字/纯数字串/
+ * 带空格 "yyyy-MM-dd HH:mm:ss"/ISO 字符串均归一，无效值退 null；
+ * yyyy-MM-dd 日期串原样返回（LaunchDateChange 的日期字段不受影响）。
+ */
+const parseDate = (value: unknown): null | string => toTimeText(value);
 
 /** 收敛为前端契约；格式异常直接拒绝，不做静默修补。 */
 export function parseLaunchDateChangeRequest(data: unknown): LaunchDateChangeRequest {

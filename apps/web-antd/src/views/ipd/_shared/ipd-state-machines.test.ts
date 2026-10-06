@@ -16,7 +16,7 @@ import {
   stateTone,
 } from './ipd-state-machines';
 
-describe('PROJECT_STATUS 5 态', () => {
+describe('PROJECT_STATUS 7 态（含开工治理 2 态）', () => {
   it('DRAFT 只能迁移到 TEAMING', () => {
     expect(nextStates(PROJECT_STATUS_MACHINE, 'DRAFT')).toEqual(['TEAMING']);
   });
@@ -29,6 +29,18 @@ describe('PROJECT_STATUS 5 态', () => {
     const next = nextStates(PROJECT_STATUS_MACHINE, 'ACTIVE');
     expect(next).toContain('SUSPENDED');
     expect(next).toContain('ARCHIVED');
+  });
+
+  // 2026-10-06 E2E 补齐（D2）：后端 ProjectStartService 开工治理两态入表，
+  // 与 state-machine-guard-rules.json 同步。
+  it('PENDING_START 可批准开工到 TEAMING 或拒绝到 START_REJECTED', () => {
+    expect(nextStates(PROJECT_STATUS_MACHINE, 'PENDING_START')).toEqual(['TEAMING', 'START_REJECTED']);
+    expect(stateLabel(PROJECT_STATUS_MACHINE, 'PENDING_START')).toBe('待开工');
+  });
+
+  it('START_REJECTED 仅可再次提交回 PENDING_START', () => {
+    expect(nextStates(PROJECT_STATUS_MACHINE, 'START_REJECTED')).toEqual(['PENDING_START']);
+    expect(stateLabel(PROJECT_STATUS_MACHINE, 'START_REJECTED')).toBe('开工已拒绝');
   });
 
   it('未知码不抛错且 label 返回 fallback', () => {

@@ -224,7 +224,9 @@ const empty = computed(() => !loading.value && !errorMsg.value && !detail.value)
           <DescriptionsItem label="项目编号">{{ detail.projectId ?? PENDING_TEXT }}</DescriptionsItem>
           <DescriptionsItem label="关联需求">{{ detail.requirementId ?? PENDING_TEXT }}</DescriptionsItem>
           <DescriptionsItem label="变更类型">{{ detail.changeType ?? PENDING_TEXT }}</DescriptionsItem>
-          <DescriptionsItem label="发起人">{{ detail.createBy ?? PENDING_TEXT }}</DescriptionsItem>
+          <!-- 2026-10-06 D13：发起人为后端 Long ID（String 序列化），按全站惯例 #ID 展示，
+               不裸奔大数字；后端响应无人名快照，人名映射待后端补齐后另接 -->
+          <DescriptionsItem label="发起人">{{ detail.createBy ? '#' + detail.createBy : PENDING_TEXT }}</DescriptionsItem>
           <DescriptionsItem label="发起时间">{{ formatDateTime(detail.createTime) }}</DescriptionsItem>
           <DescriptionsItem label="最近更新">{{ formatDateTime(detail.updateTime) }}</DescriptionsItem>
           <DescriptionsItem label="理由" :span="2">{{ detail.reason ?? PENDING_TEXT }}</DescriptionsItem>

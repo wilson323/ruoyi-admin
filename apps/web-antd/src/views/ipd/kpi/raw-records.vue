@@ -4,13 +4,18 @@
  *
  * 设计：KPI 类型枚举由权威端点 GET /api/v1/kpi/raw-records/types 下发
  * （ORPHAN-A6 #40，R212 看板卡 8338f2fa，2026-09-25 接线；此前硬编码 8 项）；
- * 拉取失败/为空回退本地清单（REVENUE/CHANNEL_COUNT/NPS/SCENE_COUNT/BUG_COUNT/
- * COMPLAINT_COUNT/CERT_COUNT/COMPLETION_RATE，与后端 listSupportedTypes 同源口径）；
+ * 拉取失败/为空回退本地清单（WINDOW_HIT_RATE/REQUIREMENT_ACCURACY/
+ * SCENE_COMPETITIVENESS/PPM_DEFECT_RATE/RELEASE_FREQUENCY/CHANGE_LEAD_TIME/
+ * CHANGE_FAILURE_RATE/MTTR，2026-10-06 D9 修正后与后端 KPI_TYPES 真正同源；
+ * 旧回退表 REVENUE/NPS 等编码后端一律拒收）；
  * 按项目（必选，接入查询参数）+ KPI 类型（前端过滤）展示已录入记录；
- * 顶部表单新增一条（项目下拉 + KPI 类型下拉 + 期间日期 + 原始值数字 + 备注）。
+ * 顶部表单新增一条（项目下拉 + KPI 类型下拉 + 期间日期 + 原始值数字）。
+ * 2026-10-06 D9 契约修正：提交体字段名 period→recordPeriod（后端 @NotNull
+ * recordPeriod，旧名恒 400）；备注框删除（后端 CreateKpiRawRecordReq 无 remark
+ * 字段，旧表单填了也不落库）；表格期间列 dataIndex 同步改 recordPeriod。
  *
- * 2026-10-06 E2E 修复（全量真浏览器测试发现，后端 GET /kpi/raw-records 的 projectId
- * 实测必填，缺参必 400「缺少必需参数： projectId」，与 API 注释「可选」不符，以后端为准）：
+ * 2026-10-06 E2E 修复（后端 GET /kpi/raw-records 的 projectId 实测必填，
+ * 缺参必 400「缺少必需参数： projectId」，与 API 注释「可选」不符，以后端为准）：
  * ① 首屏未选项目不再发请求（新增 idle 引导态）；
  * ② 「按项目筛选」下拉接入查询参数（此前仅本地过滤，点刷新后仍无参 400）；
  * ③ 顶部枚举文案改为中性描述（权威枚举由 /types 下发，非固定 8 项）。
@@ -31,7 +36,6 @@ import {
   Empty,
   Form,
   FormItem,
-  Input,
   InputNumber,
   Select,
   Space,
@@ -44,6 +48,7 @@ import {
 import {
   KPI_RAW_TYPES,
   type KpiRawType,
+  PCT_KPI_TYPES,
   type RawKpiRecord,
   createRawKpiRecord,
   listRawKpiRecordTypes,
@@ -52,7 +57,7 @@ import {
 import { IpdRequestError } from '../../../api/ipd/auth';
 import { listProjects, type Project } from '../../../api/ipd/project';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
-import { PENDING_TEXT } from '../_shared/format';
+import { formatDateTime, PENDING_TEXT } from '../_shared/format';
 
 type Phase = 'error' | 'idle' | 'loading' | 'ready';
 
@@ -100,13 +105,12 @@ const projectNameMap = computed(() => {
   return map;
 });
 
-/** 录入表单。 */
+/** 录入表单（2026-10-06 D9：删 remark——后端 DTO 无此字段，填了不落库）。 */
 interface CreateFormState {
   kpiType: KpiRawType | undefined;
   period: undefined | string;
   projectId: undefined | string;
   rawValue: undefined | number;
-  remark: string;
 }
 
 const createForm = reactive<CreateFormState>({
@@ -114,7 +118,6 @@ const createForm = reactive<CreateFormState>({
   period: undefined,
   projectId: undefined,
   rawValue: undefined,
-  remark: '',
 });
 const createFormRef = ref();
 const createSaving = ref(false);
@@ -178,13 +181,12 @@ async function loadRawTypes(): Promise<void> {
 const typeLabelMap = computed(() => new Map<string, string>(rawTypeOptions.value.map((o) => [o.value, o.label])));
 
 const columns = [
-  { dataIndex: 'period', key: 'period', title: '期间', width: 120 },
+  { dataIndex: 'recordPeriod', key: 'recordPeriod', title: '期间', width: 120 },
   { dataIndex: 'projectId', key: 'projectId', title: '项目', width: 200 },
   { dataIndex: 'kpiType', key: 'kpiType', title: 'KPI 类型', width: 200 },
   { dataIndex: 'rawValue', key: 'rawValue', title: '原始值', width: 140 },
-  { dataIndex: 'remark', key: 'remark', title: '备注' },
-  { dataIndex: 'recordedBy', key: 'recordedBy', title: '录入人', width: 110 },
-  { dataIndex: 'recordedAt', key: 'recordedAt', title: '录入时间', width: 170 },
+  { dataIndex: 'recordedBy', key: 'recordedBy', title: '录入人', width: 140 },
+  { dataIndex: 'recordedAt', key: 'recordedAt', title: '录入时间', width: 180 },
 ];
 
 function asRecord(record: Record<string, any>): RawKpiRecord {
@@ -200,7 +202,8 @@ function toNumber(value: null | number | string): null | number {
 function formatRawValue(record: RawKpiRecord): string {
   const num = toNumber(record.rawValue);
   if (num === null) return PENDING_TEXT;
-  if (record.kpiType === 'COMPLETION_RATE') return num.toFixed(4);
+  // 百分比类统一 4 位小数（与后端 PCT_KPI_TYPES 口径对齐）
+  if (PCT_KPI_TYPES.has(record.kpiType)) return num.toFixed(4);
   return num.toString();
 }
 
@@ -251,19 +254,18 @@ async function submitCreate(): Promise<void> {
   }
   createSaving.value = true;
   try {
+    // 2026-10-06 D9：字段名对齐后端 CreateKpiRawRecordReq（recordPeriod）；不带 remark
     await createRawKpiRecord({
       kpiType: createForm.kpiType as KpiRawType,
-      period: dateInputToIso(createForm.period),
+      recordPeriod: dateInputToIso(createForm.period),
       projectId: createForm.projectId as string,
       rawValue: Number(createForm.rawValue),
-      remark: createForm.remark.trim() || null,
     });
     antMessage.success('KPI 原始记录已录入');
     createForm.kpiType = undefined;
     createForm.period = undefined;
     createForm.projectId = undefined;
     createForm.rawValue = undefined;
-    createForm.remark = '';
     createFormRef.value?.resetFields();
     await load();
   } catch (cause) {
@@ -346,19 +348,11 @@ function reload(): void {
               <InputNumber
                 v-model:value="createForm.rawValue"
                 :max="1e9"
-                :min="-1e9"
+                :min="0"
                 :precision="4"
                 :step="1"
                 class="w-full"
-                placeholder="数字；完成率 0-1"
-              />
-            </FormItem>
-            <FormItem label="备注" name="remark">
-              <Input
-                v-model:value="createForm.remark"
-                :maxlength="200"
-                allow-clear
-                placeholder="选填，≤200 字"
+                placeholder="非负数字；窗口命中率/需求准确率/场景竞争力/变更失败率上限 1"
               />
             </FormItem>
             <FormItem label=" " :wrapper-col="{ span: 24 }">
@@ -452,16 +446,13 @@ function reload(): void {
               <template v-else-if="column.key === 'rawValue'">
                 <span class="tabular-nums">{{ formatRawValue(asRecord(record)) }}</span>
               </template>
-              <template v-else-if="column.key === 'remark'">
-                <span class="text-muted-foreground text-sm">{{ asRecord(record).remark || '—' }}</span>
-              </template>
               <template v-else-if="column.key === 'recordedBy'">
                 <span class="text-muted-foreground text-sm">
                   {{ asRecord(record).recordedBy ? '#' + asRecord(record).recordedBy : PENDING_TEXT }}
                 </span>
               </template>
               <template v-else-if="column.key === 'recordedAt'">
-                <span class="text-muted-foreground tabular-nums text-xs">{{ asRecord(record).recordedAt || PENDING_TEXT }}</span>
+                <span class="text-muted-foreground tabular-nums text-xs">{{ formatDateTime(asRecord(record).recordedAt) }}</span>
               </template>
             </template>
           </Table>

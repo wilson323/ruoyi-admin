@@ -5,7 +5,8 @@
  *   - POST 提交成功路径
  *   - POST 失败 alert 提示
  *
- * 端点真值：GET/POST /api/v1/kpi/raw-records（R149 后端待交付）。
+ * 端点真值：GET/POST /api/v1/kpi/raw-records（后端已交付；2026-10-06 D9 契约对齐：
+ * 后端 CreateKpiRawRecordReq/KpiRawRecord 均为 recordPeriod+8 项新枚举，无 remark/segment）。
  * Mock 形态：依 .vue 同模块的 ipdGet/ipdPost → authenticatedRequest → fetch 链。
  */
 import { mount, type VueWrapper } from '@vue/test-utils';
@@ -25,17 +26,17 @@ const projectsStub = [
   { id: 'PRJ-2', code: 'PRJ-2026-002', name: '校园门禁 BioCV', stage: 'DEV', status: 'ACTIVE', productId: null, level: 'B', mainGroupId: 'GRP-1' },
 ];
 
+// 后端真契约 mock：recordPeriod（YYYY-MM-DD）+ KpiRawRecordService.KPI_TYPES 白名单类型；
+// 无 remark/segment 字段（KpiRawRecord domain 无此列）。
 const rawRows = [
   {
     id: 'RK-1',
     projectId: 'PRJ-1',
-    kpiType: 'REVENUE',
-    period: '2026-08',
+    kpiType: 'PPM_DEFECT_RATE',
+    recordPeriod: '2026-08-01',
     rawValue: 1280.5,
-    remark: '8 月营收',
     recordedBy: '9007199254740993',
     recordedAt: '2026-09-05 10:00:00',
-    segment: 'DOMESTIC',
   },
 ];
 
@@ -66,7 +67,7 @@ function stubApi(opts: { listReject?: boolean; postReject?: boolean; skipProject
     calls.push({ method, url, body: bodyText });
     if (opts.skipProjects && url.includes('/projects')) return envelope([]);
     if (url.includes('/kpi/raw-records')) {
-      if (method === 'POST' && !opts.postReject) return envelope({ id: 'RK-NEW', projectId: 'PRJ-1', kpiType: 'REVENUE', period: '2026-09', rawValue: 1 });
+      if (method === 'POST' && !opts.postReject) return envelope({ id: 'RK-NEW', projectId: 'PRJ-1', kpiType: 'PPM_DEFECT_RATE', recordPeriod: '2026-09-01', rawValue: 1 });
       if (method === 'POST' && opts.postReject) {
         return new Response(
           JSON.stringify({ code: 40005, message: '禁止直接删除，请按数据分级完成删除审核', data: null, timestamp: '2026-09-20T00:00:00Z', traceId: 'fixture' }),
@@ -111,7 +112,7 @@ describe('KPI 原始数据录入页 (R149 录入/展示)', () => {
     expect(calls.filter((c) => c.url.includes('/kpi/raw-records') && !c.url.includes('/types')).length).toBe(0);
     expect(wrapper.text()).toContain('请先在下方选择项目');
     await selectProjectAndQuery(wrapper);
-    // 等真实记录渲染（表格列展示 period=2026-08 + rawValue=1280.5）
+    // 等真实记录渲染（表格列展示 recordPeriod=2026-08-01 + rawValue=1280.5）
     await vi.waitFor(() => expect(wrapper.text()).toContain('1280.5'));
     // 查询参数携带 projectId（E2E 修复核心断言）
     const listCall = calls.find((c) => c.url.includes('/kpi/raw-records') && c.url.includes('projectId'));
@@ -123,12 +124,12 @@ describe('KPI 原始数据录入页 (R149 录入/展示)', () => {
     // 表头
     expect(text).toContain('期间');
     expect(text).toContain('原始值');
-    // 期间值 2026-08
-    expect(text).toContain('2026-08');
+    // 期间值 2026-08-01（后端 recordPeriod LocalDate 序列化 YYYY-MM-DD）
+    expect(text).toContain('2026-08-01');
     // 原始值 1280.5
     expect(text).toContain('1280.5');
     // KPI 类型 Tag 标签（label map）
-    expect(text).toContain('销售收入（万元）');
+    expect(text).toContain('PPM 缺陷率');
     // 录入人列（#9007199254740993）
     expect(text).toContain('#9007199254740993');
     // 录入时间 2026-09-05
@@ -207,7 +208,7 @@ describe('KPI 原始数据录入页（ORPHAN-A6：raw-records/types 权威枚举
   }
 
   it('组长 mount 即拉取 GET /kpi/raw-records/types（权威枚举数据源）', async () => {
-    const calls = stubA6({ types: ['REVENUE', 'NPS'] });
+    const calls = stubA6({ types: ['WINDOW_HIT_RATE', 'MTTR'] });
     const wrapper = mount(RawRecords);
     await selectProjectAndQuery(wrapper);
     await vi.waitFor(() => expect(wrapper.text()).toContain('1280.5'));
@@ -227,11 +228,11 @@ describe('KPI 原始数据录入页（ORPHAN-A6：raw-records/types 权威枚举
     wrapper.unmount();
   });
 
-  it('types 拉取失败：回退本地 8 项口径，页面不崩（REVENUE 行仍显示本地中文 label）', async () => {
+  it('types 拉取失败：回退本地 8 项口径，页面不崩（PPM_DEFECT_RATE 行仍显示本地中文 label）', async () => {
     stubA6({ typesReject: true });
     const wrapper = mount(RawRecords);
     await selectProjectAndQuery(wrapper);
-    await vi.waitFor(() => expect(wrapper.text()).toContain('销售收入（万元）'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('PPM 缺陷率'));
     expect(wrapper.text()).toContain('1280.5');
     wrapper.unmount();
   });
