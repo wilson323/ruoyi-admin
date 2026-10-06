@@ -31,8 +31,10 @@ import { RULES_BY_PAGE, renderRulesDescription } from '../_shared/zk-ipd-rules';
 import {
   DECISION_BUCKET_ACTION,
   DECISION_BUCKET_TEXT,
+  STAGE_TEXT,
   WORKBENCH_TASK_STATUS_TEXT,
   WORKBENCH_TASK_TYPE_TEXT,
+  actionStatusLabel,
   decisionBucket,
   roleText,
   taskTypeText,
@@ -578,13 +580,13 @@ watch(activeTab, (tab) => {
           <section class="ipd-wb-side-card">
             <header class="ipd-wb-section-header">
               <h2 class="ipd-wb-section-title">我的当前推进</h2>
-              <span class="ipd-wb-section-meta">{{ currentAdvance ? (currentAdvance.currentStage ?? '—') : '—' }}</span>
+              <span class="ipd-wb-section-meta">{{ currentAdvance ? (STAGE_TEXT[currentAdvance.currentStage ?? ''] ?? currentAdvance.currentStage ?? '—') : '—' }}</span>
             </header>
             <div v-if="currentAdvance" class="ipd-wb-current">
               <p class="ipd-wb-current-code">{{ currentAdvance.projectCode ?? currentAdvance.projectName }}</p>
               <h3 class="ipd-wb-current-title">{{ currentAdvance.actionName ?? '当前阶段无待办动作' }}</h3>
               <p class="ipd-wb-current-meta">
-                {{ currentAdvance.projectName }} · {{ currentAdvance.actionStatus ?? '当前没有在途动作命中你的角色' }} · 深入业务详情办理
+                {{ currentAdvance.projectName }} · {{ actionStatusLabel(currentAdvance.actionStatus, '当前没有在途动作命中你的角色') }} · 深入业务详情办理
               </p>
               <button type="button" class="ipd-wb-coach-btn" @click="$router.push(currentAdvance.deepLink).catch(() => {})">
                 打开任务教练

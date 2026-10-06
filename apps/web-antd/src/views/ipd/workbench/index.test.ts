@@ -486,6 +486,27 @@ describe('页03 工作台 · 未交付能力须如实表达（防假断言回归
     wrapper.unmount();
   });
 
+  it('D6 白话化：currentAdvance.actionStatus 裸码 IN_PROGRESS 须显示为「进行中」', async () => {
+    loginAs('MARKET_PM', '测试人员');
+    stubSummary(fullSummary);
+    const wrapper = mount(Workbench);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('需求评审'));
+
+    const meta = wrapper.find('.ipd-wb-current-meta').text();
+    // fullSummary.currentAdvance.actionStatus = 'IN_PROGRESS'（后端原始状态码）
+    // 性质：面向用户的卡片不得泄漏裸码，须经 actionStatusText 映射为白话
+    expect(meta).toContain('进行中');
+    expect(meta).not.toContain('IN_PROGRESS');
+    // 阶段徽标同理：currentStage = 'DEV' 须经 STAGE_TEXT 映射（V3R 复验发现 CONCEPT 裸码泄漏）；
+    // .ipd-wb-section-meta 在页内多处使用，取「我的当前推进」卡片内那个断言
+    const stageMeta = wrapper
+      .findAll('.ipd-wb-section-meta')
+      .map((el) => el.text())
+      .find((t) => t.includes('开发阶段') || /^[A-Z]{3,}$/.test(t.trim()));
+    expect(stageMeta).toBe('开发阶段');
+    wrapper.unmount();
+  });
+
   it('currentAdvance.actionStatus 为 null：不得伪造状态码 IDLE，须说出真实含义', async () => {
     loginAs('MARKET_PM', '测试人员');
     // 后端 WorkbenchService.currentAdvance：next != null ? next.getStatus() : null
