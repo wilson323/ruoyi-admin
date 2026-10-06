@@ -106,10 +106,13 @@ export default defineConfig(async () => {
             // 2026-10-06 E2E 测试修复：后端 cors.allowed-origins 默认空，浏览器
             // Origin: http://127.0.0.1:15666 被原样转发 → Spring Security 判跨域 403
             // （curl 实证：无 Origin 头 200、带 Origin 403；log.md:14959 已登记）。
-            // 代理层删 Origin 头后后端按同源处理，不动后端配置与进程。
+            // 代理层把 Origin 改写为后端同源，后端按同源处理，不动后端配置与进程。
+            // ⚠ 2026-10-06 D18 实证：禁止改回 removeHeader('origin')——vite 7 自研 proxy
+            // （非 http-proxy 库）下 removeHeader 会让该代理所有 HTTP 请求挂死无响应
+            // （A/B/C 对照：removeHeader 挂死；setHeader / 空监听 0.3s 内响应）。
             configure: (proxy) => {
               proxy.on('proxyReq', (proxyReq) => {
-                proxyReq.removeHeader('origin');
+                proxyReq.setHeader('origin', 'http://127.0.0.1:16039');
               });
             },
           },
