@@ -78,6 +78,7 @@ import {
   aiTaskStatusTone,
   execModeText,
   execModeTone,
+  roleText,
 } from '../../_shared/ipd-enums';
 import {
   STAGE_ORDER,
@@ -392,16 +393,24 @@ const workspaceInput = computed(() => ({
   todosLoaded: workbenchTodosLoaded.value,
 }));
 
-/** 动作统计（全项目；阻断性未完成单独计数 BR-IPD-06）。 */
+/** 动作统计（全项目）。
+ *  D7 修复（2026-10-06）：完成度分子改为 DONE/NA 口径（与工作台一致）；此前误用验收口径
+ *  （DONE 且已确认人），真库 9140005 曾把 P01/C05 两个已完成待批准动作漏算成 2/16（实为 3/16）。
+ *  pendingApproval 单列提示；blockingOpen 仍按门禁口径（阻断性未完成）计。 */
 const actionStats = computed(() => {
   const total = actions.value.length;
-  const accepted = (action: { confirmedBy?: null | string; isBlocking?: null | string; status: string }) =>
+  const completed = (action: { status: string }) =>
+    action.status === 'NA' || action.status === 'DONE';
+  const accepted = (action: { confirmedBy?: null | string; status: string }) =>
     action.status === 'NA' || (action.status === 'DONE' && !!action.confirmedBy);
-  const done = actions.value.filter((action) => accepted(action)).length;
+  const done = actions.value.filter((action) => completed(action)).length;
+  const pendingApproval = actions.value.filter(
+    (action) => action.status === 'DONE' && !action.confirmedBy,
+  ).length;
   const blockingOpen = actions.value.filter(
     (action) => action.isBlocking === '1' && !accepted(action),
   ).length;
-  return { blockingOpen, done, total };
+  return { blockingOpen, done, pendingApproval, total };
 });
 
 const atLifecycle = computed(() => project.value?.currentStage === 'LIFECYCLE');
@@ -602,8 +611,8 @@ const sopColumns = [
         <Steps :current="currentStageIndex" :items="stepItems" @change="selectStageView" />
         <div class="text-muted-foreground mt-3 text-xs">
           当前阶段：<Tag :color="stageColor(project.currentStage)">{{ stageText(project.currentStage) }}</Tag>
-          动作完成 {{ actionStats.done }}/{{ actionStats.total }}；
-          阻断性未完成 {{ actionStats.blockingOpen }} 项（BR-IPD-06 分级）
+          动作完成 {{ actionStats.done }}/{{ actionStats.total }}<span v-if="actionStats.pendingApproval">（其中 {{ actionStats.pendingApproval }} 项已完成、待批准）</span>；
+          阻断性未完成 {{ actionStats.blockingOpen }} 项
         </div>
         <StageWorkspace
           v-if="viewedStage"
@@ -762,6 +771,9 @@ const sopColumns = [
               </template>
               <span v-else class="text-muted-foreground text-xs">—</span>
             </template>
+            <template v-else-if="column.key === 'ownerRole'">
+              {{ roleText(record.ownerRole) }}
+            </template>
             <template v-else-if="column.key === 'dueDate'">
               {{ record.dueDate ? projectDateText(record.dueDate) : '—' }}
             </template>
@@ -771,7 +783,7 @@ const sopColumns = [
           </template>
         </Table>
         <div class="text-muted-foreground mt-2 text-xs">
-          深管动作完成需登记交付物、轻管动作需录入实际完成日期等字段（BR-IPD-03/04），操作在动作详情页进行。
+          标注「需交付物」的动作完成时需上传交付物，「免交付物」的动作填写实际完成日期（可加备注）即可，均在动作详情页操作。
           <span class="ml-2">AI 模式说明：<Tag color="processing" size="small">AI 直接执行</Tag>全自动
             <Tag class="ml-1" color="warning" size="small">AI 生成草稿</Tag>草稿待人审
             <Tag class="ml-1" color="error" size="small">人工评审 Gate</Tag>否决项必须人判（AI 不代签）。</span>
@@ -812,7 +824,7 @@ const sopColumns = [
           </template>
           <template #expandedRowRender="{ record }">
             <div class="text-muted-foreground mb-1 text-xs">
-              实例 {{ record.id }} ｜ 快照不可变，实例化后不随模板迭代变化（BR-IPD-SOP-03）
+              实例 {{ record.id }} ｜ 实例化后即为快照，不随模板后续修改变化
             </div>
             <pre class="bg-muted max-h-64 overflow-auto rounded p-2 text-xs">{{ snapshotText(record.snapshotJson) }}</pre>
           </template>

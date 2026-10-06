@@ -94,6 +94,20 @@ function statusColor(status: string): string {
   return GATE_STATUS_COLOR[status] ?? 'default';
 }
 
+/** Gate 状态白话文案（D6）：与 gate-panel.vue statusText / admin gate-detail GATE_STATUS_LABEL 同源同文。
+ * 后端 Gate 实体状态（PENDING=流转中）与 _shared GATE_STATUS_MACHINE（评审状态机，PENDING=待发起）
+ * 值域语义不同，不能复用 gateStateLabel，按既有先例本地查表。 */
+const GATE_STATUS_TEXT: Record<string, string> = {
+  ABSTAINED_TIMEOUT: '超时弃权',
+  APPROVED: '已通过',
+  PENDING: '流转中',
+  REJECTED: '已驳回',
+};
+
+function statusText(status: string): string {
+  return GATE_STATUS_TEXT[status] ?? status;
+}
+
 const columns = [
   { title: 'Gate 编号', dataIndex: 'gateCode', key: 'gateCode', width: 160 },
   { title: '评审轮次', dataIndex: 'currentRound', key: 'currentRound', width: 90 },
@@ -114,12 +128,12 @@ function fmtDate(value: null | number | string | undefined): string {
   <div class="p-4">
     <Alert
       class="mb-4"
-      :message="`项目 Gate 评审：项目 ${projectId || '尚未选择'} · 列表 GET /projects/{id}/gates（R30 已交付）· 评审动作 GET /gates/{gateId}/review + POST /gates/{gateId}/{sign|reopen|extend-deadline|arbitrate|final-ruling}。`"
+      :message="`项目 Gate 评审：项目 ${projectId || '尚未选择'} · 在下方列表选择 Gate，进入评审面板完成双签。`"
       show-icon
       type="info"
     />
 
-    <Card class="mb-4" title="项目 Gate 列表（GET /projects/{id}/gates）">
+    <Card class="mb-4" title="项目 Gate 列表">
       <Table
         :columns="columns"
         :data-source="gatesList"
@@ -130,7 +144,7 @@ function fmtDate(value: null | number | string | undefined): string {
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
-            <Tag :color="statusColor(record.status)">{{ record.status }}</Tag>
+            <Tag :color="statusColor(record.status)">{{ statusText(record.status) }}</Tag>
           </template>
           <template v-else-if="column.key === 'signDueAt'">{{ fmtDate(record.signDueAt) }}</template>
           <template v-else-if="column.key === 'concludedAt'">{{ fmtDate(record.concludedAt) }}</template>
@@ -139,7 +153,7 @@ function fmtDate(value: null | number | string | undefined): string {
           </template>
         </template>
         <template #emptyText>
-          <Empty :description="listError || (projectId ? '该项目尚无 Gate 评审（真实空态，可由 G3 自动创建入口或 POST /projects/{id}/gates 发起）' : '缺少项目编号')" />
+          <Empty :description="listError || (projectId ? '该项目尚无 Gate 评审' : '缺少项目编号')" />
         </template>
       </Table>
       <div class="mt-3 flex flex-wrap items-end gap-3">
@@ -166,9 +180,11 @@ function fmtDate(value: null | number | string | undefined): string {
     </Card>
 
     <div class="mt-2 text-xs text-gray-500">
-      双签盲签视图（在途互盲仅"对方已提交"）、签署（每方每轮一条，任一 REJECT ⇒ REJECTED）、
-      reopen（round+1，第 3 轮组长列席）、超管延期（最多 3 次）、组长仲裁、超管终裁——按 GateReviewController 契约 1:1 渲染。
-      材料归档（FormData）与协作决策链（旧五节点口径已废止）为后端真缺口，未做假数据。
+      <!-- D6 白话化（2026-10-06），原技术口径存档：双签盲签视图（在途互盲仅"对方已提交"）、签署（每方每轮一条，
+        任一 REJECT ⇒ REJECTED）、reopen（round+1，第 3 轮组长列席）、超管延期（最多 3 次）、组长仲裁、超管终裁
+        ——按 GateReviewController 契约 1:1 渲染；材料归档（FormData）与协作决策链（旧五节点口径已废止）为后端真缺口，未做假数据。 -->
+      双签盲签评审（进行中互相看不到对方意见），每方每轮各签署一次；任一方驳回即整轮驳回，
+      驳回后可重开新一轮评审（第 3 轮起组长列席）；超管可延期（最多 3 次）、组长可仲裁、超管可终裁。
     </div>
   </div>
 </template>

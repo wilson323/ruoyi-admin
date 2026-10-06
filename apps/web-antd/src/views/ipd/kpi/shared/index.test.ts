@@ -46,7 +46,9 @@ function record(overrides: Partial<SharedKpiRecord> = {}): SharedKpiRecord {
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(new Date(2026, 8, 15, 12));
+  // f3 假绿修复（2026-10-06）：时钟钉 2026-10-15，与 query period 2026-09 错开；
+  // 组件若没读 URL 的 period（只取当前月）会请求 2026-10，断言 toHaveBeenCalledWith('1001', '2026-09') 才会红。
+  vi.setSystemTime(new Date(2026, 9, 15, 12));
   setActivePinia(createPinia());
   kpiApi.listSharedKpis.mockReset();
   kpiApi.listSharedConfirms.mockReset();

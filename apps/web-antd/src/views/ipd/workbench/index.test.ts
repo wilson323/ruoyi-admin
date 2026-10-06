@@ -337,7 +337,8 @@ describe('页03 我的工作台', () => {
     // desc：deletion 卡显示字典文案「删除审批」且无「责任角色」；stage_sign 卡保留责任角色
     const descs = wrapper.findAll('.ipd-wb-task-desc').map((d) => d.text());
     expect(descs.some((d) => d.startsWith('删除审批 · 阻断项'))).toBe(true);
-    expect(descs.some((d) => d.includes('责任角色 MARKET_PM'))).toBe(true);
+    // D6 白话化：ownerRole 裸码 MARKET_PM 经 roleText 显示为「市场PM」
+    expect(descs.some((d) => d.includes('责任角色 市场PM'))).toBe(true);
     wrapper.unmount();
   });
 });

@@ -98,23 +98,24 @@ describe('页12/13 动作详情', () => {
     await flushPromises();
   });
 
-  it('深管动作：显示「深管动作」徽标 + 登记交付物按钮', async () => {
+  it('深管动作：显示「需交付物」徽标（depth 白话化） + 上传交付物按钮', async () => {
     api.listStageActions.mockResolvedValueOnce([deep()]);
     const wrapper = await mountDetail();
     const html = wrapper.html();
-    expect(html).toContain('深管动作');
+    expect(html).toContain('需交付物');
     expect(html).toContain('客户问题验证');
-    expect(html).toContain('登记交付物');
+    expect(html).toContain('上传交付物');
     expect(html).not.toContain('FAR');
   });
 
-  it('轻管动作：显示「轻管动作」徽标，无登记交付物按钮', async () => {
+  it('轻管动作：显示「免交付物」徽标（depth 白话化），无上传交付物按钮', async () => {
     api.listStageActions.mockResolvedValueOnce([light()]);
     const wrapper = await mountDetail();
     const html = wrapper.html();
-    expect(html).toContain('轻管动作');
+    expect(html).toContain('免交付物');
     expect(html).toContain('文档校对');
-    expect(html).not.toContain('登记交付物');
+    // 「无需上传交付物」的 Alert 文案含同名词，按“按钮元素不存在”断言无上传入口
+    expect(wrapper.findAll('button').some((b) => b.text().includes('上传交付物'))).toBe(false);
   });
 
   it('D11 动作：显示 FAR/FRR 字段（例外一）', async () => {

@@ -196,7 +196,7 @@ describe('页11 IPD 流程 · 项目 SOP 快照 Drawer（R215 GAP-F8）', () => 
     await vi.waitFor(() => expect(document.body.textContent).toContain('"A1"'));
     (expandIcons[1] as HTMLElement).click();
     await vi.waitFor(() => expect(document.body.textContent).toContain('not-a-json{{{'));
-    expect(document.body.textContent).toContain('快照不可变'); // 语义脚注
+        expect(document.body.textContent).toContain('不随模板后续修改变化'); // 语义脚注
     expect(document.body.textContent).toContain('实例 2096266884247736321'); // 脚注实例 ID 19 位逐字符
     wrapper.unmount();
   });

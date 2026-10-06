@@ -34,6 +34,7 @@ import {
   WORKBENCH_TASK_STATUS_TEXT,
   WORKBENCH_TASK_TYPE_TEXT,
   decisionBucket,
+  roleText,
   taskTypeText,
 } from '../_shared/ipd-enums';
 import type { WorkbenchDecisionBucket } from '../_shared/ipd-enums';
@@ -265,7 +266,8 @@ const taskGroups = computed<TaskGroup[]>(() => {
     const items = myInitiatedTasks.value.map((t) => ({
       kind: STATUS_TEXT[t.status] ?? t.status,
       title: t.title ?? `单据 #${t.id}`,
-      desc: `${MY_INITIATED_SOURCE_TEXT[t.taskType] ?? t.taskType} · ${t.sourceTable}`,
+      // D6（2026-10-06）：sourceTable 是库表名，不进用户可见文案。
+      desc: MY_INITIATED_SOURCE_TEXT[t.taskType] ?? t.taskType,
       code: '',
       initiator: '',
       time: t.createdAt ? `发起 ${formatDateOnly(t.createdAt)}` : '—',
@@ -296,7 +298,8 @@ const taskGroups = computed<TaskGroup[]>(() => {
       items: items.map((t) => ({
         kind: STATUS_TEXT[t.status] ?? t.status,
         title: t.title ?? t.actionCode ?? '阶段动作',
-        desc: `${taskTypeText(t.taskType)}${t.ownerRole ? ` · 责任角色 ${t.ownerRole}` : ''} · ${t.isBlocking === '1' ? '阻断项' : '非阻断'}`,
+        // D6（2026-10-06）：ownerRole 裸码改中文名（BOTH 不再裸显）。
+        desc: `${taskTypeText(t.taskType)}${t.ownerRole ? ` · 责任角色 ${roleText(t.ownerRole)}` : ''} · ${t.isBlocking === '1' ? '阻断项' : '非阻断'}`,
         code: t.projectCode ?? '',
         initiator: '',
         time: formatDue(t.dueDate),

@@ -246,7 +246,7 @@ async function syncCert(): Promise<void> {
     const added = await syncProjectCertItems(projectId.value);
     message.success(
       added > 0
-        ? `已按当前目标市场同步认证清单，新增 ${added} 项（DONE 项不重置）`
+        ? `已按当前目标市场同步认证清单，新增 ${added} 项（已完成项不重置）`
         : '认证清单已是最新（无新增项）',
     );
     await loadCert();
@@ -353,7 +353,7 @@ async function submitBaselines(): Promise<void> {
     project.value = await updateProjectBaselines(projectId.value, {
       ...baselineForm,
     });
-    message.success('四基准已更新（DRAFT 期内可直改；立项后锁定走双签）');
+    message.success('四基准已更新（草稿期内可直改；立项后锁定走双签）');
     baselineOpen.value = false;
   } catch (error) {
     message.error(
@@ -399,7 +399,7 @@ async function submitLaunchDate(): Promise<void> {
   }
   const reason = launchReason.value.trim();
   if (!reason) {
-    message.warning('录入理由必填（写入 INITIAL_LAUNCH_DATE 审计）');
+    message.warning('录入理由必填');
     return;
   }
   launchSaving.value = true;
@@ -410,7 +410,7 @@ async function submitLaunchDate(): Promise<void> {
       reason,
     );
     message.success(
-      '上市日期已初次录入；后续修改需走双签变更流程（AC-INC-33）',
+      '上市日期已初次录入；后续修改需走双签变更流程',
     );
     launchOpen.value = false;
   } catch (error) {

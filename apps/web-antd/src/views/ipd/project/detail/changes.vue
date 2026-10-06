@@ -69,6 +69,7 @@ import {
   changeStateLabel,
   changeStateTone,
 } from '../../_shared/ipd-enums';
+import { validateImpactSnapshot } from '../../_shared/impact-snapshot';
 
 const route = useRoute();
 
@@ -286,6 +287,17 @@ async function submitRequirement() {
     reqError.value = '缺少项目编号，请在项目详情页进入。';
     return;
   }
+  // D10 修复（2026-10-06）：影响快照创建时必填且需覆盖四维度（后端 P2-6.2 同构预校验）。
+  const beforeCheck = validateImpactSnapshot(reqForm.beforeSnapshot, '原状快照');
+  if (!beforeCheck.ok) {
+    reqError.value = beforeCheck.error;
+    return;
+  }
+  const afterCheck = validateImpactSnapshot(reqForm.afterSnapshot, '目标快照');
+  if (!afterCheck.ok) {
+    reqError.value = afterCheck.error;
+    return;
+  }
   reqSubmitting.value = true;
   reqError.value = null;
   try {
@@ -293,13 +305,13 @@ async function submitRequirement() {
       requirementId: reqId,
       changeType: reqForm.changeType,
       reason,
-      beforeSnapshot: reqForm.beforeSnapshot.trim() || null,
-      afterSnapshot: reqForm.afterSnapshot.trim() || null,
+      beforeSnapshot: reqForm.beforeSnapshot.trim(),
+      afterSnapshot: reqForm.afterSnapshot.trim(),
       projectId: id,
     });
     reqDecisionError.value = null;
     reqDecisionResult.value = null;
-    message.success('需求变更草稿已创建，请在下方提交双签');
+    message.success('需求变更草稿已创建，请在下方提交签署');
   } catch (cause) {
     reqResult.value = null;
     reqError.value = ipdApiErrorText(cause);
@@ -315,16 +327,27 @@ async function submitReqSign() {
   try {
     if (reqResult.value.status === 'DRAFT') {
       reqResult.value = await submitRequirementChange(reqResult.value.id);
-      message.success('已提交双签（DRAFT → PENDING_SIGN），等待对方签署');
+      message.success('已提交，等待两位负责人签署');
     } else if (reqResult.value.status === 'PENDING_SIGN') {
+      // D14 修复（2026-10-06）：驳回必填意见（后端已加校验，前端先拦）。
+      if (!reqDecision.approve && !reqDecision.opinion.trim()) {
+        reqDecisionSubmitting.value = false;
+        reqDecisionError.value = '驳回时请填写意见。';
+        return;
+      }
+      if (reqDecision.opinion.trim().length > 500) {
+        reqDecisionSubmitting.value = false;
+        reqDecisionError.value = '意见不能超过 500 字。';
+        return;
+      }
       reqDecisionResult.value = await signRequirementChange(
         reqResult.value.id,
         reqDecision.approve ? 'APPROVE' : 'REJECT',
         reqDecision.opinion.trim() || null,
       );
-      message.success(reqDecision.approve ? '已签署通过' : '已签署驳回');
+      message.success(reqDecision.approve ? '已签署通过' : '已驳回');
     } else {
-      reqDecisionError.value = `当前状态 ${reqResult.value.status} 不支持该操作。`;
+      reqDecisionError.value = `当前状态（${statusLabelFor(reqResult.value.status)}）不支持该操作，请刷新后查看。`;
       return;
     }
   } catch (cause) {
@@ -528,7 +551,7 @@ onMounted(() => {
           class="mb-3"
           show-icon
           type="warning"
-          :message="`本项目有 ${openChanges.length} 张未闭环需求变更单（P2-6.2：阶段推进门禁会拦截）`"
+          :message="`本项目有 ${openChanges.length} 张未闭环需求变更单，阶段推进会被拦截`"
         >
           <template #description>
             {{
@@ -539,10 +562,10 @@ onMounted(() => {
             }}
           </template>
         </Alert>
-        <Card title="发起需求变更（双签否决：BR-GATE-07）">
+        <Card title="发起需求变更">
           <Alert
             class="mb-4"
-            message="需求变更双签：创建草稿 → 提交双签 → 对方/产品组长签署。单方 REJECT 即整体否决。变更类型与原因必须非空，前后快照为选填（JSON/纯文本皆可，提交双签前服务端要求非空）。"
+            message="需求变更双签：创建草稿 → 提交签署 → 双方负责人签署，任一方驳回即整体驳回。变更类型与原因必填；前后快照必填且需覆盖范围/成本/时限/质量四维度（JSON）。"
             show-icon
             type="info"
           />
@@ -566,18 +589,18 @@ onMounted(() => {
                 show-count
               />
             </FormItem>
-            <FormItem label="原状快照">
+            <FormItem label="原状快照" required>
               <Textarea
                 v-model:value="reqForm.beforeSnapshot"
                 :rows="2"
-                placeholder="变更前需求快照（选填）"
+                placeholder='必填，如 {"范围":"…","成本":0,"时限":"…","质量":"…"}'
               />
             </FormItem>
-            <FormItem label="目标快照">
+            <FormItem label="目标快照" required>
               <Textarea
                 v-model:value="reqForm.afterSnapshot"
                 :rows="2"
-                placeholder="变更后需求快照（选填）"
+                placeholder='必填，如 {"范围":"…","成本":0,"时限":"…","质量":"…"}'
               />
             </FormItem>
             <FormItem label=" " :colon="false">
@@ -590,7 +613,7 @@ onMounted(() => {
             <template #description>
               <p>变更单 ID：{{ reqResult.id }}</p>
               <p>状态：{{ statusLabelFor(reqResult.status) }}</p>
-              <p class="text-muted-foreground text-xs">点击下方「提交双签」进入 PENDING_SIGN，等待对方/产品组长签署。</p>
+              <p class="text-muted-foreground text-xs">点击下方「提交签署」，等待两位负责人签署。</p>
             </template>
           </Alert>
           <Alert v-if="reqResult && reqResult.status === 'PENDING_SIGN'" class="mt-2" show-icon type="success">
@@ -602,9 +625,9 @@ onMounted(() => {
             </template>
           </Alert>
 
-          <Card v-if="reqResult && reqResult.status !== 'APPROVED' && reqResult.status !== 'REJECTED'" class="mt-3" :title="reqResult.status === 'DRAFT' ? '提交双签（DRAFT → PENDING_SIGN）' : '签署决策（PENDING_SIGN）'">
+          <Card v-if="reqResult && reqResult.status !== 'APPROVED' && reqResult.status !== 'REJECTED'" class="mt-3" :title="reqResult.status === 'DRAFT' ? '提交签署' : '签署决策'">
             <template v-if="reqResult.status === 'DRAFT'">
-              <Button :loading="reqDecisionSubmitting" type="primary" @click="submitReqSign">提交双签</Button>
+              <Button :loading="reqDecisionSubmitting" type="primary" @click="submitReqSign">提交签署</Button>
             </template>
             <template v-else-if="reqResult.status === 'PENDING_SIGN'">
               <Form layout="horizontal" :label-col="{ style: { width: '110px' } }">
@@ -614,12 +637,12 @@ onMounted(() => {
                     <Radio :value="false">驳回</Radio>
                   </RadioGroup>
                 </FormItem>
-                <FormItem label="签署意见">
+                <FormItem label="签署意见" :required="!reqDecision.approve">
                   <Textarea
                     v-model:value="reqDecision.opinion"
                     :maxlength="500"
                     :rows="3"
-                    placeholder="选填，不超过 500 字"
+                    :placeholder="reqDecision.approve ? '选填，不超过 500 字' : '驳回时必填，不超过 500 字'"
                     show-count
                   />
                 </FormItem>

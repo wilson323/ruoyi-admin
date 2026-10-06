@@ -21,6 +21,8 @@ import {
   Descriptions,
   DescriptionsItem,
   Empty,
+  Input,
+  Modal,
   Spin,
   Tag,
   Timeline,
@@ -43,7 +45,6 @@ defineOptions({ name: 'IpdChangeDetail', meta: { ipdBackend: 'RequirementChangeC
 const route = useRoute();
 const auth = useIpdAuthStore();
 
-const projectId = computed(() => String(route.params.projectId ?? ''));
 const changeId = computed(() => String(route.params.changeId ?? ''));
 
 /** 状态机 label/tone —— V6 系统漂移修复：本页用 ipd-state-machines 集中查表。 */
@@ -69,6 +70,9 @@ const isNetwork = ref(false);
 const actionBusy = ref(false);
 const signBusy = ref(false);
 const rejectBusy = ref(false);
+/** D14（2026-10-06）：驳回必填意见（后端已加校验，前端先拦并收集）；通过可直接签。 */
+const rejectModalOpen = ref(false);
+const rejectOpinion = ref('');
 
 function rejectText(cause: unknown): string {
   if (cause instanceof IpdRequestError) {
@@ -159,7 +163,7 @@ async function onSubmit(): Promise<void> {
   actionBusy.value = true;
   try {
     detail.value = await submitRequirementChange(detail.value.id);
-    message.success('变更单已提交双签（DRAFT → PENDING_SIGN）');
+    message.success('变更单已提交，等待两位负责人签署');
   } catch (cause) {
     message.error(rejectText(cause));
   } finally {
@@ -167,7 +171,7 @@ async function onSubmit(): Promise<void> {
   }
 }
 
-async function onSign(decision: 'APPROVE' | 'REJECT'): Promise<void> {
+async function doSign(decision: 'APPROVE' | 'REJECT', opinion?: string): Promise<void> {
   if (!detail.value || actionBusy.value) return;
   if (myPersonType.value !== 'MARKET_PM' && myPersonType.value !== 'RD_PM') {
     message.warning('仅市场 PM / 研发 PM 可执行签署操作');
@@ -176,14 +180,37 @@ async function onSign(decision: 'APPROVE' | 'REJECT'): Promise<void> {
   if (decision === 'APPROVE') signBusy.value = true;
   else rejectBusy.value = true;
   try {
-    detail.value = await signRequirementChange(detail.value.id, decision);
-    message.success(decision === 'APPROVE' ? '已签署：APPROVE' : '已签署：REJECT');
+    detail.value = await signRequirementChange(detail.value.id, decision, opinion ?? null);
+    message.success(decision === 'APPROVE' ? '已签署：通过' : '已驳回');
   } catch (cause) {
     message.error(rejectText(cause));
   } finally {
     signBusy.value = false;
     rejectBusy.value = false;
   }
+}
+
+function onSignApprove(): void {
+  void doSign('APPROVE');
+}
+
+function openReject(): void {
+  rejectOpinion.value = '';
+  rejectModalOpen.value = true;
+}
+
+async function confirmReject(): Promise<void> {
+  const opinion = rejectOpinion.value.trim();
+  if (!opinion) {
+    message.warning('驳回时请填写意见');
+    return;
+  }
+  if (opinion.length > 500) {
+    message.warning('意见不能超过 500 字');
+    return;
+  }
+  rejectModalOpen.value = false;
+  await doSign('REJECT', opinion);
 }
 
 const empty = computed(() => !loading.value && !errorMsg.value && !detail.value);
@@ -193,7 +220,7 @@ const empty = computed(() => !loading.value && !errorMsg.value && !detail.value)
   <div class="ipd-change-detail p-4">
     <Alert
       class="mb-4"
-      :message="`变更单详情：项目 ${projectId || '尚未选择'} · 变更单 ${changeId || '尚未选择'} · 后端 GET /requirement-changes/{id} 已交付（P2-6.1）。`"
+      message="变更单详情：查看变更前后对比与双方签署进展。"
       show-icon
       type="info"
     />
@@ -236,7 +263,7 @@ const empty = computed(() => !loading.value && !errorMsg.value && !detail.value)
           <Card size="small" title="变更前快照">
             <div v-if="beforeSnap === null" class="text-xs text-gray-500">{{ PENDING_TEXT }}</div>
             <div v-else-if="typeof beforeSnap === 'string'" class="text-xs">
-              <Tag color="warning">JSON 格式异常</Tag>
+              <Tag color="warning">格式异常，按原文显示</Tag>
               <pre class="mt-1 whitespace-pre-wrap text-xs">{{ beforeSnap }}</pre>
             </div>
             <pre v-else class="m-0 whitespace-pre-wrap text-xs">{{ JSON.stringify(beforeSnap, null, 2) }}</pre>
@@ -244,7 +271,7 @@ const empty = computed(() => !loading.value && !errorMsg.value && !detail.value)
           <Card size="small" title="变更后快照">
             <div v-if="afterSnap === null" class="text-xs text-gray-500">{{ PENDING_TEXT }}</div>
             <div v-else-if="typeof afterSnap === 'string'" class="text-xs">
-              <Tag color="warning">JSON 格式异常</Tag>
+              <Tag color="warning">格式异常，按原文显示</Tag>
               <pre class="mt-1 whitespace-pre-wrap text-xs">{{ afterSnap }}</pre>
             </div>
             <pre v-else class="m-0 whitespace-pre-wrap text-xs">{{ JSON.stringify(afterSnap, null, 2) }}</pre>
@@ -255,22 +282,22 @@ const empty = computed(() => !loading.value && !errorMsg.value && !detail.value)
 
     <Card v-if="detail" title="双签面板" class="mb-4">
       <div v-if="typeof signatures === 'string'" class="text-xs">
-        <Tag color="warning">signatures JSON 格式异常</Tag>
+        <Tag color="warning">签署记录格式异常，按原文显示</Tag>
         <pre class="mt-1 whitespace-pre-wrap text-xs">{{ signatures }}</pre>
       </div>
       <div v-else class="grid gap-3 md:grid-cols-2">
         <div>
           <div class="mb-1 text-xs text-gray-500">市场 PM 签署</div>
-          <Tag v-if="signatures.MARKET_PM?.decision === 'APPROVE'" color="success">APPROVE</Tag>
-          <Tag v-else-if="signatures.MARKET_PM?.decision === 'REJECT'" color="error">REJECT</Tag>
+          <Tag v-if="signatures.MARKET_PM?.decision === 'APPROVE'" color="success">通过</Tag>
+          <Tag v-else-if="signatures.MARKET_PM?.decision === 'REJECT'" color="error">驳回</Tag>
           <Tag v-else color="default">待签署</Tag>
           <div v-if="signatures.MARKET_PM?.opinion" class="mt-1 text-xs">意见：{{ signatures.MARKET_PM.opinion }}</div>
           <div v-if="signatures.MARKET_PM?.signedAt" class="mt-1 text-xs text-gray-500">时间：{{ formatDateTime(signatures.MARKET_PM.signedAt) }}</div>
         </div>
         <div>
           <div class="mb-1 text-xs text-gray-500">研发 PM 签署</div>
-          <Tag v-if="signatures.RD_PM?.decision === 'APPROVE'" color="success">APPROVE</Tag>
-          <Tag v-else-if="signatures.RD_PM?.decision === 'REJECT'" color="error">REJECT</Tag>
+          <Tag v-if="signatures.RD_PM?.decision === 'APPROVE'" color="success">通过</Tag>
+          <Tag v-else-if="signatures.RD_PM?.decision === 'REJECT'" color="error">驳回</Tag>
           <Tag v-else color="default">待签署</Tag>
           <div v-if="signatures.RD_PM?.opinion" class="mt-1 text-xs">意见：{{ signatures.RD_PM.opinion }}</div>
           <div v-if="signatures.RD_PM?.signedAt" class="mt-1 text-xs text-gray-500">时间：{{ formatDateTime(signatures.RD_PM.signedAt) }}</div>
@@ -284,42 +311,59 @@ const empty = computed(() => !loading.value && !errorMsg.value && !detail.value)
           :loading="actionBusy"
           :disabled="actionBusy"
           @click="onSubmit"
-        >提交双签（DRAFT → PENDING_SIGN）</Button>
+        >提交签署</Button>
         <template v-else-if="canSignApprove">
           <Button
             type="primary"
             :loading="signBusy"
             :disabled="signBusy || rejectBusy"
-            @click="onSign('APPROVE')"
-          >签署 APPROVE</Button>
+            @click="onSignApprove"
+          >签署：通过</Button>
           <Button
             danger
             :loading="rejectBusy"
             :disabled="signBusy || rejectBusy"
-            @click="onSign('REJECT')"
-          >签署 REJECT</Button>
+            @click="openReject"
+          >驳回</Button>
         </template>
-        <Tag v-else color="default">终态禁操作</Tag>
+        <Tag v-else color="default">已结束，不可再操作</Tag>
       </div>
     </Card>
+
+    <!-- D14：驳回必填意见 -->
+    <Modal
+      v-model:open="rejectModalOpen"
+      title="驳回需求变更单"
+      ok-text="确认驳回"
+      cancel-text="取消"
+      @ok="confirmReject"
+    >
+      <Input.TextArea
+        v-model:value="rejectOpinion"
+        :auto-size="{ minRows: 3, maxRows: 6 }"
+        :maxlength="500"
+        show-count
+        placeholder="请填写驳回原因（必填）"
+      />
+    </Modal>
 
     <Card v-if="detail" title="状态机轨迹" class="mb-4">
       <Timeline>
         <TimelineItem>
-          <div class="text-sm">DRAFT（发起）</div>
+          <div class="text-sm">草稿（发起）</div>
           <div class="text-xs text-gray-500">{{ formatDateTime(detail.createTime) }}</div>
         </TimelineItem>
         <TimelineItem :color="(typeof signatures === 'object' && (signatures.MARKET_PM || signatures.RD_PM)) ? 'blue' : 'gray'">
-          <div class="text-sm">PENDING_SIGN（双签中）</div>
-          <div class="text-xs text-gray-500">任一 REJECT ⇒ 整体 REJECTED；双 APPROVE ⇒ APPROVED</div>
+          <div class="text-sm">待签署（双方负责人）</div>
+          <div class="text-xs text-gray-500">任一方驳回即整体驳回；双方都通过才算通过</div>
         </TimelineItem>
         <TimelineItem :color="detail.status === 'APPROVED' ? 'green' : 'gray'">
-          <div class="text-sm">APPROVED</div>
-          <div class="text-xs text-gray-500">{{ detail.status === 'APPROVED' ? formatDateTime(detail.updateTime) : '待双 APPROVE' }}</div>
+          <div class="text-sm">已通过</div>
+          <div class="text-xs text-gray-500">{{ detail.status === 'APPROVED' ? formatDateTime(detail.updateTime) : '待双方签署通过' }}</div>
         </TimelineItem>
         <TimelineItem :color="detail.status === 'REJECTED' ? 'red' : 'gray'">
-          <div class="text-sm">REJECTED</div>
-          <div class="text-xs text-gray-500">{{ detail.status === 'REJECTED' ? formatDateTime(detail.updateTime) : '单方 REJECT 即' }}</div>
+          <div class="text-sm">已驳回</div>
+          <div class="text-xs text-gray-500">{{ detail.status === 'REJECTED' ? formatDateTime(detail.updateTime) : '任一方驳回即生效' }}</div>
         </TimelineItem>
       </Timeline>
     </Card>

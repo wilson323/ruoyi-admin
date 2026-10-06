@@ -28,8 +28,10 @@ import {
   stateTone,
 } from './ipd-state-machines';
 
-/** 内部 5 角色中文名（含 MARKET_PM/RD_PM/GROUP_LEADER/SUPER_ADMIN/INTERNAL）。 */
+/** 内部角色中文名（含 MARKET_PM/RD_PM/GROUP_LEADER/SUPER_ADMIN/INTERNAL；BOTH 为动作主责角色维度——
+ *  真库 stage_actions.owner_role 存在 101 条 BOTH 行，此前查表落空回退原码「BOTH」裸显，D6 修复补齐）。 */
 export const ROLE_TEXT: Record<string, string> = {
+  BOTH: '市场与研发共担',
   GROUP_LEADER: '产品组长',
   INTERNAL: '内部成员',
   MARKET_PM: '市场PM',
@@ -387,10 +389,12 @@ export const CATCHUP_TEXT: Record<string, string> = {
   IN_PROGRESS: '补齐中',
 };
 
-/** 动作深度 DEEP/LIGHT（公共规范第六节 + BR-IPD-03/04）。 */
+/** 动作深度 DEEP/LIGHT（公共规范第六节 + BR-IPD-03/04）。
+ *  D6 白话化（2026-10-06）：「深管/轻管」是内部管理术语，产品负责人反馈用户看不懂；
+ *  按用户可感知的差异（是否需要交付物）改词，注释保留内部术语便于检索。 */
 export const DEPTH_TEXT: Record<string, string> = {
-  DEEP: '深管动作',
-  LIGHT: '轻管动作',
+  DEEP: '需交付物',
+  LIGHT: '免交付物',
 };
 export const DEPTH_COLOR: Record<string, string> = {
   DEEP: 'processing',

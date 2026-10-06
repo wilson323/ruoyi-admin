@@ -24,7 +24,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 
-import { Alert, message } from 'ant-design-vue';
+import { Alert, Input, Modal, message } from 'ant-design-vue';
 import {
   AimOutlined,
   CheckCircleFilled,
@@ -44,6 +44,7 @@ import { listProjects, type Project } from '../../../api/ipd/project';
 import { fetchDemands, type IpdDemand } from '../../../api/ipd/demand';
 import { ipdErrorText } from '../_shared/ipd-error-text';
 import { changeStateLabel } from '../_shared/ipd-enums';
+import { validateImpactSnapshot } from '../_shared/impact-snapshot';
 import { IPD_PERMISSION_CODES } from '../_shared/ipd-permission-codes';
 import AiSuggest from '../_shared/ai-suggest.vue';
 
@@ -159,7 +160,7 @@ async function submitForSign(item: RequirementChange): Promise<void> {
   actionBusy.value = key;
   try {
     await submitRequirementChange(item.id);
-    message.success('变更单已进入双签队列');
+    message.success('已提交，等待两位负责人签署');
     await loadChanges();
   } catch (cause) {
     message.error(ipdErrorText(cause, { domain: 'project' }));
@@ -168,18 +169,18 @@ async function submitForSign(item: RequirementChange): Promise<void> {
   }
 }
 
-async function sign(item: RequirementChange, decision: 'APPROVE' | 'REJECT'): Promise<void> {
+async function sign(item: RequirementChange, decision: 'APPROVE' | 'REJECT', opinion?: string): Promise<void> {
   const key = `sign:${item.id}`;
   if (actionBusy.value === key) return;
   actionBusy.value = key;
   try {
-    const updated = await signRequirementChange(item.id, decision);
+    const updated = await signRequirementChange(item.id, decision, opinion ?? null);
     message.success(
       decision === 'REJECT'
-        ? '已拒绝，变更单整体驳回'
+        ? '已驳回，变更单整体驳回'
         : updated.status === 'APPROVED'
-          ? '双签通过，变更单生效并回写需求池'
-          : '已同意，等待另一方PM签署',
+          ? '双方签署通过，变更单生效并回写需求池'
+          : '已签署通过，等待另一方负责人签署',
     );
     await loadChanges();
   } catch (cause) {
@@ -187,6 +188,31 @@ async function sign(item: RequirementChange, decision: 'APPROVE' | 'REJECT'): Pr
   } finally {
     if (actionBusy.value === key) actionBusy.value = '';
   }
+}
+
+/** D14 修复（2026-10-06）：驳回必填意见（后端已加校验，前端先拦并收集）；同意可直接签。 */
+const rejectTarget = ref<RequirementChange | null>(null);
+const rejectOpinion = ref('');
+
+function openReject(item: RequirementChange): void {
+  rejectTarget.value = item;
+  rejectOpinion.value = '';
+}
+
+async function confirmReject(): Promise<void> {
+  const item = rejectTarget.value;
+  if (!item) return;
+  const opinion = rejectOpinion.value.trim();
+  if (!opinion) {
+    message.warning('驳回时请填写意见');
+    return;
+  }
+  if (opinion.length > 500) {
+    message.warning('意见不能超过 500 字');
+    return;
+  }
+  rejectTarget.value = null;
+  await sign(item, 'REJECT', opinion);
 }
 
 function openModal(): void {
@@ -205,19 +231,30 @@ async function createChange(): Promise<void> {
     createError.value = '关联需求 ID 必须为数字。';
     return;
   }
+  // D10 修复（2026-10-06）：影响快照创建时必填且需覆盖四维度（后端 P2-6.2 同构预校验）。
+  const beforeCheck = validateImpactSnapshot(form.beforeSnapshot, '变更前快照');
+  if (!beforeCheck.ok) {
+    createError.value = beforeCheck.error;
+    return;
+  }
+  const afterCheck = validateImpactSnapshot(form.afterSnapshot, '变更后快照');
+  if (!afterCheck.ok) {
+    createError.value = afterCheck.error;
+    return;
+  }
   submitting.value = true;
   createError.value = '';
   try {
     await createRequirementChange({
-      afterSnapshot: form.afterSnapshot.trim() || null,
-      beforeSnapshot: form.beforeSnapshot.trim() || null,
+      afterSnapshot: form.afterSnapshot.trim(),
+      beforeSnapshot: form.beforeSnapshot.trim(),
       changeType: form.changeType.trim(),
       projectId: activeId.value || null,
       reason: form.reason.trim(),
       requirementId: form.requirementId.trim(),
     });
     modalOpen.value = false;
-    message.success('变更单草稿已创建，确认四维度快照后可提交双签');
+    message.success('变更单草稿已创建，提交签署后等待两位负责人签署');
     await loadChanges();
   } catch (cause) {
     createError.value = ipdErrorText(cause, { domain: 'project' });
@@ -329,7 +366,7 @@ async function createChange(): Promise<void> {
                 :disabled="actionBusy === `submit:${item.id}`"
                 @click="submitForSign(item)"
               >
-                {{ actionBusy === `submit:${item.id}` ? '提交中…' : '提交双签' }}
+                {{ actionBusy === `submit:${item.id}` ? '提交中…' : '提交签署' }}
               </button>
             </template>
             <template v-else>
@@ -337,9 +374,9 @@ async function createChange(): Promise<void> {
                 v-access:code="[IPD_PERMISSION_CODES.REQUIREMENT_CHANGE_SIGN]"
                 type="button"
                 :disabled="actionBusy === `sign:${item.id}`"
-                @click="sign(item, 'REJECT')"
+                @click="openReject(item)"
               >
-                {{ actionBusy === `sign:${item.id}` ? '签署中…' : '拒绝' }}
+                {{ actionBusy === `sign:${item.id}` ? '签署中…' : '驳回' }}
               </button>
               <button
                 v-access:code="[IPD_PERMISSION_CODES.REQUIREMENT_CHANGE_SIGN]"
@@ -426,17 +463,17 @@ async function createChange(): Promise<void> {
           </label>
           <div class="field-grid two">
             <label>
-              变更前快照（JSON）
-              <textarea id="change-create-before-snapshot" v-model="createForm.beforeSnapshot" name="change_create_before_snapshot" placeholder="范围/成本/时限/质量四维度，提交双签前必填" />
+              变更前快照（必填）
+              <textarea id="change-create-before-snapshot" v-model="createForm.beforeSnapshot" name="change_create_before_snapshot" placeholder='必填，如 {"范围":"…","成本":0,"时限":"…","质量":"…"}' />
             </label>
             <label>
-              变更后快照（JSON）
-              <textarea id="change-create-after-snapshot" v-model="createForm.afterSnapshot" name="change_create_after_snapshot" placeholder="范围/成本/时限/质量四维度，提交双签前必填" />
+              变更后快照（必填）
+              <textarea id="change-create-after-snapshot" v-model="createForm.afterSnapshot" name="change_create_after_snapshot" placeholder='必填，如 {"范围":"…","成本":0,"时限":"…","质量":"…"}' />
             </label>
           </div>
           <div class="handoff-note">
             <CheckCircleFilled />
-            前后快照可先留空创建草稿；提交双签前必须补齐（服务端强校验）。
+            前后快照创建时必填：请按范围/成本/时限/质量四维度填写，提交后作为双方签署依据。
           </div>
           <div v-if="createError" class="form-error" role="alert">{{ createError }}</div>
         </div>
@@ -448,6 +485,24 @@ async function createChange(): Promise<void> {
         </div>
       </form>
     </div>
+
+    <!-- D14：驳回必填意见 -->
+    <Modal
+      :open="rejectTarget !== null"
+      title="驳回需求变更单"
+      ok-text="确认驳回"
+      cancel-text="取消"
+      @ok="confirmReject"
+      @cancel="rejectTarget = null"
+    >
+      <Input.TextArea
+        v-model:value="rejectOpinion"
+        :auto-size="{ minRows: 3, maxRows: 6 }"
+        :maxlength="500"
+        show-count
+        placeholder="请填写驳回原因（必填）"
+      />
+    </Modal>
   </div>
 </template>
 

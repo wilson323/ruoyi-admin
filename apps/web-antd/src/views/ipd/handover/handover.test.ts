@@ -492,7 +492,7 @@ describe('IPD handover page (prototype HandoffWorkbench adaptation)', () => {
       loginAs(me.id, 'MARKET_PM');
       const wrapper = mount(Handover);
       await vi.waitFor(() => expect(wrapper.text()).toContain('确认接收项目'));
-      // accept 备案号输入框是 placeholder 为「备案号（接任后达项目数上限时必填，AC-TEAM-11）」的 input
+      // accept 备案号输入框是 placeholder 为「备案号（接任后达项目数上限时必填）」的 input
       const acceptInput = wrapper.findAll('input').find((i) => (i.attributes('placeholder') ?? '').includes('备案号'));
       expect(acceptInput).toBeDefined();
       await acceptInput!.setValue('  AC-TEAM-11  ');

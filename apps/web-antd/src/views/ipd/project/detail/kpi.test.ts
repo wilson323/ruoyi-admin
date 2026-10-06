@@ -101,9 +101,9 @@ describe('IpdProjectKpi 项目 KPI 子页签 (P0-10.32)', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('12000.00'));
     const text = wrapper.text();
     expect(text).toContain('P-200');
-    expect(text).toContain('/kpi/performance');
-    expect(text).toContain('/kpi/functional');
-    expect(text).toContain('/kpi/trend');
+    expect(text).toContain('综合加权分');
+    expect(text).toContain('当前周期');
+    expect(text).not.toContain('/kpi/');
     wrapper.unmount();
   });
 

@@ -38,6 +38,7 @@ import {
 } from '../../../api/ipd/workbench';
 import { IpdRequestError } from '../../../api/ipd/auth';
 import { formatDateTime, PENDING_TEXT } from '../_shared/format';
+import { WORKBENCH_TASK_STATUS_TEXT, roleText } from '../_shared/ipd-enums';
 defineOptions({
   name: 'IpdTimeline',
   meta: {
@@ -79,7 +80,7 @@ function rejectText(cause: unknown): string {
 function auditToEntry(log: AuditLog, scope: string): TimelineEntry {
   const at = log.createTime ?? null;
   const op = log.operatorName || log.operatorId || PENDING_TEXT;
-  const role = log.operatorRole ? `[${log.operatorRole}]` : '';
+  const role = log.operatorRole ? `[${roleText(log.operatorRole, log.operatorRole)}]` : '';
   const entity = log.entityType ? `${log.entityType}#${log.entityId ?? '?'}` : '';
   const detail = log.reason ? ` · 原因：${log.reason}` : '';
   return {
@@ -112,6 +113,15 @@ function toMillis(at: null | number | string): number {
   const ts = Date.parse(String(at));
   return Number.isFinite(ts) ? ts : 0;
 }
+
+/** 审计分层白话文案（D6）：与 audit.vue 同款三态映射。 */
+const scopeText = computed(() => {
+  const scope = auditData.value?.scope;
+  if (scope === 'GLOBAL') return '全局';
+  if (scope === 'GROUP') return '本组';
+  if (scope === 'OWN') return '仅本人';
+  return '—';
+});
 
 const entries = computed<TimelineEntry[]>(() => {
   const out: TimelineEntry[] = [];
@@ -177,7 +187,7 @@ onMounted(load);
   <div class="ipd-timeline p-4">
     <Alert
       class="mb-4"
-      :message="`全流程轨迹：审计日志（GET /audit-logs/scope，分层范围）+ 工作台待办（GET /workbench/summary）两源融合，按时间倒序。无 timeline 聚合端点，本页以审计为时间线主轴；后端不支持按 entity/action 过滤，关键词仅作用于当前页。`"
+      :message="`全流程轨迹：汇总审计记录与工作台待办，按时间倒序展示；关键词搜索作用于当前页数据。`"
       show-icon
       type="info"
     />
@@ -201,7 +211,7 @@ onMounted(load);
       <div class="mt-3 flex flex-wrap gap-2 text-xs">
         <Tag color="blue">审计：{{ entryCounts.AUDIT }}</Tag>
         <Tag color="green">工作台待办：{{ entryCounts.WORKBENCH }}</Tag>
-        <span class="ml-2 text-gray-500">审计分层：{{ auditData?.scope ?? '—' }}</span>
+        <span class="ml-2 text-gray-500">审计分层：{{ scopeText }}</span>
       </div>
     </Card>
 
@@ -218,7 +228,7 @@ onMounted(load);
         >
           <div class="flex flex-wrap items-center gap-2">
             <Tag :color="CATEGORY_TEXT[entry.category].color">{{ CATEGORY_TEXT[entry.category].label }}</Tag>
-            <Tag v-if="entry.status" color="default">{{ entry.status }}</Tag>
+            <Tag v-if="entry.status" color="default">{{ entry.category === 'WORKBENCH' ? (WORKBENCH_TASK_STATUS_TEXT[entry.status] ?? entry.status) : entry.status }}</Tag>
             <span class="text-sm">{{ entry.summary }}</span>
           </div>
           <div class="text-xs text-gray-500">{{ formatDateTime(entry.at) }}</div>

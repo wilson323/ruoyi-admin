@@ -64,6 +64,7 @@ import {
   projectDateTimeText,
 } from '../project-display';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
+import { roleText } from '../../_shared/ipd-enums';
 
 const route = useRoute();
 const router = useRouter();
@@ -237,6 +238,9 @@ function toFieldsBody(): StageActionFieldsBody {
     certPassedAt: needsCert.value ? (fields.certPassedAt ?? null) : null,
     farValue: needsFarFrr.value ? fields.farValue : null,
     frrValue: needsFarFrr.value ? fields.frrValue : null,
+    // D4 修复（2026-10-06）：备注是 /fields 第 7 个可写字段；无条件携带（空串由后端
+    // 判空白后清空列），使「只改备注」不再全 null 触发 400、「清空备注」也能生效。
+    remark: fields.remark,
   };
 }
 
@@ -254,10 +258,12 @@ async function saveFields(): Promise<void> {
     if (epoch !== identityEpoch) return;
     action.value = updated;
     aiFillHint.value = '';
-    message.success('动作字段已保存（status 未变更，请走状态流转接口）');
+    message.success('字段已保存。如需变更状态，请使用下方「状态流转」按钮');
   } catch (cause) {
     if (epoch !== identityEpoch) return;
     submitError.value = cause;
+    // D4 修复（2026-10-06）：顶部 Alert 可能在滚动视口外，补 toast 即时反馈保存失败。
+    message.error(isTransportError(cause) ? '无法连接服务，请检查网络后重试' : '保存失败，请稍后重试');
   } finally {
     if (epoch === identityEpoch) busyAction.value = '';
   }
@@ -526,7 +532,7 @@ onUnmounted(() => {
         <template v-else-if="action">
           <Descriptions :column="2" size="small" bordered class="mb-4">
             <Descriptions.Item label="动作编码">{{ action.actionCode ?? '待补充' }}</Descriptions.Item>
-            <Descriptions.Item label="主责角色">{{ action.ownerRole ?? '待补充' }}</Descriptions.Item>
+            <Descriptions.Item label="主责角色">{{ roleText(action.ownerRole) }}</Descriptions.Item>
             <Descriptions.Item label="管理类型">{{ depthText(action.depth) }}</Descriptions.Item>
             <Descriptions.Item label="当前状态">{{ actionStatusText(action.status) }}</Descriptions.Item>
             <Descriptions.Item label="所属阶段 ID">{{ action.stageId ?? '待补充' }}</Descriptions.Item>
@@ -557,7 +563,7 @@ onUnmounted(() => {
             class="mb-4"
             type="info"
             show-icon
-            message="深管动作：状态流转与字段录入走 /transit 与 /fields；交付物走 POST /deliverables/upload，由服务端登记对象存储编号。"
+            message="此动作需上传交付物后才能提交验收。建议先切到「进行中」，完成时上传交付物、填写实际完成日期，再点「提交验收」。"
           />
 
           <Alert
@@ -565,7 +571,7 @@ onUnmounted(() => {
             class="mb-4"
             type="info"
             show-icon
-            message="轻管动作（BR-IPD-04 / G-10）：仅三字段（status / actualDoneAt / remark），无附件上传入口；保存字段后通过状态流转切到「已完成」。"
+            message="此动作无需上传交付物：填写实际完成日期（可加备注）后，点「提交验收」即完成。"
           />
 
           <!-- 字段录入 -->
@@ -664,7 +670,7 @@ onUnmounted(() => {
                   AI 执行
                 </Button>
                 <Button v-if="isDeep" v-access:code="IPD_PERMISSION_CODES.STAGE_ACTION_DELIVERABLE" :loading="busyAction === 'saveFields'" @click="openDeliverable">
-                  登记交付物
+                  上传交付物
                 </Button>
               </Space>
             </Form>
@@ -684,8 +690,9 @@ onUnmounted(() => {
                 v-if="action.status !== 'DONE'"
                 type="primary"
                 :loading="busyAction === 'transit'"
-                :disabled="isBlocking && showCert && (!action.certNo || !action.certPassedAt)
-                  && !(fields.certNo && fields.certPassedAt)"
+                :disabled="(isBlocking && showCert && (!action.certNo || !action.certPassedAt)
+                  && !(fields.certNo && fields.certPassedAt))
+                  || (isDeep && action.status === 'NOT_STARTED')"
                 @click="askTransit('DONE')"
               >
                 提交验收
@@ -721,11 +728,8 @@ onUnmounted(() => {
               </Button>
             </Space>
 
-            <div v-if="isDeep" class="text-muted-foreground mt-2 text-xs">
-              状态选项：{{ statusOptions.map((o) => o.label).join(' / ') }}
-            </div>
-            <div v-else class="text-muted-foreground mt-2 text-xs">
-              轻管可用：{{ lightStatusOptions.map((o) => o.label).join(' / ') }}
+            <div class="text-muted-foreground mt-2 text-xs">
+              可切换状态：{{ (isDeep ? statusOptions : lightStatusOptions).map((o) => o.label).join(' / ') }}
             </div>
           </Card>
         </template>
@@ -749,11 +753,11 @@ onUnmounted(() => {
       />
     </Modal>
 
-    <!-- 深管交付物登记 -->
+    <!-- 需交付物动作的上传入口 -->
     <Modal
       v-model:open="deliverableModalOpen"
-      title="登记深管交付物"
-      ok-text="登记"
+      title="上传交付物"
+      ok-text="上传"
       cancel-text="取消"
       @ok="submitDeliverable"
     >

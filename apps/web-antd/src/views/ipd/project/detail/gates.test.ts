@@ -106,8 +106,8 @@ describe('IpdProjectGates 项目 Gate 评审子页 (P0-10.23)', () => {
 
     const text = wrapper.text();
     expect(text).toContain('项目 Gate 评审：项目 P-200');
-    expect(text).toContain('GET /projects/{id}/gates');
-    expect(text).toContain('GateReviewController');
+    expect(text).toContain('在下方列表选择 Gate');
+    expect(text).toContain('任一方驳回即整轮驳回');
     expect(text).toContain('该项目尚无 Gate 评审');
     // 空列表 = 真实空态（不造假数据）
     expect(wrapper.text()).not.toContain('后端未交付');
@@ -127,8 +127,8 @@ describe('IpdProjectGates 项目 Gate 评审子页 (P0-10.23)', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('G1-概念评审'));
 
     expect(wrapper.text()).toContain('G2-规划评审');
-    expect(wrapper.text()).toContain('PENDING');
-    expect(wrapper.text()).toContain('APPROVED');
+    expect(wrapper.text()).toContain('流转中');
+    expect(wrapper.text()).toContain('已通过');
     // 初始未选中：评审面板空态
     expect(wrapper.text()).toContain('请在上方列表点击「打开评审」，或手动输入 Gate 编号定位');
 

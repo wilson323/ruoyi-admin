@@ -165,8 +165,8 @@ describe('IpdProjectChanges 项目需求与变更 (P0-10.25) — Tab3 需求变�
     // 老占位文案（消除后不应再出现）
     expect(text).not.toContain('P2-6.1 / P2-6.2 未开始');
     expect(text).not.toContain('仅有 domain 类');
-    // 新口径：双签工作流已交付
-    expect(text).toContain('双签否决');
+    // 新口径：双签工作流已交付（白话化后「双签否决」表述为「任一方驳回即整体驳回」）
+    expect(text).toContain('任一方驳回即整体驳回');
     wrapper.unmount();
   });
 
@@ -199,6 +199,11 @@ describe('IpdProjectChanges 项目需求与变更 (P0-10.25) — Tab3 需求变�
     const reasonTextarea = wrapper.findAll('textarea').find((t) => t.attributes('placeholder')?.includes('变更缘由'));
     expect(reasonTextarea).toBeDefined();
     await reasonTextarea!.setValue('新增导出报表');
+    // D10：影响快照创建时必填（四维 JSON），与后端 P2-6.2 校验同构
+    const snapTextareas = wrapper.findAll('textarea').filter((t) => t.attributes('placeholder')?.includes('必填，如'));
+    expect(snapTextareas.length).toBe(2);
+    await snapTextareas[0]!.setValue('{"范围":"原范围A","成本":1,"时限":"1d","质量":"P1"}');
+    await snapTextareas[1]!.setValue('{"范围":"新范围B","成本":2,"时限":"2d","质量":"P2"}');
     const createBtn = wrapper.findAll('button').find((b) => b.text().includes('创建变更草稿'));
     expect(createBtn).toBeDefined();
     await createBtn!.trigger('click');
@@ -206,29 +211,32 @@ describe('IpdProjectChanges 项目需求与变更 (P0-10.25) — Tab3 需求变�
     // POST /requirement-changes 已发出
     const post = calls.find((c) => c.method === 'POST' && c.url.endsWith('/requirement-changes'));
     expect(post).toBeDefined();
-    // DRAFT 状态下显示「提交双签」按钮
-    expect(wrapper.text()).toContain('提交双签');
-    expect(wrapper.text()).toContain('DRAFT → PENDING_SIGN');
+    // DRAFT 状态下显示「提交签署」按钮
+    expect(wrapper.text()).toContain('提交签署');
+    expect(wrapper.text()).toContain('等待两位负责人签署');
     wrapper.unmount();
   });
 
-  it('提交双签：DRAFT → PENDING_SIGN → PUT /{id}/submit → 显示 PENDING_SIGN alert + 「签署决策」区', async () => {
+  it('提交签署：DRAFT → PENDING_SIGN → PUT /{id}/submit → 显示提交成功提示 + 「签署决策」区', async () => {
     const calls = stubApi();
     const wrapper = await switchToRequirementTab(buildRouter(), '/ipd/projects/9140004/changes');
-    // 创建草稿
+    // 创建草稿（D10：快照四维必填）
     await wrapper.find('input[placeholder*="需求 ID"]').setValue('20003');
     await wrapper.findAll('textarea').find((t) => t.attributes('placeholder')?.includes('变更缘由'))!.setValue('新增导出报表');
+    const snapTextareas = wrapper.findAll('textarea').filter((t) => t.attributes('placeholder')?.includes('必填，如'));
+    await snapTextareas[0]!.setValue('{"范围":"原范围A","成本":1,"时限":"1d","质量":"P1"}');
+    await snapTextareas[1]!.setValue('{"范围":"新范围B","成本":2,"时限":"2d","质量":"P2"}');
     await wrapper.findAll('button').find((b) => b.text().includes('创建变更草稿'))!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('变更单草稿已创建'));
-    // 点「提交双签」
-    const submitBtn = wrapper.findAll('button').find((b) => b.text() === '提交双签');
+    // 点「提交签署」
+    const submitBtn = wrapper.findAll('button').find((b) => b.text() === '提交签署');
     expect(submitBtn).toBeDefined();
     await submitBtn!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('变更单已提交双签'));
     // PUT /submit 已发出
     expect(calls.some((c) => c.method === 'PUT' && c.url.includes('/requirement-changes/100003/submit'))).toBe(true);
     // 签署决策区出现
-    expect(wrapper.text()).toContain('签署决策（PENDING_SIGN）');
+    expect(wrapper.text()).toContain('签署决策');
     expect(wrapper.text()).toContain('通过');
     expect(wrapper.text()).toContain('驳回');
     wrapper.unmount();
@@ -239,9 +247,12 @@ describe('IpdProjectChanges 项目需求与变更 (P0-10.25) — Tab3 需求变�
     const wrapper = await switchToRequirementTab(buildRouter(), '/ipd/projects/9140004/changes');
     await wrapper.find('input[placeholder*="需求 ID"]').setValue('20003');
     await wrapper.findAll('textarea').find((t) => t.attributes('placeholder')?.includes('变更缘由'))!.setValue('新增导出报表');
+    const snapTextareas = wrapper.findAll('textarea').filter((t) => t.attributes('placeholder')?.includes('必填，如'));
+    await snapTextareas[0]!.setValue('{"范围":"原范围A","成本":1,"时限":"1d","质量":"P1"}');
+    await snapTextareas[1]!.setValue('{"范围":"新范围B","成本":2,"时限":"2d","质量":"P2"}');
     await wrapper.findAll('button').find((b) => b.text().includes('创建变更草稿'))!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('变更单草稿已创建'));
-    await wrapper.findAll('button').find((b) => b.text() === '提交双签')!.trigger('click');
+    await wrapper.findAll('button').find((b) => b.text() === '提交签署')!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('变更单已提交双签'));
     // 选「通过」（默认就是 approve=true）+ 提交签署
     await wrapper.findAll('button').find((b) => b.text() === '提交签署')!.trigger('click');
@@ -260,6 +271,9 @@ describe('IpdProjectChanges 项目需求与变更 (P0-10.25) — Tab3 需求变�
     const wrapper = await switchToRequirementTab(buildRouter(), '/ipd/projects/9140004/changes');
     await wrapper.find('input[placeholder*="需求 ID"]').setValue('99999999');
     await wrapper.findAll('textarea').find((t) => t.attributes('placeholder')?.includes('变更缘由'))!.setValue('测试错误');
+    const snapTextareas = wrapper.findAll('textarea').filter((t) => t.attributes('placeholder')?.includes('必填，如'));
+    await snapTextareas[0]!.setValue('{"范围":"原","成本":1,"时限":"1d","质量":"P1"}');
+    await snapTextareas[1]!.setValue('{"范围":"新","成本":2,"时限":"2d","质量":"P2"}');
     await wrapper.findAll('button').find((b) => b.text().includes('创建变更草稿'))!.trigger('click');
     // 50001 在 IPD_COMMON_CODE_TEXTS → 「数据不存在或已被删除」
     await vi.waitFor(() => expect(wrapper.text()).toContain('数据不存在或已被删除'));

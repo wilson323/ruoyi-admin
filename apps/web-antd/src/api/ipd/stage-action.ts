@@ -64,6 +64,8 @@ export interface StageActionFieldsBody {
   certPassedAt?: null | number | string;
   farValue?: null | number | string;
   frrValue?: null | number | string;
+  /** D4 打通（2026-10-06）：备注可写（后端 StageActionFieldsReq 第 7 字段）；null=不改，空串=清空。 */
+  remark?: null | string;
 }
 
 function toRecord(value: unknown): Record<string, unknown> {
@@ -143,6 +145,7 @@ function fieldsToBody(body: StageActionFieldsBody): Record<string, unknown> {
     certNo: body.certNo ?? null,
     certPassedAt: toIso(body.certPassedAt),
     algoType: body.algoType ?? null,
+    remark: body.remark ?? null,
   };
 }
 

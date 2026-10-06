@@ -158,7 +158,7 @@ async function submitComplete(): Promise<void> {
       lessons: form.lessons.trim() || undefined,
     });
     review.value = done;
-    completeMsg.value = '复盘已完成（COMPLETED 终态）';
+    completeMsg.value = '复盘已完成';
   } catch (cause) {
     completeMsg.value = ipdErrorText(cause, { fallback: '完成复盘失败' });
   } finally {
@@ -188,7 +188,7 @@ const trendColumns = [
   <div class="p-4">
     <Alert
       class="mb-4"
-      :message="`项目 KPI 考核：项目 ${projectId || '尚未选择'} · 当前周期 ${period} · L1..L5 津贴分档合计 + COMPREHENSIVE 项目加权分（绩效阶梯系数 ×100）。后端 KpiRecordController：GET /kpi/performance · /kpi/functional · /kpi/trend。`"
+      :message="`项目 KPI 考核：项目 ${projectId || '尚未选择'} · 当前周期 ${period} · L1..L5 津贴分档合计 + 综合加权分（绩效阶梯系数 ×100）。`"
       show-icon
       type="info"
     />
@@ -218,7 +218,7 @@ const trendColumns = [
 
     <div v-if="errorMsg" class="mb-2 text-xs text-red-600">{{ errorMsg }}</div>
 
-    <Card class="mb-4" title="① 绩效 KPI 聚合（GET /kpi/performance）">
+    <Card class="mb-4" title="① 绩效 KPI 聚合">
       <Empty v-if="!performance && !loading" description="请查询后查看项目绩效" />
       <Descriptions v-else-if="performance" bordered :column="2" size="small">
         <DescriptionsItem label="L1 津贴分档">{{ performance.L1 }}</DescriptionsItem>
@@ -233,7 +233,7 @@ const trendColumns = [
       <div v-else-if="loading" class="py-6 text-center text-xs text-gray-500">正在加载绩效 KPI…</div>
     </Card>
 
-    <Card class="mb-4" title="② 功能 KPI 指标来源（GET /kpi/functional）">
+    <Card class="mb-4" title="② 功能 KPI 指标来源">
       <Empty v-if="!functional && !loading" description="请查询后查看功能 KPI 来源" />
       <Table
         v-else-if="functional"
@@ -257,7 +257,7 @@ const trendColumns = [
       </Table>
     </Card>
 
-    <Card class="mb-4" title="③ 历史 KPI 趋势（GET /kpi/trend · 默认回看 12 个月）">
+    <Card class="mb-4" title="③ 历史 KPI 趋势（默认回看 12 个月）">
       <Empty v-if="!trend && !loading" description="请查询后查看历史趋势" />
       <Table
         v-else-if="trend"
@@ -282,13 +282,13 @@ const trendColumns = [
     </Card>
 
     <!-- R215 WP3.1 批次2（ORPHAN-A9）：④ 上市复盘（BR-KPI-08 上市后 30 日提醒/90 日升级） -->
-    <Card class="mb-4" title="④ 上市复盘（GET /post-launch-reviews/pending · BR-KPI-08）">
+    <Card class="mb-4" title="④ 上市复盘">
       <div v-if="reviewLoading" class="py-4 text-center text-xs text-gray-500">正在加载待办复盘…</div>
       <template v-else-if="reviewState === 'loaded' && review">
         <Descriptions bordered :column="2" size="small" class="mb-3">
           <DescriptionsItem label="复盘单号">#{{ review.id }}</DescriptionsItem>
           <DescriptionsItem label="状态">
-            <Tag :color="review.status === 'PENDING' ? 'orange' : 'green'">{{ review.status }}</Tag>
+            <Tag :color="review.status === 'PENDING' ? 'orange' : 'green'">{{ review.status === 'PENDING' ? '待完成' : review.status === 'COMPLETED' ? '已完成' : review.status }}</Tag>
           </DescriptionsItem>
           <DescriptionsItem label="计划时间">{{ review.scheduledAt ?? '—' }}</DescriptionsItem>
           <DescriptionsItem label="负责人">{{ review.assigneeId ?? '—' }}</DescriptionsItem>
@@ -317,7 +317,7 @@ const trendColumns = [
             type="primary"
             :loading="completing"
             @click="submitComplete"
-          >完成复盘（COMPLETED 终态）</Button>
+          >完成复盘</Button>
           <span v-if="completeMsg" class="text-xs" :class="completeMsg.includes('失败') ? 'text-red-600' : 'text-green-600'">{{ completeMsg }}</span>
         </div>
       </template>

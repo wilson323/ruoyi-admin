@@ -153,8 +153,9 @@ describe('A28 新增显示映射表 SSOT', () => {
   });
 
   it('动作深度 + 阶段动作状态 SSOT', () => {
-    expect(DEPTH_TEXT.DEEP).toBe('深管动作');
-    expect(DEPTH_TEXT.LIGHT).toBe('轻管动作');
+    // D6 白话化（2026-10-06）：「深管/轻管」内部术语改为用户可感知的交付物差异。
+    expect(DEPTH_TEXT.DEEP).toBe('需交付物');
+    expect(DEPTH_TEXT.LIGHT).toBe('免交付物');
     expect(DEPTH_COLOR.DEEP).toBe('processing');
     expect(ACTION_STATUS_TEXT.NOT_STARTED).toBe('未开始');
     expect(ACTION_STATUS_TEXT.DONE).toBe('已完成');

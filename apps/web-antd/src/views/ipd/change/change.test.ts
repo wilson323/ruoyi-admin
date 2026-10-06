@@ -33,7 +33,16 @@ const changes: RequirementChange[] = [
   { afterSnapshot: null, beforeSnapshot: null, changeType: null, createTime: null, id: '33', projectId: '7', reason: '占位草稿', requirementId: null, signatures: null, status: 'DRAFT' },
 ];
 
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  // 清 antd Modal 的 body portal：容器无 class，按内容探测（含 .ant-modal 结构或裸 textarea 即弹窗容器/残留）；
+  // 跨用例残留会让后续用例命中已卸载控件（旧确认按钮无事件 → 零请求假失败）。
+  // message 容器同样无 class 但不含上述特征，得以保留：antd message 被外部移除容器后不会重建。
+  [...document.body.children].forEach((node) => {
+    if (node instanceof HTMLElement && (node.tagName === 'TEXTAREA' || node.querySelector('.ant-modal, textarea'))) node.remove();
+  });
+});
 
 interface ApiCall { body: unknown; method: string; url: string }
 
@@ -119,7 +128,7 @@ function stubApi(options: StubOptions = {}) {
     if (method === 'PUT' && url.startsWith('/api/v1/requirement-changes/') && url.includes('/sign?decision=')) {
       return actionResponse(options.signResponse, () => {
         if (url === '/api/v1/requirement-changes/33/sign?decision=APPROVE') return apply('33', { signatures: 'MARKET_PM:12=APPROVE', status: 'APPROVED' });
-        if (url === '/api/v1/requirement-changes/31/sign?decision=REJECT') return apply('31', { signatures: 'MARKET_PM:12=REJECT', status: 'REJECTED' });
+        if (url.startsWith('/api/v1/requirement-changes/31/sign?decision=REJECT')) return apply('31', { signatures: 'MARKET_PM:12=REJECT', status: 'REJECTED' });
         // #31 单方 APPROVE：服务端仅登记一签，整体仍为 PENDING_SIGN（BR-GATE-07 双签语义）
         if (url === '/api/v1/requirement-changes/31/sign?decision=APPROVE') return apply('31', { signatures: 'MARKET_PM:12=APPROVE', status: 'PENDING_SIGN' });
         return response(null, 404, 40400);
@@ -129,6 +138,19 @@ function stubApi(options: StubOptions = {}) {
   });
   vi.stubGlobal('fetch', fetcher);
   return calls;
+}
+
+/** D14 驳回走弹窗（Modal teleport 到 document.body）：填意见并点「确认驳回」。调用前先点列表「驳回」按钮。
+ *  残留防御：只在 .ant-modal 内取控件，且取最后渲染的一个（最新弹窗 portal 后 append，旧弹窗控件已卸载、操作无效）。 */
+async function confirmRejectViaModal(opinion: string): Promise<void> {
+  await vi.waitFor(() => expect(document.querySelectorAll('.ant-modal textarea').length).toBeGreaterThan(0));
+  const textarea = [...document.querySelectorAll('.ant-modal textarea')].at(-1) as HTMLTextAreaElement;
+  textarea.value = opinion;
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  await vi.waitFor(() => {
+    expect([...document.querySelectorAll('.ant-modal button')].some((button) => (button.textContent ?? '').includes('确认驳回'))).toBe(true);
+  });
+  ([...document.querySelectorAll('.ant-modal button')].filter((button) => (button.textContent ?? '').includes('确认驳回')).at(-1) as HTMLButtonElement).click();
 }
 
 async function mountChange() {
@@ -180,6 +202,9 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await form.findAll('select')[1]?.setValue('5');
     await form.findAll('input')[0]?.setValue('测试变更');
     await form.findAll('textarea')[0]?.setValue('因为渠道反馈');
+    // D10：影响快照创建时必填（四维中文键 JSON）
+    await form.findAll('textarea')[1]?.setValue('{"范围":"原范围","成本":1,"时限":"1d","质量":"P1"}');
+    await form.findAll('textarea')[2]?.setValue('{"范围":"新范围","成本":2,"时限":"2d","质量":"P2"}');
     await form.trigger('submit');
     await vi.waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/v1/requirement-changes')).toBe(true));
     await wrapper.findAll('button').find((button) => button.text() === '取消')?.trigger('click');
@@ -196,6 +221,9 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await form.findAll('select')[1]?.setValue('5');
     await form.findAll('input')[0]?.setValue('测试变更');
     await form.findAll('textarea')[0]?.setValue('因为渠道反馈');
+    // D10：影响快照创建时必填（四维中文键 JSON）
+    await form.findAll('textarea')[1]?.setValue('{"范围":"原范围","成本":1,"时限":"1d","质量":"P1"}');
+    await form.findAll('textarea')[2]?.setValue('{"范围":"新范围","成本":2,"时限":"2d","质量":"P2"}');
     await form.trigger('submit');
     await vi.waitFor(() => expect(wrapper.text()).not.toContain('发起需求变更'));
     const post = calls.find((call) => call.method === 'POST' && call.url === '/api/v1/requirement-changes');
@@ -206,7 +234,7 @@ describe('IPD change page (prototype ChangesPage)', () => {
   it('submits and signs through the real dual-signature endpoints', async () => {
     const calls = stubApi();
     const wrapper = await mountChange();
-    await wrapper.findAll('.change-cards article')[2]?.findAll('button').find((button) => button.text() === '提交双签')?.trigger('click');
+    await wrapper.findAll('.change-cards article')[2]?.findAll('button').find((button) => button.text() === '提交签署')?.trigger('click');
     await vi.waitFor(() => expect(calls.some((call) => call.url === '/api/v1/requirement-changes/33/submit')).toBe(true));
     // 每次动作后 loadChanges 重渲染列表，点击前必须重新查询 DOM
     await vi.waitFor(() => {
@@ -215,8 +243,9 @@ describe('IPD change page (prototype ChangesPage)', () => {
     });
     await wrapper.findAll('.change-cards article')[2]?.findAll('button').find((button) => button.text() === '同意签署')?.trigger('click');
     await vi.waitFor(() => expect(calls.some((call) => call.url === '/api/v1/requirement-changes/33/sign?decision=APPROVE')).toBe(true));
-    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '拒绝')?.trigger('click');
-    await vi.waitFor(() => expect(calls.some((call) => call.url === '/api/v1/requirement-changes/31/sign?decision=REJECT')).toBe(true));
+    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '驳回')?.trigger('click');
+    await confirmRejectViaModal('工时不够');
+    await vi.waitFor(() => expect(calls.some((call) => call.url.startsWith('/api/v1/requirement-changes/31/sign?decision=REJECT'))).toBe(true));
     wrapper.unmount();
   });
 
@@ -360,7 +389,7 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('已加载 3 条变更单'));
     const articles = wrapper.findAll('.change-cards article');
     const draftBtns = articles[0]?.findAll('.decision-buttons button').map((btn) => btn.text());
-    expect(draftBtns).toEqual(['提交双签']);
+    expect(draftBtns).toEqual(['提交签署']);
     const approvedBtns = articles[1]?.findAll('.decision-buttons button') ?? [];
     expect(approvedBtns.length).toBe(0);
     const rejectedBtns = articles[2]?.findAll('.decision-buttons button') ?? [];
@@ -383,7 +412,7 @@ describe('IPD change page (prototype ChangesPage)', () => {
     const wrapper = mount(Change);
     await vi.waitFor(() => expect(wrapper.text()).toContain('已加载 1 条变更单'));
     const btns = wrapper.findAll('.change-cards article')[0]?.findAll('.decision-buttons button').map((btn) => btn.text());
-    expect(btns).toEqual(['拒绝', '同意签署']);
+    expect(btns).toEqual(['驳回', '同意签署']);
     wrapper.unmount();
   });
 
@@ -407,7 +436,7 @@ describe('IPD change page (prototype ChangesPage)', () => {
       return response(null, 404, 40400);
     });
     vi.stubGlobal('fetch', fetcher);
-    await wrapper.findAll('.change-cards article')[2]?.findAll('button').find((button) => button.text() === '提交双签')?.trigger('click');
+    await wrapper.findAll('.change-cards article')[2]?.findAll('button').find((button) => button.text() === '提交签署')?.trigger('click');
     // 错误走 message.error → antdv message，会注入到 document.body
     await vi.waitFor(() => {
       expect(document.body.textContent).toContain('数据不存在或服务暂时不可用');
@@ -419,8 +448,9 @@ describe('IPD change page (prototype ChangesPage)', () => {
     const calls = stubApi();
     const wrapper = await mountChange();
     const before = calls.filter((call) => call.url.startsWith('/api/v1/requirement-changes?')).length;
-    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '拒绝')?.trigger('click');
-    await vi.waitFor(() => expect(calls.some((call) => call.url === '/api/v1/requirement-changes/31/sign?decision=REJECT')).toBe(true));
+    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '驳回')?.trigger('click');
+    await confirmRejectViaModal('工时不够');
+    await vi.waitFor(() => expect(calls.some((call) => call.url.startsWith('/api/v1/requirement-changes/31/sign?decision=REJECT'))).toBe(true));
     // loadChanges 在 sign 成功后被调用
     await vi.waitFor(() => {
       const after = calls.filter((call) => call.url.startsWith('/api/v1/requirement-changes?')).length;
@@ -447,7 +477,8 @@ describe('IPD change page (prototype ChangesPage)', () => {
       return response(null, 404, 40400);
     });
     vi.stubGlobal('fetch', fetcher);
-    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '拒绝')?.trigger('click');
+    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '驳回')?.trigger('click');
+    await confirmRejectViaModal('工时不够');
     await vi.waitFor(() => {
       expect(document.body.textContent).toContain('数据不存在或服务暂时不可用');
     });
@@ -520,7 +551,7 @@ describe('IPD change page (prototype ChangesPage)', () => {
     wrapper.unmount();
   });
 
-  it('allows leaving snapshot fields blank on draft creation', async () => {
+  it('rejects blank snapshots on draft creation (D10 四维必填)', async () => {
     const calls = stubApi();
     const wrapper = await mountChange();
     await wrapper.get('.page-heading .primary-button').trigger('click');
@@ -529,13 +560,11 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await form.findAll('select')[1]?.setValue('5');
     await form.findAll('input')[0]?.setValue('功能范围调整');
     await form.findAll('textarea')[0]?.setValue('客户要求砍掉离线模块');
-    // 前后快照两 textarea 留空（textarea[1] beforeSnapshot、textarea[2] afterSnapshot）
+    // D10：前后快照两 textarea 留空（textarea[1] beforeSnapshot、textarea[2] afterSnapshot）→ 前端同构预校验拦截，零 POST
     expect(form.findAll('textarea').length).toBeGreaterThanOrEqual(3);
     await form.trigger('submit');
-    await vi.waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/v1/requirement-changes')).toBe(true));
-    const post = calls.find((call) => call.method === 'POST' && call.url === '/api/v1/requirement-changes');
-    // component 端把空快照 trim 后传 null
-    expect(post?.body).toMatchObject({ afterSnapshot: null, beforeSnapshot: null });
+    expect(wrapper.get('.form-error').text()).toBe('变更前快照不能为空（创建时必填）');
+    expect(calls.filter((call) => call.method === 'POST' && call.url === '/api/v1/requirement-changes').length).toBe(0);
     wrapper.unmount();
   });
 
@@ -549,14 +578,14 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await form.findAll('input')[0]?.setValue('性能目标修订');
     await form.findAll('textarea')[0]?.setValue('Benchmark 复测');
     // textarea[1] = beforeSnapshot、textarea[2] = afterSnapshot
-    await form.findAll('textarea')[1]?.setValue('{"scope":"含离线"}');
-    await form.findAll('textarea')[2]?.setValue('{"scope":"不含离线"}');
+    await form.findAll('textarea')[1]?.setValue('{"范围":"含离线","成本":1,"时限":"1d","质量":"P1"}');
+    await form.findAll('textarea')[2]?.setValue('{"范围":"不含离线","成本":2,"时限":"2d","质量":"P2"}');
     await form.trigger('submit');
     await vi.waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/v1/requirement-changes')).toBe(true));
     const post = calls.find((call) => call.method === 'POST' && call.url === '/api/v1/requirement-changes');
     expect(post?.body).toMatchObject({
-      afterSnapshot: '{"scope":"不含离线"}',
-      beforeSnapshot: '{"scope":"含离线"}',
+      afterSnapshot: '{"范围":"不含离线","成本":2,"时限":"2d","质量":"P2"}',
+      beforeSnapshot: '{"范围":"含离线","成本":1,"时限":"1d","质量":"P1"}',
       changeType: '性能目标修订',
       projectId: '7',
       reason: 'Benchmark 复测',
@@ -574,6 +603,9 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await form.findAll('select')[1]?.setValue('5');
     await form.findAll('input')[0]?.setValue('测试变更');
     await form.findAll('textarea')[0]?.setValue('因为渠道反馈');
+    // D10：影响快照创建时必填（四维中文键 JSON）
+    await form.findAll('textarea')[1]?.setValue('{"范围":"原范围","成本":1,"时限":"1d","质量":"P1"}');
+    await form.findAll('textarea')[2]?.setValue('{"范围":"新范围","成本":2,"时限":"2d","质量":"P2"}');
     await form.trigger('submit');
     await vi.waitFor(() => {
       const errorBlock = wrapper.find('.form-error');
@@ -771,6 +803,9 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await form.findAll('select')[1]?.setValue('5x');
     await form.findAll('input')[0]?.setValue('测试变更');
     await form.findAll('textarea')[0]?.setValue('因为渠道反馈');
+    // D10：影响快照创建时必填（四维中文键 JSON）
+    await form.findAll('textarea')[1]?.setValue('{"范围":"原范围","成本":1,"时限":"1d","质量":"P1"}');
+    await form.findAll('textarea')[2]?.setValue('{"范围":"新范围","成本":2,"时限":"2d","质量":"P2"}');
     await form.trigger('submit');
     expect(wrapper.get('.form-error').text()).toBe('关联需求 ID 必须为数字。');
     expect(calls.filter((call) => call.method === 'POST').length).toBe(0);
@@ -788,6 +823,9 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await form.findAll('select')[1]?.setValue('5');
     await form.findAll('input')[0]?.setValue(longType);
     await form.findAll('textarea')[0]?.setValue(longReason);
+    // D10：超长字段场景同样要求四维快照
+    await form.findAll('textarea')[1]?.setValue('{"范围":"原范围","成本":1,"时限":"1d","质量":"P1"}');
+    await form.findAll('textarea')[2]?.setValue('{"范围":"新范围","成本":2,"时限":"2d","质量":"P2"}');
     await form.trigger('submit');
     await vi.waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/v1/requirement-changes')).toBe(true));
     const post = calls.find((call) => call.method === 'POST' && call.url === '/api/v1/requirement-changes');
@@ -808,6 +846,9 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await form.findAll('select')[1]?.setValue('5');
     await form.findAll('input')[0]?.setValue('测试变更');
     await form.findAll('textarea')[0]?.setValue('因为渠道反馈');
+    // D10：影响快照创建时必填（四维中文键 JSON）
+    await form.findAll('textarea')[1]?.setValue('{"范围":"原范围","成本":1,"时限":"1d","质量":"P1"}');
+    await form.findAll('textarea')[2]?.setValue('{"范围":"新范围","成本":2,"时限":"2d","质量":"P2"}');
     await form.trigger('submit');
     // 在途防重复提交：按钮 disabled + 文案切换「提交中…」，且此刻只发了 1 个 POST
     const pendingBtn = form.findAll('button').find((button) => button.text() === '提交中…');
@@ -835,6 +876,9 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await form.findAll('select')[1]?.setValue('5');
     await form.findAll('input')[0]?.setValue('测试变更');
     await form.findAll('textarea')[0]?.setValue('因为渠道反馈');
+    // D10：影响快照创建时必填（四维中文键 JSON）
+    await form.findAll('textarea')[1]?.setValue('{"范围":"原范围","成本":1,"时限":"1d","质量":"P1"}');
+    await form.findAll('textarea')[2]?.setValue('{"范围":"新范围","成本":2,"时限":"2d","质量":"P2"}');
     await form.trigger('submit');
     await vi.waitFor(() => expect(wrapper.get('.form-error').text()).toContain('数据不存在或已被删除，请刷新后重试'));
     expect(wrapper.text()).toContain('发起需求变更');
@@ -850,6 +894,9 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await form.findAll('select')[1]?.setValue('5');
     await form.findAll('input')[0]?.setValue('测试变更');
     await form.findAll('textarea')[0]?.setValue('因为渠道反馈');
+    // D10：影响快照创建时必填（四维中文键 JSON）
+    await form.findAll('textarea')[1]?.setValue('{"范围":"原范围","成本":1,"时限":"1d","质量":"P1"}');
+    await form.findAll('textarea')[2]?.setValue('{"范围":"新范围","成本":2,"时限":"2d","质量":"P2"}');
     await form.trigger('submit');
     await vi.waitFor(() => expect(wrapper.get('.form-error').text()).toContain('状态已变更（可能其他人已编辑），请刷新后查看'));
     wrapper.unmount();
@@ -858,28 +905,30 @@ describe('IPD change page (prototype ChangesPage)', () => {
   it('maps submit failure code 10001 to its validation text via message.error', async () => {
     stubApi({ submitResponse: { data: null, status: 400, code: 10001 } });
     const wrapper = await mountChange();
-    await wrapper.findAll('.change-cards article')[2]?.findAll('button').find((button) => button.text() === '提交双签')?.trigger('click');
+    await wrapper.findAll('.change-cards article')[2]?.findAll('button').find((button) => button.text() === '提交签署')?.trigger('click');
     await vi.waitFor(() => expect(document.body.textContent).toContain('输入信息不符合要求，请检查后重试'));
     // 失败后卡片仍为草稿态，按钮原样保留（服务端状态未变）
     const buttons = wrapper.findAll('.change-cards article')[2]?.findAll('.decision-buttons button').map((btn) => btn.text()) ?? [];
-    expect(buttons).toEqual(['提交双签']);
+    expect(buttons).toEqual(['提交签署']);
     wrapper.unmount();
   });
 
   it('maps sign failure code 40011 to its rate-limit text via message.error', async () => {
     stubApi({ signResponse: { data: null, status: 429, code: 40011 } });
     const wrapper = await mountChange();
-    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '拒绝')?.trigger('click');
+    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '驳回')?.trigger('click');
+    await confirmRejectViaModal('工时不够');
     await vi.waitFor(() => expect(document.body.textContent).toContain('请求过于频繁，请稍后再试'));
     const buttons = wrapper.findAll('.change-cards article')[0]?.findAll('.decision-buttons button').map((btn) => btn.text()) ?? [];
-    expect(buttons).toEqual(['拒绝', '同意签署']);
+    expect(buttons).toEqual(['驳回', '同意签署']);
     wrapper.unmount();
   });
 
   it('prefers the backend envelope message over the code table on sign failure', async () => {
     stubApi({ signResponse: { data: null, status: 409, code: 50002, message: '同一人不能重复确认' } });
     const wrapper = await mountChange();
-    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '拒绝')?.trigger('click');
+    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '驳回')?.trigger('click');
+    await confirmRejectViaModal('工时不够');
     // R215-E2E-B 降级链：后端有 message 原文时必须透传，不得被码表文案（50002「状态已变更…」）抹平
     await vi.waitFor(() => expect(document.body.textContent).toContain('同一人不能重复确认'));
     expect(document.body.textContent).not.toContain('状态已变更（可能其他人已编辑）');
@@ -889,7 +938,7 @@ describe('IPD change page (prototype ChangesPage)', () => {
   it('degrades unknown business code to the generic fallback text', async () => {
     stubApi({ submitResponse: { data: null, status: 500, code: 99999 } });
     const wrapper = await mountChange();
-    await wrapper.findAll('.change-cards article')[2]?.findAll('button').find((button) => button.text() === '提交双签')?.trigger('click');
+    await wrapper.findAll('.change-cards article')[2]?.findAll('button').find((button) => button.text() === '提交签署')?.trigger('click');
     // 未登记 code：页面域表/通用表/HTTP 状态表全部落空 → 通用兜底文案
     await vi.waitFor(() => expect(document.body.textContent).toContain('操作失败，请稍后重试'));
     wrapper.unmount();
@@ -922,18 +971,32 @@ describe('IPD change page (prototype ChangesPage)', () => {
     wrapper.unmount();
   });
 
-  it('guards BUG-1 double-fire: two clicks on 拒绝 emit only one PUT sign request in flight', async () => {
+  it('guards BUG-1 double-fire: two clicks on 确认驳回 emit only one PUT sign request in flight', async () => {
     const hold = gate();
-    const calls = stubApi({ deferred: [{ gate: hold, match: (method, url) => method === 'PUT' && url === '/api/v1/requirement-changes/31/sign?decision=REJECT' }] });
+    const calls = stubApi({ deferred: [{ gate: hold, match: (method, url) => method === 'PUT' && url.startsWith('/api/v1/requirement-changes/31/sign?decision=REJECT') }] });
     const wrapper = await mountChange();
     const actionButtons = () => wrapper.findAll('.change-cards article')[0]?.findAll('.decision-buttons button') ?? [];
+    // D14：驳回先打开弹窗（Modal teleport 到 document.body），填意见后再连点「确认驳回」
     await actionButtons()[0]?.trigger('click');
-    await actionButtons()[0]?.trigger('click');
-    // 修复后断言：2 次点击 → 1 个 PUT /sign?decision=REJECT（行级锁 sign:31 拦下第二次）
-    expect(calls.filter((call) => call.url === '/api/v1/requirement-changes/31/sign?decision=REJECT').length).toBe(1);
-    const pendingBtn = actionButtons().find((button) => button.text() === '签署中…');
-    expect(pendingBtn).toBeDefined();
-    expect(pendingBtn?.attributes('disabled')).toBeDefined();
+    await vi.waitFor(() => expect(document.querySelectorAll('.ant-modal textarea').length).toBeGreaterThan(0));
+    const opinionBox = [...document.querySelectorAll('.ant-modal textarea')].at(-1) as HTMLTextAreaElement;
+    opinionBox.value = '工时不够';
+    opinionBox.dispatchEvent(new Event('input', { bubbles: true }));
+    await vi.waitFor(() => {
+      expect([...document.querySelectorAll('.ant-modal button')].some((button) => (button.textContent ?? '').includes('确认驳回'))).toBe(true);
+    });
+    const confirmBtn = () => ([...document.querySelectorAll('.ant-modal button')].filter((button) => (button.textContent ?? '').includes('确认驳回')).at(-1) as HTMLButtonElement);
+    confirmBtn().click();
+    confirmBtn().click();
+    // 修复后断言：2 次点击 → 恰好 1 个 PUT /sign?decision=REJECT（confirmReject 同步置空 rejectTarget + 行级锁 sign:31 拦下第二次）
+    await vi.waitFor(() => {
+      expect(calls.filter((call) => call.url.startsWith('/api/v1/requirement-changes/31/sign?decision=REJECT')).length).toBe(1);
+    });
+    await vi.waitFor(() => {
+      const pendingBtn = actionButtons().find((button) => button.text() === '签署中…');
+      expect(pendingBtn).toBeDefined();
+      expect(pendingBtn?.attributes('disabled')).toBeDefined();
+    });
     hold.resolve();
     const listCallsBefore = calls.filter((call) => call.url.startsWith('/api/v1/requirement-changes?')).length;
     await vi.waitFor(() => {
@@ -947,14 +1010,15 @@ describe('IPD change page (prototype ChangesPage)', () => {
   it('maps 30001 denial to the project-domain override text and keeps retry buttons', async () => {
     stubApi({ signResponse: { data: null, status: 403, code: 30001 } });
     const wrapper = await mountChange();
-    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '拒绝')?.trigger('click');
+    await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '驳回')?.trigger('click');
+    await confirmRejectViaModal('工时不够');
     // ipdErrorText domain:'project' 域覆写生效（30001 → 您没有此项目的操作权限）
     await vi.waitFor(() => expect(document.body.textContent).toContain('您没有此项目的操作权限'));
     // 不得落到通用表文案「您没有执行此操作的权限」（三级查表链顺序验证）
     expect(document.body.textContent).not.toContain('您没有执行此操作的权限');
     // 拒绝失败后卡片仍为待双签、按钮原样保留（现状：无本地禁用/隐藏）
     const buttons = wrapper.findAll('.change-cards article')[0]?.findAll('.decision-buttons button').map((btn) => btn.text()) ?? [];
-    expect(buttons).toEqual(['拒绝', '同意签署']);
+    expect(buttons).toEqual(['驳回', '同意签署']);
     wrapper.unmount();
   });
 
@@ -1187,7 +1251,7 @@ describe('IPD change page (prototype ChangesPage)', () => {
     await wrapper.findAll('.change-cards article')[0]?.findAll('button').find((button) => button.text() === '同意签署')?.trigger('click');
     // 单方 APPROVE：返回 status 仍为 PENDING_SIGN → 走「等待另一方」分支（该文案为本分支独有，
     // 若误走「双签通过…」分支则此断言必失败）
-    await vi.waitFor(() => expect(document.body.textContent).toContain('已同意，等待另一方PM签署'));
+    await vi.waitFor(() => expect(document.body.textContent).toContain('已签署通过，等待另一方负责人签署'));
     // 签署登记进 signatures：市场PM 格翻转为已同意，研发PM 仍待签
     await vi.waitFor(() => {
       const cells = wrapper.findAll('.change-cards article')[0]?.findAll('.change-impact span strong').map((node) => node.text()) ?? [];

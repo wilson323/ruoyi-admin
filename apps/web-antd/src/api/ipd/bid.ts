@@ -226,8 +226,9 @@ export function adminAssignBidInvitation(id: string, targetPersonId: string): Pr
  * 契约要点：
  * - projectId：后端 Long @NotNull（:32-33）。前端一律 string 透传，禁 Number()/InputNumber——
  *   19 位雪花超 2^53 会精度截断；JSON 字符串形态由后端 Jackson String→Long 无损收编。
- * - expireAt：DTO 无 @DateTimeFormat，但全局 spring.jackson.date-format=yyyy-MM-dd HH:mm:ss
- *   （ruoyi-admin application.yml:150）→ 与既有 POST /bid-invitations 现网口径一致（准备包 §F2 施工核对点闭环）。
+ * - expireAt：DTO 已加 @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss", timezone="GMT+8")（D15 修复，2026-10-06）。
+ *   注：此前注释称“全局 spring.jackson.date-format 生效”是错误归因——/api/v1 的 @Primary ObjectMapper
+ *   手工构建、不读 spring.jackson.* 配置，空格格式曾必 400/10001（InvalidFormatException）。
  * - targetPersonId：ONE_TO_ONE 必填；PUBLIC 必须整键缺省——后端 Validator 对 PUBLIC 显式拒填
  *   （BidP231Validator「PUBLIC 模式禁止指定 targetPersonId」），传 null 亦拒。
  * - requiredLevel(L1..L5)/slaDays(1..90)：PUBLIC 选填，后端写入 content 扩展字段；ONE_TO_ONE 模式忽略。

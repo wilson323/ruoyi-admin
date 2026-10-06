@@ -92,7 +92,7 @@ describe('页37 全流程轨迹（两源融合）', () => {
     const text = wrapper.text();
     expect(text).toContain('审计：2');
     expect(text).toContain('工作台待办：1');
-    expect(text).toContain('审计分层：GLOBAL');
+    expect(text).toContain('审计分层：全局');
     expect(text).toContain('张三');
     expect(text).toContain('APPROVE');
     expect(text).toContain('李四');
@@ -136,7 +136,7 @@ describe('页37 全流程轨迹（两源融合）', () => {
     const text = wrapper.text();
     expect(text).toContain('审计：2');
     expect(text).toContain('工作台待办：0');
-    expect(text).toContain('审计分层：GROUP');
+    expect(text).toContain('审计分层：本组');
     expect(text).not.toContain('需求评审');
     wrapper.unmount();
   });
@@ -150,7 +150,7 @@ describe('页37 全流程轨迹（两源融合）', () => {
     expect(wrapper.text()).toContain('暂无事件');
     expect(wrapper.text()).toContain('审计：0');
     expect(wrapper.text()).toContain('工作台待办：0');
-    expect(wrapper.text()).toContain('审计分层：OWN');
+    expect(wrapper.text()).toContain('审计分层：仅本人');
     expect(wrapper.find('.ant-timeline-item').exists()).toBe(false);
     expect(wrapper.find('.ant-alert-error').exists()).toBe(false);
     expect(wrapper.find('.ant-alert-warning').exists()).toBe(false);

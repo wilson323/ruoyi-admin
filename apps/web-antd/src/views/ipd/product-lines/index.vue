@@ -27,6 +27,7 @@ import type { PmDirectoryEntry } from '../../../api/ipd/handover';
 import { getPmDirectory } from '../../../api/ipd/handover';
 import { approveProjectStart, rejectProjectStart, resubmitProjectStart } from '../../../api/ipd/project';
 import { useIpdAuthStore } from '../../../store/ipd-auth';
+import { demandStateLabel } from '../_shared/ipd-enums';
 import '../_shared/ipd-theme.css';
 
 const auth = useIpdAuthStore();
@@ -316,7 +317,7 @@ onMounted(() => { void loadLines(); });
             <p v-if="!demands.length">还没有写到本产品线的需求。未指定产品线会同时列出尚未绑定产品线的需求。</p>
             <ul v-else>
               <li v-for="demand in demands" :key="demand.id">
-                {{ demand.title || '未命名需求' }}（{{ demand.status }}）
+                {{ demand.title || '未命名需求' }}（{{ demandStateLabel(demand.status) }}）
                 <span v-if="demand.triage">{{ demand.triage.message }}</span>
                 <Button v-if="canReview && demand.triage?.retryable" size="small" :disabled="acting" @click="perform(() => retryProductLineDemandTriage(selectedId, demand.id), '已重试分拣')">重试分拣</Button>
                 <RouterLink v-if="triageProject && demand.triage?.runId" :to="`/ipd/ai-assistant?projectId=${triageProject.id}`">查看分拣历史</RouterLink>

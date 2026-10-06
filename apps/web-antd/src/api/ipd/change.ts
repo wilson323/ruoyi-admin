@@ -174,7 +174,8 @@ export interface RequirementChangePage {
 }
 
 export interface RequirementChangeCreateInput {
-  /** 影响评估快照 JSON（范围/成本/时限/质量四维度）；提交双签前必须非空。 */
+  /** 影响评估快照 JSON：创建时必填，需覆盖四维中文键（范围/成本/时限/质量）——
+ *  后端 P2-6.2 强校验（AC-REQ-08），前端预校验见 _shared/impact-snapshot.ts。 */
   afterSnapshot?: null | string;
   beforeSnapshot?: null | string;
   changeType: string;

@@ -86,6 +86,12 @@ const canAccept = computed(
 );
 const roleText: Record<string, string> = { MARKET_PM: '市场PM', RD_PM: '研发PM' };
 const statusText: Record<string, string> = { COMPLETED: '已生效', DRAFT: '待接收', ROLLED_BACK: '已撤销' };
+/** 批量移交逐项目结果状态（HandoverService.BatchHandoverResult：COMPLETED / REJECTED / SKIPPED_ALREADY_HANDED_OVER；未收录值回退原码）。 */
+const BATCH_STATUS_TEXT: Record<string, string> = {
+  COMPLETED: '已移交',
+  REJECTED: '移交失败',
+  SKIPPED_ALREADY_HANDED_OVER: '已跳过',
+};
 
 async function load(): Promise<void> {
   loading.value = true;
@@ -440,7 +446,7 @@ async function loadPending(): Promise<void> {
             <span>完成时间：{{ formatDateTime(selected.completedAt) }}</span>
           </div>
           <div v-if="canAccept" class="accept-row">
-            <input id="handover-accept-ref" v-model="acceptRef" name="handover_accept_ref" aria-label="备案号" placeholder="备案号（接任后达项目数上限时必填，AC-TEAM-11）" />
+            <input id="handover-accept-ref" v-model="acceptRef" name="handover_accept_ref" aria-label="备案号" placeholder="备案号（接任后达项目数上限时必填）" />
             <button :disabled="accepting" class="primary-button" type="button" @click="accept">
               <UserSwitchOutlined />
               确认接收项目
@@ -637,7 +643,7 @@ async function loadPending(): Promise<void> {
         <div v-if="batchResults.length" class="batch-results">
           <div v-for="result in batchResults" :key="result.projectId" class="batch-row">
             <span>项目 {{ result.projectId }}</span>
-            <i class="status-pill" :class="result.status.toLowerCase()">{{ result.status }}</i>
+            <i class="status-pill" :class="result.status.toLowerCase()">{{ BATCH_STATUS_TEXT[result.status] ?? result.status }}</i>
             <small v-if="result.reason">{{ result.reason }}</small>
           </div>
         </div>
@@ -649,7 +655,7 @@ async function loadPending(): Promise<void> {
         <div class="section-title">
           <div>
             <h2>离职待移交人员</h2>
-            <p>FROZEN_PENDING_HANDOVER 冻结人员及名下活跃项目；冻结超 15 日触发升级（BR-USER-06）。全部项目移交完成才终态 DISABLED。</p>
+            <p>离职冻结人员及名下活跃项目；冻结超 15 日将升级处理。全部项目移交完成后账号才最终停用。</p>
           </div>
           <button :disabled="pendingBusy" class="primary-button ghost-button" type="button" @click="loadPending">
             {{ pendingBusy ? '刷新中…' : '刷新' }}

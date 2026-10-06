@@ -76,8 +76,13 @@ function defaultPeriod(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// f3 修复（2026-10-06）：初始化读取 URL 的 period 查询参数——此前只取当前月，与下方「同步 URL」
+// 按钮的写出口形成「同步出来的链接再打开就丢周期」的断裂；带 period 的入口（书签/分享/验收
+// 脚本）会查错月份。非法格式回退当前月（防非法 period 触发后端 400/10001）。
 const filters = reactive({
-  period: defaultPeriod(),
+  period: typeof route.query.period === 'string' && /^\d{4}-\d{2}$/.test(route.query.period.trim())
+    ? route.query.period.trim()
+    : defaultPeriod(),
   projectId: typeof route.query.projectId === 'string' ? String(route.query.projectId) : '',
 });
 
@@ -131,7 +136,7 @@ async function loadShared(): Promise<void> {
   loadingRecords.value = true;
   recordsError.value = '';
   try {
-    recordsData.value = await listSharedKpis(String(filters.projectId), filters.period.trim());
+    recordsData.value = (await listSharedKpis(String(filters.projectId), filters.period.trim())) ?? [];
   } catch (cause) {
     recordsData.value = [];
     recordsError.value = rejectText(cause);

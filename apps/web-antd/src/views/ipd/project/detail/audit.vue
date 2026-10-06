@@ -16,6 +16,7 @@ import {
   parseAuditPayload,
 } from '../../../../api/ipd/audit';
 import { formatDateTime } from '../../_shared/format';
+import { roleText } from '../../_shared/ipd-enums';
 
 const route = useRoute();
 const projectId = computed(() => String(route.params.projectId ?? ''));
@@ -84,7 +85,7 @@ const columns = [
   <div class="p-4">
     <Alert
       class="mb-4"
-      :message="`本项目日志按「${scopeText}」范围分层展示（BR-AUD-03）；项目维度过滤在服务端过滤交付前仅作用于当前页，翻页可查看范围 内全部记录。`"
+      :message="`本项目日志按「${scopeText}」范围分层展示；项目维度过滤在服务端过滤交付前仅作用于当前页，翻页可查看范围内全部记录。`"
       show-icon
       type="info"
     />
@@ -101,7 +102,7 @@ const columns = [
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'operator'">
             {{ record.operatorName ?? record.operatorId }}
-            <span class="text-muted-foreground ml-1 text-xs">{{ record.operatorRole ?? '' }}</span>
+            <span class="text-muted-foreground ml-1 text-xs">{{ record.operatorRole ? roleText(record.operatorRole) : '' }}</span>
           </template>
           <template v-else-if="column.key === 'createTime'">{{ formatDateTime(record.createTime) }}</template>
           <template v-else-if="column.key === 'actions'">
@@ -121,7 +122,7 @@ const columns = [
         </DescriptionsItem>
         <DescriptionsItem label="对象">{{ detail.entityType ?? '—' }} / {{ detail.entityId ?? '—' }}</DescriptionsItem>
         <DescriptionsItem label="操作人">
-          {{ detail.operatorName ?? detail.operatorId }}（{{ detail.operatorRole ?? '—' }}）
+          {{ detail.operatorName ?? detail.operatorId }}（{{ detail.operatorRole ? roleText(detail.operatorRole) : '—' }}）
         </DescriptionsItem>
         <DescriptionsItem label="原因">{{ detail.reason ?? '—' }}</DescriptionsItem>
         <DescriptionsItem label="时间">{{ formatDateTime(detail.createTime) }}</DescriptionsItem>
