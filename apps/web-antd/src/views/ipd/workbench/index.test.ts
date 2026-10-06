@@ -494,7 +494,7 @@ describe('页03 工作台 · 未交付能力须如实表达（防假断言回归
 
     const meta = wrapper.find('.ipd-wb-current-meta').text();
     // fullSummary.currentAdvance.actionStatus = 'IN_PROGRESS'（后端原始状态码）
-    // 性质：面向用户的卡片不得泄漏裸码，须经 actionStatusText 映射为白话
+    // 性质：面向用户的卡片不得泄漏裸码，须经 actionStatusLabel（_shared/ipd-enums 统一字典）映射为白话
     expect(meta).toContain('进行中');
     expect(meta).not.toContain('IN_PROGRESS');
     // 阶段徽标同理：currentStage = 'DEV' 须经 STAGE_TEXT 映射（V3R 复验发现 CONCEPT 裸码泄漏）；
