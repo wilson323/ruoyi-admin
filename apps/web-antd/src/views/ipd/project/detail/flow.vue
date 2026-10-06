@@ -511,9 +511,10 @@ function openAction(row: Record<string, any>): void {
   }
 }
 
-/** AI 文档跳转（aiDocId 非空时可跳 AI 文档详情页）。 */
+/** AI 文档跳转：直达 AI 文档助手深链（/ipd/ai-assistant?projectId=&docId=，与 todo-link 等全站入口同形态）。
+ *  2026-10-06 修复：原 /ipd/ai-docs/${docId} 路径路由表从未注册（实际注册名是 ai-assistant），点击产物必 404。 */
 function openAiDoc(docId: string): void {
-  router.push(`/ipd/ai-docs/${docId}`).catch((err: unknown) => {
+  router.push({ path: '/ipd/ai-assistant', query: { docId, projectId: projectId.value } }).catch((err: unknown) => {
     message.error(`导航失败: ${err instanceof Error ? err.message : String(err)}`);
   });
 }

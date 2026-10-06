@@ -84,9 +84,14 @@ function buildRouter() {
     history: createMemoryHistory(),
     routes: [
       { path: '/ipd/projects/:projectId/flow', name: 'IpdProjectFlow', component: { template: '<div />' } },
+      // D17 守门：产物按钮深链目标。路由表真实注册名是 ai-assistant（ipd.ts），不存在 /ipd/ai-docs 路由。
+      { path: '/ipd/ai-assistant', name: 'IpdAiAssistant', component: { template: '<div />' } },
     ],
   });
 }
+
+/** mountFlow 内部制路由实例，供产物跳转用例断言 currentRoute（不破坏现有用例的 wrapper 返回约定）。 */
+let lastMountedRouter: ReturnType<typeof buildRouter> | null = null;
 
 async function mountFlow(fetcher: ReturnType<typeof stubFlowFetch>) {
   vi.stubGlobal('fetch', fetcher);
@@ -94,6 +99,7 @@ async function mountFlow(fetcher: ReturnType<typeof stubFlowFetch>) {
   await router.push(`/ipd/projects/${PROJECT_ID}/flow`);
   await router.isReady();
   const wrapper = mount(FlowTab, { global: { plugins: [router] } });
+  lastMountedRouter = router;
   await vi.waitFor(() => expect(wrapper.text()).toContain('阶段动作（全项目）'));
   return wrapper;
 }
@@ -268,6 +274,47 @@ describe('L2 AI 入口（timeline.storyline）', () => {
     expect(ack.text()).toContain('不写库');
     // C08 零直写：挂载 + AI 链路全部为 GET（阶段动作/快照等只读端点）
     expect(calls.every((call) => call.method === 'GET')).toBe(true);
+    wrapper.unmount();
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// D17（2026-10-06 owner 浏览器实测报障）：产物按钮 404 守门
+// 原缺陷：openAiDoc 跳 /ipd/ai-docs/${docId}，但路由表注册名是 ai-assistant，必 404。
+// 修复后统一全站深链形态 /ipd/ai-assistant?projectId=&docId=（与 todo-link 等 6 处入口一致）。
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('D17 产物按钮深链（修复 /ipd/ai-docs 404）', () => {
+  it('SUCCEEDED 任务点「产物」→ 落 /ipd/ai-assistant?docId=&projectId=（19 位雪花逐字符）', async () => {
+    const DOC_ID = '2106100389345497089'; // owner 报障 URL 里的真实文档 ID
+    const base = stubFlowFetch();
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.includes('/ai-agent-tasks')) {
+        return envelope([{
+          id: '2104', projectId: PROJECT_ID, actionCode: 'C02', stageActionId: 'a1',
+          aiDocId: DOC_ID, status: 'SUCCEEDED', errorMsg: null, execMode: 'AI_GENERATE',
+          resultSummary: '生成完成', triggerType: 'PASSIVE', attempt: 1, createTime: '2026-10-06T00:00:00Z',
+        }]);
+      }
+      if (path.includes('/stage-actions')) {
+        return envelope([
+          { id: 'a1', projectId: PROJECT_ID, actionCode: 'C02', actionName: '市场调研报告', depth: 'DEEP', status: 'DONE', isBlocking: '0' },
+        ]);
+      }
+      return base(input, init);
+    });
+    const wrapper = await mountFlow(fetcher as unknown as ReturnType<typeof stubFlowFetch>);
+
+    const docBtn = wrapper.findAll('button').find((b) => b.text().trim() === '产物');
+    expect(docBtn).toBeDefined();
+    await docBtn!.trigger('click');
+    await flushPromises();
+
+    const route = lastMountedRouter!.currentRoute.value;
+    expect(route.path).toBe('/ipd/ai-assistant'); // 修复点：不再走未注册的 /ipd/ai-docs/:id
+    expect(route.query.docId).toBe(DOC_ID);
+    expect(route.query.projectId).toBe(PROJECT_ID);
     wrapper.unmount();
   });
 });
