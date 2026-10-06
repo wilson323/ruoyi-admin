@@ -20,7 +20,7 @@
  */
 import { ipdErrorText } from '../../views/ipd/_shared/ipd-error-text';
 import { IpdRequestError } from './auth';
-import { ipdGet, ipdPost } from './http';
+import { ipdGet, ipdPost, ipdUpload } from './http';
 
 export interface AiDocument {
   content: string;
@@ -88,6 +88,13 @@ export interface AiDocumentCreateInput {
 export interface AiDocumentReviseInput {
   baseVersionId: string;
   content: string;
+  title?: null | string;
+}
+
+/** 导入终稿入参（POST /{id}/import，multipart）：file 为系统外定稿（docx/pdf/md/txt，≤20MB）。 */
+export interface AiDocumentImportInput {
+  baseVersionId: string;
+  file: File;
   title?: null | string;
 }
 
@@ -257,6 +264,22 @@ export async function reviseAiDocument(documentId: string, input: AiDocumentRevi
     content: input.content,
     title: input.title ?? undefined,
   }));
+}
+
+/**
+ * 人工审计「导入终稿」（POST /ai-documents/{id}/import，multipart）：
+ * 把系统外定稿（docx/pdf/md/txt）解析为正文，沿版本链追加 v(n+1) 待审核；
+ * 之后沿用原审核/定档链传给下一节点。基准非当前链头 → 409（50002），与改版同语义。
+ */
+export async function importAiDocumentFinalVersion(documentId: string, input: AiDocumentImportInput): Promise<AiDocument> {
+  if (!/^\d+$/.test(input.baseVersionId)) {
+    throw new IpdRequestError('基准版本 ID 必须为纯数字');
+  }
+  const form = new FormData();
+  form.append('file', input.file);
+  form.append('baseVersionId', input.baseVersionId);
+  if (input.title) form.append('title', input.title);
+  return parseAiDocument(await ipdUpload(`/ai-documents/${documentId}/import`, form));
 }
 
 /** 人工审核通过（BR-AI-03：AI 输出未经审核不生效）；已审核行幂等返回。 */

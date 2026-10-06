@@ -6,6 +6,7 @@
  * - POST /api/v1/ai-documents            登记 AI 原始输出 v1（版本链首环）
  * - GET  /api/v1/ai-documents/{id}/versions  完整版本链
  * - POST /api/v1/ai-documents/{id}/revise    人工改版（baseVersionId HEAD 校验，非最新即 409）
+ * - POST /api/v1/ai-documents/{id}/import    人工审计导入终稿（docx/pdf/md/txt，追加待审核版本，同 HEAD 校验）
  * - POST /api/v1/ai-documents/{id}/versions/{versionId}/review  人工审核通过
  * P1-3 已交付：GET /api/v1/ai-documents?projectId=X → onMounted 自动加载项目下文档链头列表（页14 列表区）。
  */
@@ -36,6 +37,7 @@ import { headReviewActions } from '../../_shared/ai-agent/document-review-action
 import { PENDING_TEXT } from '../../_shared/format';
 import {
   type AiDocument,
+  importAiDocumentFinalVersion,
   ipdApiErrorText,
   listAiDocumentVersions,
   listAiDocumentsByProject,
@@ -368,6 +370,61 @@ async function submitRevise() {
   }
 }
 
+// ---------- 导入终稿（人工审计：系统外定稿作为新待审核版本） ----------
+const IMPORT_FILE_ACCEPT = '.docx,.pdf,.md,.markdown,.txt';
+const importOpen = ref(false);
+const importSubmitting = ref(false);
+const importError = ref<null | string>(null);
+const importForm = reactive({ title: '' });
+const importFile = ref<File | null>(null);
+
+function openImportFinal() {
+  if (!head.value) return;
+  importForm.title = head.value.title;
+  importFile.value = null;
+  importError.value = null;
+  importOpen.value = true;
+}
+
+function onImportFileChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  importFile.value = input.files?.[0] ?? null;
+}
+
+async function submitImportFinal() {
+  if (!head.value || importSubmitting.value || head.value.projectId !== projectId.value) return;
+  if (!importFile.value) {
+    importError.value = '请先选择终稿文件（docx / pdf / md / txt）。';
+    return;
+  }
+  importSubmitting.value = true;
+  importError.value = null;
+  const epoch = projectEpoch;
+  const baseVersionId = head.value.id;
+  try {
+    const next = await importAiDocumentFinalVersion(baseVersionId, {
+      baseVersionId,
+      file: importFile.value,
+      title: importForm.title.trim() || null,
+    });
+    if (epoch !== projectEpoch) return;
+    importOpen.value = false;
+    message.success(`终稿已导入，生成待审核 v${next.versionNo}，原版本保留`);
+    await loadChain(next.id);
+  } catch (cause) {
+    if (epoch !== projectEpoch) return;
+    if (cause instanceof IpdRequestError && cause.code === 50002) {
+      importError.value = '基准版本已不是当前最新版（可能已被其他成员改版），请确认后重新导入。';
+      importOpen.value = false;
+      if (head.value) await loadChain(head.value.id);
+      return;
+    }
+    importError.value = ipdApiErrorText(cause);
+  } finally {
+    if (epoch === projectEpoch) importSubmitting.value = false;
+  }
+}
+
 watch(projectId, (pid) => {
   projectEpoch++;
   documentsRequest++;
@@ -581,6 +638,7 @@ watch(projectId, (pid) => {
                 退回修改
               </Button>
               <Button v-if="doc.id === head?.id" size="small" @click="openRevise">基于此版本人工改版</Button>
+              <Button v-if="doc.id === head?.id" data-testid="document-import-final" size="small" @click="openImportFinal">导入终稿</Button>
             </Space>
           </TimelineItem>
         </Timeline>
@@ -611,6 +669,39 @@ watch(projectId, (pid) => {
           </FormItem>
         </Form>
         <Alert v-if="reviseError" show-icon type="error" role="alert" :message="reviseError" />
+      </Modal>
+      <Modal
+        v-model:open="importOpen"
+        :confirm-loading="importSubmitting"
+        :ok-button-props="{ disabled: !importFile }"
+        :title="`导入终稿（基于 v${head?.versionNo ?? PENDING_TEXT}）`"
+        ok-text="确认导入"
+        cancel-text="取消"
+        @ok="submitImportFinal"
+      >
+        <Alert
+          class="mb-3"
+          message="适用于在系统外定稿的成品文件：导入后解析为正文，生成新的待审核版本（与人工改版同一条链）；仍须审核通过才能定档传给下一节点。支持 docx / pdf / md / txt，不超过 20MB。"
+          show-icon
+          type="info"
+        />
+        <Form layout="horizontal" :label-col="{ style: { width: '90px' } }">
+          <FormItem label="终稿文件" required>
+            <input
+              data-testid="document-import-file"
+              type="file"
+              :accept="IMPORT_FILE_ACCEPT"
+              @change="onImportFileChange"
+            />
+            <div v-if="importFile" class="text-muted-foreground mt-1 text-xs">
+              已选：{{ importFile.name }}（{{ Math.ceil(importFile.size / 1024) }} KB）
+            </div>
+          </FormItem>
+          <FormItem label="文档标题">
+            <Input v-model:value="importForm.title" :maxlength="200" placeholder="留空沿用原标题" />
+          </FormItem>
+        </Form>
+        <Alert v-if="importError" show-icon type="error" role="alert" :message="importError" />
       </Modal>
       <Modal
         v-model:open="returnOpen"

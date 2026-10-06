@@ -9,6 +9,7 @@ import {
   generateAiDocument,
   getAiDocumentDiff,
   getAiDocumentHistory,
+  importAiDocumentFinalVersion,
   ipdApiErrorText,
   listAiDocumentVersions,
   listAiDocumentsByProject,
@@ -118,6 +119,43 @@ describe('AI 文档版本链接口', () => {
     const chain = await listAiDocumentVersions('1');
     expect(fetcher.mock.calls[2]?.[0]).toBe('/api/v1/ai-documents/1/versions');
     expect(chain.map((doc) => doc.versionNo)).toEqual([1, 2]);
+  });
+
+  it('导入终稿走 POST /api/v1/ai-documents/{id}/import（multipart），FormData 带 file/baseVersionId/title，解析为 v2', async () => {
+    const fetcher = vi.fn().mockImplementation(() =>
+      Promise.resolve(response(docFixture({ versionNo: 2, parentVersionId: '9007199254740993' }))),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const file = new File(['终稿正文'], 'final.docx', { type: 'application/octet-stream' });
+    const result = await importAiDocumentFinalVersion('9007199254740993', {
+      baseVersionId: '9007199254740993',
+      file,
+      title: 'PRD 终稿',
+    });
+    expect(fetcher.mock.calls[0]?.[0]).toBe('/api/v1/ai-documents/9007199254740993/import');
+    const init = fetcher.mock.calls[0]?.[1];
+    expect(init.method).toBe('POST');
+    expect(init.body).toBeInstanceOf(FormData);
+    expect(init.body.get('baseVersionId')).toBe('9007199254740993');
+    expect(init.body.get('file')).toBe(file);
+    expect(init.body.get('title')).toBe('PRD 终稿');
+    // multipart 不手写 Content-Type，让浏览器自带 boundary（写了会让后端解析失败）
+    const headers = new Headers(init.headers ?? {});
+    expect(headers.get('Content-Type')).toBeNull();
+    expect(result.versionNo).toBe(2);
+    expect(result.parentVersionId).toBe('9007199254740993');
+  });
+
+  it('导入终稿 title 留空不进 FormData；baseVersionId 非纯数字直接拒，不发请求', async () => {
+    const fetcher = vi.fn().mockImplementation(() =>
+      Promise.resolve(response(docFixture({ versionNo: 2 }))),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const file = new File(['x'], 'final.md');
+    await importAiDocumentFinalVersion('1', { baseVersionId: '1', file, title: null });
+    expect(fetcher.mock.calls[0]?.[1].body.get('title')).toBeNull();
+    await expect(importAiDocumentFinalVersion('1', { baseVersionId: 'abc', file })).rejects.toThrow(IpdRequestError);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it('AI 生成走 POST /api/v1/ai-documents/generate，docType 空不进请求体，返回契约化 v1', async () => {
