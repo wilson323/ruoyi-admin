@@ -145,7 +145,7 @@ internal/
 - Don't use the old React prototype, the AI chat frontend, or the framework's default admin identity as a substitute for IPD implementations.
 - Don't kill other port processes, don't connect to hosted business APIs, don't accept online API.
 - Don't bypass navigation or backend auth (first login / handover freeze must go through the guard).
-- Don't commit, push, create business branches, or publish — wait for explicit user request.
+- Commit/push at task end is mandatory (2026-10-07 owner mandate): integrate the worktree, commit and push this task's artifacts to the fixed remote branch (origin/teardown/incentive-removal). Don't create business branches, don't publish, don't force-push; other sessions' in-progress files stay untouched.
 - Don't relax `tsconfig`, skip files, or fake green tests.
 - Don't print or commit credentials. Demo passwords live in `.env.development.local` only (gitignored) and read via `import.meta.env.VITE_IPD_DEMO_PASSWORDS`.
 
