@@ -7,7 +7,9 @@ import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { IpdIdentity } from '../../../api/ipd/auth';
 import type { GateReviewView } from '../../../api/ipd/gate-review';
+import { useIpdAuthStore } from '../../../store/ipd-auth';
 import GatePanel from './gate-panel.vue';
 
 const response = (data: unknown, status = 200, code = 0, message?: string) => new Response(
@@ -310,5 +312,74 @@ describe('AI-P2-1 · gate material precheck', () => {
     await vi.waitFor(() => expect(wrapper.find('[data-testid="gate-precheck-error"]').exists()).toBe(true));
     expect(wrapper.find('[data-testid="gate-precheck-panel"]').exists()).toBe(false);
     wrapper.unmount();
+  });
+});
+
+
+/**
+ * P0 修复（2026-10-07，《双PM 功能完善度评估》）：仲裁 / 终裁按钮的可见状态对齐后端受理状态。
+ *
+ * 后端现读（GateReviewService）：requireArbitratable = 操作人角色匹配 + Gate 状态 = REJECTED
+ * + 当轮双 PM 意见分歧（hasPmConflict）；arbitrate()（组长仲裁）与 finalRuling()（超管终裁）
+ * 都先过这条断言 ⇒ 只有被驳回（REJECTED）的 Gate 才有仲裁/终裁入口。旧实现按 PENDING 渲染，
+ * 形成「在途看得见、后端必拒；驳回后反而没有入口」的死结。
+ *
+ * 数据限制（如实标注，不伪造数据源）：终裁另需「≥2 位组长已落仲裁决策且意见不一致」，
+ * 但 gate_arbitrations 只有写入端点（GateReviewController POST /arbitrate、POST /final-ruling），
+ * 前端没有读取端点，该条件不可判定——故只锁状态门，未升级即提交由后端 fail-closed 文案兜住。
+ */
+describe('P0 修复 · 仲裁 / 终裁按钮按后端受理状态（REJECTED）显示', () => {
+  function loginAs(personType: IpdIdentity['person']['personType']): void {
+    useIpdAuthStore().identity = {
+      mustChangePwd: false,
+      person: { accountStatus: 'ACTIVE', groupId: null, id: '7', name: '测试用户', personType, username: 'tester' },
+      scope: 'FULL',
+    };
+  }
+
+  /** 按钮文本（去空白；「延长 7 天」在断言里写作「延长7天」）。 */
+  const buttonTexts = (wrapper: ReturnType<typeof mount>): string[] =>
+    wrapper.findAll('button').map((button) => button.text().replaceAll(/\s+/g, ''));
+
+  /** 被驳回且双 PM 意见分歧（后端仲裁链的起点形态）。 */
+  const rejectedFixture = (): GateReviewView => viewFixture({
+    my: { decision: 'REJECT', opinion: '市场数据不足', reviewerType: 'MARKET_PM', signedAt: '2026-09-05T10:00:00Z' },
+    other: { decision: 'APPROVE', opinion: '材料齐全', reviewerType: 'RD_PM', signedAt: '2026-09-05T11:00:00Z' },
+    otherSubmitted: true,
+    status: 'REJECTED',
+  });
+
+  it('组长：REJECTED 显示仲裁同意/驳回，PENDING 不显示（后端仅受理已驳回的 Gate）', async () => {
+    // stubApi 内部会重建 pinia（既有测试约定），故身份必须在 stubApi 之后注入
+    stubApi(rejectedFixture());
+    loginAs('GROUP_LEADER');
+    const rejected = await mountGate();
+    expect(buttonTexts(rejected)).toContain('仲裁同意');
+    expect(buttonTexts(rejected)).toContain('仲裁驳回');
+    rejected.unmount();
+
+    stubApi(viewFixture());
+    loginAs('GROUP_LEADER');
+    const pending = await mountGate();
+    expect(buttonTexts(pending)).not.toContain('仲裁同意');
+    expect(buttonTexts(pending)).not.toContain('仲裁驳回');
+    pending.unmount();
+  });
+
+  it('超管：REJECTED 显示终裁通过/驳回；PENDING 隐藏终裁但延期仍在（AC-GATE-21 前置仍是 PENDING）', async () => {
+    stubApi(rejectedFixture());
+    loginAs('SUPER_ADMIN');
+    const rejected = await mountGate();
+    expect(buttonTexts(rejected)).toContain('终裁通过');
+    expect(buttonTexts(rejected)).toContain('终裁驳回');
+    rejected.unmount();
+
+    stubApi(viewFixture());
+    loginAs('SUPER_ADMIN');
+    const pending = await mountGate();
+    expect(buttonTexts(pending)).not.toContain('终裁通过');
+    expect(buttonTexts(pending)).not.toContain('终裁驳回');
+    expect(buttonTexts(pending)).toContain('延长7天');
+    pending.unmount();
   });
 });

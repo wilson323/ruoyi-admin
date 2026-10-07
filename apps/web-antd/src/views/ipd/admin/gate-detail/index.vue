@@ -403,7 +403,14 @@ const currentStatus = computed<GateStatus>(() => {
   return item?.status ? toGateStatus(String(item.status)) : 'PENDING';
 });
 
-/** 用 button-policy 决策每按钮可见性。 */
+/** 用 button-policy 决策每按钮可见性。
+ *
+ *  2026-10-07 P0 修复（双 PM 功能完善度评估）：仲裁 / 终裁的可见状态 = REJECTED，不再是
+ *  PENDING——后端 GateReviewService.requireArbitratable（arbitrate / finalRuling 共用前置）
+ *  只在 Gate 状态为 REJECTED 且当轮双 PM 意见分歧时受理，旧矩阵把按钮挂在 PENDING 上导致
+ *  「在途可点必被拒、驳回后无入口」。后端附加前置（组长角色、终裁需 ≥2 位组长已裁）前端
+ *  不可判定（gate_arbitrations 无读取端点），交由 v-access:code 与后端 fail-closed 兜住，
+ *  详见 button-policy.ts 文件头。 */
 function buttonVisible(button: GateDetailRowButton): boolean {
   return decideRowButton(button, { status: currentStatus.value }).visible;
 }

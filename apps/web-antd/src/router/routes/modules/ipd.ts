@@ -11,7 +11,11 @@ import {
  * 规则（2026-10-01 导航收敛；路由仍全部登记，不删路径、不改 access / authority）：
  * - 侧栏常用入口只留五项，order 1–5：我的工作台、产品线、产品目录、我的项目、资料库；
  * - 产品目录仍是 authority SUPER_ADMIN，不把这项菜单扩给其他角色；
- * - 其余一级入口（含产品空间、招募、协同绩效、报表、移交、激励）hideInMenu，直链仍打开原页面；
+ * - 2026-10-07 菜单双轨同步：随后端恢复 4 条顶级入口的菜单，本文件同步摘除
+ *   需求管理（IpdRequirements）/ 研发招募（IpdBids）/ 变更管理（IpdChanges）/
+ *   阶段确认（IpdReviews）这 4 条的 hideInMenu（只动顶级；其子路由 hideInMenu 保持不动，
+ *   下钻页仍由 activePath 维持菜单高亮）。这 4 条不带 order，不参与上面五项的 order 排序；
+ * - 其余一级入口（含产品空间、协同绩效、报表、移交、激励）hideInMenu，直链仍打开原页面；
  * - 原型 15 项路径和组件保留。原型非一级路由（审计日志/删除审核/KPI/激励）继续 hideInMenu；
  * - 后端未交付的能力在页内登记缺口（meta.ipdCard + meta.ipdBackend），不另挂占位页；
  * - 项目详情 8 个子页签、动作详情、编辑页等下钻路由 hideInMenu，用 activePath 保持菜单高亮；
@@ -147,9 +151,10 @@ const ipdLayoutRoute: RouteRecordRaw = {
       ],
     },
     // ③ 需求管理（原型 /requirements，页40；2026-09-06 复刻 RequirementsPage，接 DemandController）
+    // 2026-10-07 菜单双轨同步：随后端恢复菜单，摘除 hideInMenu（子路由/详情页仍隐藏）
     {
       component: () => import('#/views/ipd/demand/index.vue'),
-      meta: { access: [...(PAGE_PERMISSIONS['/ipd/requirements'] ?? [])], hideInMenu: true, icon: 'lucide:clipboard-list', title: '需求管理' },
+      meta: { access: [...(PAGE_PERMISSIONS['/ipd/requirements'] ?? [])], icon: 'lucide:clipboard-list', title: '需求管理' },
       name: 'IpdRequirements',
       path: 'requirements',
     },
@@ -196,9 +201,10 @@ const ipdLayoutRoute: RouteRecordRaw = {
       ],
     },
     // ⑤ 研发招募（原型 /recruitments，页19-22）—— fe-bid 整体覆盖
+    // 2026-10-07 菜单双轨同步：随后端恢复菜单，摘除 hideInMenu（4 个子路由 hideInMenu 保持）
     {
       component: () => import('#/views/ipd/bid/list/index.vue'),
-      meta: { access: [...(PAGE_PERMISSIONS['/ipd/bids'] ?? [])], hideInMenu: true, icon: 'lucide:handshake', title: '研发招募' },
+      meta: { access: [...(PAGE_PERMISSIONS['/ipd/bids'] ?? [])], icon: 'lucide:handshake', title: '研发招募' },
       name: 'IpdBids',
       path: 'bids',
       children: [
@@ -230,9 +236,10 @@ const ipdLayoutRoute: RouteRecordRaw = {
     },
     // ⑥ 变更管理（原型 /changes，一级入口；2026-09-06 复刻 ChangesPage：接 RequirementChangeController
     //    P2-6.1 双签否决，创建/提交/签署真实；协作决策链（旧五节点口径已废止）后端未交付在页内如实登记）
+    // 2026-10-07 菜单双轨同步：随后端恢复菜单，摘除 hideInMenu（变更单详情别名仍隐藏）
     {
       component: () => import('#/views/ipd/change/index.vue'),
-      meta: { hideInMenu: true, icon: 'lucide:arrow-left-right', title: '变更管理' },
+      meta: { icon: 'lucide:arrow-left-right', title: '变更管理' },
       name: 'IpdChanges',
       path: 'changes',
     },
@@ -259,9 +266,10 @@ const ipdLayoutRoute: RouteRecordRaw = {
     },
     // ⑧ 阶段确认（原型 /reviews；2026-09-06 复刻 StageConfirmPage：门禁清单 + advance-stage 真实推进，
     //    双PM确认链/双周评审/五大关键 Gate/豁免后端未交付在页内如实登记）
+    // 2026-10-07 菜单双轨同步：随后端恢复菜单，摘除 hideInMenu
     {
       component: () => import('#/views/ipd/review/index.vue'),
-      meta: { hideInMenu: true, icon: 'lucide:shield-check', title: '阶段确认' },
+      meta: { icon: 'lucide:shield-check', title: '阶段确认' },
       name: 'IpdReviews',
       path: 'reviews',
     },

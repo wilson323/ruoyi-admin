@@ -7,10 +7,26 @@
  * 评审操作 9 个按钮决策矩阵（4 状态 × 9 按钮 = 36 决策点）：
  *
  * | 状态 \\ 按钮        | signApprove | signReject | reopen | extend | arbitrateApprove | arbitrateReject | finalRulingApprove | finalRulingReject | refresh |
- * | PENDING             |     ✓       |     ✓     |   ✗   |   ✓   |        ✓        |        ✓        |         ✓         |         ✓        |    ✓    |
+ * | PENDING             |     ✓       |     ✓     |   ✗   |   ✓   |        ✗        |        ✗        |         ✗         |         ✗        |    ✓    |
  * | APPROVED            |     ✗       |     ✗     |   ✗   |   ✗   |        ✗        |        ✗        |         ✗         |         ✗        |    ✓    |
- * | REJECTED            |     ✗       |     ✗     |   ✓   |   ✗   |        ✗        |        ✗        |         ✗         |         ✗        |    ✓    |
+ * | REJECTED            |     ✗       |     ✗     |   ✓   |   ✗   |        ✓        |        ✓        |         ✓         |         ✓        |    ✓    |
  * | ABSTAINED_TIMEOUT   |     ✗       |     ✗     |   ✗   |   ✗   |        ✗        |        ✗        |         ✗         |         ✗        |    ✓    |
+ *
+ * 仲裁 / 终裁的可见状态（2026-10-07 修复，依据后端现读代码，非推测）：
+ * 后端 GateReviewService.requireArbitratable 的前置断言是「操作人角色匹配 + Gate 状态
+ * = REJECTED + 当轮双 PM 意见分歧（hasPmConflict）」，而 arbitrate()（组长仲裁）与
+ * finalRuling()（超管终裁）两个入口都先过这条断言——即后端只在 REJECTED 受理这两个动作。
+ * 此前本矩阵把 arbitrate* / finalRuling* 挂在 PENDING 上：在途时按钮可点但后端必拒，
+ * 驳回后（真正该仲裁/终裁的状态）反而没有入口，形成「UI 无有效入口」死结。
+ * 现改为 REJECTED 可见，与后端受理状态同语义。
+ *
+ * 前端不可判定的后端附加前置（不在此矩阵内，如实标注，不伪造数据源）：
+ * - 仲裁：调用者须为冲突双方所在组的产品组长（角色门由 v-access:code + 后端二次校验）；
+ * - 终裁：后端 finalRuling 还要求「≥2 位组长的仲裁行已落决策且意见不一致」——
+ *   gate_arbitrations 只有写入端点（GateReviewController 的 POST /arbitrate、
+ *   POST /final-ruling），没有任何读取端点，GateReviewService.arbitrationRows 为 private，
+ *   前端拿不到「几位组长已裁」，故此处只按状态显示；未升级即提交由后端 fail-closed
+ *   文案（"组长仲裁尚未形成两组对立意见，暂无需超管终裁"）兜住。
  *
  * 决策函数纯函数无副作用，便于 vitest 覆盖。权限控制（超管/组长/普通）由 v-access:code 单独控制，
  * 决策矩阵只看 Gate 状态。
@@ -86,24 +102,34 @@ export function decideRowButton(
       return HIDDEN('已超时弃权，期限已结束');
 
     case 'arbitrateApprove':
-      // 仅 PENDING 可仲裁同意（组长权限）
-      if (status === 'PENDING') return VISIBLE;
-      return HIDDEN('仅流转中可仲裁');
+      // 仅 REJECTED 可仲裁同意（组长权限）：后端 requireArbitratable 前置 STATUS_REJECTED
+      if (status === 'REJECTED') return VISIBLE;
+      if (status === 'PENDING') return HIDDEN('尚未驳回，无仲裁流程（后端仅受理已驳回的 Gate）');
+      if (status === 'APPROVED') return HIDDEN('已通过，无仲裁流程');
+      return HIDDEN('已超时弃权，无仲裁流程');
 
     case 'arbitrateReject':
-      // 仅 PENDING 可仲裁驳回（组长权限）
-      if (status === 'PENDING') return VISIBLE;
-      return HIDDEN('仅流转中可仲裁');
+      // 仅 REJECTED 可仲裁驳回（组长权限）：同上，后端只在被驳回的 Gate 上受理仲裁
+      if (status === 'REJECTED') return VISIBLE;
+      if (status === 'PENDING') return HIDDEN('尚未驳回，无仲裁流程（后端仅受理已驳回的 Gate）');
+      if (status === 'APPROVED') return HIDDEN('已通过，无仲裁流程');
+      return HIDDEN('已超时弃权，无仲裁流程');
 
     case 'finalRulingApprove':
-      // 仅 PENDING 可终裁通过（超管权限）
-      if (status === 'PENDING') return VISIBLE;
-      return HIDDEN('仅流转中可终裁');
+      // 仅 REJECTED 可终裁通过（超管权限）：后端 requireArbitratable 前置 STATUS_REJECTED。
+      // 后端另需「≥2 位组长已裁且意见不一致」——前端无 gate_arbitrations 读取端点，不可判定，
+      // 只按状态显示（见文件头「前端不可判定的后端附加前置」）。
+      if (status === 'REJECTED') return VISIBLE;
+      if (status === 'PENDING') return HIDDEN('尚未驳回，无终裁流程（后端仅受理已驳回的 Gate）');
+      if (status === 'APPROVED') return HIDDEN('已通过，无终裁流程');
+      return HIDDEN('已超时弃权，无终裁流程');
 
     case 'finalRulingReject':
-      // 仅 PENDING 可终裁驳回（超管权限）
-      if (status === 'PENDING') return VISIBLE;
-      return HIDDEN('仅流转中可终裁');
+      // 仅 REJECTED 可终裁驳回（超管权限）：同 finalRulingApprove，前置与数据限制一致
+      if (status === 'REJECTED') return VISIBLE;
+      if (status === 'PENDING') return HIDDEN('尚未驳回，无终裁流程（后端仅受理已驳回的 Gate）');
+      if (status === 'APPROVED') return HIDDEN('已通过，无终裁流程');
+      return HIDDEN('已超时弃权，无终裁流程');
 
     case 'refresh':
       // 任何状态都可刷新（重新加载评审视图）

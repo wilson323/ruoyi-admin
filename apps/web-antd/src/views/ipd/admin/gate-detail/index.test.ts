@@ -1,9 +1,14 @@
 /**
  * Gate 评审详情页契约（R177-A6）：
- * 1. PENDING 状态：signApprove / signReject / extend / arbitrate* / finalRuling* / refresh 可见（8 个），reopen 隐藏；
- * 2. REJECTED 状态：reopen / refresh 可见（2 个），其它隐藏；
+ * 1. PENDING 状态：signApprove / signReject / extend / refresh 可见（4 个），reopen 与仲裁/终裁隐藏；
+ * 2. REJECTED 状态：reopen / arbitrate* / finalRuling* / refresh 可见（6 个），其它隐藏；
  * 3. APPROVED / ABSTAINED_TIMEOUT：仅 refresh 可见（1 个）。
  * 4. listProjectGates 与 getGateReview 后端契约一致（不要造种子数据）。
+ *
+ * 2026-10-07 P0 修复（双 PM 功能完善度评估）：第 1/2 条此前是反的——仲裁/终裁被固化在 PENDING
+ * 可见（:156-159 附近还断言 REJECTED 下不可见）。后端 GateReviewService.requireArbitratable
+ * （arbitrate / finalRuling 共用前置）只在 Gate 状态 = REJECTED 且当轮双 PM 意见分歧时受理，
+ * 故断言随之纠正为「REJECTED 可见、PENDING 隐藏」。
  */
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
@@ -78,7 +83,7 @@ afterEach(() => {
 });
 
 describe('R177-A6 Gate 评审详情页 button-policy 接入契约', () => {
-  it('PENDING 状态：8 个按钮可见（sign/extend/arbitrate/finalRuling/refresh），reopen 隐藏', async () => {
+  it('PENDING 状态：4 个按钮可见（sign/extend/refresh），reopen 与仲裁/终裁隐藏', async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
       if (path === '/api/v1/projects/101/gates') {
@@ -110,16 +115,18 @@ describe('R177-A6 Gate 评审详情页 button-policy 接入契约', () => {
     expect(labels).toContain('签署通过');
     expect(labels).toContain('签署驳回');
     expect(labels).toContain('延期');
-    expect(labels).toContain('仲裁同意');
-    expect(labels).toContain('仲裁驳回');
-    expect(labels).toContain('终裁通过');
-    expect(labels).toContain('终裁驳回');
     expect(labels).toContain('刷新');
     expect(labels).not.toContain('重新发起');
+    // 后端只在 REJECTED 受理仲裁/终裁（requireArbitratable 前置 STATUS_REJECTED）：
+    // 在途（PENDING）显示按钮只会换来一次必被拒的请求，故隐藏。
+    expect(labels).not.toContain('仲裁同意');
+    expect(labels).not.toContain('仲裁驳回');
+    expect(labels).not.toContain('终裁通过');
+    expect(labels).not.toContain('终裁驳回');
     wrapper.unmount();
   });
 
-  it('REJECTED 状态：仅重新发起 + 刷新可见', async () => {
+  it('REJECTED 状态：重新发起 + 仲裁/终裁 + 刷新可见（仲裁/终裁的受理状态）', async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const path = String(input);
       if (path === '/api/v1/projects/101/gates') {
@@ -150,13 +157,14 @@ describe('R177-A6 Gate 评审详情页 button-policy 接入契约', () => {
     const labels = visibleButtonLabels(wrapper);
     expect(labels).toContain('重新发起');
     expect(labels).toContain('刷新');
+    // 被驳回 = 仲裁/终裁流程起点（旧断言 :156-159 固化有误，随 P0 修复纠正）
+    expect(labels).toContain('仲裁同意');
+    expect(labels).toContain('仲裁驳回');
+    expect(labels).toContain('终裁通过');
+    expect(labels).toContain('终裁驳回');
     expect(labels).not.toContain('签署通过');
     expect(labels).not.toContain('签署驳回');
     expect(labels).not.toContain('延期');
-    expect(labels).not.toContain('仲裁同意');
-    expect(labels).not.toContain('仲裁驳回');
-    expect(labels).not.toContain('终裁通过');
-    expect(labels).not.toContain('终裁驳回');
     wrapper.unmount();
   });
 

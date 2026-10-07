@@ -2,6 +2,11 @@
  * Gate 评审详情页 button-policy 决策矩阵单测（R177-A6）。
  *
  * 4 状态 × 9 按钮 = 36 决策点全覆盖；任一回归立即在矩阵格内点亮。
+ *
+ * 2026-10-07 P0 修复（双 PM 功能完善度评估）：仲裁 / 终裁的可见状态由 PENDING 改为
+ * REJECTED——后端 GateReviewService.requireArbitratable（arbitrate / finalRuling 共用前置）
+ * 只在 Gate 状态 = REJECTED 且当轮双 PM 意见分歧时受理。旧断言把「PENDING 可见」固化了，
+ * 属错误断言，随修复一起纠正（不是放宽，而是对齐后端真实受理状态）。
  */
 import { describe, expect, it } from 'vitest';
 
@@ -22,10 +27,11 @@ const EXPECTED: Readonly<Record<GateDetailStatus, Readonly<Record<GateDetailRowB
     signReject: true,
     reopen: false,
     extend: true,
-    arbitrateApprove: true,
-    arbitrateReject: true,
-    finalRulingApprove: true,
-    finalRulingReject: true,
+    // 后端只在 REJECTED 受理仲裁/终裁（requireArbitratable 前置 STATUS_REJECTED）
+    arbitrateApprove: false,
+    arbitrateReject: false,
+    finalRulingApprove: false,
+    finalRulingReject: false,
     refresh: true,
   },
   APPROVED: {
@@ -44,10 +50,11 @@ const EXPECTED: Readonly<Record<GateDetailStatus, Readonly<Record<GateDetailRowB
     signReject: false,
     reopen: true,
     extend: false,
-    arbitrateApprove: false,
-    arbitrateReject: false,
-    finalRulingApprove: false,
-    finalRulingReject: false,
+    // 被驳回 = 仲裁/终裁流程的起点（分歧自动开仲裁 openArbitration，两组不一致升级超管终裁）
+    arbitrateApprove: true,
+    arbitrateReject: true,
+    finalRulingApprove: true,
+    finalRulingReject: true,
     refresh: true,
   },
   ABSTAINED_TIMEOUT: {
@@ -85,16 +92,27 @@ describe('R177-A6 Gate 详情页 button-policy 决策矩阵', () => {
     });
   }
 
-  it('PENDING 可见按钮数 = 8（sign/extend/arbitrate/finalRuling/refresh），reopen 隐藏', () => {
+  it('PENDING 可见按钮数 = 4（sign/extend/refresh），reopen 与仲裁/终裁隐藏', () => {
     const visible = ROW_BUTTON_ORDER.filter((b) => decideRowButton(b, { status: 'PENDING' }).visible);
-    expect(visible).toHaveLength(8);
+    expect(visible).toHaveLength(4);
+    expect(visible).toEqual(['signApprove', 'signReject', 'extend', 'refresh']);
     expect(visible).not.toContain('reopen');
+    // PENDING 不是仲裁/终裁的受理状态（后端 requireArbitratable 要求 REJECTED）
+    expect(visible).not.toContain('arbitrateApprove');
+    expect(visible).not.toContain('finalRulingApprove');
   });
 
-  it('REJECTED 可见按钮数 = 2（reopen/refresh）', () => {
+  it('REJECTED 可见按钮数 = 6（reopen/仲裁/终裁/refresh）', () => {
     const visible = ROW_BUTTON_ORDER.filter((b) => decideRowButton(b, { status: 'REJECTED' }).visible);
-    expect(visible).toHaveLength(2);
-    expect(visible).toEqual(['reopen', 'refresh']);
+    expect(visible).toHaveLength(6);
+    expect(visible).toEqual([
+      'reopen',
+      'arbitrateApprove',
+      'arbitrateReject',
+      'finalRulingApprove',
+      'finalRulingReject',
+      'refresh',
+    ]);
   });
 
   it('APPROVED 可见按钮数 = 1（仅 refresh）', () => {

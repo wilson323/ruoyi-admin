@@ -6,7 +6,10 @@ import { PAGE_PERMISSIONS } from './ipd-permission-codes';
 import { ipdLayoutRoute } from '../../../router/routes/modules/ipd';
 
 /**
- * 导航收敛：常用入口五项，其余一级路由仍登记但不进侧栏。
+ * 导航收敛：常用入口五项（order 1-5），其余一级路由仍登记但不进侧栏。
+ *
+ * 2026-10-07 菜单双轨同步：随后端恢复 4 条顶级入口菜单（需求管理 / 研发招募 / 变更管理 /
+ * 阶段确认），这 4 条不再 hideInMenu（它们无 order，故不参与上面五项的顺序断言）。
  */
 const PRIMARY: Array<[string, string, number]> = [
   ['IpdWorkbench', '我的工作台', 1],
@@ -16,12 +19,10 @@ const PRIMARY: Array<[string, string, number]> = [
   ['IpdDocuments', '资料库', 5],
 ];
 
+// 2026-10-07 菜单双轨同步（配合后端恢复 4 条顶级入口）：需求管理 / 研发招募 / 变更管理 /
+// 阶段确认 摘除 hideInMenu，故从本清单移除（清单只留仍不进侧栏的一级路由）。
 const HIDDEN = [
-  'IpdRequirements',
   'IpdProducts',
-  'IpdBids',
-  'IpdChanges',
-  'IpdReviews',
   'IpdPerformance',
   'IpdTimeline',
   'IpdReports',
@@ -75,14 +76,34 @@ describe('IPD 常用入口', () => {
     expect(child('IpdProductLines').meta?.access).toEqual(pageAccess('/ipd/product-lines'));
   });
 
-  it('招募、绩效、报表、移交和产品空间不进侧栏，路径还在', () => {
+  it('产品空间、绩效、报表、移交等仍不进侧栏，路径还在', () => {
     expect(child('IpdProducts').path).toBe('products');
-    expect(child('IpdBids').path).toBe('bids');
     expect(child('IpdPerformance').path).toBe('performance');
     expect(child('IpdReports').path).toBe('reports');
     expect(child('IpdHandover').path).toBe('handover');
     for (const name of HIDDEN) {
       expect(child(name).meta?.hideInMenu).toBe(true);
     }
+  });
+
+  it('菜单双轨同步：需求管理/研发招募/变更管理/阶段确认 4 条顶级入口进侧栏，路径与子路由隐藏不变', () => {
+    const restored: Array<[string, string]> = [
+      ['IpdRequirements', 'requirements'],
+      ['IpdBids', 'bids'],
+      ['IpdChanges', 'changes'],
+      ['IpdReviews', 'reviews'],
+    ];
+    for (const [name, path] of restored) {
+      const route = child(name);
+      expect(route.meta?.hideInMenu).not.toBe(true);
+      expect(route.path).toBe(path);
+      // 只改顶级：下钻子路由仍 hideInMenu（不重复进侧栏，靠 activePath 保持高亮）
+      for (const sub of (route.children ?? [])) {
+        expect(sub.meta?.hideInMenu).toBe(true);
+      }
+    }
+    // 本次只同步菜单可见性，不碰权限码
+    expect(child('IpdRequirements').meta?.access).toEqual(pageAccess('/ipd/requirements'));
+    expect(child('IpdBids').meta?.access).toEqual(pageAccess('/ipd/bids'));
   });
 });

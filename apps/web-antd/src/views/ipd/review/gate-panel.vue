@@ -12,7 +12,8 @@
      维持真缺口登记，不做假数据。
   3. 后端双签轮次制已交付：盲签视图（在途互盲仅"对方已提交"）、签署（每方每轮一条，
      任一 REJECT ⇒ REJECTED）、reopen（round+1，第 3 轮组长列席）、超管延期（最多 3 次）、
-     组长仲裁、超管终裁——按 GateReviewController 契约 1:1 渲染。
+     组长仲裁、超管终裁——按 GateReviewController 契约 1:1 渲染（仲裁/终裁按后端受理状态
+     REJECTED 显示，2026-10-07 P0 修复：旧实现挂在 PENDING 上导致驳回后无有效入口）。
   4. Gate 要素判定（[CONSISTENCY-4] 蜂群审计线1）：
      - 层1：countVetoFailures 控提交按钮 disabled（硬阻断 is_veto+FAIL）；
      - 层2：每要素 PASS / FAIL / 条件通过 三选一 + 条件项必填 closeDeadline+responsiblePersonId；
@@ -640,7 +641,13 @@ function finalRuling(decision: GateDecision): void {
               整改后发起新版本
             </button>
           </template>
-          <template v-if="isLeader && view.status === 'PENDING'">
+          <!-- 组长仲裁（AC-GATE-10 中段）：后端 GateReviewService.requireArbitratable 前置 =
+               角色匹配 + gate.status = REJECTED + 当轮双 PM 意见分歧（hasPmConflict），
+               arbitrate() 先过该断言。2026-10-07 P0 修复：可见状态 PENDING → REJECTED，
+               与后端受理状态同语义（旧口径在途可点必被拒、驳回后反而无入口）。
+               数据限制（如实标注）：gate_arbitrations 无读取端点，前端拿不到「双 PM 分歧/
+               组长已裁」数据，分歧仅由下方「仲裁分歧点汇总」人工核对，不参与显示判定。 -->
+          <template v-if="isLeader && view.status === 'REJECTED'">
             <button :disabled="busy" class="secondary-button" type="button" @click="arbitrate('REJECT')">
               仲裁驳回
             </button>
@@ -648,17 +655,24 @@ function finalRuling(decision: GateDecision): void {
               仲裁同意
             </button>
           </template>
-          <template v-if="isSuperAdmin && view.status === 'PENDING'">
+          <!-- 超管终裁（AC-GATE-10 尾段）：同样只在 REJECTED（被驳回）的 Gate 上受理。
+               后端 finalRuling 另需「≥2 位组长的仲裁行已落决策且意见不一致」（已升级超管），
+               但 gate_arbitrations 只有写入端点（POST /arbitrate、POST /final-ruling），
+               前端无数据源可判「≥2 组长已裁」——故只按状态显示，未升级即提交由后端
+               fail-closed 文案（组长仲裁尚未形成两组对立意见，暂无需超管终裁）兜住。 -->
+          <template v-if="isSuperAdmin && view.status === 'REJECTED'">
             <button :disabled="busy" class="secondary-button" type="button" @click="finalRuling('REJECT')">
               终裁驳回
             </button>
             <button :disabled="busy" class="primary-button" type="button" @click="finalRuling('APPROVE')">
               终裁通过
             </button>
-            <template v-if="canExtend">
-              <button :disabled="busy" class="panel-action" type="button" @click="extend(7)">延长 7 天</button>
-              <button :disabled="busy" class="panel-action" type="button" @click="extend(15)">延长 15 天</button>
-            </template>
+          </template>
+          <!-- 延长签署期限（AC-GATE-21）：后端 extendDeadline 前置仍是 PENDING（签署中）且未超 3 次，
+               与仲裁/终裁的 REJECTED 门槛不同，故单独成块（canExtend 已含 isSuperAdmin + PENDING + 次数）。 -->
+          <template v-if="canExtend">
+            <button :disabled="busy" class="panel-action" type="button" @click="extend(7)">延长 7 天</button>
+            <button :disabled="busy" class="panel-action" type="button" @click="extend(15)">延长 15 天</button>
           </template>
         </footer>
       </article>
