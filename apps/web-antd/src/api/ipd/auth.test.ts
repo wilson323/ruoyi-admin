@@ -656,6 +656,44 @@ describe('BUSINESS_CODE_MESSAGES coverage via requestIpd', () => {
     expect(typeof (data as { id: unknown }).id).toBe('string');
   });
 
+  it('未传 timeoutMs 时 15 秒中止；传入 60 秒时 15 秒仍在等', async () => {
+    vi.useFakeTimers();
+    const hangUntilAbort = () => vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => {
+        reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }));
+      });
+    }));
+    try {
+      vi.stubGlobal('fetch', hangUntilAbort());
+      const early = requestIpd('/probe').then(
+        () => { throw new Error('should have rejected'); },
+        (error: unknown) => error,
+      );
+      await vi.advanceTimersByTimeAsync(15_000);
+      await expect(early).resolves.toMatchObject({ kind: 'timeout', message: '请求超时，请稍后重试' });
+
+      let aborted = false;
+      vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          aborted = true;
+          reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }));
+        });
+      })));
+      const late = requestIpd('/probe', { timeoutMs: 60_000 });
+      const lateSettled = late.then(
+        () => { throw new Error('should have rejected'); },
+        (error: unknown) => error,
+      );
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(45_000);
+      expect(aborted).toBe(true);
+      await expect(lateSettled).resolves.toMatchObject({ kind: 'timeout' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('fetch 以 AbortError 拒绝（15s 定时器中止）→ kind="timeout"，文案「请求超时」而非误报断网', async () => {
     // 2026-09-08：超时中止与真断网分开归类；浏览器为 DOMException(AbortError)，
     // 此处用 name 改写的 Error 模拟同一拒绝形态。

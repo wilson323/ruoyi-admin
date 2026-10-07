@@ -47,7 +47,7 @@ import SkillsReviewPanel from './skills-review-panel.vue';
 import type { AgentInterruptPause } from './agui-interrupt';
 import ToolCallCard from './tool-call-card.vue';
 import { foldTimelineRows } from './tool-call-rows';
-import { buildTimelineItems, type TimelineItem } from './timeline-model';
+import { presentTimelineItems, type TimelineItem } from './timeline-model';
 
 /** 单条产物「工作成果定档」的交互态。 */
 interface ArtifactApplyState {
@@ -120,7 +120,7 @@ function locateEvidence(path: string): void {
 const shownEvents = computed(() =>
   props.variant === 'artifacts' ? props.events.filter((event) => event.type === 'ARTIFACT') : props.events,
 );
-const items = computed(() => buildTimelineItems(shownEvents.value));
+const items = computed(() => presentTimelineItems(shownEvents.value));
 /** 仅 full：可信父交付事件生成即预览；普通回答和澄清不靠标题推断文档。 */
 const livePreview = computed(() => {
   if (props.variant !== 'full') return null;

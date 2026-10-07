@@ -142,6 +142,24 @@ describe('AiSuggest 组件（R227-C1）', () => {
     });
   });
 
+  it('新建立项关掉当前项目：壳上已选项目不进本次建议', async () => {
+    window.localStorage.setItem('ipd:current-project', '9001');
+    vi.mocked(aiSuggest).mockResolvedValue(okView);
+    const wrapper = mount(AiSuggest, {
+      props: { scene: 'project.create.suggest', needsPrompt: true, useCurrentProject: false },
+    });
+
+    await wrapper.get('[data-testid="ai-suggest-prompt"]').setValue('做一款门禁');
+    await wrapper.get('[data-testid="ai-suggest-run"]').trigger('click');
+    await flushPromises();
+
+    expect(aiSuggest).toHaveBeenCalledWith('project.create.suggest', {
+      entityId: undefined,
+      projectId: undefined,
+      userPrompt: '做一款门禁',
+    });
+  });
+
   it('needsPrompt 空素材：本地校验拦截不发请求', async () => {
     const wrapper = mount(AiSuggest, {
       props: { scene: 'project.create.suggest', needsPrompt: true },

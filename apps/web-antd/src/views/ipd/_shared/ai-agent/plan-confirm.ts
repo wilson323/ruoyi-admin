@@ -112,8 +112,9 @@ export function planConfirmView(
   const planConfirm = (latest.kind === 'AWAIT_USER' && latest.reason === 'PLAN_CONFIRM')
     || (latest.kind === 'INTENT' && latest.needsPlan);
   if (!planConfirm) return { kind: 'none' };
+  const waiting = latest.kind === 'AWAIT_USER' && latest.reason === 'PLAN_CONFIRM';
   const bound = typeof actionCode === 'string' && actionCode.trim() !== '';
-  if (bound) return { kind: 'bound' };
+  if (bound && !waiting) return { kind: 'bound' };
   return { kind: 'unbound', steps: confirmationSteps(related, latest) };
 }
 

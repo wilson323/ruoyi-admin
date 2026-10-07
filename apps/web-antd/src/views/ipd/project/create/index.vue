@@ -283,6 +283,7 @@ function cancel(): void {
         <AiSuggest
           scene="project.create.suggest"
           needs-prompt
+          :use-current-project="false"
           label="AI 帮写立项建议"
           data-testid="pc-ai-suggest"
         />

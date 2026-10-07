@@ -24,9 +24,18 @@ export async function ipdGet<T = unknown>(path: string, query?: Record<string, u
   return (await auth.authenticatedRequest(`${path}${buildQuery(query)}`)) as T;
 }
 
-export async function ipdPost<T = unknown>(path: string, body?: object, query?: Record<string, unknown>): Promise<T> {
+export async function ipdPost<T = unknown>(
+  path: string,
+  body?: object,
+  query?: Record<string, unknown>,
+  options?: { timeoutMs?: number },
+): Promise<T> {
   const auth = useIpdAuthStore();
-  return (await auth.authenticatedRequest(`${path}${buildQuery(query)}`, { method: 'POST', body })) as T;
+  return (await auth.authenticatedRequest(`${path}${buildQuery(query)}`, {
+    method: 'POST',
+    body,
+    timeoutMs: options?.timeoutMs,
+  })) as T;
 }
 
 /** multipart 上传。不手写 Content-Type，让浏览器带 boundary。 */

@@ -443,7 +443,7 @@ export function agentRunStatusMeta(status: AgentRunStatus): { color: string; lab
       return { color: 'processing', label: '校验中' };
     }
     case 'SUCCEEDED': {
-      return { color: 'success', label: '已完成' };
+      return { color: 'success', label: '运行结束' };
     }
     case 'FAILED': {
       return { color: 'error', label: '失败' };

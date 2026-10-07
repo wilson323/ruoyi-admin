@@ -846,6 +846,8 @@ const agentEvents = computed(() => projectAgentPanelRef.value?.events ?? []);
 const agentTask = computed(() => projectAgentPanelRef.value?.lastTask ?? '');
 const agentReply = computed(() => timelineTranscript(agentEvents.value));
 const agentStreaming = computed(() => projectAgentPanelRef.value?.active === true);
+/** 历史运行没有提问原文，但仍要展示已加载的回答。 */
+const agentThreadOpen = computed(() => agentTask.value !== '' || agentReply.value !== '' || agentEvents.value.length > 0);
 
 /** 对话栏和中间回读是否仍贴在底部。用户往上翻之后不再抢滚动。 */
 const streamPinned = { chat: true, readout: true };
@@ -1200,9 +1202,55 @@ defineExpose({ clearConversation, send });
       :open="open"
       :width="expanded ? '100%' : 440"
       data-testid="ipd-ai-drawer"
-      :title="workspaceMode === 'ai' ? '项目 AI 工作界面' : 'AI 副驾'"
+      :root-class-name="expanded ? 'ipd-ai-drawer-workbench' : ''"
       @close="toggleOpen"
     >
+      <template #title>
+        <div class="ipd-ai-drawer-heading">
+          <div class="ipd-ai-mode-switch" role="group" aria-label="AI 工作方式">
+            <button
+              :aria-pressed="workspaceMode === 'classic'"
+              :class="['ipd-ai-mode-option', { 'is-active': workspaceMode === 'classic' }]"
+              data-testid="ipd-ai-mode-classic"
+              type="button"
+              @click="applyMode('classic')"
+            >
+              <strong>AI 副驾</strong>
+              <span>当前页面咨询与建议</span>
+            </button>
+            <button
+              :aria-pressed="workspaceMode === 'ai'"
+              :class="['ipd-ai-mode-option', { 'is-active': workspaceMode === 'ai' }]"
+              data-testid="ipd-ai-mode-project"
+              type="button"
+              @click="applyMode('ai')"
+            >
+              <strong>项目智能体</strong>
+              <span>按项目执行与回读</span>
+            </button>
+          </div>
+          <nav
+            v-if="expanded && workspaceMode === 'ai' && stages?.length"
+            aria-label="浏览阶段（不改变项目实际进度）"
+            class="ipd-ai-stage-nav"
+            data-testid="ipd-ai-stage-nav"
+          >
+            <button
+              v-for="(stage, index) in stages"
+              :key="stage.code"
+              :aria-pressed="viewStageCode === stage.code"
+              :class="['ipd-ai-stage-option', { 'is-active': viewStageCode === stage.code }]"
+              :data-testid="`ipd-ai-stage-${stage.code}`"
+              type="button"
+              @click="selectViewStage(stage.code)"
+            >
+              <span class="ipd-ai-stage-number">{{ index + 1 }}</span>
+              <span>{{ stage.name }}</span>
+              <small v-if="projectCurrentStage === stage.code">当前进度</small>
+            </button>
+          </nav>
+        </div>
+      </template>
       <template #extra>
         <button
           v-if="!expanded"
@@ -1232,48 +1280,6 @@ defineExpose({ clearConversation, send });
         :data-expanded="expanded ? 'true' : undefined"
         :data-testid="expanded ? 'ipd-ai-workbench' : undefined"
       >
-        <div class="ipd-ai-mode-switch" role="group" aria-label="AI 工作方式">
-          <button
-            :aria-pressed="workspaceMode === 'classic'"
-            :class="['ipd-ai-mode-option', { 'is-active': workspaceMode === 'classic' }]"
-            data-testid="ipd-ai-mode-classic"
-            type="button"
-            @click="applyMode('classic')"
-          >
-            <strong>AI 副驾</strong>
-            <span>当前页面咨询与建议</span>
-          </button>
-          <button
-            :aria-pressed="workspaceMode === 'ai'"
-            :class="['ipd-ai-mode-option', { 'is-active': workspaceMode === 'ai' }]"
-            data-testid="ipd-ai-mode-project"
-            type="button"
-            @click="applyMode('ai')"
-          >
-            <strong>项目智能体</strong>
-            <span>按项目执行与回读</span>
-          </button>
-        </div>
-        <nav
-          v-if="expanded && workspaceMode === 'ai' && stages?.length"
-          aria-label="浏览阶段（不改变项目实际进度）"
-          class="ipd-ai-stage-nav"
-          data-testid="ipd-ai-stage-nav"
-        >
-          <button
-            v-for="(stage, index) in stages"
-            :key="stage.code"
-            :aria-pressed="viewStageCode === stage.code"
-            :class="['ipd-ai-stage-option', { 'is-active': viewStageCode === stage.code }]"
-            :data-testid="`ipd-ai-stage-${stage.code}`"
-            type="button"
-            @click="selectViewStage(stage.code)"
-          >
-            <span class="ipd-ai-stage-number">{{ index + 1 }}</span>
-            <span>{{ stage.name }}</span>
-            <small v-if="projectCurrentStage === stage.code">当前进度</small>
-          </button>
-        </nav>
         <aside
           v-if="workspaceMode === 'ai'"
           class="ipd-ai-runs-col"
@@ -1368,13 +1374,13 @@ defineExpose({ clearConversation, send });
                 {{ action.actionName }}
               </button>
             </div>
-            <div v-if="workspaceMode === 'ai' ? !agentTask : messages.length === 0" class="empty-hint">
+            <div v-if="workspaceMode === 'ai' ? !agentThreadOpen : messages.length === 0" class="empty-hint">
               {{ workspaceMode === 'ai'
                 ? '描述任务后发送，将按当前项目发起智能体运行。过程在中间回读，产物在左侧定档。'
                 : '你好，我是 IPD AI 副驾。可以问项目待办、推进建议，或任何 IPD 流程问题。' }}
             </div>
-            <template v-if="workspaceMode === 'ai' && agentTask">
-              <div class="msg user" data-testid="ipd-ai-msg-user">
+            <template v-if="workspaceMode === 'ai' && agentThreadOpen">
+              <div v-if="agentTask" class="msg user" data-testid="ipd-ai-msg-user">
                 <div class="bubble">{{ agentTask }}</div>
               </div>
               <div
@@ -1528,6 +1534,35 @@ defineExpose({ clearConversation, send });
 </template>
 
 <style scoped>
+:global(.ipd-ai-drawer-workbench .ant-drawer-body) {
+  padding: 8px 16px 10px;
+}
+:global(.ipd-ai-drawer-workbench .ant-drawer-header) {
+  align-items: center;
+  padding: 8px 16px;
+}
+:global(.ipd-ai-drawer-workbench .ant-drawer-header-title),
+:global(.ipd-ai-drawer-workbench .ant-drawer-title) {
+  flex: 1;
+  min-width: 0;
+}
+.ipd-ai-drawer-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+.ipd-ai-drawer-heading .ipd-ai-mode-switch {
+  flex: 0 1 420px;
+  margin: 0;
+}
+.ipd-ai-drawer-heading .ipd-ai-stage-nav {
+  flex: 1 1 auto;
+  grid-column: auto;
+  grid-row: auto;
+  margin: 0;
+}
 /* 色板沿用 _shared/ipd-theme.css 的 --ipd-* token（暗色自动翻转） */
 .ipd-ai-fab {
   position: fixed;
@@ -1612,25 +1647,21 @@ defineExpose({ clearConversation, send });
 .ipd-ai-panel.is-workbench {
   display: grid;
   grid-template-columns: minmax(320px, 5fr) minmax(0, 7fr);
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 0 16px;
-}
-.ipd-ai-panel.is-workbench .ipd-ai-mode-switch {
-  grid-column: 1 / -1;
-  margin-bottom: 8px;
 }
 .ipd-ai-panel.is-workbench.is-project-mode {
   grid-template-columns: minmax(180px, 220px) minmax(280px, 1fr) minmax(320px, 0.85fr);
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 .ipd-ai-stage-nav {
   display: flex;
   grid-column: 1 / -1;
   grid-row: 2;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
-  margin: 0 0 12px;
-  padding: 6px;
+  margin: 0 0 6px;
+  padding: 2px;
   overflow-x: auto;
   border: 1px solid var(--ipd-line);
   border-radius: 10px;
@@ -1643,7 +1674,7 @@ defineExpose({ clearConversation, send });
   justify-content: center;
   gap: 5px;
   min-width: 0;
-  padding: 7px 8px;
+  padding: 3px 8px;
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
@@ -1687,7 +1718,7 @@ defineExpose({ clearConversation, send });
 }
 .ipd-ai-runs-col {
   grid-column: 1;
-  grid-row: 3;
+  grid-row: 1;
   min-height: 0;
   padding: 8px;
   overflow: auto;
@@ -1711,7 +1742,7 @@ defineExpose({ clearConversation, send });
 }
 .ipd-ai-panel.is-workbench.is-project-mode .chat-col {
   grid-column: 3;
-  grid-row: 3;
+  grid-row: 1;
   padding-right: 0;
   padding-left: 16px;
   border-left: 1px solid var(--ipd-line);
@@ -1723,7 +1754,7 @@ defineExpose({ clearConversation, send });
 }
 .ipd-ai-panel.is-workbench.is-project-mode .showcase-col {
   grid-column: 2;
-  grid-row: 3;
+  grid-row: 1;
   padding: 0;
   border-left: 0;
 }

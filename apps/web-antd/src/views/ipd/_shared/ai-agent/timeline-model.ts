@@ -83,6 +83,26 @@ export type TimelineItem =
   | (TimelineBase & { kind: 'tool-call'; toolCallId: null | string; summary: string; toolName: string })
   | (TimelineBase & { failed: boolean; kind: 'tool-result'; toolCallId: null | string; summary: string; toolName: string });
 
+/** 内核流水，只落库，不画成「步骤」。 */
+const HIDDEN_STEP_KINDS = new Set([
+  'AGUI',
+  'AGUI_RESUME_DISPATCH_FAILED',
+  'AGUI_RESUME_RECOVERED',
+  'AGUI_RESUMED',
+  'CHILD_EXECUTION_FAILED',
+  'CHILD_RESUME_COMPLETED',
+  'COMMITTED_CHECKPOINT_CLEANUP',
+  'EXCEED_MAX_ITERS',
+  'EXECUTION_OWNER',
+  'HTML_RENDERED',
+  'MCP_DISCOVERY',
+  'MODEL_CALL',
+  'SANDBOX_ARCHIVED',
+  'TOOL_EXECUTION',
+  'TOOL_PERMISSION',
+  'VERIFY_GAPS',
+]);
+
 const RUN_STATUSES: readonly AgentRunStatus[] = [
   'PENDING',
   'RUNNING',
@@ -304,15 +324,18 @@ export function buildTimelineItems(events: readonly AgentRunEvent[]): TimelineIt
         break;
       }
       case 'STEP': {
-        if (payload.kind === 'EXECUTION_OWNER') break;
+        if (typeof payload.kind === 'string' && HIDDEN_STEP_KINDS.has(payload.kind)) break;
         if (payload.kind === 'INTENT') {
           items.push({ ...base, kind: 'intent', ...intentView(payload) });
         } else {
+          const title = pickText(payload, 'title', 'name', 'step', 'stepName');
+          const detail = truncate(pickText(payload, 'detail', 'description', 'message'));
+          if (title === '' && detail === '') break;
           items.push({
             ...base,
             kind: 'step',
-            title: pickText(payload, 'title', 'name', 'step', 'stepName'),
-            detail: truncate(pickText(payload, 'detail', 'description', 'message')),
+            title,
+            detail,
           });
         }
         break;
@@ -422,18 +445,45 @@ export function buildTimelineItems(events: readonly AgentRunEvent[]): TimelineIt
 }
 
 /**
- * 把本次运行里模型写出的正文按时间顺序拼成一段。
+ * 最近一次工具调用或工具结果的序号。没有工具时返回 -1。
  *
- * 只拼 kind===text（来自 TEXT_DELTA）。INTENT / SKILL_LOADED / AWAIT_USER 等 STEP
- * 的 title、detail、技能提示词一律不进这段，避免对话气泡把技能执行规约当成正文。
- * 连续 TEXT_DELTA 已在 buildTimelineItems 里合并；这里再把被步骤打断的多段接上，
- * 供对话栏用同一段原文做思考/回答拆分。不补造模型没写过的字。
+ * @param events 后端事件
+ */
+function latestToolSeq(events: readonly AgentRunEvent[]): number {
+  let boundary = -1;
+  for (const event of events) {
+    if (event.type === 'TOOL_CALL' || event.type === 'TOOL_RESULT') boundary = event.seq;
+  }
+  return boundary;
+}
+
+/**
+ * 给人看的时间线条目。
+ *
+ * 工具之后又写了正文时，只留这段回答，前面的过程自述不展示。
+ * 工具之后没有正文时，保留工具之前的正文，避免点开历史后一条消息都没有。
+ *
+ * @param events 已去重、升序的真实事件
+ */
+export function presentTimelineItems(events: readonly AgentRunEvent[]): TimelineItem[] {
+  const items = buildTimelineItems(events);
+  const boundary = latestToolSeq(events);
+  const hasLaterText = items.some((item) => item.kind === 'text' && item.seq > boundary);
+  if (!hasLaterText) return items;
+  return items.filter((item) => item.kind !== 'text' || item.seq > boundary);
+}
+
+/**
+ * 把本次运行里给人看的正文按时间顺序拼成一段。
+ *
+ * 只拼工具调用之后的 kind===text。工具之前的过程自述不拼进去。
+ * INTENT 等步骤的标题和技能提示词不进这段。被内部步骤打断、且落在工具之后的多段会接上。
  *
  * @param events 后端事件（可为空）
- * @returns 模型正文；没有文本事件时为空字符串
+ * @returns 模型正文；没有可展示文本时为空字符串
  */
 export function timelineTranscript(events: readonly AgentRunEvent[]): string {
-  return buildTimelineItems(events)
+  return presentTimelineItems(events)
     .flatMap((item) => (item.kind === 'text' ? [item.text] : []))
     .join('');
 }

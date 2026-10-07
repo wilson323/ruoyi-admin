@@ -69,6 +69,9 @@ export interface AiSuggestView {
   scene: string;
 }
 
+/** 与后端 AiSuggestionService.SUGGEST_TIMEOUT_MS 对齐：模型生成允许等 60 秒。 */
+export const AI_SUGGEST_TIMEOUT_MS = 60_000;
+
 /** POST /ai/suggest：按场景拉业务上下文生成 markdown 建议。 */
 export function aiSuggest(
   scene: AiSuggestScene,
@@ -79,5 +82,5 @@ export function aiSuggest(
     projectId: input.projectId,
     scene,
     userPrompt: input.userPrompt,
-  });
+  }, undefined, { timeoutMs: AI_SUGGEST_TIMEOUT_MS });
 }

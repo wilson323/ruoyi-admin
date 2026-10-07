@@ -11,7 +11,7 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { type AiSuggestScene, aiSuggest } from './ai-suggest';
+import { AI_SUGGEST_TIMEOUT_MS, type AiSuggestScene, aiSuggest } from './ai-suggest';
 
 const envelope = (data: unknown): Response =>
   new Response(
@@ -89,6 +89,31 @@ describe('aiSuggest（R227-C1 AI-FUSION L2）', () => {
     const r = await aiSuggest('project.summary.refresh', { projectId: '7' });
     expect(r.degraded).toBe(true);
     expect(r.aiModel).toBe('intent_match');
+  });
+
+  it('立项建议等模型 60 秒，15 秒时请求仍未中止', async () => {
+    expect(AI_SUGGEST_TIMEOUT_MS).toBe(60_000);
+    vi.useFakeTimers();
+    let aborted = false;
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => {
+        aborted = true;
+        reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }));
+      });
+    })));
+    try {
+      const settled = aiSuggest('project.create.suggest', { userPrompt: '做一款门禁' }).then(
+        () => { throw new Error('should have rejected'); },
+        (error: unknown) => error,
+      );
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(45_000);
+      expect(aborted).toBe(true);
+      await expect(settled).resolves.toMatchObject({ kind: 'timeout', message: '请求超时，请稍后重试' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

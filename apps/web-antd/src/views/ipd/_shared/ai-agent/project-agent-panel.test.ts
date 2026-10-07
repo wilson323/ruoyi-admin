@@ -310,7 +310,7 @@ describe('ProjectAgentPanel', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await flushPromises();
     expect(wrapper.findAll('[data-testid="timeline-item"]')).toHaveLength(2);
-    expect(wrapper.find('[data-testid="panel-status"]').text()).toBe('已完成');
+    expect(wrapper.find('[data-testid="panel-status"]').text()).toBe('运行结束');
     const bar = wrapper.find('[data-testid="ai-feedback-bar"]');
     expect(bar.exists()).toBe(true);
     expect(bar.find('[data-testid="feedback-up"]').attributes('aria-label')).toBe('本次运行有帮助');
@@ -632,7 +632,7 @@ describe('ProjectAgentPanel', () => {
     expect(wrapper.find('[data-testid="intent-plan-revise"]').exists()).toBe(false);
   });
 
-  it('keeps a bound plan card free of execute and shows the skill-step sentence', async () => {
+  it('shows plan confirmation buttons while a bound action is waiting', async () => {
     const wrapper = await mountPanel();
     vi.mocked(fetchAgentRun).mockResolvedValue(detailOf('RUNNING', 'C02'));
     vi.mocked(fetchAgentRunEvents).mockResolvedValue({
@@ -657,8 +657,8 @@ describe('ProjectAgentPanel', () => {
     await wrapper.find('[data-testid="panel-message"]').setValue('分析竞品');
     await wrapper.find('[data-testid="panel-submit"]').trigger('click');
     await flushPromises();
-    expect(wrapper.find('[data-testid="intent-plan-execute"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="intent-bound-plan"]').text()).toBe('步骤来自动作技能，本次按此执行');
+    expect(wrapper.find('[data-testid="intent-plan-execute"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="intent-plan-revise"]').exists()).toBe(true);
   });
 });
 

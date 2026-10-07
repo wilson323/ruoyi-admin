@@ -125,7 +125,17 @@ export type IpdRequestOptions = {
   formData?: FormData;
   method?: 'DELETE' | 'GET' | 'POST' | 'PUT';
   responseType?: 'blob';
+  /** 本次请求等待上限（毫秒）。未传时 15 秒；慢调用（立项建议）由调用方传入 60 秒。 */
+  timeoutMs?: number;
 };
+
+/** 普通接口 15 秒；调用方传入的正整数覆盖该默认值。 */
+function resolveTimeoutMs(timeoutMs: number | undefined): number {
+  if (typeof timeoutMs === 'number' && Number.isSafeInteger(timeoutMs) && timeoutMs > 0) {
+    return timeoutMs;
+  }
+  return 15_000;
+}
 
 /** IPD has its own code=0 envelope and keeps IDs/decimal strings unchanged. */
 export async function requestIpd(
@@ -133,7 +143,7 @@ export async function requestIpd(
   options: IpdRequestOptions & { token?: string } = {},
 ): Promise<unknown> {
   const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), 15_000);
+  const timer = setTimeout(() => abort.abort(), resolveTimeoutMs(options.timeoutMs));
   try {
     const headers: Record<string, string> = { Accept: options.responseType === 'blob' ? 'application/octet-stream, application/json' : 'application/json' };
     if (options.body && !options.formData) headers['Content-Type'] = 'application/json';
@@ -221,7 +231,7 @@ export async function requestIpd(
     return envelope.data;
   } catch (error) {
     if (error instanceof IpdRequestError) throw error;
-    // 15s 定时器 abort 的拒绝单独归类为 timeout：后端可能已在处理，与真断网分开报，
+    // 到时中止的拒绝单独归类为 timeout：后端可能已在处理，与真断网分开报，
     // 避免把慢响应误报成网络故障（验证场景见 auth.test.ts requestIpd transport/timeout 分派）。
     if (isAbortRejection(error)) {
       throw new IpdRequestError('请求超时，请稍后重试', 0, 0, 'timeout');

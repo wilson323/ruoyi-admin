@@ -9,6 +9,7 @@ import {
   buildTimelineItems,
   intentFromEvents,
   intentStepMarks,
+  presentTimelineItems,
   timelineTranscript,
   TIMELINE_SUMMARY_MAX,
 } from './timeline-model';
@@ -91,6 +92,42 @@ describe('buildTimelineItems', () => {
 
   it('keeps execution ownership metadata out of the product timeline', () => {
     expect(buildTimelineItems([ev(1, 'STEP', { kind: 'EXECUTION_OWNER', epoch: 1 })])).toEqual([]);
+  });
+
+  it('hides internal bookkeeping steps and empty step rows', () => {
+    const items = buildTimelineItems([
+      ev(1, 'STEP', { kind: 'MODEL_CALL' }),
+      ev(2, 'STEP', { kind: 'AGUI', events: ['{}'] }),
+      ev(3, 'STEP', { kind: 'TOOL_PERMISSION', toolName: 'search' }),
+      ev(4, 'STEP', { kind: 'TOOL_EXECUTION', toolName: 'search', state: 'STARTED' }),
+      ev(5, 'STEP', { kind: 'SKILL_SELECTED', name: 'swot' }),
+      ev(6, 'STEP', {}),
+    ]);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: 'step', title: 'swot' });
+  });
+
+  it('keeps only the answer written after the latest tool call', () => {
+    const events = [
+      ev(1, 'TEXT_DELTA', { text: '我先加载相关技能并并行检索。' }),
+      ev(2, 'TOOL_CALL', { toolName: 'kb.search', toolCallId: 'a' }),
+      ev(3, 'TOOL_RESULT', { toolCallId: 'a', toolName: 'kb.search', summary: '命中' }),
+      ev(4, 'TEXT_DELTA', { text: '访谈纪要里没有客户验证记录。' }),
+    ];
+    expect(timelineTranscript(events)).toBe('访谈纪要里没有客户验证记录。');
+    expect(presentTimelineItems(events).flatMap((item) => (item.kind === 'text' ? [item.text] : [])))
+      .toEqual(['访谈纪要里没有客户验证记录。']);
+  });
+
+  it('keeps the reply when the run ends on a tool and nothing was written after it', () => {
+    const events = [
+      ev(1, 'TEXT_DELTA', { text: '结论在最后一次工具之前。' }),
+      ev(2, 'TOOL_CALL', { toolName: 'kb.search', toolCallId: 'a' }),
+      ev(3, 'TOOL_RESULT', { toolCallId: 'a', toolName: 'kb.search', summary: '命中' }),
+    ];
+    expect(timelineTranscript(events)).toBe('结论在最后一次工具之前。');
+    expect(presentTimelineItems(events).flatMap((item) => (item.kind === 'text' ? [item.text] : [])))
+      .toEqual(['结论在最后一次工具之前。']);
   });
 
   it('only allows http(s) source links', () => {

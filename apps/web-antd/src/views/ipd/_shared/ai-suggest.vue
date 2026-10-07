@@ -51,6 +51,8 @@ interface Props {
   label?: string;
   /** 创建类场景：需先输入原始素材才允许发起 */
   needsPrompt?: boolean;
+  /** 未传 projectId 时是否改用壳上当前项目。新建立项必须关掉，避免拿另一个项目冒充本次立项。 */
+  useCurrentProject?: boolean;
   /** 宿主页面已监听 adopt 并会消费 markdown 时才展示「采纳到表单」（方案 §5.1：仅已声明 schema 场景允许） */
   adoptable?: boolean;
 }
@@ -60,6 +62,7 @@ const props = withDefaults(defineProps<Props>(), {
   needsPrompt: false,
   projectId: null,
   label: 'AI 建议',
+  useCurrentProject: true,
   adoptable: false,
 });
 
@@ -151,6 +154,7 @@ onErrorCaptured((error: unknown) => {
 /** projectId 未显式传时跟随全局当前项目（与 layouts 全局选择器同 key，同副驾口径）。 */
 function effectiveProjectId(): string | undefined {
   if (props.projectId) return props.projectId;
+  if (!props.useCurrentProject) return undefined;
   return window.localStorage.getItem(CURRENT_PROJECT_KEY) || undefined;
 }
 
