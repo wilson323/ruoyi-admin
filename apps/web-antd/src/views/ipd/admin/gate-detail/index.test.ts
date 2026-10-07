@@ -433,7 +433,7 @@ describe('R177-A6 Gate 评审详情页 · ORPHAN-A1 列席与遗留接线', () =
     loginAs('GROUP_LEADER');
     stubGateDetailApi({
       legacyRows: [
-        { resultId: 'er-2', elementCode: 'G1-02', elementName: '商业模式可行性', result: 'PASS_WITH_CONDITION',
+        { resultId: 'er-2', elementCode: 'G1-02', elementName: '商业模式可行性', result: 'CONDITIONAL',
           leftoverItem: '补充单位经济测算', responsiblePersonId: '7', leftoverDueAt: '2026-09-20T23:59:59',
           leftoverStatus: 'OPEN', closedEvidence: null, overdue: true },
       ],

@@ -229,7 +229,7 @@ describe('AI-P2-1 · gate material precheck', () => {
     gateId: '5',
     items: [
       { conditionNote: null, evidenceRef: 'oss://evi/1', elementId: 'e-1', leftoverStatus: null, result: 'PASS', status: 'COVERED' },
-      { conditionNote: '需补充纪要', evidenceRef: null, elementId: 'e-2', leftoverStatus: '待关闭', result: 'PASS_WITH_CONDITION', status: 'PARTIAL' },
+      { conditionNote: '需补充纪要', evidenceRef: null, elementId: 'e-2', leftoverStatus: '待关闭', result: 'CONDITIONAL', status: 'PARTIAL' },
     ],
     latencyMs: 15,
     materials: {

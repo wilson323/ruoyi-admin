@@ -142,7 +142,7 @@ const elementValidation = computed(() => {
   for (const el of elements.value) {
     const draft = draftResults[el.elementId];
     if (!draft || !draft.result) continue;
-    if (draft.result === 'PASS_WITH_CONDITION') {
+    if (draft.result === 'CONDITIONAL') {
       if (!draft.responsiblePersonId.trim()) missing.push(`${el.elementName}：条件通过必填责任人`);
       if (!draft.closeDeadline.trim()) missing.push(`${el.elementName}：条件通过必填关闭期限`);
     }
@@ -244,7 +244,7 @@ async function runArbitration(): Promise<void> {
 const elementResultOptions: Array<{ label: string; value: GateElementResult }> = [
   { label: '通过', value: 'PASS' },
   { label: '不通过', value: 'FAIL' },
-  { label: '条件通过', value: 'PASS_WITH_CONDITION' },
+  { label: '条件通过', value: 'CONDITIONAL' },
 ];
 
 function ensureDraft(elementId: string): void {
@@ -269,7 +269,7 @@ async function submitElement(el: IpdGateElementView): Promise<void> {
     message.warning(`请先勾选「${el.elementName}」的判定结果`);
     return;
   }
-  if (draft.result === 'PASS_WITH_CONDITION') {
+  if (draft.result === 'CONDITIONAL') {
     if (!draft.responsiblePersonId.trim() || !draft.closeDeadline.trim()) {
       message.warning(`条件通过项必须填写责任人与关闭期限`);
       return;
@@ -278,10 +278,10 @@ async function submitElement(el: IpdGateElementView): Promise<void> {
   submittingElementId.value = el.elementId;
   try {
     await submitGateElementResult(view.value.gateId, {
-      closeDeadline: draft.result === 'PASS_WITH_CONDITION' ? draft.closeDeadline.trim() : null,
+      closeDeadline: draft.result === 'CONDITIONAL' ? draft.closeDeadline.trim() : null,
       conditionNote: draft.conditionNote.trim() || null,
       elementId: el.elementId,
-      responsiblePersonId: draft.result === 'PASS_WITH_CONDITION' ? draft.responsiblePersonId.trim() : null,
+      responsiblePersonId: draft.result === 'CONDITIONAL' ? draft.responsiblePersonId.trim() : null,
       result: draft.result,
     });
     committedResults[el.elementId] = draft.result;
@@ -296,7 +296,7 @@ async function submitElement(el: IpdGateElementView): Promise<void> {
 function resultLabel(value: GateElementResult | ''): string {
   if (value === 'PASS') return '通过';
   if (value === 'FAIL') return '不通过';
-  if (value === 'PASS_WITH_CONDITION') return '条件通过';
+  if (value === 'CONDITIONAL') return '条件通过';
   return '未判定';
 }
 
@@ -685,7 +685,7 @@ function finalRuling(decision: GateDecision): void {
               </label>
             </div>
 
-            <div v-if="draftResults[el.elementId]?.result === 'PASS_WITH_CONDITION'" class="element-cond">
+            <div v-if="draftResults[el.elementId]?.result === 'CONDITIONAL'" class="element-cond">
               <input
                 :id="`el-${el.elementId}-responsible-person`"
                 v-model="draftResults[el.elementId]!.responsiblePersonId"

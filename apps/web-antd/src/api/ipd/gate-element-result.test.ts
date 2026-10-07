@@ -49,7 +49,9 @@ describe('gate element result API contract', () => {
   it('POST /gates/{id}/element-results/{resultId}/close for condition items', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope({ id: 'er-1' }));
     vi.stubGlobal('fetch', fetcher);
-    await closeGateElementResult('gate-1', 'er-1', { evidenceRef: 'att-1', note: '已补材料' });
+    await closeGateElementResult('gate-1', 'er-1', 'att-1');
+    const closeInit = fetcher.mock.calls[0]![1] as RequestInit;
+    expect(JSON.parse(String(closeInit.body))).toEqual({ evidence: 'att-1' });
     const url = new URL(fetcher.mock.calls[0]![0] as string, 'http://ipd.local');
     expect(url.pathname).toBe('/api/v1/gates/gate-1/element-results/er-1/close');
   });
@@ -57,7 +59,7 @@ describe('gate element result API contract', () => {
   // R212 ORPHAN-A1：GET /legacy 条件遗留清单（AC-GATE-17）
   it('GET /gates/{id}/legacy returns leftover rows with overdue flag', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope([
-      { resultId: 'er-2', elementCode: 'G1-02', elementName: '商业模式可行性', result: 'PASS_WITH_CONDITION',
+      { resultId: 'er-2', elementCode: 'G1-02', elementName: '商业模式可行性', result: 'CONDITIONAL',
         leftoverItem: '补充单位经济测算', responsiblePersonId: '7', leftoverDueAt: '2026-09-30',
         leftoverStatus: 'OPEN', closedEvidence: null, overdue: false },
     ]));
@@ -107,9 +109,10 @@ describe('countVetoFailures hardblock', () => {
 });
 
 describe('storedElementResult', () => {
-  it('maps backend CONDITIONAL onto the page condition result', () => {
-    expect(storedElementResult('CONDITIONAL')).toBe('PASS_WITH_CONDITION');
+  it('reads backend PASS / CONDITIONAL / FAIL as-is; legacy PASS_WITH_CONDITION → null', () => {
+    expect(storedElementResult('CONDITIONAL')).toBe('CONDITIONAL');
     expect(storedElementResult('FAIL')).toBe('FAIL');
+    expect(storedElementResult('PASS_WITH_CONDITION')).toBeNull();
     expect(storedElementResult(null)).toBeNull();
   });
 });

@@ -16,7 +16,7 @@
  */
 import { ipdGet, ipdPost } from './http';
 
-export type GateElementResult = 'FAIL' | 'PASS' | 'PASS_WITH_CONDITION';
+export type GateElementResult = 'CONDITIONAL' | 'FAIL' | 'PASS';
 
 /** 评审要素视图（与 GateElementResultService.listView 真值对齐：R30 E2E 实测
  * 后端字段为 elementId/elementCode/elementName——旧类型 id/code/title 属未对齐契约，
@@ -62,11 +62,13 @@ export function submitGateElementResult(gateId: string, req: IpdGateElementResul
   return ipdPost<IpdGateElementResultView>(`/gates/${encodeURIComponent(gateId)}/element-results`, req);
 }
 
-/** 关闭带条件项（提供证据后关闭遗留项；AC-GATE-17）。 */
-export function closeGateElementResult(gateId: string, resultId: string, evidence: { evidenceRef?: null | string; note?: null | string }): Promise<IpdGateElementResultView> {
+/** 关闭带条件项（提供证据后关闭遗留项；AC-GATE-17）。
+ *  契约对齐后端 CloseRequest.evidence（@NotBlank @Size(max=500)，F2 修复 2026-10-07）——
+ *  旧签名 {evidenceRef, note} 与后端字段名不匹配致 evidence 恒 null（遗留项关不掉），改单字段 evidence。 */
+export function closeGateElementResult(gateId: string, resultId: string, evidence: string): Promise<IpdGateElementResultView> {
   return ipdPost<IpdGateElementResultView>(
     `/gates/${encodeURIComponent(gateId)}/element-results/${encodeURIComponent(resultId)}/close`,
-    evidence,
+    { evidence },
   );
 }
 
@@ -129,11 +131,11 @@ export function submitGateReview(gateId: string, outputs: IpdGateSubmitOutputs):
 
 /**
  * 把后端已落库的判定读回前端枚举。
- * 后端 CONDITIONAL 对应页面「条件通过」。
+ * 三态词与后端/库/wss 口径统一为 PASS / CONDITIONAL / FAIL（F1 修复 2026-10-07）：
+ * 历史自造词 PASS_WITH_CONDITION 一律返回 null（按未判定处理），不再回读为有效态。
  */
 export function storedElementResult(raw: string | null | undefined): GateElementResult | null {
-  if (raw === 'FAIL' || raw === 'PASS' || raw === 'PASS_WITH_CONDITION') return raw;
-  if (raw === 'CONDITIONAL') return 'PASS_WITH_CONDITION';
+  if (raw === 'PASS' || raw === 'CONDITIONAL' || raw === 'FAIL') return raw;
   return null;
 }
 

@@ -757,7 +757,7 @@ void decisionText; // 保留函数供潜在扩展（如详情对话框），避�
         description="条件通过项的遗留跟踪视图：点击右上角「加载遗留清单」拉取（要素停用/删除不消除遗留）"
       />
       <div v-if="legacyLoadedOnce && legacyItems.length === 0 && !legacyLoading" class="mt-2 text-xs text-muted-foreground">
-        当前 Gate 无条件遗留项（PASS_WITH_CONDITION 关闭后仍可在本清单查看 CLOSED 记录）
+        当前 Gate 无条件遗留项（CONDITIONAL 关闭后仍可在本清单查看 CLOSED 记录）
       </div>
     </Card>
 

@@ -26,7 +26,7 @@ export interface GatePrecheckItem {
   elementId: string;
   /** 遗留状态（GateElementResult.leftoverStatus，空为 null）。 */
   leftoverStatus: null | string;
-  /** 要素原始判定结果（PASS / FAIL / PASS_WITH_CONDITION，未判为 null）。 */
+  /** 要素原始判定结果（PASS / CONDITIONAL / FAIL，未判为 null）。 */
   result: null | string;
   /** 覆盖状态（由 result 映射，见 GatePrecheckItemStatus）。 */
   status: GatePrecheckItemStatus;

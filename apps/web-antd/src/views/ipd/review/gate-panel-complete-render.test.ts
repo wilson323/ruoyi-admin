@@ -185,14 +185,14 @@ describe('IPD gate panel — V4 33 elements complete render', () => {
     wrapper.unmount();
   });
 
-  it('renders PASS / PASS_WITH_CONDITION rows with three radio options', async () => {
+  it('renders PASS / CONDITIONAL rows with three radio options', async () => {
     stubApi({ elements: FALLBACK_GATE_ELEMENTS });
     const wrapper = await mountAndLoad();
     const firstRow = wrapper.get('.element-row');
     const radios = firstRow.findAll('input[type="radio"]');
     expect(radios).toHaveLength(3);
     const values = radios.map((r) => (r.element as HTMLInputElement).value);
-    expect(values).toEqual(expect.arrayContaining(['PASS', 'FAIL', 'PASS_WITH_CONDITION']));
+    expect(values).toEqual(expect.arrayContaining(['PASS', 'FAIL', 'CONDITIONAL']));
     wrapper.unmount();
   });
 
