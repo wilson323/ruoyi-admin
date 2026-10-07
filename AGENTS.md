@@ -2,7 +2,7 @@
 
 ## 工程任务的防复发入口
 
-后续工程任务默认读 [.harness/skills/ipd-engineering-feedback/SKILL.md](.harness/skills/ipd-engineering-feedback/SKILL.md)，并在当前根目录运行 `python3 scripts/engineering_harness.py --root "$PWD" intake`。沿既有总画布与看板确认范围；工程机制验收用 `bash .harness/verify.sh governance <事项编号>`，前端交付用 `bash .harness/verify.sh frontend <事项编号>`。入口自动记录失败、提出待核实反思问题，同事项完整回归后只启用固定工程检查项；不自动改核心安全/权限/业务审批。输入、验证器或产物改变时旧证据失效。工具回归不代表模型行为、运行包加载或业务全量验收；本导航不保证所有 IDE 工具调用已强制拦截，不自动提交推送。
+后续工程任务默认读 [.harness/skills/ipd-engineering-feedback/SKILL.md](.harness/skills/ipd-engineering-feedback/SKILL.md)，并在当前根目录运行 `python3 scripts/engineering_harness.py --root "$PWD" intake`。沿既有总画布与看板确认范围；工程机制验收用 `bash .harness/verify.sh governance <事项编号>`，前端交付用 `bash .harness/verify.sh frontend <事项编号>`。入口自动记录失败、提出待核实反思问题，同事项完整回归后只启用固定工程检查项；不自动改核心安全/权限/业务审批。输入、验证器或产物改变时旧证据失效。工具回归不代表模型行为、运行包加载或业务全量验收；本导航不保证所有 IDE 工具调用已强制拦截；提交推送按 2026-10-07 规则（任务结束必整合工作树）执行。
 
 本目录是用户明确选定的IPD正式RuoYi Vue管理前端，固定来源与运行命令见[README-IPD.md](README-IPD.md)。实际UI库为Ant Design Vue，pnpm固定10.14.0。不得用旧React原型、AI聊天前端或框架默认admin身份代替IPD实现。
 
