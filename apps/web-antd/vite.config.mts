@@ -114,6 +114,14 @@ export default defineConfig(async () => {
               proxy.on('proxyReq', (proxyReq) => {
                 proxyReq.setHeader('origin', 'http://127.0.0.1:16039');
               });
+              // 2026-10-07 修 WebSocket 403：上面的改写只挂在 **HTTP 请求** 事件上，
+              // WebSocket 握手走的是 proxyReqWs —— 所以 /api/v1/resource/websocket 的
+              // Origin 从没被改写，后端按跨源拒绝。
+              // 实测（直连后端模拟握手）：不带 Origin → 200；带前端 Origin(:15666) → 403；
+              // 带后端 Origin(:16039) → 200。浏览器控制台每页 8 条 403 即由此而来。
+              proxy.on('proxyReqWs', (proxyReq) => {
+                proxyReq.setHeader('origin', 'http://127.0.0.1:16039');
+              });
             },
           },
           // 2026-09-11 修复：ipd-auth.logout 中平台会话 best-effort 退出调裸 /auth/logout
