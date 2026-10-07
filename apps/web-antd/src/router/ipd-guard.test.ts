@@ -55,19 +55,20 @@ describe('R185-P1 hasAccess (route-level meta.access gate)', () => {
     ).toBe(false);
   });
 
-  it('权限码通道未接通（codes 无任何 ipd: 码）→ 放行，后端 403 兜底（2026-09-24 R211b 运行态误拦修复）', () => {
+  it('权限码通道未接通（codes 无任何 ipd: 码）→ 拦截（fail-closed，安全件 F-3 反转 R211b 口径）', () => {
     // 非超管现状：accessCodes = ['FULL','personType:RD_PM'] 或 []，不含 ipd: 码。
-    // 旧实现在此处把全部非超管从 24 条业务路由拦到 /ipd/no-access（浏览器实测复现）。
+    // 旧实现（2026-09-24 R211b）在此 fail-open 放行、赌后端 403 兜底；现改为拦截：
+    // 通道异常时静默放行会把「鉴权失效」伪装成「有权限」，失败长得像成功。
     expect(
       hasAccess(makeRoute(['ipd:project:list']), ['personType:RD_PM']),
-    ).toBe(true);
-    expect(hasAccess(makeRoute(['ipd:project:list']), [])).toBe(true);
+    ).toBe(false);
+    expect(hasAccess(makeRoute(['ipd:project:list']), [])).toBe(false);
   });
 
-  it('meta.access 非空、accessCodes 为空 → 放行（同上：空码集 = 通道未接通）', () => {
+  it('meta.access 非空、accessCodes 为空 → 拦截（同上：空码集 = 通道未接通 = fail-closed）', () => {
     expect(
       hasAccess(makeRoute(['BID_INVITATION_ADMIN_ASSIGN']), []),
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 

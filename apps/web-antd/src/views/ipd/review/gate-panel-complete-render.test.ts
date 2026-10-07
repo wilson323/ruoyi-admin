@@ -204,3 +204,99 @@ describe('IPD gate panel — V4 33 elements complete render', () => {
     wrapper.unmount();
   });
 });
+
+/**
+ * F5（2026-10-07）：G1-1「一手客户验证」录入通道。
+ * 后端 GateElementResultService.verifyCustomerEvidence 对 PASS 判 G1-1 校验
+ * 一手验证 ≥ gate.g1.minCustomerVerifications（默认 5）或书面意向 ≥ 1；
+ * 后端字段早已就绪，但前端无录入位 ⇒ 该门槛在 UI 上永远无法满足。
+ *
+ * 判据取后端权威编码 `G1-1`（无前导零）。前端静态兜底表写的是 `G1-01`，
+ * isG1Customer 用 /G1-0?1/ 同时认两种形态——本组用权威形态验证提交体透传。
+ */
+describe('F5 G1-1 一手验证录入通道', () => {
+  /** 只给 G1-1 一项，隔离出「这一行独有的两个输入框」；非兜底态，逐项提交按钮才可点。 */
+  const g1Only: IpdGateElementView[] = [{
+    elementId: 'e-g11', elementCode: 'G1-1', elementName: '市场机会真实性', gateCode: 'G1',
+    description: '客户验证', isVeto: false, sortOrder: 1, status: 'PUBLISHED',
+    passStandard: '≥5家目标客户一手验证或≥1家客户书面意向',
+  }];
+
+  function passRadioOf(wrapper: ReturnType<typeof mount>) {
+    const row = wrapper.get('[data-testid="gate-element-G1-1"]');
+    const radio = row.findAll<HTMLInputElement>('input[type="radio"]')
+      .find((r) => (r.element as HTMLInputElement).value === 'PASS');
+    expect(radio).toBeTruthy();
+    return radio!;
+  }
+
+  it('G1-1 行渲染两个数字输入；非 G1-1 行不渲染', async () => {
+    stubApi({ elements: [...g1Only, { ...g1Only[0]!, elementId: 'e-g12', elementCode: 'G1-2' }] });
+    const wrapper = await mountAndLoad();
+    const g1Row = wrapper.get('[data-testid="gate-element-G1-1"]');
+    expect(g1Row.find('input[name="verifications"]').exists()).toBe(true);
+    expect(g1Row.find('input[name="written_intents"]').exists()).toBe(true);
+    const other = wrapper.get('[data-testid="gate-element-G1-2"]');
+    expect(other.find('input[name="verifications"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('提交体透传 verifications（数字）与 writtenIntents', async () => {
+    const { calls } = stubApi({ elements: g1Only });
+    const wrapper = await mountAndLoad();
+    const radio = passRadioOf(wrapper);
+    await radio.setValue('PASS');
+    await radio.trigger('change');
+    await wrapper.vm.$nextTick();
+
+    const row = wrapper.get('[data-testid="gate-element-G1-1"]');
+    await row.get('input[name="verifications"]').setValue('5');
+    await row.get('input[name="written_intents"]').setValue('2');
+    await row.get('.element-actions button').trigger('click');
+
+    await vi.waitFor(() => expect(
+      calls.filter((c) => c.method === 'POST' && c.url.includes('/element-results')),
+    ).toHaveLength(1));
+    const post = calls.find((c) => c.method === 'POST' && c.url.includes('/element-results'))!;
+    expect(post.body).toMatchObject({ elementId: 'e-g11', result: 'PASS', verifications: 5, writtenIntents: 2 });
+    wrapper.unmount();
+  });
+
+  it('G1-1 判 PASS 且两个通道都空 → 前端拦下不发请求（避免必然被后端拒的往返）', async () => {
+    const { calls } = stubApi({ elements: g1Only });
+    const wrapper = await mountAndLoad();
+    // 拦截路径若内部抛异常，POST 同样发不出去——本条必须同时钉住「没抛」，否则是假绿。
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    const radio = passRadioOf(wrapper);
+    await radio.setValue('PASS');
+    await radio.trigger('change');
+    await wrapper.vm.$nextTick();
+    await wrapper.get('[data-testid="gate-element-G1-1"] .element-actions button').trigger('click');
+    await new Promise((r) => setTimeout(r, 20));
+    process.off('unhandledRejection', onUnhandled);
+    expect(calls.filter((c) => c.method === 'POST' && c.url.includes('/element-results'))).toHaveLength(0);
+    expect(unhandled).toEqual([]);
+    wrapper.unmount();
+  });
+
+  it('阈值不在前端硬编码（后端配置即时生效），空值提交为 null 而非 0', async () => {
+    const { calls } = stubApi({ elements: g1Only });
+    const wrapper = await mountAndLoad();
+    const radio = passRadioOf(wrapper);
+    await radio.setValue('PASS');
+    await radio.trigger('change');
+    await wrapper.vm.$nextTick();
+    const row = wrapper.get('[data-testid="gate-element-G1-1"]');
+    await row.get('input[name="verifications"]').setValue('3');
+    await row.get('.element-actions button').trigger('click');
+    await vi.waitFor(() => expect(
+      calls.filter((c) => c.method === 'POST' && c.url.includes('/element-results')),
+    ).toHaveLength(1));
+    const post = calls.find((c) => c.method === 'POST' && c.url.includes('/element-results'))!;
+    // 填了 3 < 阈值 5，但前端不复制业务阈值，应照实上报 3 由后端裁决
+    expect(post.body).toMatchObject({ verifications: 3, writtenIntents: null });
+    wrapper.unmount();
+  });
+});

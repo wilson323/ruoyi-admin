@@ -46,6 +46,25 @@ describe('gate element result API contract', () => {
     expect((fetcher.mock.calls[0]![1] as RequestInit).method).toBe('POST');
   });
 
+  // F5（2026-10-07）：G1-1 量化门槛的入参通道。后端 JudgeRequest 早已含这两个字段，
+  // 前端契约此前没有它们 ⇒ 门槛在 UI 上永远满足不了（不是校验松，是传不上去）。
+  it('POST /gates/{id}/element-results 透传 G1-1 的 verifications / writtenIntents', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({ id: 'er-1' }));
+    vi.stubGlobal('fetch', fetcher);
+    await submitGateElementResult('gate-1', { elementId: 'e-1', result: 'PASS', verifications: 5, writtenIntents: 1 });
+    const body = JSON.parse(String((fetcher.mock.calls[0]![1] as RequestInit).body));
+    expect(body).toMatchObject({ elementId: 'e-1', result: 'PASS', verifications: 5, writtenIntents: 1 });
+  });
+
+  it('未填 G1-1 门槛时发 null 而非 0（0 会被后端读成「验证 0 家」并给出误导性拒绝原因）', async () => {
+    const fetcher = vi.fn().mockResolvedValue(envelope({ id: 'er-1' }));
+    vi.stubGlobal('fetch', fetcher);
+    await submitGateElementResult('gate-1', { elementId: 'e-1', result: 'PASS', verifications: null, writtenIntents: null });
+    const body = JSON.parse(String((fetcher.mock.calls[0]![1] as RequestInit).body));
+    expect(body.verifications).toBeNull();
+    expect(body.writtenIntents).toBeNull();
+  });
+
   it('POST /gates/{id}/element-results/{resultId}/close for condition items', async () => {
     const fetcher = vi.fn().mockResolvedValue(envelope({ id: 'er-1' }));
     vi.stubGlobal('fetch', fetcher);

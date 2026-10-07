@@ -90,8 +90,9 @@ const elementsLoading = ref(false);
 const elementsError = ref('');
 /** 当前要素列表是否来自静态回退（API 失败/0 项时为 true；UI 显示 stale 标记）。 */
 const elementsIsFallback = ref(false);
-/** elementId → { result, closeDeadline, responsiblePersonId } 草稿态。 */
-const draftResults = reactive<Record<string, { closeDeadline: string; conditionNote: string; responsiblePersonId: string; result: GateElementResult | '' }>>({});
+/** elementId → { result, closeDeadline, responsiblePersonId } 草稿态。
+ *  verifications / writtenIntents 仅 G1-1 有意义（后端 verifyCustomerEvidence 校验），其余要素留空串。 */
+const draftResults = reactive<Record<string, { closeDeadline: string; conditionNote: string; responsiblePersonId: string; result: GateElementResult | ''; verifications: string; writtenIntents: string }>>({});
 /** 已成功提交到后端的 elementId → result（用于 countVetoFailures）。 */
 const committedResults = reactive<Record<string, GateElementResult>>({});
 const submittingElementId = ref('');
@@ -247,9 +248,31 @@ const elementResultOptions: Array<{ label: string; value: GateElementResult }> =
   { label: '条件通过', value: 'CONDITIONAL' },
 ];
 
+/** G1-1「一手客户验证」是唯一带量化门槛的要素（后端 verifyCustomerEvidence：PASS 需
+ *  一手验证 ≥ gate.g1.minCustomerVerifications（默认 5），或书面意向 ≥ 1 走替代路径）。
+ *
+ *  编码形态两套并存（2026-10-07 实测）：后端权威种子是 `G1-1`（无前导零），前端静态兜底表
+ *  FALLBACK_GATE_ELEMENTS 写的是 `G1-01`（有前导零）——两者语义同指「市场机会真实性」。
+ *  这里用容错正则同时认这两种形态：改兜底表编码会波及 elementId（fallback-G1-01）与
+ *  多个测试夹具，收益不抵风险；在判据边界容错是改动面最小且不漏一条的解法。 */
+function isG1Customer(el: IpdGateElementView): boolean {
+  return /^G1-0?1$/.test(el.elementCode);
+}
+
+/** G1-1 两个数字输入统一取值。
+ *
+ *  ⚠️ 踩过的坑：Vue 3 的 vModelText 对 `type="number"` 输入会**自动把值转成 number**
+ *  （runtime-dom `castToNumber = number || props.type === 'number'`），草稿里存的是
+ *  `number` 而非 string——直接 `.trim()` 会抛 `trim is not a function`，提交静默失败。
+ *  统一按字符串取再判空，两种形态都安全。
+ */
+function numText(v: null | number | string | undefined): string {
+  return v === null || v === undefined || v === '' ? '' : String(v);
+}
+
 function ensureDraft(elementId: string): void {
   if (!draftResults[elementId]) {
-    draftResults[elementId] = { closeDeadline: '', conditionNote: '', responsiblePersonId: '', result: '' };
+    draftResults[elementId] = { closeDeadline: '', conditionNote: '', responsiblePersonId: '', result: '', verifications: '', writtenIntents: '' };
   }
 }
 
@@ -275,6 +298,14 @@ async function submitElement(el: IpdGateElementView): Promise<void> {
       return;
     }
   }
+  const verificationsText = numText(draft.verifications);
+  const writtenIntentsText = numText(draft.writtenIntents);
+  if (isG1Customer(el) && draft.result === 'PASS' && !verificationsText && !writtenIntentsText) {
+    // 阈值由后端 gate.g1.minCustomerVerifications 配置即时生效，前端不复制业务数字，
+    // 只拦住「两条通道都没填」——那种情况后端必拒，提前给可操作的提示。
+    message.warning('G1-1 判「通过」需填一手验证家数，或改填客户书面意向份数');
+    return;
+  }
   submittingElementId.value = el.elementId;
   try {
     await submitGateElementResult(view.value.gateId, {
@@ -283,6 +314,8 @@ async function submitElement(el: IpdGateElementView): Promise<void> {
       elementId: el.elementId,
       responsiblePersonId: draft.result === 'CONDITIONAL' ? draft.responsiblePersonId.trim() : null,
       result: draft.result,
+      verifications: isG1Customer(el) && verificationsText ? Number(verificationsText) : null,
+      writtenIntents: isG1Customer(el) && writtenIntentsText ? Number(writtenIntentsText) : null,
     });
     committedResults[el.elementId] = draft.result;
     message.success(`已提交「${el.elementName}」判定：${resultLabel(draft.result)}`);
@@ -709,6 +742,31 @@ function finalRuling(decision: GateDecision): void {
                 aria-label="条件说明"
                 class="element-input"
                 placeholder="条件说明（可选）"
+              />
+            </div>
+
+            <div v-if="isG1Customer(el)" class="element-cond">
+              <input
+                :id="`el-${el.elementId}-verifications`"
+                v-model="draftResults[el.elementId]!.verifications"
+                name="verifications"
+                type="number"
+                min="0"
+                inputmode="numeric"
+                aria-label="一手验证家数"
+                class="element-input"
+                placeholder="一手验证家数（≥5 或填书面意向）"
+              />
+              <input
+                :id="`el-${el.elementId}-written-intents`"
+                v-model="draftResults[el.elementId]!.writtenIntents"
+                name="written_intents"
+                type="number"
+                min="0"
+                inputmode="numeric"
+                aria-label="客户书面意向份数"
+                class="element-input"
+                placeholder="书面意向份数（≥1 走替代路径）"
               />
             </div>
 

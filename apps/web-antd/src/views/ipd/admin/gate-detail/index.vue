@@ -28,6 +28,7 @@ import {
   DescriptionsItem,
   Empty,
   Input,
+  Modal,
   Popconfirm,
   Select,
   Space,
@@ -57,7 +58,7 @@ import {
   signGate,
   submitGateObserverOpinion,
 } from '../../../../api/ipd/gate-review';
-import { type IpdGateLegacyItem, listGateLegacyItems } from '../../../../api/ipd/gate-element-result';
+import { type IpdGateLegacyItem, closeGateElementResult, listGateLegacyItems } from '../../../../api/ipd/gate-element-result';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 import { ipdErrorText } from '../../_shared/ipd-error-text';
@@ -312,12 +313,60 @@ const legacyColumns = [
   { title: '关闭期限', key: 'leftoverDueAt', width: 170 },
   { title: '责任人', dataIndex: 'responsiblePersonId', key: 'responsiblePersonId', width: 100 },
   { title: '关闭证据', dataIndex: 'closedEvidence', key: 'closedEvidence' },
+  { title: '操作', key: 'actions', width: 90 },
 ];
 
 const LEFTOVER_STATUS_LABEL: Readonly<Record<string, string>> = Object.freeze({
   CLOSED: '已关闭',
   OPEN: '未关闭',
 });
+
+/* ---------- 遗留项关闭（POST /gates/{gateId}/element-results/{resultId}/close；AC-GATE-17） ---------- */
+
+const closeTarget = ref<IpdGateLegacyItem | null>(null);
+const closeEvidence = ref('');
+const closeSubmitting = ref(false);
+/** 后端 CloseRequest.evidence 是 @NotBlank @Size(max=500)，上限与必填在 UI 侧同口径先拦一道。 */
+const CLOSE_EVIDENCE_MAX = 500;
+
+function openCloseDialog(item: IpdGateLegacyItem): void {
+  closeTarget.value = item;
+  closeEvidence.value = '';
+}
+
+function cancelCloseDialog(): void {
+  if (closeSubmitting.value) return;
+  closeTarget.value = null;
+  closeEvidence.value = '';
+}
+
+async function submitClose(): Promise<void> {
+  const target = closeTarget.value;
+  const gid = activeGateId.value;
+  if (!target || !gid || closeSubmitting.value) return;
+  const evidence = closeEvidence.value.trim();
+  if (!evidence) {
+    antMessage.warning('请填写关闭证据（后端要求非空）');
+    return;
+  }
+  if (evidence.length > CLOSE_EVIDENCE_MAX) {
+    antMessage.warning(`关闭证据不得超过 ${CLOSE_EVIDENCE_MAX} 字`);
+    return;
+  }
+  closeSubmitting.value = true;
+  try {
+    await closeGateElementResult(gid, target.resultId, evidence);
+    antMessage.success(`已关闭遗留项「${target.elementCode}」`);
+    closeTarget.value = null;
+    closeEvidence.value = '';
+    // 关闭后必须重拉，否则本表仍显示旧的 OPEN 状态——关不掉却看着像关了。
+    await loadLegacy();
+  } catch (cause) {
+    antMessage.error(ipdErrorText(cause, { fallback: '遗留项关闭失败' }));
+  } finally {
+    closeSubmitting.value = false;
+  }
+}
 
 onMounted(async () => {
   await loadList();
@@ -750,6 +799,17 @@ void decisionText; // 保留函数供潜在扩展（如详情对话框），避�
             <Tag v-if="record.overdue" color="error">已逾期</Tag>
           </template>
           <template v-else-if="column.key === 'leftoverDueAt'">{{ fmtDate(record.leftoverDueAt) }}</template>
+          <template v-else-if="column.key === 'actions'">
+            <Button
+              v-if="record.leftoverStatus === 'OPEN'"
+              size="small"
+              type="link"
+              @click="openCloseDialog(record as IpdGateLegacyItem)"
+            >
+              关闭
+            </Button>
+            <span v-else class="text-xs text-muted-foreground">—</span>
+          </template>
         </template>
       </Table>
       <Empty
@@ -759,6 +819,36 @@ void decisionText; // 保留函数供潜在扩展（如详情对话框），避�
       <div v-if="legacyLoadedOnce && legacyItems.length === 0 && !legacyLoading" class="mt-2 text-xs text-muted-foreground">
         当前 Gate 无条件遗留项（CONDITIONAL 关闭后仍可在本清单查看 CLOSED 记录）
       </div>
+
+      <Modal
+        :open="closeTarget !== null"
+        title="关闭遗留项"
+        ok-text="确认关闭"
+        cancel-text="取消"
+        :confirm-loading="closeSubmitting"
+        :mask-closable="!closeSubmitting"
+        @ok="submitClose"
+        @cancel="cancelCloseDialog"
+      >
+        <div v-if="closeTarget" class="space-y-2">
+          <div class="text-sm">
+            遗留项：<strong>{{ closeTarget.elementCode }} · {{ closeTarget.elementName }}</strong>
+          </div>
+          <div v-if="closeTarget.leftoverDueAt" class="text-xs text-muted-foreground">
+            关闭期限：{{ fmtDate(closeTarget.leftoverDueAt) }}<span v-if="closeTarget.overdue">（已逾期）</span>
+          </div>
+          <div class="text-xs text-muted-foreground">
+            关闭需提交证据（后端要求非空、不超过 {{ CLOSE_EVIDENCE_MAX }} 字）；仅该遗留项责任人或超管可关闭。
+          </div>
+          <Input.TextArea
+            v-model:value="closeEvidence"
+            :rows="4"
+            :maxlength="CLOSE_EVIDENCE_MAX"
+            show-count
+            placeholder="填写关闭证据，例如：已补齐 5 家一手验证记录并附会议纪要（客户ID可追）"
+          />
+        </div>
+      </Modal>
     </Card>
 
     <Card title="项目维度 Gate 列表（GET /projects/{id}/gates）">

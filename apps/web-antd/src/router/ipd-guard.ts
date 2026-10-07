@@ -74,10 +74,13 @@ function hasAuthority(to: RouteLocationNormalized, identity: IpdIdentity): boole
  * - 空数组 → 放行（与 hasAuthority 一致语义）
  * - SUPER_ADMIN 全通码 '*:*:*' → 放行（vben v-access:code 语义对齐）
  * - meta.access 任一权限码在 accessCodes 里 → 放行（OR 语义）
- * - 权限码通道未接通（accessCodes 无任何 ipd: 码）→ 放行，由后端 @SaCheckPermission/403 兜底
- *   （2026-09-24 R211b 运行态实测修复：后端尚未把 ipd: 码下发进 accessCodes，
- *   非超管 accessCodes 恒为 []/['FULL','personType:X']，原实现在此处把全部非超管角色
- *   从 24 条业务路由误拦到 /ipd/no-access；通道接通后本分支自动失效、闸恢复真拦截）
+ * - 权限码通道未接通（accessCodes 无任何 ipd: 码）→ **拦截**（fail-closed，2026-10-07 安全件 F-3）
+ *   旧实现在此 fail-open 放行、赌「后端 @SaCheckPermission/403 会兜底」。现改为拦截：
+ *   闸在无判据时静默放行，等于把「鉴权通道异常」伪装成「有权限」——通道一坏，全站 24 条
+ *   业务路由对所有非超管角色静默敞开，且症状长得像成功（无报错、无日志命中拦截路径）。
+ *   fail-closed 让通道异常显性暴露为 no-access，由人发现，而不是静默失守。
+ *   已知代价：通道未接通期间非超管会看到 no-access 而非业务页——这是「宁可误伤不可失守」的
+ *   有意取舍，与 2026-09-24 R211b 的相反取舍（当时为修复运行态误拦而 fail-open，现按安全件回退）。
  * - 通道已接通且都不满足 → 路由层拦截 → /ipd/no-access
  *
  * 设计依据: docs/ipd-系统说明/权限三套体系边界-20260923.md §2.2（meta.access 装饰性实锤）
@@ -89,9 +92,9 @@ export function hasAccess(to: RouteLocationNormalized, accessCodes: string[]): b
   if (accessCodes.includes('*:*:*')) return true;
   if (access.some((code) => accessCodes.includes(code))) return true;
   if (!accessCodes.some((code) => code.startsWith('ipd:'))) {
-    // 权限码下发通道未接通：路由闸没有判断依据，放行并依赖后端 403 兜底（前端比后端严 = 误伤）。
-    console.warn('[ipd-guard] meta.access 闸：accessCodes 不含任何 ipd: 权限码，通道未接通，本路由放行由后端鉴权兜底', to.path);
-    return true;
+    // 权限码下发通道未接通：闸无判据。fail-closed 拦截，让通道异常显性暴露（安全件 F-3）。
+    console.warn('[ipd-guard] meta.access 闸：accessCodes 不含任何 ipd: 权限码，通道未接通，本路由按 fail-closed 拦截', to.path);
+    return false;
   }
   return false;
 }

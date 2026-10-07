@@ -339,6 +339,15 @@ describe('R177-A6 Gate 评审详情页 · ORPHAN-A1 列席与遗留接线', () =
       if (method === 'GET' && url === '/api/v1/gates/9001/legacy') {
         return envelope(opts.legacyRows ?? []);
       }
+      if (method === 'POST' && /\/api\/v1\/gates\/9001\/element-results\/[^/]+\/close$/.test(url)) {
+        // 回显后端按同一份 evidence 落 closedEvidence（真实写入形状 = 单字段 evidence）
+        const evidence = JSON.parse(String(init?.body ?? '{}')).evidence;
+        return envelope({
+          id: url.split('/').at(-2), gateId: '9001', elementId: '2', result: 'CONDITIONAL',
+          conditionNote: null, evidenceRef: null, leftoverStatus: 'CLOSED',
+          responsiblePersonId: '7', leftoverDueAt: null, closedEvidence: evidence,
+        });
+      }
       throw new Error(`unexpected fetch: ${method} ${url}`);
     });
     vi.stubGlobal('fetch', fetcher);
@@ -446,6 +455,111 @@ describe('R177-A6 Gate 评审详情页 · ORPHAN-A1 列席与遗留接线', () =
     await vi.waitFor(() => expect(wrapper.text()).toContain('补充单位经济测算'));
     expect(wrapper.text()).toContain('已逾期');
     expect(wrapper.text()).toContain('未关闭');
+    wrapper.unmount();
+  });
+});
+
+/**
+ * F2-UI（2026-10-07）：遗留清单从「只列不关」补上关闭入口。
+ * 修 closeGateElementResult 的契约（F2）只对齐了字段名，用户可见行为仍缺——本组用例
+ * 把「点关闭 → 收证据 → POST 单字段 evidence → 重拉清单」这条链钉住。
+ */
+describe('F2-UI 遗留项关闭入口（AC-GATE-17）', () => {
+  const reviewFixture = { gateId: '9001', gateCode: 'G3', status: 'PENDING', dualSign: true, leadSide: 'MARKET_PM', round: 1, signDueAt: 1893456000000, extensionCount: 0, my: null, other: null, otherSubmitted: false };
+  const openRow = { resultId: 'er-2', elementCode: 'G1-2', elementName: '市场规模与目标设定', result: 'CONDITIONAL', leftoverItem: '补充单位经济测算', responsiblePersonId: '7', leftoverDueAt: '2026-09-20T23:59:59', leftoverStatus: 'OPEN', closedEvidence: null, overdue: true };
+  const closedRow = { ...openRow, leftoverStatus: 'CLOSED', closedEvidence: '已补齐 5 家一手验证记录' };
+
+  /** legacy 每次 GET 返回不同数据：第一次 OPEN，关闭后返回 CLOSED——用来证明确实重拉了。 */
+  function stubCloseApi() {
+    const posts: { url: string; body: unknown }[] = [];
+    let legacyServed = 0;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (url === '/api/v1/projects/101/gates') {
+        return envelope([{ id: '9001', projectId: '101', gateCode: 'G3', status: 'PENDING', currentRound: 1, signDueAt: 1893456000000, concludedAt: null }]);
+      }
+      if (url === '/api/v1/gates/9001/review') return envelope(reviewFixture);
+      if (method === 'GET' && url === '/api/v1/gates/9001/legacy') {
+        legacyServed += 1;
+        return envelope(legacyServed === 1 ? [openRow] : [closedRow]);
+      }
+      if (method === 'POST' && /\/close$/.test(url)) {
+        posts.push({ url, body: JSON.parse(String(init?.body ?? '{}')) });
+        return envelope({ id: 'er-2', gateId: '9001', elementId: '2', result: 'CONDITIONAL', leftoverStatus: 'CLOSED', closedEvidence: closedRow.closedEvidence });
+      }
+      if (method === 'GET' && url === '/api/v1/gates/9001/observers') return envelope([]);
+      throw new Error(`unexpected fetch: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    return { posts, fetcher, legacyServed: () => legacyServed };
+  }
+
+  /** Modal 是 teleport 到 body 的，wrapper.findAll 找不到；且 v-model 需原生 input 事件才回写。 */
+  function modalTextarea(): HTMLTextAreaElement {
+    const el = document.body.querySelector('textarea');
+    if (!el) throw new Error('关闭弹窗未渲染 textarea');
+    return el;
+  }
+
+  async function fillEvidence(value: string): Promise<void> {
+    const el = modalTextarea();
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  function confirmCloseButton(): HTMLElement {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('确认关闭'));
+    if (!btn) throw new Error('关闭弹窗未渲染确认按钮');
+    return btn as HTMLElement;
+  }
+
+  async function openLegacyTable() {
+    const wrapper = await mountWith({ projectId: '101', gateId: '9001' });
+    await vi.waitFor(() => expect(wrapper.text()).toContain('条件遗留清单'));
+    await wrapper.findAll('button').find((b) => b.text().includes('加载遗留清单'))!.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('补充单位经济测算'));
+    return wrapper;
+  }
+
+  it('OPEN 行渲染「关闭」入口，CLOSED 行不渲染（不可重复关闭）', async () => {
+    loginAs('GROUP_LEADER');
+    stubCloseApi();
+    const wrapper = await openLegacyTable();
+    expect(wrapper.text()).toContain('关闭');
+    // 关闭成功后重拉拿到 CLOSED 行，入口应消失
+    await wrapper.findAll('button').find((b) => b.text().trim() === '关闭')!.trigger('click');
+    expect(modalTextarea()).toBeTruthy();
+    await fillEvidence('已补齐 5 家一手验证记录');
+    confirmCloseButton().click();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已补齐 5 家一手验证记录'));
+    expect(wrapper.findAll('button').filter((b) => b.text().trim() === '关闭')).toHaveLength(0);
+    wrapper.unmount();
+  });
+
+  it('提交体为单字段 { evidence }（对齐后端 CloseRequest.evidence，@NotBlank）', async () => {
+    loginAs('GROUP_LEADER');
+    const { posts } = stubCloseApi();
+    const wrapper = await openLegacyTable();
+    await wrapper.findAll('button').find((b) => b.text().trim() === '关闭')!.trigger('click');
+    await fillEvidence('已补齐 5 家一手验证记录');
+    confirmCloseButton().click();
+    await vi.waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]!.url).toBe('/api/v1/gates/9001/element-results/er-2/close');
+    // 旧签名 { evidenceRef, note } 会让后端 @NotBlank 恒失败 → 遗留项永远关不掉
+    expect(posts[0]!.body).toEqual({ evidence: '已补齐 5 家一手验证记录' });
+    wrapper.unmount();
+  });
+
+  it('证据为空时前端拦下，不发请求（避免必然 400 的往返）', async () => {
+    loginAs('GROUP_LEADER');
+    const { posts } = stubCloseApi();
+    const wrapper = await openLegacyTable();
+    await wrapper.findAll('button').find((b) => b.text().trim() === '关闭')!.trigger('click');
+    confirmCloseButton().click();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(posts).toHaveLength(0);
     wrapper.unmount();
   });
 });

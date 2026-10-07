@@ -168,13 +168,22 @@ describe('IPD gate review panel (prototype KeyGatePanel adaptation)', () => {
       { elementCode: 'G1-03', elementId: 'e-3', elementName: '技术可行性', isVeto: true, sortOrder: 3 },
     ];
 
-    /** 全部要素选 PASS（无需补必填），逐项提交后可整体 submit。 */
+    /** 全部要素选 PASS，逐项提交后可整体 submit。
+     *
+     *  F5（2026-10-07）起 G1-1（首行 e-1「市场机会验证」，编码 G1-01）判 PASS 必须补
+     *  一手验证家数或书面意向份数——后端 verifyCustomerEvidence 一直这么校验，前端
+     *  此前没有录入位所以测试也无需补。现在录入位接上了，该行必须填。
+     */
     async function judgeAllPass(wrapper: ReturnType<typeof mount>): Promise<void> {
       for (const row of wrapper.findAll('.element-row')) {
         const passRadio = row.findAll<HTMLInputElement>('input[type="radio"]')
           .find((r) => (r.element as HTMLInputElement).value === 'PASS')!;
         await passRadio.setValue('PASS');
         await passRadio.trigger('change');
+        const g1Verification = row.find('input[name="verifications"]');
+        if (g1Verification.exists()) {
+          await g1Verification.setValue('5');
+        }
         await row.findAll('button').find((b) => b.text().includes('提交此项判定'))!.trigger('click');
         await vi.waitFor(() => {
           expect(row.text()).toContain('已提交：通过');

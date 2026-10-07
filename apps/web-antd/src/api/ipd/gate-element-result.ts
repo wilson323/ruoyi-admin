@@ -42,6 +42,11 @@ export interface IpdGateElementResultReq {
   elementId: string;
   responsiblePersonId?: null | string;
   result: GateElementResult;
+  /** G1-1 一手验证家数：判 PASS 时后端校验 ≥ gate.g1.minCustomerVerifications（默认 5）。
+   *  与 writtenIntents 二选一即可满足（书面意向 ≥ 1 走替代路径）。仅 G1-1 生效。 */
+  verifications?: null | number;
+  /** G1-1 客户书面意向份数：≥ 1 走替代路径（不需一手验证家数达标）。仅 G1-1 生效。 */
+  writtenIntents?: null | number;
 }
 
 export interface IpdGateElementResultView extends IpdGateElementResultReq {
