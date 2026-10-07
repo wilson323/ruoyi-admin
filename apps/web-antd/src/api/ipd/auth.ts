@@ -297,11 +297,42 @@ export async function fetchPlatformToken(token: string): Promise<IpdPlatformToke
   };
 }
 
+/** 换票后补取映射平台账号的 RBAC 权限码（2026-10-07 非超管平台按钮断链修复）。
+ *
+ *  知识库等平台页面的按钮闸用 system:* 码（如 system:info:add），而 IPD /auth/me 只下发
+ *  ipd:* 码——非超管角色换票后 accessCodes 缺平台码，写操作按钮全被 v-access 判否隐藏
+ *  （浏览器实证：ipd-leader 资料库页仅剩搜索按钮，而后端 sys_role_menu 实际已授权）。
+ *  数据源=平台标准端点 GET /system/user/getInfo（permissions=映射账号的菜单授权码）。
+ *
+ *  通道：原生 fetch 直取 /api 前缀（dev 由 vite、prod 由 nginx 吞前缀，同 request.ts 平台通道约定）。
+ *  不走 requestClient：其 401 拦截会触发 doReAuthenticate 换票重入（core/user.ts 记载过
+ *  2026-09-10 无限循环教训）；不走 requestIpd：平台端点非 IPD 契约包络。
+ *  best-effort：网络/非 2xx/形状异常一律返回空数组，调用方退回纯 IPD 码，绝不阻断会话。 */
+export async function fetchPlatformAccessCodes(token: string, clientId: string): Promise<string[]> {
+  try {
+    const response = await fetch('/api/system/user/getInfo', {
+      headers: { Authorization: `Bearer ${token}`, ClientID: clientId },
+      method: 'GET',
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return [];
+    const body: unknown = await response.json();
+    const permissions = record(body) && record(body.data) ? body.data.permissions : undefined;
+    if (!Array.isArray(permissions)) return [];
+    return permissions.filter((code): code is string => typeof code === 'string' && code.length > 0);
+  } catch {
+    // 平台码补装失败不回传原因：调用方按「无平台码」降级，会话与票不受影响。
+    return [];
+  }
+}
+
 /** 平台票本地缓存 key（sessionStorage）：过期判定独立于 IPD 票（平台票过期≠IPD 会话过期），但登出时随 IPD 会话一并清除。 */
 export const PLATFORM_STORAGE_KEY = 'ruoyi-ipd.platform';
 
-/** 平台票缓存结构：token + 过期时刻 + 换票交付的权威 clientId（三字段缺一即作废，不留旧格式活口）。 */
-export interface StoredPlatformToken { clientId: string; expiresAt: number; token: string }
+/** 平台票缓存结构：token + 过期时刻 + 换票交付的权威 clientId（三字段缺一即作废，不留旧格式活口）；
+ *  accessCodes（2026-10-07 非超管按钮断链修复）＝换票时补取的映射账号 RBAC 码，随票缓存供
+ *  refreshIdentity / 缓存命中路径零请求复用；旧缓存（无此字段）按空处理，不破坏恢复。 */
+export interface StoredPlatformToken { accessCodes?: string[]; clientId: string; expiresAt: number; token: string }
 
 export function restorePlatformToken(): StoredPlatformToken | null {
   try {

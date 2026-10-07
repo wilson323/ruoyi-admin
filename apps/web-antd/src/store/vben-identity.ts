@@ -44,3 +44,18 @@ export function vbenCodesOf(
   }
   return [scope, `personType:${personType}`].filter(Boolean);
 }
+
+/**
+ * IPD 码 ∪ 平台 RBAC 码（2026-10-07 非超管平台按钮断链修复）。
+ *
+ * accessStore.accessCodes 是两类闸的共同数据源：IPD 壳页面 meta.access 判 ipd:* 码，
+ * 平台模块 v-access:code 判 system:* 码（如知识库 system:info:*）——换票后两套都必须装入
+ * （判定为「含」语义，不怕多装）。去重保序，IPD 码在前。
+ *
+ * @param ipdCodes vbenCodesOf 产出的 IPD 侧码（含超管 '*:*:*'）
+ * @param platformCodes fetchPlatformAccessCodes 取到的映射账号 RBAC 码，可为空
+ */
+export function mergeAccessCodes(ipdCodes: string[], platformCodes: string[]): string[] {
+  if (platformCodes.length === 0) return ipdCodes;
+  return [...new Set([...ipdCodes, ...platformCodes])];
+}

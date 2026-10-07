@@ -11,6 +11,7 @@ import {
   IPD_LOGIN_CREDENTIAL_TEXT,
   IpdRequestError,
   clearPlatformToken,
+  fetchPlatformAccessCodes,
   fetchPlatformToken,
   loginIpd,
   parseIdentity,
@@ -21,7 +22,7 @@ import {
 } from '../api/ipd/auth';
 import { getUserInfoApi } from '../api/core/user';
 import { ipdErrorText } from '../views/ipd/_shared/ipd-error-text';
-import { vbenCodesOf, vbenRolesOf } from './vben-identity';
+import { mergeAccessCodes, vbenCodesOf, vbenRolesOf } from './vben-identity';
 
 const STORAGE_KEY = 'ruoyi-ipd.session';
 const LEGACY_STORAGE_KEY = 'ruoyi-ipd.session-token';
@@ -95,12 +96,21 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
       if (accessStore.accessToken !== cached.token) accessStore.setAccessToken(cached.token);
       // 缓存命中路径同样要恢复按钮权限码：v-access:code 消费 accessStore.accessCodes，
       // 只靠 userStore.permissions 会导致平台各模块增删改按钮全部不渲染（2026-09-06 浏览器实测修复）
-      const cachedPermissions = useUserStore().userInfo?.permissions ?? [];
-      if (cachedPermissions.length > 0) accessStore.setAccessCodes(cachedPermissions);
+      // 2026-10-07：值改为 IPD 码 ∪ 缓存平台码——旧票会话恢复（userInfo 空）时平台按钮
+      // （system:info:*）不再缺席；identity 不在时退回 userInfo/现有 accessCodes。
+      const ipdCodes = identity.value
+        ? vbenCodesOf(identity.value.person.personType, identity.value.scope, identity.value.person.permissionCodes)
+        : (useUserStore().userInfo?.permissions ?? accessStore.accessCodes);
+      const merged = mergeAccessCodes(ipdCodes, cached.accessCodes ?? []);
+      if (merged.length > 0) accessStore.setAccessCodes(merged);
       return cached.token;
     }
     const result = await fetchPlatformToken(token.value);
+    // 2026-10-07 非超管按钮断链修复：平台 RBAC 码与票同取同缓存——refreshIdentity 等
+    // 装码点从缓存零请求复用；取不到按空数组（仅影响平台按钮可见性，不影响票与会话）。
+    const platformCodes = await fetchPlatformAccessCodes(result.token, result.clientId);
     storePlatformToken({
+      accessCodes: platformCodes,
       clientId: result.clientId,
       expiresAt: Date.now() + result.expiresIn * 1000,
       token: result.token,
@@ -121,10 +131,12 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
         // 2026-09-11 权限断链修复：personType/scope 经 vben-identity 映射
         // （SUPER_ADMIN → roles ['superadmin'] + codes ['*:*:*']），
         // 否则 v-access:code 全判否、/system 整页守卫 403（见 vben-identity.ts）。
-        const permissions = vbenCodesOf(
-          info.person.personType,
-          info.scope,
-          info.person.permissionCodes,
+        // 2026-10-07 补装平台码（知识库等按钮对非超管断链修复）：IPD /auth/me 只下发 ipd:*，
+        // 平台模块按钮闸（system:info:* 等）需映射账号的 RBAC 码——换票时已取（随票缓存）
+        // 并做并集（best-effort：取不到退回纯 IPD 码，不阻断会话）。
+        const permissions = mergeAccessCodes(
+          vbenCodesOf(info.person.personType, info.scope, info.person.permissionCodes),
+          platformCodes,
         );
         useUserStore().setUserInfo({
           avatar: '',
@@ -245,10 +257,16 @@ export const useIpdAuthStore = defineStore('ipd-auth', () => {
       identity.value = parseIdentity(await authenticatedRequest('/auth/me'));
       // /auth/me 下发 permissionCodes 后立即灌入 accessStore，解除「通道未接通」临时放行
       if (identity.value) {
-        const permissions = vbenCodesOf(
-          identity.value.person.personType,
-          identity.value.scope,
-          identity.value.person.permissionCodes,
+        // 2026-10-07：装码改为 IPD 码 ∪ 缓存平台码——本函数每 60s 被导航守卫复调，
+        // 直接写纯 IPD 码会把换票补装的平台按钮码（system:info:*）洗掉（登录 60s 后按钮消失）；
+        // 平台码从平台票缓存读取（随票失效，零额外请求）。
+        const permissions = mergeAccessCodes(
+          vbenCodesOf(
+            identity.value.person.personType,
+            identity.value.scope,
+            identity.value.person.permissionCodes,
+          ),
+          restorePlatformToken()?.accessCodes ?? [],
         );
         accessStore.setAccessCodes(permissions);
         const existing = useUserStore().userInfo;

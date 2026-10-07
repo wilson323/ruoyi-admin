@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { vbenCodesOf, vbenRolesOf } from './vben-identity';
+import { mergeAccessCodes, vbenCodesOf, vbenRolesOf } from './vben-identity';
 
 /**
  * 2026-09-11 权限断链修复回归保护：
@@ -36,5 +36,30 @@ describe('IPD 身份 → vben 边车语义映射', () => {
 
   it('scope 为空段被过滤', () => {
     expect(vbenCodesOf('RD_PM', '')).toEqual(['personType:RD_PM']);
+  });
+});
+
+/**
+ * 2026-10-07 非超管平台按钮断链修复：换票后补装的平台 RBAC 码（system:* 等）
+ * 与 IPD 码合并进 accessStore.accessCodes，两类闸（IPD 壳 meta.access / 平台 v-access:code）
+ * 共用一份码表——并集去重保序，平台码缺失时原样返回（降级不退化）。
+ */
+describe('mergeAccessCodes — IPD 码 ∪ 平台 RBAC 码', () => {
+  it('平台码为空：原样返回 IPD 码（best-effort 降级路径）', () => {
+    const ipdCodes = ['ipd:project:list'];
+    expect(mergeAccessCodes(ipdCodes, [])).toBe(ipdCodes);
+  });
+
+  it('并集去重保序：IPD 码在前，平台码补尾', () => {
+    expect(
+      mergeAccessCodes(
+        ['ipd:project:list', 'ipd:project:query'],
+        ['system:info:add', 'ipd:project:list', 'system:info:list'],
+      ),
+    ).toEqual(['ipd:project:list', 'ipd:project:query', 'system:info:add', 'system:info:list']);
+  });
+
+  it('超管全通码与平台 *:*:* 合并不重复', () => {
+    expect(mergeAccessCodes(['*:*:*'], ['*:*:*'])).toEqual(['*:*:*']);
   });
 });

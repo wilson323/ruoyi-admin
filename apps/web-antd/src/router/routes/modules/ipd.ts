@@ -249,7 +249,8 @@ const ipdLayoutRoute: RouteRecordRaw = {
     // ⑦ 资料库（原型 /documents，一级入口；2026-09-06 owner 指令：IPD 资料库基于知识库管理后端对齐，
     // 与 AI 平台「知识管理」同一份数据（knowledge_info/attach/fragment），路由级复用 knowledge 现成页面。
     // 「文档管理」详情跳 /knowledge/info/detail/:id（平台动态菜单，届时切 basic 壳，左下角可回切）；
-    // 按钮权限码 system:info:* 走基线 RBAC，非超管映射账号需 RBAC 授权后可见写操作（遗留登记））
+    // 按钮权限码 system:info:* 走基线 RBAC——2026-10-07 已修复非超管断链：换票后补装映射账号
+    // RBAC 码（见 store/ipd-auth.ts renewPlatformSession），浏览器实证 leader 新增/导出可见）
     {
       component: () => import('#/views/knowledge/info/index.vue'),
       meta: { icon: 'lucide:folder-open', order: 5, title: '资料库' },
