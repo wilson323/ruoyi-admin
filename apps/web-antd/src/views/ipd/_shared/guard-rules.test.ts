@@ -7,7 +7,9 @@
 // kpi_shared_confirm 3 边）→ 89（D-1 蜂群 SWARM-A 六机 36 边三方合并，后端 b5441246 重导出，
 // 前端 999b9e0 同步）→ 93（产品线负责人开工批准、拒绝及再提交四条既有授权迁移）
 // → 86（2026-10-03「算钱」层下线：移除 bonus_pool 4 条 + coefficient_change 3 条，
-// 与后端 StateMachineGuardContractTest 哨兵 86 同批）；
+// 与后端 StateMachineGuardContractTest 哨兵同批；
+// 2026-10-07 F4「终裁落状态」新增 gate_review finalRuling 2 条，86 → 88，
+// 后端哨兵与契约 JSON 已同批更新，此处当时漏改，由全量测试跑出后补正。
 // 后端加删规则须同步此处，与后端 ContractTest 哨兵联动。
 import { describe, expect, it } from 'vitest';
 
@@ -20,9 +22,9 @@ import {
 import { CHANGE_STATUS_MACHINE } from './ipd-state-machines';
 
 describe('契约文件元信息', () => {
-  it('ruleCount 哨兵=86（后端加删规则须同步此处，与后端 ContractTest 哨兵联动）', () => {
-    expect(GUARD_RULES_META.ruleCount).toBe(86);
-    expect(GUARD_RULES).toHaveLength(86);
+  it('ruleCount 哨兵=88（后端加删规则须同步此处，与后端 ContractTest 哨兵联动）', () => {
+    expect(GUARD_RULES_META.ruleCount).toBe(88);
+    expect(GUARD_RULES).toHaveLength(88);
   });
 
   it('version 为 sha256 锁（导出侧自洽校验产物）', () => {
