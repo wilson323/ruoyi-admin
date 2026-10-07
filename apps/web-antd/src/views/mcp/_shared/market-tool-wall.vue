@@ -10,6 +10,8 @@ import type { McpMarketTool } from '#/api/mcp/market/model';
 
 import { onMounted, ref, watch } from 'vue';
 
+import { message } from 'ant-design-vue';
+
 import {
   mcpMarketBatchLoadTools,
   mcpMarketLoadTool,
@@ -17,6 +19,7 @@ import {
   mcpMarketToolList,
 } from '#/api/mcp/market';
 
+import AddToAgentDialog from './add-to-agent-dialog.vue';
 import MetadataTree from './metadata-tree.vue';
 import { parseMetadataView } from './market-metadata';
 
@@ -31,6 +34,8 @@ const loading = ref(false);
 const loadError = ref(false);
 const checkedIds = ref<number[]>([]);
 const actionPending = ref(false);
+const agentDialogOpen = ref(false);
+const agentDialogTool = ref<null | { id: number; name: string }>(null);
 
 async function loadPage(nextPage: number) {
   loading.value = true;
@@ -98,6 +103,34 @@ async function handleRefresh() {
   try {
     await mcpMarketRefresh(props.marketId);
     await loadPage(1);
+  } finally {
+    actionPending.value = false;
+  }
+}
+
+/**
+ * 「加入智能体」：未加载工具先自动加载到本地，取 localToolId 后打开选择框。
+ * 绑定值始终使用 localToolId（mcp_tool_info.id），不用市场行 id（M1 审计「易踩坑 #5」）。
+ */
+async function handleAddToAgent(tool: McpMarketTool) {
+  actionPending.value = true;
+  try {
+    let localId =
+      tool.isLoaded && tool.localToolId ? tool.localToolId : null;
+    if (!localId) {
+      await mcpMarketLoadTool(tool.id);
+      await loadPage(page.value);
+      localId =
+        tools.value.find((item) => item.id === tool.id)?.localToolId ?? null;
+    }
+    if (!localId) {
+      message.warning('加载后未取得本地工具编号，请刷新后重试');
+      return;
+    }
+    agentDialogTool.value = { id: localId, name: tool.toolName };
+    agentDialogOpen.value = true;
+  } catch {
+    message.error('加载工具失败，请稍后重试');
   } finally {
     actionPending.value = false;
   }
@@ -173,6 +206,15 @@ async function handleRefresh() {
               加载到本地
             </a-button>
             <a-button
+              v-access:code="['agent:agent:edit']"
+              :disabled="actionPending"
+              size="small"
+              type="link"
+              @click="handleAddToAgent(tool)"
+            >
+              加入智能体
+            </a-button>
+            <a-button
               v-if="tool.isLoaded && tool.localToolId"
               disabled
               size="small"
@@ -196,6 +238,12 @@ async function handleRefresh() {
       class="ipd-wall__pager"
       size="small"
       @change="(p: number) => loadPage(p)"
+    />
+
+    <AddToAgentDialog
+      v-model:open="agentDialogOpen"
+      :tool-id="agentDialogTool?.id ?? null"
+      :tool-name="agentDialogTool?.name"
     />
   </div>
 </template>

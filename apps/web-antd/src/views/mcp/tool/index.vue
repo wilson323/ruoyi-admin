@@ -42,6 +42,7 @@ import { commonDownloadExcel } from '#/utils/file/download';
 
 import CatalogCards from '../../_shared/catalog-cards.vue';
 import { useCatalogCards } from '../../_shared/use-catalog-cards';
+import AddToAgentDialog from '../_shared/add-to-agent-dialog.vue';
 import ToolTestPanel from '../_shared/tool-test-panel.vue';
 import {
   buildToolReverseDeps,
@@ -214,6 +215,15 @@ async function handleTest(row: McpTool) {
   await testPanelRef.value?.run();
 }
 
+/** 「加入智能体」：工具页行天然是 mcp_tool_info，直接用行 id 作为绑定值。 */
+const agentDialogOpen = ref(false);
+const agentDialogTool = ref<null | { id: number; name: string }>(null);
+
+function handleAddToAgent(row: McpTool) {
+  agentDialogTool.value = { id: row.id, name: row.name };
+  agentDialogOpen.value = true;
+}
+
 async function handleReload() {
   await refreshVisible();
   await loadReverseDeps();
@@ -329,6 +339,12 @@ function handleDownloadExcel() {
               >
               <Button
                 size="small"
+                v-access:code="['agent:agent:edit']"
+                @click="handleAddToAgent(row)"
+                >加入智能体</Button
+              >
+              <Button
+                size="small"
                 v-access:code="['mcp:tool:edit']"
                 @click="handleEdit(row)"
                 >编辑</Button
@@ -397,6 +413,12 @@ function handleDownloadExcel() {
                 @click.stop="handleTest(row)"
               >
                 测试
+              </ghost-button>
+              <ghost-button
+                v-access:code="['agent:agent:edit']"
+                @click.stop="handleAddToAgent(row)"
+              >
+                加入智能体
               </ghost-button>
               <ghost-button
                 v-access:code="['mcp:tool:edit']"
@@ -504,6 +526,11 @@ function handleDownloadExcel() {
         </Card>
       </div>
     </div>
+    <AddToAgentDialog
+      v-model:open="agentDialogOpen"
+      :tool-id="agentDialogTool?.id ?? null"
+      :tool-name="agentDialogTool?.name"
+    />
     <ToolDrawer @reload="handleReload" />
   </Page>
 </template>
