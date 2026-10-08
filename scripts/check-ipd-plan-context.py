@@ -1,9 +1,40 @@
 #!/usr/bin/env python3
 """只读检查 IPD 当前指令和总计划的已知冲突，不验证业务完成。"""
 import argparse
+import json
 from pathlib import Path
 import re
 import sys
+
+
+def ide_hook_problems(root):
+    """Inspect executable reminders; configuration presence is not host coverage."""
+    failures = []
+    for relative in (".claude/settings.json", ".codex/hooks.json"):
+        path = root / relative
+        if not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            hooks = payload["hooks"]
+            if not isinstance(hooks, dict):
+                raise ValueError("hooks must be an object")
+            for event, groups in hooks.items():
+                if not isinstance(groups, list):
+                    raise ValueError("event hooks must be a list")
+                for group in groups:
+                    entries = group.get("hooks", [group])
+                    if not isinstance(entries, list):
+                        raise ValueError("nested hooks must be a list")
+                    for entry in entries:
+                        command = entry.get("command", "")
+                        if not isinstance(command, str):
+                            raise ValueError("command must be text")
+                        if re.search(r"证据已(?:写入|入)\s*(?:\./)?plan\.md", command):
+                            failures.append(f"{root.name}/{relative} {event}: 提醒仍将证据写向第二份 plan.md")
+        except (ValueError, KeyError, TypeError, AttributeError, OSError):
+            failures.append(f"{root.name}/{relative}: IDE hook 配置无法完整解析")
+    return failures
 
 
 def execution_problems(text):
@@ -37,6 +68,7 @@ def validate(front, back, canvases):
         return path.read_text(encoding="utf-8")
 
     for root in (front, back):
+        failures.extend(ide_hook_problems(root))
         text = read(root / "AGENTS.md")
         if "## 当前任务范围与证据" not in text:
             failures.append(f"{root.name}: 缺少当前任务范围入口")

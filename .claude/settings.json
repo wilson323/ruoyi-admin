@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'echo \"[Layer 1 提醒] 变更已落盘。请确认：① 证据已写入 plan.md ② 文档已同步 ③ 本单元已验证\" >&2; exit 0'"
+            "command": "bash -c 'echo \"[Layer 1 提醒] 变更已落盘。请确认：① 证据已回流原总画布、看板镜像及本次真实 receipt ② 文档已同步 ③ 本单元已验证\" >&2; exit 0'"
           }
         ]
       },
@@ -59,7 +59,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'echo \"[Layer 1 收口清单] 说\\\"完成\\\"前逐条过：构建通过 / 检查通过 / 测试通过（真实执行有输出）/ 范围未越界 / 文档已同步 / 证据已入 plan.md / 遗留问题已列出 / 交接文件已写。依据 Skill session-finalization-gate。\" >&2; exit 0'"
+            "command": "bash -c 'echo \"[Layer 1 收口清单] 说\\\"完成\\\"前逐条过：构建通过 / 检查通过 / 测试通过（真实执行有输出）/ 范围未越界 / 文档已同步 / 证据已回流原总画布、看板镜像及本次真实 receipt / 遗留问题已列出 / 交接文件已写。依据 Skill session-finalization-gate。\" >&2; exit 0'"
           }
         ]
       }
