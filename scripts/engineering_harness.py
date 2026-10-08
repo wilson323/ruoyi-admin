@@ -135,19 +135,42 @@ def validate_task(root, task):
         raise HarnessError("Task is not recorded in the existing authoritative mirror; no invented card")
 
 
+def foreign_validator_bytes(path):
+    """Fingerprint a foreign repository's validator at its committed state.
+
+    A sibling session editing another checkout's working tree must not decide
+    whether this repository's verification stands; a committed change still
+    moves that HEAD and still invalidates identity. Paths outside an exact
+    checkout root (fixtures, untracked additions) keep reading the working tree
+    so a newly added validator is still covered.
+    """
+    probe = path.resolve()
+    try:
+        top = Path(git(probe.parent, "rev-parse", "--show-toplevel").decode().strip()).resolve()
+        if probe.is_relative_to(top):
+            env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+            out = subprocess.run(["git", "-C", str(top), "show", f"HEAD:{probe.relative_to(top).as_posix()}"],
+                                 env=env, capture_output=True, check=False)
+            if out.returncode == 0:
+                return out.stdout
+    except HarnessError:
+        pass
+    return path.read_bytes()
+
+
 def validator_hash(root=None):
     here = Path(__file__).resolve().parent
-    files = [here / name for name in ("engineering_harness.py", "test_engineering_harness.py",
+    local = [here / name for name in ("engineering_harness.py", "test_engineering_harness.py",
              "typecheck-error-count.mjs", "typecheck-error-count.test.mjs", "check-ipd-plan-context.py")]
-    files += [here.parent / ".harness/verify.sh",
+    local += [here.parent / ".harness/verify.sh",
               here.parent / ".harness/skills/ipd-engineering-feedback/SKILL.md"]
     backend = (root if root is not None and project(root) == "ipd-backend"
                else Path("/Users/mac/Documents/ruoyi-ai"))
-    files += [backend / ".harness" / name for name in ("gate.sh", "loop.sh", "verify.sh")
-              if (backend / ".harness" / name).is_file()]
-    files += [backend / name for name in ("scripts/check-best-practices-coverage.sh",
+    foreign = [backend / ".harness" / name for name in ("gate.sh", "loop.sh", "verify.sh")
+               if (backend / ".harness" / name).is_file()]
+    foreign += [backend / name for name in ("scripts/check-best-practices-coverage.sh",
               ".github/workflows/r25-root-cause-lint.yml") if (backend / name).is_file()]
-    files += [backend / name for name in (
+    foreign += [backend / name for name in (
         "scripts/check-engineering-evidence.sh", "scripts/lib/gate-wiring-detect.py",
         "scripts/lib/gate-wiring-detect-test.py", ".claude/hooks/evolver-session-end.js",
         ".claude/hooks/evolver-session-end.test.cjs", ".claude/hooks/_memoryFiltering.js",
@@ -158,7 +181,9 @@ def validator_hash(root=None):
         "scripts/test-untracked-references.py", ".claude/hooks/post-commit-update-kanban.cjs",
         ".claude/hooks/post-commit-update-kanban.test.cjs",
         ".codex/hooks/post-commit-update-kanban.cjs") if (backend / name).is_file()]
-    return digest(json.dumps([[str(p), digest(p.read_bytes())] for p in files]).encode())
+    parts = [[str(p), digest(p.read_bytes())] for p in local]
+    parts += [[str(p), digest(foreign_validator_bytes(p))] for p in foreign]
+    return digest(json.dumps(parts).encode())
 
 
 def local(root, relative):

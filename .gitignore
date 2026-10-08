@@ -88,3 +88,4 @@ ruvector.db-shm
 ruvector.db-wal
 agentdb.rvf
 agentdb.rvf.lock
+agentdb.rvf.idmap.json

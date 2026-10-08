@@ -43,6 +43,8 @@ class HarnessCases(unittest.TestCase):
         p.start(); self.addCleanup(p.stop)
     def cmd(self, *args):
         return subprocess.check_output(['git', '-C', str(self.root), *args], env={k:v for k,v in os.environ.items() if not k.startswith('GIT_')})
+    def foreign_git(self, repo, *args):
+        return subprocess.check_output(['git', '-C', str(repo), *args], env={k:v for k,v in os.environ.items() if not k.startswith('GIT_')})
     def execute(self, code, timeout=3):
         return h.execute(self.root, [sys.executable, '-c', code], self.root / '.harness/runs/raw.log', timeout)
     def run_receipt(self, code="print('actual execution')", profile='governance', task='CASE-1'):
@@ -327,6 +329,37 @@ class HarnessCases(unittest.TestCase):
             original = h.validator_hash(backend)
             target.write_text('changed')
             self.assertNotEqual(original, h.validator_hash(backend))
+
+    def test_C59_foreign_uncommitted_validator_edit_does_not_invalidate(self):
+        backend = Path(self.temp.name) / 'foreign'
+        (backend / 'scripts').mkdir(parents=True)
+        target = backend / 'scripts/check-engineering-evidence.sh'
+        target.write_text('committed')
+        self.foreign_git(backend, 'init', '-q')
+        self.foreign_git(backend, 'add', '-A')
+        self.foreign_git(backend, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                         'commit', '-qm', 'foreign')
+        with patch.object(h, 'project', return_value='ipd-backend'):
+            before = h.validator_hash(backend)
+            target.write_text('dirty sibling edit')
+            self.assertEqual(before, h.validator_hash(backend),
+                             'uncommitted edit in another repository must not decide this verification')
+            self.foreign_git(backend, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                             'commit', '-qam', 'foreign')
+            self.assertNotEqual(before, h.validator_hash(backend),
+                                'a committed foreign validator change must still invalidate identity')
+
+    def test_C60_foreign_untracked_validator_still_fingerprinted(self):
+        backend = Path(self.temp.name) / 'foreign-untracked'
+        (backend / 'scripts').mkdir(parents=True)
+        target = backend / 'scripts/check-engineering-evidence.sh'
+        target.write_text('first')
+        self.foreign_git(backend, 'init', '-q')
+        with patch.object(h, 'project', return_value='ipd-backend'):
+            before = h.validator_hash(backend)
+            target.write_text('changed')
+            self.assertNotEqual(before, h.validator_hash(backend),
+                                'an untracked foreign validator must still be read from the working tree')
 
     def test_C52_completion_cli_forwards_current_identity(self):
         path = self.root / '.harness/runs/example/receipt.json'
