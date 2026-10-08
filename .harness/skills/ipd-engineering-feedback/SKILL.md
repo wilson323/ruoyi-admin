@@ -27,7 +27,7 @@ Ruflo 用于工程协作，不替代总画布、原看板或 IPD 项目智能体
 - 工程机制改动先用 `bash .harness/verify.sh governance <原事项编号>`；前端代码交付用 `bash .harness/verify.sh frontend <原事项编号>`。固定命令，不接受任意 Shell/eval。
 - governance 实跑 Harness/类型门禁反例和既有上下文检查；frontend 再实跑类型、非空 Vitest 与生产构建。无依赖时拒绝，不切到另一树替它验收。后台业务、真实服务加载与业务验收仍走原总计划。
 - 失败自动保存 `.harness/runs/<run>/receipt.json` 与私有日志，生成 `.harness/evolve/<run>.json` 反思输入。它提出核查问题，不臆造解释。新失败需补正反回归；重试前须有新诊断，通常最多两次。
-- 完成前 `python3 scripts/engineering_harness.py --root <根> check --receipt <本次receipt>`；缺步骤、非零、空证据、输入/验证器/产物变化拒绝。工作树锁只约束此入口，不约束外部 Maven/Vite/其他聊天。
+- 完成前 `python3 scripts/engineering_harness.py --root <根> check --receipt <本次receipt> --task <当前事项> --profile <governance或frontend>`；跨事项或跨验收类型拒绝；缺步骤、非零、空证据、输入/验证器/产物变化拒绝。旧调用兼容不代表所有 IDE 已强制绑定。工作树锁只约束此入口，不约束外部 Maven/Vite/其他聊天。
 - 每次尝试保留，不能用最终一次绿覆盖原失败。工程通过不表示运行包已加载、业务已完成或生产就绪。
 
 ## 自动反思和受控进化

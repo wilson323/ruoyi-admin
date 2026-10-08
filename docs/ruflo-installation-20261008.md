@@ -1,6 +1,6 @@
 # Ruflo 安装、控制器修复与验收（2026-10-08）
 
-裁决：本机安装及新进程下的七个控制器已通过本页所列工程验收；当前 IDE 已连接的旧 MCP 进程尚未重新加载，不能据此宣称当前聊天全部生效、381 个工具全部验收或 IPD 业务完成。
+裁决：本机安装及新进程下的七个控制器已通过本页所列工程验收；当前聊天连接已重新加载，并通过下述实际写入回读及审计取证；不能据此宣称 381 个工具全部验收或 IPD 业务完成。
 
 ## 实际安装
 
@@ -49,3 +49,7 @@ python3 scripts/register-ruflo-skills.py
 恢复安装执行上述 installer；它需要原 bridge 备份和已核验依赖。全局配置备份在 `~/.codex/config.toml.before-ruflo-20261008`、`~/.codex/config.toml.before-ruflo-canonical-20261008`，只作本机恢复，不入版本库。所有数据库、锁、凭据与运行日志均不提交。
 
 机器可读证据见 [验收摘要](evidence/ruflo-20261008.json)。工程防复发入口仍是 `.harness/skills/ipd-engineering-feedback/SKILL.md`；不新建 IPD 运行轨或业务台账。
+
+## 当前聊天连接复验（2026-10-08 15:30 UTC）
+
+本次直接调用当前聊天的 `ruflo` MCP：`system_info` 返回进程 17653；`agentdb_health` 返回 23 个启用控制器，其中含原先失败的七个。`memory_store` 在 `installation-verification` 写入 `live-chat-20261008`，返回 384 维 embedding；`memory_retrieve` 逐项读回原值；SQLite `mutation_attestations` 按 namespace、operation=store、status=proved 及 invariantChecks 中的精确 key 筛选，命中 id=239。随后 `memory_delete` 成功。该结果证明当前连接的这条写入链路已应用修复，不证明其他 IDE 连接或所有工具的方法。
