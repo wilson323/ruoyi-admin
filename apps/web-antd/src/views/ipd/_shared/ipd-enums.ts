@@ -519,12 +519,15 @@ export const COEF_CHANGE_STATUS_TEXT: Record<string, string> = {
 /** 需求状态色调补充（demand/index.vue 原型色系；非业务状态机 tone）。 */
 export const DEMAND_STATUS_TONE: Record<string, string> = {
   ACCEPTED: 'blue',
+  ADOPTED: 'green',
   ARCHIVED: 'gray',
   CLOSED: 'gray',
   EVALUATING: 'blue',
   PROCESSING: 'blue',
   SCHEDULED: 'green',
   SUBMITTED: 'amber',
+  // 2026-10-08 缺口③：词表外终态补色标（WITHDRAWN 灰同 CLOSED，ADOPTED 绿同结案）
+  WITHDRAWN: 'gray',
 };
 
 /** 删除申请状态中文（api/ipd/deletion 实际使用的 code 与 _shared/ipd-state-machines.DELETION_STATUS_MACHINE 不同，

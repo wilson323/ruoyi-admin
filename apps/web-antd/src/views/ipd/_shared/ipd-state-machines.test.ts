@@ -99,6 +99,13 @@ describe('DEMAND_STATUS 8 态', () => {
     expect(next).toContain('PROCESSING');
     expect(next).toContain('IN_DEV');
   });
+
+  it('缺口③ 词表外终态 WITHDRAWN/ADOPTED 有中文标签且无出边（不再回退英文原词）', () => {
+    expect(stateLabel(DEMAND_STATUS_MACHINE, 'WITHDRAWN')).toBe('已撤回');
+    expect(stateLabel(DEMAND_STATUS_MACHINE, 'ADOPTED')).toBe('已采纳');
+    expect(nextStates(DEMAND_STATUS_MACHINE, 'WITHDRAWN')).toEqual([]);
+    expect(nextStates(DEMAND_STATUS_MACHINE, 'ADOPTED')).toEqual([]);
+  });
 });
 
 describe('通用 fallback 语义', () => {

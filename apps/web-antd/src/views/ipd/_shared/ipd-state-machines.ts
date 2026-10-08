@@ -4,7 +4,8 @@
  * <p>覆盖 8 个核心状态机，与后端枚举字面值一一对应：
  * <ul>
  *   <li>PROJECT_STATUS — 项目 5 态 DRAFT/TEAMING/ACTIVE/SUSPENDED/ARCHIVED</li>
- *   <li>DEMAND_STATUS — 需求 8 态 SUBMITTED/ACCEPTED/EVALUATING/SCHEDULED/PROCESSING/IN_DEV/CLOSED/ARCHIVED</li>
+ *   <li>DEMAND_STATUS — 需求 v3 链路 8 态 SUBMITTED/ACCEPTED/EVALUATING/SCHEDULED/PROCESSING/IN_DEV/CLOSED/ARCHIVED
+ *       + 词表外写入源的两终态 WITHDRAWN（游客撤回）/ADOPTED（变更采纳回写），2026-10-08 缺口③补齐</li>
  *   <li>DELETION_STATUS — 删除申请 6 态 PENDING/WITHDRAWN/LEADER_APPROVED/REJECTED/PURGED/ARCHIVED</li>
  *   <li>GATE_STATUS — Gate 评审 4 态 PENDING/IN_PROGRESS/PASSED/FAILED</li>
  *   <li>CHANGE_STATUS — 需求变更 4 态 DRAFT/PENDING_SIGN/APPROVED/REJECTED</li>
@@ -42,7 +43,12 @@ export type DemandStatus =
   | 'PROCESSING'
   | 'IN_DEV'
   | 'CLOSED'
-  | 'ARCHIVED';
+  | 'ARCHIVED'
+  // 2026-10-08 缺口③（第七刀登记）：真库 requirements.status 存在 v3 值域外的终态写入源——
+  // WITHDRAWN 由 GuestDemandService.withdraw 回写（真库实查已有行），ADOPTED 由
+  // RequirementChangeService 双签通过回写。此前查表缺失 → 内部列表回退英文原词无色标。
+  | 'ADOPTED'
+  | 'WITHDRAWN';
 export type DeletionStatus =
   | 'PENDING'
   | 'WITHDRAWN'
@@ -105,7 +111,7 @@ export const PROJECT_STATUS_MACHINE: StateMachine<ProjectStatus> = buildMachine(
   },
 );
 
-// ============ 需求状态机（8 态）============
+// ============ 需求状态机（v3 八态 + 词表外两终态）============
 const DEMAND_STATES: readonly StateNode<DemandStatus>[] = [
   { code: 'SUBMITTED', label: '新提交', tone: 'default' },
   { code: 'ACCEPTED', label: '已受理', tone: 'processing' },
@@ -115,6 +121,9 @@ const DEMAND_STATES: readonly StateNode<DemandStatus>[] = [
   { code: 'IN_DEV', label: '开发中', tone: 'processing' },
   { code: 'CLOSED', label: '已关闭', tone: 'default' },
   { code: 'ARCHIVED', label: '已归档', tone: 'default' },
+  // 词表外终态：只展示不可分流（后端 DemandController.requireTriableTransition 同步拒绝）
+  { code: 'WITHDRAWN', label: '已撤回', tone: 'default' },
+  { code: 'ADOPTED', label: '已采纳', tone: 'success' },
 ];
 export const DEMAND_STATUS_MACHINE: StateMachine<DemandStatus> = buildMachine(
   'DEMAND_STATUS',
@@ -128,6 +137,8 @@ export const DEMAND_STATUS_MACHINE: StateMachine<DemandStatus> = buildMachine(
     IN_DEV: ['CLOSED'],
     CLOSED: ['ARCHIVED'],
     ARCHIVED: [],
+    WITHDRAWN: [],
+    ADOPTED: [],
   },
 );
 

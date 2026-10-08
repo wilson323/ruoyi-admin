@@ -114,6 +114,9 @@ describe('业务状态机 label/tone 转发', () => {
     expect(changeStateTone('APPROVED')).toBe('success');
     expect(gateStateLabel('PASSED')).toBe('已通过');
     expect(demandStateLabel('EVALUATING')).toBe('分析中');
+    // 2026-10-08 缺口③：词表外终态不再回退英文原词
+    expect(demandStateLabel('WITHDRAWN')).toBe('已撤回');
+    expect(demandStateLabel('ADOPTED')).toBe('已采纳');
     expect(deletionStateLabel('LEADER_APPROVED')).toBe('组长已审');
   });
 
@@ -189,6 +192,8 @@ describe('A28 新增显示映射表 SSOT', () => {
     expect(DEMAND_STATUS_TONE.SUBMITTED).toBe('amber');
     expect(DEMAND_STATUS_TONE.ACCEPTED).toBe('blue');
     expect(DEMAND_STATUS_TONE.SCHEDULED).toBe('green');
+    expect(DEMAND_STATUS_TONE.WITHDRAWN).toBe('gray');
+    expect(DEMAND_STATUS_TONE.ADOPTED).toBe('green');
   });
 
   it('删除申请状态中文 SSOT（与状态机 6 态不同，按此 5 态展示）', () => {
