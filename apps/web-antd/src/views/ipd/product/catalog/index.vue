@@ -14,16 +14,21 @@
 -->
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { CloudDownloadOutlined, LockOutlined } from '@ant-design/icons-vue';
+import { Button, Input, Modal, message as antMessage } from 'ant-design-vue';
 
-import { listProducts } from '../../../../api/ipd/product';
+import { changeProductStatus, listProducts } from '../../../../api/ipd/product';
+import { fetchProductRetirement, submitProductRetirement } from '../../../../api/ipd/product-retirement';
 import { listProductLineProducts, listProductLines } from '../../../../api/ipd/product-line';
-import type { Product } from '../../../../api/ipd/product';
+import type { Product, ProductStatus } from '../../../../api/ipd/product';
+import { IpdRequestError } from '../../../../api/ipd/auth';
 import AiSuggest from '../../_shared/ai-suggest.vue';
 import { useIpdAuthStore } from '../../../../store/ipd-auth';
 import '../../_shared/ipd-theme.css';
 
 const auth = useIpdAuthStore();
+const router = useRouter();
 const isSuperAdmin = computed(() => auth.identity?.person.personType === 'SUPER_ADMIN');
 
 const products = ref<Product[]>([]);
@@ -32,6 +37,22 @@ const productLineAvailable = ref(false);
 const productLineError = ref('');
 const loadError = ref('');
 const fileChosen = ref('');
+
+/** 行级操作进行中标记：`status:<id>` / `retire:<id>`，避免同一行并发写。 */
+const rowBusy = ref('');
+/** 申请下架弹窗的目标产品；null = 未打开。 */
+const retireTarget = ref<Product | null>(null);
+const retireReason = ref('');
+const retireSubmitting = ref(false);
+
+function rejectText(cause: unknown): string {
+  if (cause instanceof IpdRequestError) {
+    if (cause.kind === 'transport') return '无法连接服务，请检查网络后重试';
+    if (cause.kind === 'cancelled') return '操作已取消，请重试';
+    return cause.message;
+  }
+  return cause instanceof Error ? cause.message : '操作失败，请稍后重试';
+}
 
 /** 产品状态 → 原型 lifecycle 展示词。 */
 const LIFECYCLE_TEXT: Record<string, string> = {
@@ -70,12 +91,16 @@ function onAiAdopt(payload: { markdown: string; scene: string }): void {
   adoptedAi.value = payload;
 }
 
-onMounted(async () => {
+onMounted(load);
+
+/** 重新拉取产品主数据；写操作成功后调用以刷新列表与生命周期。 */
+async function load(): Promise<void> {
   if (!isSuperAdmin.value) return;
   try {
     products.value = await listProducts();
+    loadError.value = '';
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : '产品主数据加载失败';
+    loadError.value = rejectText(error);
   }
   try {
     const lines = await listProductLines();
@@ -86,10 +111,94 @@ onMounted(async () => {
     productLineNames.value = new Map(memberships.flatMap(({ line, products }) =>
       products.map((product) => [product.id, line.name] as const)));
     productLineAvailable.value = true;
+    productLineError.value = '';
   } catch (error) {
-    productLineError.value = error instanceof Error ? error.message : '产品线归属接口暂不可用';
+    productLineError.value = rejectText(error);
   }
-});
+}
+
+async function goCreate(): Promise<void> {
+  try {
+    await router.push('/ipd/products/create');
+  } catch (err: unknown) {
+    antMessage.error(`导航失败: ${rejectText(err)}`);
+  }
+}
+
+async function goEdit(record: Product): Promise<void> {
+  try {
+    await router.push(`/ipd/products/${encodeURIComponent(record.id)}/edit`);
+  } catch (err: unknown) {
+    antMessage.error(`导航失败: ${rejectText(err)}`);
+  }
+}
+
+/** 启用 / 停用。与产品管理页同口径：INACTIVE ↔ IN_RD。 */
+async function toggleStatus(record: Product): Promise<void> {
+  if (rowBusy.value) return;
+  const next: ProductStatus = record.status === 'INACTIVE' ? 'IN_RD' : 'INACTIVE';
+  const action = next === 'INACTIVE' ? '停用' : '启用';
+  rowBusy.value = `status:${record.id}`;
+  try {
+    await changeProductStatus(record.id, next);
+    antMessage.success(`产品 ${record.productName} 已${action}`);
+    await load();
+  } catch (cause: unknown) {
+    antMessage.error(rejectText(cause));
+  } finally {
+    rowBusy.value = '';
+  }
+}
+
+/** 打开「申请下架」——G-02 要求删除必须走审核，故此处是申请而非直删。 */
+async function openRetire(record: Product): Promise<void> {
+  if (rowBusy.value) return;
+  rowBusy.value = `retire:${record.id}`;
+  try {
+    // 先回读当前版本号，提交时作为乐观锁的 expectedVersion。
+    const view = await fetchProductRetirement(record.id);
+    if (!view.canSubmit) {
+      antMessage.warning('该产品当前不可申请下架（可能已有在途申请或已下架）');
+      return;
+    }
+    retireTarget.value = record;
+    retireReason.value = '';
+  } catch (cause: unknown) {
+    antMessage.error(rejectText(cause));
+  } finally {
+    rowBusy.value = '';
+  }
+}
+
+function closeRetire(): void {
+  if (retireSubmitting.value) return;
+  retireTarget.value = null;
+  retireReason.value = '';
+}
+
+async function submitRetire(): Promise<void> {
+  const target = retireTarget.value;
+  const reason = retireReason.value.trim();
+  if (!target) return;
+  if (!reason) {
+    antMessage.warning('请填写下架原因（审核与审计需要）');
+    return;
+  }
+  retireSubmitting.value = true;
+  try {
+    const view = await fetchProductRetirement(target.id);
+    const version = view.retirement?.version ?? 0;
+    await submitProductRetirement(target.id, version, reason);
+    antMessage.success(`已提交「${target.productName}」的下架申请，等待审核`);
+    retireTarget.value = null;
+    retireReason.value = '';
+    await load();
+  } catch (cause: unknown) {
+    antMessage.error(rejectText(cause));
+  } finally {
+    retireSubmitting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -101,6 +210,7 @@ onMounted(async () => {
           <h1>产品目录</h1>
           <p>产品档案独立于项目长期存在，按产品型号幂等更新；缺失行不会自动删除。</p>
         </div>
+        <Button type="primary" data-testid="catalog-create" @click="goCreate">新增产品</Button>
       </header>
 
       <!-- L2 每页 AI 入口（2026-09-28）：产品名称分类（userPrompt 素材必填；采纳仅回传宿主，C08 零直写） -->
@@ -172,6 +282,7 @@ onMounted(async () => {
             <span>市场PM</span>
             <span>生命周期</span>
             <span>最近更新</span>
+            <span>操作</span>
           </div>
           <div v-for="p in products" :key="p.id" class="ipd-cat-row">
             <span>
@@ -185,12 +296,68 @@ onMounted(async () => {
               <i :class="lifecycleTone(p.status)" class="ipd-cat-pill">{{ lifecycleText(p.status) }}</i>
             </span>
             <span>—</span>
+            <span class="ipd-cat-actions">
+              <Button size="small" data-testid="catalog-edit" :loading="rowBusy === `status:${p.id}`" @click="goEdit(p)">编辑</Button>
+              <Button
+                size="small"
+                data-testid="catalog-toggle-status"
+                :loading="rowBusy === `status:${p.id}`"
+                @click="toggleStatus(p)"
+              >
+                {{ p.status === 'INACTIVE' ? '启用' : '停用' }}
+              </Button>
+              <Button
+                size="small"
+                danger
+                data-testid="catalog-retire"
+                :loading="rowBusy === `retire:${p.id}`"
+                @click="openRetire(p)"
+              >
+                申请下架
+              </Button>
+            </span>
           </div>
           <div v-if="products.length === 0" class="ipd-cat-table-empty">
-            暂无产品档案；可在「产品管理」中新增，或等待 Excel 导入接口交付。
+            暂无产品档案；可点右上角「新增产品」逐条录入，或等待 Excel 导入接口交付。
           </div>
         </div>
       </section>
+
+      <!-- 申请下架（G-02：删除必须走审核，故此处是申请而非直删） -->
+      <Modal
+        :open="retireTarget !== null"
+        title="申请下架产品"
+        @cancel="closeRetire"
+      >
+        <!--
+          footer 用显式插槽渲染：ant-design-vue 4.2.6 的 Modal 插槽名是 #footer /
+          #okText / #cancelText（读包内实现确认，见 es/modal/Modal.js 只取这三个），
+          不存在 #ok / #cancel。显式渲染另有一个好处：能挂稳定的 data-testid。
+        -->
+        <template #footer>
+          <Button data-testid="catalog-retire-cancel" @click="closeRetire">取消</Button>
+          <Button
+            type="primary"
+            :loading="retireSubmitting"
+            data-testid="catalog-retire-submit"
+            @click="submitRetire"
+          >
+            提交申请
+          </Button>
+        </template>
+        <p v-if="retireTarget" data-testid="catalog-retire-modal">
+          产品：<strong>{{ retireTarget.productName }}</strong>（{{ retireTarget.productCode }}）
+        </p>
+        <p class="text-muted-foreground text-xs">
+          下架需经审核通过后才会真正软删（G-02：任何人无直接删除权限）。请填写原因，审核与审计都需要。
+        </p>
+        <Input.TextArea
+          v-model:value="retireReason"
+          :rows="3"
+          placeholder="请填写下架原因"
+          data-testid="catalog-retire-reason"
+        />
+      </Modal>
     </template>
 
     <!-- 非超管（原型 LockKey Empty） -->
@@ -365,10 +532,11 @@ onMounted(async () => {
 
 .ipd-cat-row {
   display: grid;
-  grid-template-columns: 1.3fr 1fr 0.6fr 0.8fr 0.6fr 0.8fr;
+  /* 末列为操作列（2026-10-08 新增：增删改入口下沉到本页） */
+  grid-template-columns: 1.3fr 1fr 0.6fr 0.8fr 0.6fr 0.8fr 1.5fr;
   gap: 14px;
   align-items: center;
-  min-width: 860px;
+  min-width: 1080px;
   min-height: 64px;
   padding: 10px 20px;
   font-size: 12px;
@@ -381,6 +549,13 @@ onMounted(async () => {
   font-weight: 700;
   color: var(--ipd-muted, #697388);
   background: #f7f8fa;
+}
+
+/* 操作列（2026-10-08 新增） */
+.ipd-cat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .ipd-cat-row > span:first-child {
