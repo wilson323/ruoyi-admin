@@ -72,6 +72,24 @@ export interface AiSuggestView {
 /** 与后端 AiSuggestionService.SUGGEST_TIMEOUT_MS 对齐：模型生成允许等 60 秒。 */
 export const AI_SUGGEST_TIMEOUT_MS = 60_000;
 
+/**
+ * 长文场景超时预算：与后端 AiSuggestionService.SUGGEST_TIMEOUT_LONG_FORM_MS 对齐。
+ * 叙事稿 / 多人贡献摘要放宽 maxTokens 到 4000 后生成更慢，60 秒会被腰斩成超时
+ * （2026-10-08 生产实证 timeline.storyline）。上限非实际等待，正常生成完即返回。
+ */
+export const AI_SUGGEST_TIMEOUT_LONG_FORM_MS = 180_000;
+
+/** 长文场景（与后端 timeoutMsFor 同口径，改动须双端同步）：叙事 / 多人贡献走放宽超时。 */
+const LONG_FORM_SCENES: ReadonlySet<AiSuggestScene> = new Set([
+  'kpi.contributor-summary',
+  'timeline.storyline',
+]);
+
+/** 按场景取超时预算，镜像后端 AiSuggestionService.timeoutMsFor。 */
+export function aiSuggestTimeoutMs(scene: AiSuggestScene): number {
+  return LONG_FORM_SCENES.has(scene) ? AI_SUGGEST_TIMEOUT_LONG_FORM_MS : AI_SUGGEST_TIMEOUT_MS;
+}
+
 /** POST /ai/suggest：按场景拉业务上下文生成 markdown 建议。 */
 export function aiSuggest(
   scene: AiSuggestScene,
@@ -82,5 +100,5 @@ export function aiSuggest(
     projectId: input.projectId,
     scene,
     userPrompt: input.userPrompt,
-  }, undefined, { timeoutMs: AI_SUGGEST_TIMEOUT_MS });
+  }, undefined, { timeoutMs: aiSuggestTimeoutMs(scene) });
 }

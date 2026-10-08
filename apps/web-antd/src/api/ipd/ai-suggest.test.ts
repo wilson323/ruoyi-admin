@@ -11,7 +11,7 @@
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AI_SUGGEST_TIMEOUT_MS, type AiSuggestScene, aiSuggest } from './ai-suggest';
+import { AI_SUGGEST_TIMEOUT_LONG_FORM_MS, AI_SUGGEST_TIMEOUT_MS, type AiSuggestScene, aiSuggest, aiSuggestTimeoutMs } from './ai-suggest';
 
 const envelope = (data: unknown): Response =>
   new Response(
@@ -109,6 +109,40 @@ describe('aiSuggest（R227-C1 AI-FUSION L2）', () => {
       await vi.advanceTimersByTimeAsync(15_000);
       expect(aborted).toBe(false);
       await vi.advanceTimersByTimeAsync(45_000);
+      expect(aborted).toBe(true);
+      await expect(settled).resolves.toMatchObject({ kind: 'timeout', message: '请求超时，请稍后重试' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('长文场景超时放宽到 180 秒，镜像后端 timeoutMsFor（2026-10-08 TIMEOUT 修复）', () => {
+    expect(AI_SUGGEST_TIMEOUT_LONG_FORM_MS).toBe(180_000);
+    expect(aiSuggestTimeoutMs('timeline.storyline')).toBe(180_000);
+    expect(aiSuggestTimeoutMs('kpi.contributor-summary')).toBe(180_000);
+    expect(aiSuggestTimeoutMs('project.create.suggest')).toBe(60_000);
+    expect(aiSuggestTimeoutMs('gate.precheck-checklist')).toBe(AI_SUGGEST_TIMEOUT_MS);
+  });
+
+  it('叙事场景等模型 180 秒：60 秒不中止，180 秒才中止（timeline.storyline）', async () => {
+    vi.useFakeTimers();
+    let aborted = false;
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => {
+        aborted = true;
+        reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }));
+      });
+    })));
+    try {
+      const settled = aiSuggest('timeline.storyline', { projectId: '9140001' }).then(
+        () => { throw new Error('should have rejected'); },
+        (error: unknown) => error,
+      );
+      // 60 秒（旧上限）不得中止：否则长叙事仍被腰斩成 TIMEOUT
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(aborted).toBe(false);
+      // 再推进 120 秒到 180 秒上限才中止
+      await vi.advanceTimersByTimeAsync(120_000);
       expect(aborted).toBe(true);
       await expect(settled).resolves.toMatchObject({ kind: 'timeout', message: '请求超时，请稍后重试' });
     } finally {
