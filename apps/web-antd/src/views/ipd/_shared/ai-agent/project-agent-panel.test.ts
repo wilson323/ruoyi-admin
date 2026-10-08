@@ -151,7 +151,7 @@ describe('ProjectAgentPanel', () => {
       expect(wrapper.text()).toContain('原文报告');
       await wrapper.find('[data-testid="agent-artifact-download"]').trigger('click');
       await flushPromises();
-      expect(downloadAgentRunArtifact).toHaveBeenCalledWith('run-1', '9007199254740993');
+      expect(downloadAgentRunArtifact).toHaveBeenCalledWith('run-1', '9007199254740993', undefined);
       expect(clicked).toHaveBeenCalledTimes(1);
       await vi.advanceTimersByTimeAsync(0);
       expect(revokeUrl).toHaveBeenCalledWith('blob:download');
@@ -160,6 +160,43 @@ describe('ProjectAgentPanel', () => {
       await flushPromises();
       expect(wrapper.find('[data-testid="agent-artifact-downloads"] [role="alert"]').text()).toBe('无权访问该项目');
       expect(clicked).toHaveBeenCalledTimes(1);
+    } finally { wrapper.unmount(); clicked.mockRestore(); vi.unstubAllGlobals(); }
+  });
+
+  it('document 型产物提供预览与 Word/PDF 双格式下载（2026-10-08 owner 指令）', async () => {
+    vi.mocked(listProjectAgentRuns).mockResolvedValue([historyRow('run-1')]);
+    vi.mocked(fetchAgentRun).mockResolvedValue(detailOf('SUCCEEDED'));
+    vi.mocked(fetchAgentRunEvents).mockResolvedValue({ events: [
+      { seq: 2, type: 'ARTIFACT', createdAt: 'x', payload: { artifactId: 'doc', versionId: 'doc-version', title: '市场需求分析.md', attachmentOrigin: 'IPD_NATIVE_DELIVERY_V1', outputKind: 'DOCUMENT' } },
+    ], nextSeq: 3, terminal: true });
+    vi.mocked(downloadAgentRunArtifact).mockResolvedValue(new Blob(['%PDF-1.4'], { type: 'application/pdf' }));
+    const createUrl = vi.fn().mockReturnValue('blob:pdf');
+    const revokeUrl = vi.fn();
+    vi.stubGlobal('URL', class extends URL { static override createObjectURL = createUrl; static override revokeObjectURL = revokeUrl; });
+    const downloads: string[] = [];
+    const clicked = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push(this.getAttribute('download') ?? '');
+    });
+    const wrapper = await mountPanel();
+    try {
+      await wrapper.find('.run-history button').trigger('click');
+      await flushPromises();
+      // 文本产物不再出现原样下载按钮，而是预览/Word/PDF 三入口。
+      expect(wrapper.findAll('[data-testid="agent-artifact-download"]')).toHaveLength(0);
+      expect(wrapper.find('[data-testid="agent-artifact-preview"]')).toBeTruthy();
+      await wrapper.find('[data-testid="agent-artifact-download-docx"]').trigger('click');
+      await flushPromises();
+      expect(downloadAgentRunArtifact).toHaveBeenCalledWith('run-1', 'doc-version', 'docx');
+      await wrapper.find('[data-testid="agent-artifact-download-pdf"]').trigger('click');
+      await flushPromises();
+      expect(downloadAgentRunArtifact).toHaveBeenCalledWith('run-1', 'doc-version', 'pdf');
+      // 落盘名剥掉标题自带的 .md，不得出现 .md.docx / .md.pdf 双扩展名。
+      expect(downloads).toEqual(['市场需求分析.docx', '市场需求分析.pdf']);
+      // 预览：同源 PDF 拉取后进 iframe 完整渲染。
+      await wrapper.find('[data-testid="agent-artifact-preview"]').trigger('click');
+      await flushPromises();
+      const frame = document.body.querySelector('[data-testid="ipd-content-pdf"]') as HTMLIFrameElement | null;
+      expect(frame?.getAttribute('src')).toBe('blob:pdf');
     } finally { wrapper.unmount(); clicked.mockRestore(); vi.unstubAllGlobals(); }
   });
 

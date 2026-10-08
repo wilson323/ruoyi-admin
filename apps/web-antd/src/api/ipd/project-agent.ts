@@ -370,9 +370,15 @@ export function applyAgentRunArtifact(
   );
 }
 
-/** 只下载服务器 ARTIFACT 事件对应的版本附件，字符串 ID 原样编码。 */
-export function downloadAgentRunArtifact(runId: string, versionId: string): Promise<Blob> {
-  return ipdDownload(`/agent-runs/${seg(runId)}/artifacts/versions/${seg(versionId)}/download`);
+/** 只下载服务器 ARTIFACT 事件对应的版本附件，字符串 ID 原样编码；
+ *  format 传 docx/pdf 时由服务端动态转换文本产物（2026-10-08 owner 指令）。 */
+export function downloadAgentRunArtifact(
+  runId: string,
+  versionId: string,
+  format?: 'docx' | 'pdf',
+): Promise<Blob> {
+  const suffix = format ? `?format=${format}` : '';
+  return ipdDownload(`/agent-runs/${seg(runId)}/artifacts/versions/${seg(versionId)}/download${suffix}`);
 }
 
 /**

@@ -6,7 +6,7 @@
  * 保证本模块可独立单测。
  */
 
-export type IpdContentViewKind = 'text' | 'html' | 'image' | 'binary';
+export type IpdContentViewKind = 'text' | 'html' | 'image' | 'pdf' | 'binary';
 
 export interface IpdContentViewDownload {
   /** 拉取附件二进制（调用方包好鉴权，如 () => ipdDownload(path)）。 */
@@ -49,6 +49,7 @@ export function resolveContentViewKind(payload: IpdContentViewPayload): IpdConte
   if (typeof payload.text === 'string' && payload.text.trim() !== '') return 'text';
   if (typeof payload.html === 'string' && payload.html.trim() !== '') return 'html';
   if (typeof payload.imageUrl === 'string' && payload.imageUrl !== '') return 'image';
+  if (payload.download && fileSuffix(payload.download.filename) === 'pdf') return 'pdf';
   if (payload.download && IMAGE_SUFFIXES.has(fileSuffix(payload.download.filename))) return 'image';
   if (payload.download) return 'binary';
   return null;
@@ -64,6 +65,24 @@ export function isTextualBlob(blob: Blob, filename: string): boolean {
 export function isImageBlob(blob: Blob, filename: string): boolean {
   if (blob.type.startsWith('image/')) return blob.type !== 'image/svg+xml';
   return IMAGE_SUFFIXES.has(fileSuffix(filename));
+}
+
+/** blob 是否为 PDF（MIME 或后缀）；浏览器 iframe 原生渲染，完整预览。 */
+export function isPdfBlob(blob: Blob, filename: string): boolean {
+  return blob.type === 'application/pdf' || fileSuffix(filename) === 'pdf';
+}
+
+/**
+ * 按目标扩展名落盘（2026-10-08）：产物标题自带来源扩展名（`C02_竞品分析_缺项版.md`），
+ * 直接拼后缀会得到 `.md.docx` / `.md.pdf` 双扩展名。这里剥掉来源扩展名再接目标后缀；
+ * 没有来源扩展名（`方案`）时只追加；无目标后缀（原始格式下载）时原样返回。
+ */
+export function withTargetExtension(name: string, ext: string): string {
+  const base = name.trim() || '附件';
+  if (!ext) return base;
+  const dot = base.lastIndexOf('.');
+  const stem = dot > 0 && dot < base.length - 1 ? base.slice(0, dot) : base;
+  return `${stem}${ext}`;
 }
 
 /** 收编自 project-agent-panel.vue 的落盘下载（createObjectURL + 临时 anchor）。 */

@@ -156,7 +156,12 @@ export async function requestIpd(
       signal: abort.signal,
     });
     const contentType = response.headers.get('content-type') ?? '';
-    if (options.responseType === 'blob' && response.ok && contentType.includes('application/octet-stream')) {
+    // 2026-10-08 产物 Word/PDF 预览与下载修复：判据不能只认 octet-stream。
+    // 根因（已取证）：ProjectAgentController 下载口带 ?format= 时按 ArtifactDocumentConverter
+    // 返回的真实 MIME 透传（application/pdf、docx 官方类型），不含 octet-stream，
+    // 原判据因此不命中并落到下方「服务暂时不可用」——网络 200 但前端拿不到 Blob。
+    // OSS/MinIO 直链下载同样返回真实 MIME，故按「成功且非 JSON」放行；JSON 保护见下方 L228。
+    if (options.responseType === 'blob' && response.ok && !contentType.includes('application/json')) {
       return await response.blob();
     }
     if (!contentType.includes('application/json')) {

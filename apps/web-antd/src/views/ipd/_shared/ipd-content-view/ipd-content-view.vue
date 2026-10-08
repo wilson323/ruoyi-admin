@@ -12,6 +12,7 @@ import { ipdErrorText } from '../ipd-error-text';
 import {
   downloadBlob,
   isImageBlob,
+  isPdfBlob,
   isTextualBlob,
   resolveContentViewKind,
   type IpdContentViewPayload,
@@ -26,8 +27,9 @@ const emit = defineEmits<{ 'update:open': [value: boolean] }>();
 
 const loading = ref(false);
 const loadError = ref('');
-/** download 拉回后的实际展示分流：objectURL 图片 / 读出的文本。 */
+/** download 拉回后的实际展示分流：objectURL 图片/PDF / 读出的文本。 */
 const fetchedImage = ref('');
+const fetchedPdf = ref('');
 const fetchedText = ref('');
 let fetchedObjectUrl = '';
 
@@ -42,6 +44,7 @@ function resetFetched(): void {
   if (fetchedObjectUrl) URL.revokeObjectURL(fetchedObjectUrl);
   fetchedObjectUrl = '';
   fetchedImage.value = '';
+  fetchedPdf.value = '';
   fetchedText.value = '';
   loadError.value = '';
   loading.value = false;
@@ -56,7 +59,10 @@ async function loadAttachment(): Promise<void> {
   try {
     const blob = await download.fetch();
     if (props.payload !== payload) return; // 弹窗已切到别的内容，丢弃本次结果
-    if (isImageBlob(blob, download.filename)) {
+    if (isPdfBlob(blob, download.filename)) {
+      fetchedObjectUrl = URL.createObjectURL(blob);
+      fetchedPdf.value = fetchedObjectUrl;
+    } else if (isImageBlob(blob, download.filename)) {
       fetchedObjectUrl = URL.createObjectURL(blob);
       fetchedImage.value = fetchedObjectUrl;
     } else if (isTextualBlob(blob, download.filename)) {
@@ -78,7 +84,8 @@ watch(
     resetFetched();
     if (!open) return;
     // 只有依赖附件 blob 的形态才需要拉取（imageUrl 直连的图片不必）。
-    if (kind.value === 'binary' || (kind.value === 'image' && !props.payload?.imageUrl)) {
+    if (kind.value === 'binary' || kind.value === 'pdf'
+      || (kind.value === 'image' && !props.payload?.imageUrl)) {
       void loadAttachment();
     }
   },
@@ -137,6 +144,17 @@ function close(): void {
           <Image :src="fetchedImage || payload.imageUrl" />
         </div>
         <p v-else class="content-view-state">暂无内容</p>
+      </template>
+      <template v-else-if="kind === 'pdf'">
+        <!-- PDF：objectURL 进 iframe，浏览器原生 viewer 完整渲染（含分页/缩放/搜索）。 -->
+        <iframe
+          v-if="fetchedPdf"
+          class="content-view-frame"
+          :src="fetchedPdf"
+          title="PDF 预览"
+          data-testid="ipd-content-pdf"
+        />
+        <p v-else class="content-view-state">PDF 加载中…</p>
       </template>
       <template v-else>
         <pre v-if="fetchedText" class="content-view-text" data-testid="ipd-content-fetched-text">{{ fetchedText }}</pre>

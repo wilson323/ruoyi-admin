@@ -39,7 +39,9 @@ import { interruptTextResponse } from './agui-interrupt';
 import RunTimeline from './run-timeline.vue';
 import { agentRunFailureText } from './timeline-model';
 import { createIdempotencyKey, useProjectAgentRun } from './use-project-agent-run';
-import { downloadBlob } from '../ipd-content-view/ipd-content-view';
+import { downloadBlob, withTargetExtension } from '../ipd-content-view/ipd-content-view';
+import IpdContentView from '../ipd-content-view/ipd-content-view.vue';
+import type { IpdContentViewPayload } from '../ipd-content-view/ipd-content-view';
 import { useIpdAiWorkspace } from '../ai-workspace/use-ai-workspace';
 import { ipdErrorText } from '../ipd-error-text';
 
@@ -256,28 +258,35 @@ const canSubmit = computed(
 const canCancel = computed(() => active.value && status.value !== null && isAgentRunCancellable(status.value));
 const statusMeta = computed(() => (status.value ? agentRunStatusMeta(status.value) : null));
 const artifactEvents = computed(() => events.value.filter((event) => event.type === 'ARTIFACT'));
-/** 下载资格只来自服务器已交付事件；版本 ID 不做数值转换。 */
+/** 下载资格只来自服务器已交付事件；版本 ID 不做数值转换。
+ * isDocument 判定来自服务器 outputKind=DOCUMENT（仅文本产物），用于展示 Word/PDF 双格式与预览入口。 */
 const deliveredAttachments = computed(() => artifactEvents.value.flatMap((event) => {
   const payload = event.payload;
   if (!payload || typeof payload !== 'object') return [];
   const data = payload as Record<string, unknown>;
   if (data.attachmentOrigin !== 'IPD_NATIVE_DELIVERY_V1' ||
       typeof data.versionId !== 'string' || !data.versionId.trim()) return [];
-  return [{ versionId: data.versionId, title: typeof data.title === 'string' ? data.title : '产物附件' }];
+  return [{
+    versionId: data.versionId,
+    title: typeof data.title === 'string' ? data.title : '产物附件',
+    isDocument: data.outputKind === 'DOCUMENT',
+  }];
 }));
 const downloadingVersion = ref('');
 const downloadError = ref('');
-async function downloadAttachment(versionId: string, title: string): Promise<void> {
+async function downloadAttachment(versionId: string, title: string, format?: 'docx' | 'pdf'): Promise<void> {
   const owningRun = runId.value;
   const owningProject = props.projectId;
   if (!owningRun || downloadingVersion.value) return;
-  downloadingVersion.value = versionId;
+  downloadingVersion.value = versionId + (format ? `:${format}` : '');
   downloadError.value = '';
   try {
-    const blob = await downloadAgentRunArtifact(owningRun, versionId);
+    const blob = await downloadAgentRunArtifact(owningRun, versionId, format);
     if (runId.value !== owningRun || props.projectId !== owningProject) return;
-    // 文档预览 G5（2026-10-08）：手搽 createObjectURL 锚点收编统一 downloadBlob
-    downloadBlob(blob, title || '产物附件');
+    // 手搓 createObjectURL 锚点收编统一 downloadBlob（2026-10-08 G5）；
+    // Word/PDF（2026-10-08 owner 指令）：剥掉标题自带的来源扩展名，按目标扩展名落盘。
+    const ext = format === 'docx' ? '.docx' : format === 'pdf' ? '.pdf' : '';
+    downloadBlob(blob, withTargetExtension(title, ext));
   } catch (error) {
     if (runId.value === owningRun && props.projectId === owningProject) {
       downloadError.value = ipdErrorText(error, { fallback: '附件下载失败，请重试' });
@@ -285,6 +294,25 @@ async function downloadAttachment(versionId: string, title: string): Promise<voi
   } finally {
     downloadingVersion.value = '';
   }
+}
+
+/** 产物完整预览（2026-10-08 owner 指令）：服务端转 PDF，前端 iframe 原生渲染全文。 */
+const previewOpen = ref(false);
+const previewPayload = ref<IpdContentViewPayload | null>(null);
+async function previewAttachment(versionId: string, title: string): Promise<void> {
+  const owningRun = runId.value;
+  if (!owningRun) return;
+  downloadError.value = '';
+  const base = title || '产物文档';
+  previewPayload.value = {
+    kind: 'pdf',
+    title: base,
+    download: {
+      fetch: () => downloadAgentRunArtifact(owningRun, versionId, 'pdf'),
+      filename: withTargetExtension(base, '.pdf'),
+    },
+  };
+  previewOpen.value = true;
 }
 watch([runId, () => props.projectId], () => { downloadError.value = ''; });
 
@@ -556,15 +584,42 @@ function onMessageKeydown(event: KeyboardEvent): void {
       </ul>
     </section>
     <div v-if="deliveredAttachments.length" data-testid="agent-artifact-downloads">
-      <Button v-for="attachment in deliveredAttachments" :key="attachment.versionId"
-        :loading="downloadingVersion === attachment.versionId"
-        :disabled="downloadingVersion !== ''"
-        data-testid="agent-artifact-download"
-        @click="downloadAttachment(attachment.versionId, attachment.title)">
-        下载 {{ attachment.title }}
-      </Button>
+      <div v-for="attachment in deliveredAttachments" :key="attachment.versionId" class="agent-artifact-row">
+        <span class="agent-artifact-title" :title="attachment.title">{{ attachment.title }}</span>
+        <template v-if="attachment.isDocument">
+          <!-- Word/PDF 双格式 + 完整预览（2026-10-08 owner 指令）；文本产物专属，binary 仍原样下载。 -->
+          <Button size="small"
+            data-testid="agent-artifact-preview"
+            @click="previewAttachment(attachment.versionId, attachment.title)">
+            预览
+          </Button>
+          <Button size="small"
+            :loading="downloadingVersion === `${attachment.versionId}:docx`"
+            :disabled="downloadingVersion !== ''"
+            data-testid="agent-artifact-download-docx"
+            @click="downloadAttachment(attachment.versionId, attachment.title, 'docx')">
+            Word
+          </Button>
+          <Button size="small"
+            :loading="downloadingVersion === `${attachment.versionId}:pdf`"
+            :disabled="downloadingVersion !== ''"
+            data-testid="agent-artifact-download-pdf"
+            @click="downloadAttachment(attachment.versionId, attachment.title, 'pdf')">
+            PDF
+          </Button>
+        </template>
+        <Button v-else size="small"
+          :loading="downloadingVersion === attachment.versionId"
+          :disabled="downloadingVersion !== ''"
+          data-testid="agent-artifact-download"
+          @click="downloadAttachment(attachment.versionId, attachment.title)">
+          下载
+        </Button>
+      </div>
       <p v-if="downloadError" role="alert">{{ downloadError }}</p>
     </div>
+    <!-- 产物完整预览弹窗：PDF 原生渲染（含 Word 同源转档）。 -->
+    <IpdContentView v-model:open="previewOpen" :payload="previewPayload" />
     <section v-if="readoutReady" class="run-artifacts" data-testid="agent-run-artifacts">
       <h4>AI 产物</h4>
       <p v-if="artifactEvents.length === 0" data-testid="agent-run-artifacts-empty">本次运行还没有可定档产物。</p>
@@ -814,5 +869,18 @@ function onMessageKeydown(event: KeyboardEvent): void {
   margin: 0;
   font-size: 12px;
   color: var(--ipd-amber);
+}
+.agent-artifact-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-artifact-title {
+  overflow: hidden;
+  min-width: 0;
+  max-width: 220px;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

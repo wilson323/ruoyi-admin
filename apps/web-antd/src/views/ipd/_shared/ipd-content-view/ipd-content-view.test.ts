@@ -15,6 +15,7 @@ import {
   isImageBlob,
   isTextualBlob,
   resolveContentViewKind,
+  withTargetExtension,
   type IpdContentViewPayload,
 } from './ipd-content-view';
 import { sanitizeHtml } from './sanitize';
@@ -103,6 +104,27 @@ describe('downloadBlob', () => {
   });
 });
 
+describe('withTargetExtension（2026-10-08 产物 Word/PDF 落盘名）', () => {
+  it('剥掉标题自带的来源扩展名，避免 .md.docx / .md.pdf 双扩展名', () => {
+    expect(withTargetExtension('C02_竞品分析_缺项版.md', '.docx')).toBe('C02_竞品分析_缺项版.docx');
+    expect(withTargetExtension('C02_竞品分析_缺项版.md', '.pdf')).toBe('C02_竞品分析_缺项版.pdf');
+  });
+  it('无来源扩展名时只追加', () => {
+    expect(withTargetExtension('方案', '.pdf')).toBe('方案.pdf');
+    // 前导点不算扩展名（dot > 0 才剥），与 fileSuffix 边界对齐
+    expect(withTargetExtension('.隐藏文件', '.pdf')).toBe('.隐藏文件.pdf');
+    // 末尾点不算扩展名（dot < length-1 才剥），保留原名不误伤
+    expect(withTargetExtension('方案.', '.pdf')).toBe('方案..pdf');
+  });
+  it('无目标后缀（原始格式下载）时原样返回', () => {
+    expect(withTargetExtension('C02_竞品分析_缺项版.md', '')).toBe('C02_竞品分析_缺项版.md');
+  });
+  it('空名回落到附件', () => {
+    expect(withTargetExtension('   ', '.pdf')).toBe('附件.pdf');
+    expect(withTargetExtension('', '.docx')).toBe('附件.docx');
+  });
+});
+
 function mountView(payload: IpdContentViewPayload | null, open = true) {
   return mount(IpdContentView, {
     props: { open, payload },
@@ -137,9 +159,25 @@ describe('IpdContentView 组件', () => {
     wrapper.unmount();
   });
 
+  it('pdf：拉回后 iframe 原生预览（2026-10-08 Word/PDF 双格式指令）', async () => {
+    const fetcher = vi.fn(async () => new Blob(['%PDF-1.4'], { type: 'application/pdf' }));
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:pdf');
+    try {
+      const wrapper = mountView({ kind: 'auto', title: '交付物', download: { fetch: fetcher, filename: '交付物.pdf' } });
+      await flushPromises();
+      const frame = document.body.querySelector('[data-testid="ipd-content-pdf"]') as HTMLIFrameElement | null;
+      expect(frame).toBeTruthy();
+      expect(frame?.getAttribute('src')).toBe('blob:pdf');
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      wrapper.unmount();
+    } finally {
+      createObjectURL.mockRestore();
+    }
+  });
+
   it('binary 兜底：提示不支持在线查看并提供下载', async () => {
-    const fetcher = vi.fn(async () => new Blob(['%PDF'], { type: 'application/pdf' }));
-    const wrapper = mountView({ kind: 'auto', title: '交付物', download: { fetch: fetcher, filename: '交付物.pdf' } });
+    const fetcher = vi.fn(async () => new Blob([new Uint8Array([1])], { type: 'application/octet-stream' }));
+    const wrapper = mountView({ kind: 'auto', title: '交付物', download: { fetch: fetcher, filename: '交付物.zip' } });
     await flushPromises();
     const modal = document.body.querySelector('.ant-modal')!;
     expect(modal.textContent).toContain('该格式不支持在线查看');
