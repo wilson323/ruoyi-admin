@@ -205,13 +205,9 @@ function backMenuToVbenMenu(
        * 其他自定义组件 如system/user/index 拼接/
        */
       default: {
-        // sys_menu 2099010200000000019 的 component 仍是旧文件 ipd/kpi/functional/index。
-        // /ipd/performance 的 path 匹配先命中 ipd.ts 的 redirect，用户看到的是 kpi/index.vue。
-        // 这里把菜单组件改到同一页，避免动态路由再去打开已删除的文件。
-        const componentPath = menu.component === 'ipd/kpi/functional/index'
-          ? 'ipd/kpi/index'
-          : menu.component;
-        vbenRoute.component = `/${componentPath}`;
+        // 2026-10-08：菜单数据已修正（menu 2099010200000000019 component→ipd/kpi/index），
+        // 旧路径 ipd/kpi/functional/index 的重映射补丁随数据对齐移除。
+        vbenRoute.component = `/${menu.component}`;
         break;
       }
     }
