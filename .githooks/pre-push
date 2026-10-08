@@ -1,0 +1,19 @@
+#!/bin/sh
+# 前端 ruoyi-ipd-web 的 pre-push 入口（全仓唯一，不新建第二个钩子）。
+#
+# 职责：调用两仓唯一守卫 scripts/git/pre-push-guard.sh
+#      （owner 账号 + 目标 ref 双白名单；两仓必须逐字节相同，shasum -a 256 校验）。
+#
+# 接线：core.hooksPath=.githooks
+#       同目录下的 prepare-commit-msg 是原 .git/hooks/prepare-commit-msg 的逐字节副本，
+#       设 hooksPath 会让 .git/hooks/ 整体失效，故必须随迁，否则 lefthook 静默失效。
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+GUARD="$REPO_ROOT/scripts/git/pre-push-guard.sh"
+
+if [ ! -x "$GUARD" ]; then
+    echo "BLOCKED: 守卫脚本不存在或不可执行：$GUARD" >&2
+    exit 1
+fi
+
+exec "$GUARD" "$@"
