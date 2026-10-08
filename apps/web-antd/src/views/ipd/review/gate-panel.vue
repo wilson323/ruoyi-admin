@@ -56,8 +56,7 @@ import {
   type GateElementResult,
   type IpdGateElementView,
 } from '../../../api/ipd/gate-element-result';
-import { uploadGateMaterial } from '../../../api/ipd/gate-material';
-import { ipdDownload } from '../../../api/ipd/http';
+import { downloadGateMaterial, uploadGateMaterial } from '../../../api/ipd/gate-material';
 import type { IpdContentViewPayload } from '../_shared/ipd-content-view/ipd-content-view';
 import IpdContentView from '../_shared/ipd-content-view/ipd-content-view.vue';
 import {
@@ -408,7 +407,7 @@ function openMaterialView(kind: 'materials' | 'minutes'): void {
     title: fileName,
     download: {
       filename: fileName,
-      fetch: () => ipdDownload(`/gates/${encodeURIComponent(gateId)}/materials/download?ossId=${encodeURIComponent(ossId)}`),
+      fetch: () => downloadGateMaterial(gateId, ossId),
     },
   };
   materialViewOpen.value = true;
