@@ -1,5 +1,5 @@
 {
-  "generated_from": "ruoyi-ai@b1fd9af9",
+  "generated_from": "ruoyi-ai@cf3acebb",
   "note": "由 gen-ipd-backend-contract.py 从后端 Controller 注解生成；后端接口变更后须重新生成并提交",
   "endpoints": [
     {
@@ -89,6 +89,10 @@
     {
       "method": "GET",
       "path": "/api/v1/ai-documents/{id}/history"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ai-documents/{id}/import"
     },
     {
       "method": "POST",
@@ -407,6 +411,10 @@
       "path": "/api/v1/deletion-requests/{id}/withdraw"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/deliverables"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/deliverables/upload"
     },
@@ -421,6 +429,14 @@
     {
       "method": "GET",
       "path": "/api/v1/demands/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/demands/{id}/attachments"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/demands/{id}/attachments/{key}/download"
     },
     {
       "method": "POST",
@@ -521,6 +537,10 @@
     {
       "method": "GET",
       "path": "/api/v1/gates/{gateId}/materials"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/gates/{gateId}/materials/download"
     },
     {
       "method": "POST",
@@ -641,6 +661,10 @@
     {
       "method": "GET",
       "path": "/api/v1/ipd/product-lines/{lineId}/demands"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ipd/product-lines/{lineId}/demands/{demandId}/triage-retry"
     },
     {
       "method": "GET",
@@ -959,6 +983,22 @@
       "path": "/api/v1/products/{id}/bind-project"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/products/{id}/retirement"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/products/{id}/retirement"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/products/{id}/retirement/decision"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/products/{id}/retirement/policy"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/products/{id}/status"
     },
@@ -1125,6 +1165,10 @@
     {
       "method": "GET",
       "path": "/api/v1/public/demands/{code}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/public/demands/{code}/attachments"
     },
     {
       "method": "POST",
