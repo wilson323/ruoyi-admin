@@ -147,6 +147,14 @@ def validator_hash(root=None):
               if (backend / ".harness" / name).is_file()]
     files += [backend / name for name in ("scripts/check-best-practices-coverage.sh",
               ".github/workflows/r25-root-cause-lint.yml") if (backend / name).is_file()]
+    files += [backend / name for name in (
+        "scripts/check-engineering-evidence.sh", "scripts/lib/gate-wiring-detect.py",
+        "scripts/lib/gate-wiring-detect-test.py", ".claude/hooks/evolver-session-end.js",
+        ".claude/hooks/evolver-session-end.test.cjs", ".claude/hooks/_memoryFiltering.js",
+        ".claude/hooks/evolver-session-start.js", "scripts/test-vibe-kanban-manage.py",
+        "docs/ipd-系统说明/vibe-kanban/manage.py", "scripts/check-gate-wiring.sh",
+        "scripts/gate-manual-registry.txt", "scripts/ci/check-no-async-configurer.sh",
+        ".github/workflows/gate-wiring-meta.yml") if (backend / name).is_file()]
     return digest(json.dumps([[str(p), digest(p.read_bytes())] for p in files]).encode())
 
 
@@ -259,7 +267,7 @@ def profiles(root, profile, run_dir):
               ("typecheck-regression", ["node", "--test", str(here / "typecheck-error-count.test.mjs")], 120),
               ("context", [sys.executable, str(here / "check-ipd-plan-context.py"), "--front", str(root if project(root) == "ipd-frontend" else here.parent), "--back", str(root if project(root) == "ipd-backend" else Path("/Users/mac/Documents/ruoyi-ai"))], 60)]
     if profile == "governance":
-        return common
+        return common + [("engineering-evidence", ["bash", str(backend_root / "scripts/check-engineering-evidence.sh")], 120)]
     if profile != "frontend" or kind != "ipd-frontend":
         raise HarnessError("Unsupported profile for this repository")
     if not (root / "node_modules").is_dir():
@@ -327,10 +335,10 @@ def verify(root, profile, task):
             log_text = Path(step["log"]).read_text()
             if name == "harness-regression" and step["reason"] is None:
                 count = re.search(r"Ran (\d+) tests?", log_text)
-                if not count or int(count[1]) < 47:
+                if not count or int(count[1]) < 58:
                     step["reason"] = "EMPTY_EVIDENCE"
                 ids = {int(x) for x in re.findall(r"test_C(\d\d)_", log_text)}
-                if not set(range(1, 48)).issubset(ids):
+                if not set(range(1, 59)).issubset(ids):
                     step["reason"] = "EMPTY_EVIDENCE"
                 step["case_ids"] = sorted(ids)
             if name == "typecheck-regression" and step["reason"] is None:
@@ -389,13 +397,19 @@ def verify(root, profile, task):
     return receipt
 
 
-def checked_receipt(root, path, require_pass=True, fresh=True):
+def checked_receipt(root, path, require_pass=True, fresh=True, *, expected_task=None, expected_profile=None):
     path = path.resolve(strict=True)
     if not path.is_relative_to(local(root, ".harness/runs").resolve()) or path.name != "receipt.json":
         raise HarnessError("Receipt must be an existing local harness record")
     r = json.loads(path.read_text())
     if r.get("root") != str(root) or r.get("schema") != 1:
         raise HarnessError("Receipt belongs to a different root or schema")
+    # Completion callers bind the current task/profile explicitly. Internal
+    # historical learning may omit these while retaining all existing checks.
+    if expected_task is not None and r.get("task") != expected_task:
+        raise HarnessError("Receipt belongs to a different task; verify the current task")
+    if expected_profile is not None and r.get("profile") != expected_profile:
+        raise HarnessError("Receipt belongs to a different verification profile; run the required checks")
     if r.get("harness_version") != VERSION or not r.get("validator_hash") or not r.get("steps"):
         raise HarnessError("Receipt is incomplete or belongs to another verifier version")
     for phase in ("before", "after"):
@@ -408,9 +422,13 @@ def checked_receipt(root, path, require_pass=True, fresh=True):
         if (r.get("status") != "PASSED" or r.get("before") != r.get("after")
                 or (fresh and (r.get("after") != snapshot(root) or r["validator_hash"] != validator_hash(root)))):
             raise HarnessError("Receipt failed or inputs have changed; rerun validation")
-        expected = [x[0] for x in profiles(root, r["profile"], path.parent)]
-        if [s.get("id") for s in r.get("steps", [])] != expected:
-            raise HarnessError("Required checks missing or reordered")
+        # Historical records retain their own logs/manifest checks below. An
+        # evolved verifier's required steps cannot describe that old execution;
+        # intake marks it stale and never enables its learned checks.
+        if fresh or r["validator_hash"] == validator_hash(root):
+            expected = [x[0] for x in profiles(root, r["profile"], path.parent)]
+            if [s.get("id") for s in r.get("steps", [])] != expected:
+                raise HarnessError("Required checks missing or reordered")
     elif (r.get("status") == "FAILED" and not any(s.get("reason") for s in r["steps"])) or (
             r.get("status") == "STALE_INPUT" and r.get("before") == r.get("after")):
         raise HarnessError("Failed receipt has no observed failure")
@@ -517,6 +535,8 @@ def main():
     run.add_argument("--task", required=True)
     check = sub.add_parser("check")
     check.add_argument("--receipt", type=Path, required=True)
+    check.add_argument("--task", help="Current task for completion evidence binding")
+    check.add_argument("--profile", choices=("governance", "frontend"), help="Required verification profile")
     evolution = sub.add_parser("learn")
     evolution.add_argument("--failure", type=Path, required=True)
     evolution.add_argument("--verified", type=Path, required=True)
@@ -527,7 +547,7 @@ def main():
         if args.action == "verify":
             return 0 if verify(root, args.profile, args.task)["status"] == "PASSED" else 1
         if args.action == "check":
-            result = checked_receipt(root, args.receipt)
+            result = checked_receipt(root, args.receipt, expected_task=args.task, expected_profile=args.profile)
         elif args.action == "learn":
             result = learn(root, args.failure, args.verified)
         else:

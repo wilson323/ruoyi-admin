@@ -238,10 +238,21 @@ class HarnessCases(unittest.TestCase):
         manifest.write_text(json.dumps(data))
         with self.assertRaises(h.HarnessError):self.check(p,steps)
     def test_C41_history_validator_mismatch_refused(self):
-        f,fp,steps=self.run_receipt("print('failed');raise SystemExit(1)")
-        self.run_receipt()
-        data=json.loads(fp.read_text());data['validator_hash']='different-verifier';fp.write_text(json.dumps(data))
-        with patch.object(h,'profiles',return_value=steps),self.assertRaises(h.HarnessError):h.intake(self.root)
+        # This case corrupts an already learned history, not a verifier change
+        # during execution. Freeze the fixture's verifier identity so concurrent
+        # edits in the real checkout cannot prevent the learning prerequisite.
+        verifier = h.validator_hash(self.root)
+        with patch.object(h, 'validator_hash', return_value=verifier):
+            failed, path, steps = self.run_receipt("print('failed');raise SystemExit(1)")
+            passed, _, _ = self.run_receipt()
+            self.assertEqual(passed['status'], 'PASSED')
+            self.assertIn(failed['run_id'], passed['learned_from'])
+            self.assertTrue((self.root / '.harness/evolve' / f"learned-{failed['run_id']}.json").is_file())
+            data = json.loads(path.read_text())
+            data['validator_hash'] = 'different-verifier'
+            path.write_text(json.dumps(data))
+            with patch.object(h, 'profiles', return_value=steps), self.assertRaisesRegex(h.HarnessError, 'Learning is not supported by its evidence'):
+                h.intake(self.root)
 
     def test_C42_invented_task_refused_before_execution(self):
         with patch.object(h, 'execute') as execute, self.assertRaises(h.HarnessError):
@@ -278,6 +289,80 @@ class HarnessCases(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertEqual(json.loads(result.stdout)['permission'], 'deny')
 
+    def test_C48_completion_current_task_profile_allowed(self):
+        _, path, steps = self.run_receipt()
+        with patch.object(h, 'profiles', return_value=steps):
+            result = h.checked_receipt(self.root, path, expected_task='CASE-1', expected_profile='governance')
+        self.assertEqual(result['status'], 'PASSED')
+
+    def test_C49_completion_other_task_pass_refused(self):
+        _, path, steps = self.run_receipt()
+        with patch.object(h, 'profiles', return_value=steps), self.assertRaisesRegex(h.HarnessError, 'different task'):
+            h.checked_receipt(self.root, path, expected_task='OTHER', expected_profile='governance')
+
+    def test_C50_completion_other_profile_pass_refused(self):
+        _, path, steps = self.run_receipt()
+        with patch.object(h, 'profiles', return_value=steps), self.assertRaisesRegex(h.HarnessError, 'different verification profile'):
+            h.checked_receipt(self.root, path, expected_task='CASE-1', expected_profile='frontend')
+
+    def test_C51_completion_matching_identity_still_checks_freshness(self):
+        _, path, steps = self.run_receipt()
+        (self.root / 'input.txt').write_text('changed after validation')
+        with patch.object(h, 'profiles', return_value=steps), self.assertRaisesRegex(h.HarnessError, 'inputs have changed'):
+            h.checked_receipt(self.root, path, expected_task='CASE-1', expected_profile='governance')
+
+    def test_C53_governance_includes_evidence_chain(self):
+        steps = h.profiles(self.root, 'governance', self.root / '.harness/runs/test')
+        matches = [argv for name, argv, _ in steps if name == 'engineering-evidence']
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0][0], 'bash')
+        self.assertTrue(matches[0][1].endswith('/scripts/check-engineering-evidence.sh'))
+
+    def test_C54_evidence_validator_change_invalidates_identity(self):
+        backend = Path(self.temp.name) / 'backend'
+        target = backend / 'scripts/check-engineering-evidence.sh'
+        target.parent.mkdir(parents=True)
+        target.write_text('first')
+        with patch.object(h, 'project', return_value='ipd-backend'):
+            original = h.validator_hash(backend)
+            target.write_text('changed')
+            self.assertNotEqual(original, h.validator_hash(backend))
+
+    def test_C52_completion_cli_forwards_current_identity(self):
+        path = self.root / '.harness/runs/example/receipt.json'
+        argv = ['engineering_harness.py', '--root', str(self.root), 'check', '--receipt', str(path), '--task', 'CASE-1', '--profile', 'frontend']
+        with patch.object(sys, 'argv', argv), patch.object(h, 'checked_receipt', return_value={}) as check, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(h.main(), 0)
+        check.assert_called_once_with(self.root.resolve(), path, expected_task='CASE-1', expected_profile='frontend')
+
+    def test_C55_evolved_profile_history_stale_not_enabled(self):
+        verifier = h.validator_hash(self.root)
+        with patch.object(h, 'validator_hash', return_value=verifier):
+            failed, _, steps = self.run_receipt("print('failed');raise SystemExit(1)")
+            passed, _, _ = self.run_receipt()
+            self.assertIn(failed['run_id'], passed['learned_from'])
+        evolved = steps + [('new-required-check', ['fixture'], 3)]
+        with patch.object(h, 'validator_hash', return_value='evolved-verifier'), patch.object(h, 'profiles', return_value=evolved):
+            result = h.intake(self.root)
+        self.assertEqual(result['stale_learning'], [failed['run_id']])
+        self.assertEqual(result['checks'], [])
+
+    def test_C56_evolved_history_modified_log_still_refused(self):
+        receipt, path, steps = self.run_receipt()
+        Path(receipt['steps'][0]['log']).write_text('tampered historical log')
+        with patch.object(h, 'validator_hash', return_value='evolved-verifier'), patch.object(h, 'profiles', return_value=steps + [('new', ['fixture'], 3)]), self.assertRaisesRegex(h.HarnessError, 'Evidence missing or modified'):
+            h.checked_receipt(self.root, path, fresh=False)
+
+    def test_C57_evolved_history_not_current_completion(self):
+        _, path, steps = self.run_receipt()
+        with patch.object(h, 'validator_hash', return_value='evolved-verifier'), patch.object(h, 'profiles', return_value=steps + [('new', ['fixture'], 3)]), self.assertRaisesRegex(h.HarnessError, 'inputs have changed'):
+            h.checked_receipt(self.root, path, expected_task='CASE-1', expected_profile='governance')
+
+    def test_C58_same_verifier_historical_missing_steps_refused(self):
+        _, path, steps = self.run_receipt()
+        with patch.object(h, 'profiles', return_value=steps + [('required', ['fixture'], 3)]), self.assertRaisesRegex(h.HarnessError, 'Required checks missing or reordered'):
+            h.checked_receipt(self.root, path, fresh=False)
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--backend-root',type=Path)
@@ -286,9 +371,9 @@ if __name__=='__main__':
         BACKEND_ROOT=args.backend_root.resolve()
         if not (BACKEND_ROOT/'.harness/gate.sh').is_file():
             parser.error('Explicit backend root must contain the real .harness/gate.sh')
-        print('Scope: core 44 cases + explicit backend adapter integration 3 cases; isolated fixtures only',flush=True)
+        print('Scope: core 55 cases + explicit backend adapter integration 3 cases; isolated fixtures only',flush=True)
     else:
-        print('Scope: core 44 cases only; backend adapter integration was not selected',flush=True)
+        print('Scope: core 55 cases only; backend adapter integration was not selected',flush=True)
     names=unittest.defaultTestLoader.getTestCaseNames(HarnessCases)
     suite=unittest.TestSuite(HarnessCases(name) for name in names
                             if BACKEND_ROOT is not None or name not in INTEGRATION_CASES)
