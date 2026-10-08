@@ -40,7 +40,7 @@ const fileChosen = ref('');
 
 /** 行级操作进行中标记：`status:<id>` / `retire:<id>`，避免同一行并发写。 */
 const rowBusy = ref('');
-/** 申请下架弹窗的目标产品；null = 未打开。 */
+/** 删除申请弹窗的目标产品；null = 未打开。 */
 const retireTarget = ref<Product | null>(null);
 const retireReason = ref('');
 const retireSubmitting = ref(false);
@@ -150,7 +150,7 @@ async function toggleStatus(record: Product): Promise<void> {
   }
 }
 
-/** 打开「申请下架」——G-02 要求删除必须走审核，故此处是申请而非直删。 */
+/** 打开「删除」=发起删除申请——G-02 要求删除必须走审核：按钮名为「删除」，点击后发起申请而非直删。 */
 async function openRetire(record: Product): Promise<void> {
   if (rowBusy.value) return;
   rowBusy.value = `retire:${record.id}`;
@@ -158,7 +158,7 @@ async function openRetire(record: Product): Promise<void> {
     // 先回读当前版本号，提交时作为乐观锁的 expectedVersion。
     const view = await fetchProductRetirement(record.id);
     if (!view.canSubmit) {
-      antMessage.warning('该产品当前不可申请下架（可能已有在途申请或已下架）');
+      antMessage.warning('该产品当前不可发起删除申请（可能已有在途申请或已删除）');
       return;
     }
     retireTarget.value = record;
@@ -181,7 +181,7 @@ async function submitRetire(): Promise<void> {
   const reason = retireReason.value.trim();
   if (!target) return;
   if (!reason) {
-    antMessage.warning('请填写下架原因（审核与审计需要）');
+    antMessage.warning('请填写删除原因（审核与审计需要）');
     return;
   }
   retireSubmitting.value = true;
@@ -313,7 +313,7 @@ async function submitRetire(): Promise<void> {
                 :loading="rowBusy === `retire:${p.id}`"
                 @click="openRetire(p)"
               >
-                申请下架
+                删除
               </Button>
             </span>
           </div>
@@ -323,10 +323,10 @@ async function submitRetire(): Promise<void> {
         </div>
       </section>
 
-      <!-- 申请下架（G-02：删除必须走审核，故此处是申请而非直删） -->
+      <!-- 删除（G-02：删除必须走审核——按钮名「删除」，点击发起删除申请，非直删） -->
       <Modal
         :open="retireTarget !== null"
-        title="申请下架产品"
+        title="发起删除申请"
         @cancel="closeRetire"
       >
         <!--
@@ -349,12 +349,12 @@ async function submitRetire(): Promise<void> {
           产品：<strong>{{ retireTarget.productName }}</strong>（{{ retireTarget.productCode }}）
         </p>
         <p class="text-muted-foreground text-xs">
-          下架需经审核通过后才会真正软删（G-02：任何人无直接删除权限）。请填写原因，审核与审计都需要。
+          删除需经审核通过后才会真正软删（G-02：任何人无直接删除权限）。请填写原因，审核与审计都需要。
         </p>
         <Input.TextArea
           v-model:value="retireReason"
           :rows="3"
-          placeholder="请填写下架原因"
+          placeholder="请填写删除原因"
           data-testid="catalog-retire-reason"
         />
       </Modal>

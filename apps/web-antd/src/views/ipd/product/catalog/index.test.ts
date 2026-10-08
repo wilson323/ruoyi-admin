@@ -155,7 +155,7 @@ describe('产品线归属', () => {
 
 /**
  * 增删改入口（2026-10-08 下沉到本页）。
- * 删除按 G-02 必须走审核，故页面只提供「申请下架」，断言里锁定「无直删端点」。
+ * 删除按 G-02 必须走审核：按钮名「删除」，点击发起删除申请，断言里锁定「无直删端点」。
  */
 describe('增删改入口', () => {
   const product = {
@@ -193,7 +193,7 @@ describe('增删改入口', () => {
     wrapper.unmount();
   });
 
-  it('「申请下架」先回读版本再提交，且原因必填（G-02 走审核非直删）', async () => {
+  it('「删除」按钮先回读版本再提交删除申请，且原因必填（G-02 走审核非直删）', async () => {
     vi.mocked(fetchProductRetirement).mockResolvedValue({
       retirement: { version: 7 } as never, canSubmit: true, canEditPolicy: false,
       canDecide: false, history: [],
@@ -224,7 +224,7 @@ describe('增删改入口', () => {
     wrapper.unmount();
   });
 
-  it('不可申请下架时给出提示且不打开弹窗', async () => {
+  it('不可发起删除申请时给出提示且不打开弹窗', async () => {
     vi.mocked(fetchProductRetirement).mockResolvedValue({
       retirement: null, canSubmit: false, canEditPolicy: false, canDecide: false, history: [],
     });
