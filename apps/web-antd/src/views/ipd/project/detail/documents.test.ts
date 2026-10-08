@@ -272,3 +272,35 @@ describe('生成入口', () => {
     wrapper.unmount();
   });
 });
+
+describe('文档内容查看（统一预览组件）', () => {
+  it('文档列表行点「查看内容」在 Modal 中显示该版本文本正文', async () => {
+    vi.mocked(listAiDocumentsByProject).mockResolvedValue([documentFor('101', '列表文档')]);
+    const { wrapper } = await mountAt('101');
+    await flushPromises();
+    const viewButton = wrapper.findAll('button').find((button) => button.text().includes('查看内容'));
+    expect(viewButton, '列表行应提供「查看内容」入口').toBeTruthy();
+    await viewButton!.trigger('click');
+    await flushPromises();
+    const modal = document.body.querySelector('.ant-modal');
+    expect(modal?.textContent).toContain('列表文档的正文');
+    wrapper.unmount();
+  });
+
+  it('版本链历史版本「查看内容」同样打开 Modal，手搓内嵌 pre 已收编删除', async () => {
+    vi.mocked(listAiDocumentVersions).mockResolvedValue([documentFor('101', '链上文档')]);
+    const { wrapper } = await mountAt('101');
+    await flushPromises();
+    await wrapper.find('input[placeholder="输入文档 ID 查看版本链"]').setValue('1001');
+    await wrapper.findAll('button').find((button) => button.text().includes('加载版本链'))!.trigger('click');
+    await flushPromises();
+    const summary = wrapper.find('summary');
+    expect(summary.text()).toContain('查看内容');
+    await summary.trigger('click');
+    await flushPromises();
+    const modal = document.body.querySelector('.ant-modal');
+    expect(modal?.textContent).toContain('链上文档的正文');
+    expect(wrapper.find('details pre').exists(), '原始手搓 pre 展示应删除，统一走预览组件').toBe(false);
+    wrapper.unmount();
+  });
+});

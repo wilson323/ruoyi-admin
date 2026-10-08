@@ -420,3 +420,18 @@ describe('R232 P2-04 待办直达深链（/ipd/ai-assistant?projectId=&docId=）
     wrapper.unmount();
   });
 });
+
+describe('G1 版本内容查看（统一组件接入，规范 20261008）', () => {
+  it('版本链行提供「查看内容」，点开弹窗以纯文本展示正文', async () => {
+    const { wrapper } = await mountWithChain([
+      docFixture({ id: '1', versionNo: 1, status: 'GENERATED', content: 'G1 查看正文内容' }),
+    ]);
+    const viewButton = wrapper.findAll('button').find((b) => b.text().includes('查看内容'));
+    expect(viewButton, '版本链行应有「查看内容」入口').toBeTruthy();
+    await viewButton!.trigger('click');
+    await flushPromises();
+    const modal = document.body.querySelector('.ant-modal');
+    expect(modal?.textContent).toContain('G1 查看正文内容');
+    wrapper.unmount();
+  });
+});

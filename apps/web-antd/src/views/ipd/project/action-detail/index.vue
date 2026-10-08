@@ -39,6 +39,7 @@ import {
 } from 'ant-design-vue';
 
 import type {
+  ActionDeliverableRow,
   StageAction,
   StageActionFieldsBody,
   StageActionStatus,
@@ -47,10 +48,14 @@ import {
   acceptStageAction,
   uploadStageActionDeliverable,
   aiExecuteStageAction,
+  listActionDeliverables,
   listStageActions,
   recordStageActionFields,
   transitStageAction,
 } from '../../../../api/ipd/stage-action';
+import { ipdDownload } from '../../../../api/ipd/http';
+import type { IpdContentViewPayload } from '../../_shared/ipd-content-view/ipd-content-view';
+import IpdContentView from '../../_shared/ipd-content-view/ipd-content-view.vue';
 import { registerCopilotPageContext, stageActionIdText } from '../../../../api/ipd/ai-copilot';
 import { isTransportError, ipdErrorText } from '../../_shared/ipd-error-text';
 import {
@@ -192,6 +197,59 @@ const showCert = computed(() => needsCert.value);
 const deliverableModalOpen = ref(false);
 const deliverableFile = ref<File | null>(null);
 
+/** 文档预览 G3（2026-10-08）：已上传交付物只读列表 + 统一预览查看/下载。 */
+const deliverableRows = ref<ActionDeliverableRow[]>([]);
+const deliverablesLoading = ref(false);
+const deliverablesError = ref('');
+const deliverableViewOpen = ref(false);
+const deliverableViewPayload = ref<IpdContentViewPayload | null>(null);
+
+/** uploadedAt 后端序列化为 epoch 毫秒数字（实体 Date），与 actualDoneAt 同惯例走 dayjs 格式化。 */
+function formatUploadedAt(value: null | number | string | undefined): string {
+  if (value === null || value === undefined || value === '') return '';
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : '';
+}
+
+function formatBytes(size: null | string): string {
+  const value = Number(size);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
+async function loadDeliverables(): Promise<void> {
+  if (!action.value?.id) return;
+  const epoch = identityEpoch;
+  deliverablesLoading.value = true;
+  deliverablesError.value = '';
+  try {
+    const rows = await listActionDeliverables(action.value.id);
+    if (epoch !== identityEpoch) return;
+    deliverableRows.value = rows;
+  } catch (cause) {
+    if (epoch !== identityEpoch) return;
+    deliverableRows.value = [];
+    deliverablesError.value = ipdErrorText(cause, { fallback: '交付物列表加载失败' });
+  } finally {
+    if (epoch === identityEpoch) deliverablesLoading.value = false;
+  }
+}
+
+function openDeliverableView(row: ActionDeliverableRow): void {
+  deliverableViewPayload.value = {
+    kind: 'auto',
+    title: row.fileName,
+    download: {
+      filename: row.fileName,
+      fetch: () => ipdDownload(`/deliverables/${row.id}/download`),
+    },
+  };
+  deliverableViewOpen.value = true;
+}
+
 let identityEpoch = 0;
 
 async function load(): Promise<void> {
@@ -216,6 +274,8 @@ async function load(): Promise<void> {
     }
     action.value = found;
     syncFillPageContext();
+    // G3：深管动作同步拉已登记交付物（供查看/下载入口）
+    if (isDeep.value) void loadDeliverables();
     fields.actualDoneAt = typeof found.actualDoneAt === 'number' ? found.actualDoneAt : null;
     fields.algoType = found.algoType ?? '';
     fields.certNo = found.certNo ?? '';
@@ -340,6 +400,7 @@ async function submitDeliverable(): Promise<void> {
     if (epoch !== identityEpoch) return;
     message.success('交付物已上传');
     deliverableModalOpen.value = false;
+    void loadDeliverables();
   } catch (cause) {
     if (epoch !== identityEpoch) return;
     submitError.value = cause;
@@ -674,6 +735,22 @@ onUnmounted(() => {
                 </Button>
               </Space>
             </Form>
+
+            <!-- 文档预览 G3：已上传交付物列表（查看/下载入口） -->
+            <div v-if="isDeep" class="mt-3" data-testid="action-deliverable-list">
+              <div class="mb-1 text-sm font-medium">已上传交付物</div>
+              <div v-if="deliverablesLoading" class="text-muted-foreground text-xs">正在加载交付物……</div>
+              <Alert v-else-if="deliverablesError" show-icon type="error" :message="deliverablesError" />
+              <div v-else-if="deliverableRows.length === 0" class="text-muted-foreground text-xs">尚未上传交付物。</div>
+              <ul v-else class="space-y-1 text-sm">
+                <li v-for="row in deliverableRows" :key="row.id" class="flex flex-wrap items-center gap-2">
+                  <span class="max-w-[320px] truncate font-medium" :title="row.fileName">{{ row.fileName }}</span>
+                  <span v-if="formatBytes(row.fileSize)" class="text-muted-foreground text-xs">{{ formatBytes(row.fileSize) }}</span>
+                  <span v-if="formatUploadedAt(row.uploadedAt)" class="text-muted-foreground text-xs">{{ formatUploadedAt(row.uploadedAt) }}</span>
+                  <Button size="small" type="link" @click="openDeliverableView(row)">查看</Button>
+                </li>
+              </ul>
+            </div>
           </Card>
 
           <!-- 状态流转（按 depth 分支） -->
@@ -767,5 +844,8 @@ onUnmounted(() => {
         </Form.Item>
       </Form>
     </Modal>
+
+    <!-- 文档预览 G3：交付物统一查看/下载 -->
+    <IpdContentView v-model:open="deliverableViewOpen" :payload="deliverableViewPayload" />
   </div>
 </template>

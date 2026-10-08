@@ -9,7 +9,7 @@
  */
 import type { IpdSopTemplateItem } from '../../../../api/ipd/sop-template';
 
-import { reactive, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import {
   Alert,
   Button,
@@ -38,6 +38,8 @@ import {
   type IpdSopTemplateDetail,
 } from '../../../../api/ipd/sop-template';
 import { IpdRequestError } from '../../../../api/ipd/auth';
+import type { IpdContentViewPayload } from '../../_shared/ipd-content-view/ipd-content-view';
+import IpdContentView from '../../_shared/ipd-content-view/ipd-content-view.vue';
 import { IPD_PERMISSION_CODES } from '../../_shared/ipd-permission-codes';
 
 type Phase = 'error' | 'idle' | 'loading' | 'ready';
@@ -79,11 +81,9 @@ const actionCodeInput = ref('');
 const queriedCode = ref('');
 const rows = ref<IpdSopTemplateItem[]>([]);
 
-/** 详情查看 */
+/** 详情查看（G7 收编统一预览：拉取成功才打开） */
 const detail = ref<IpdSopTemplateDetail | null>(null);
-const detailLoading = ref(false);
 const detailOpen = ref(false);
-const detailError = ref('');
 
 /** 当前生效 SOP（按 actionCode 维度，与版本列表解耦；用于编辑前的"看生效版本"流程）。 */
 const currentView = ref<IpdSopTemplateDetail | null>(null);
@@ -139,18 +139,26 @@ async function load(code: string) {
 }
 
 async function openDetail(record: IpdSopTemplateItem) {
-  detailOpen.value = true;
-  detailLoading.value = true;
-  detailError.value = '';
+  // G7 收编统一预览：拉取成功才打开（loading/error 不再走私有 Modal，失败用 message 提示）
   detail.value = null;
   try {
     detail.value = await getSopTemplate(record.id);
+    detailOpen.value = true;
   } catch (cause) {
-    detailError.value = rejectText(cause);
-  } finally {
-    detailLoading.value = false;
+    antMessage.error(rejectText(cause));
   }
 }
+
+/** G7：SOP 详情统一预览（kind=text，状态与动作编码并入标题）。 */
+const detailPayload = computed<IpdContentViewPayload | null>(() => {
+  if (!detail.value) return null;
+  const row = detail.value;
+  return {
+    kind: 'text',
+    text: row.content || '待补充',
+    title: `v${row.version} ${row.title || '待补充'}（${statusText(row.status)} · 动作 ${row.actionCode || '待补充'}）`,
+  };
+});
 
 async function loadCurrent(code: string) {
   const trimmed = code.trim();
@@ -364,23 +372,6 @@ async function runRowAction(action: 'copy' | 'publish' | 'revert', record: IpdSo
     </template>
 
     <Modal
-      v-model:open="detailOpen"
-      :footer="null"
-      :title="detail ? `v${detail.version} ${detail.title || '待补充'}` : 'SOP 详情'"
-      width="720px"
-    >
-      <Spin v-if="detailLoading" class="my-8" />
-      <Alert v-else-if="detailError" :message="detailError" show-icon type="error" role="alert" />
-      <template v-else-if="detail">
-        <Space class="mb-3">
-          <Tag :color="statusMeta[detail.status]?.color ?? 'default'">{{ statusText(detail.status) }}</Tag>
-          <span class="text-muted-foreground text-sm">动作编码：{{ detail.actionCode || '待补充' }}</span>
-        </Space>
-        <pre class="max-h-[480px] overflow-auto whitespace-pre-wrap rounded border border-gray-200 bg-gray-50 p-3 text-sm">{{ detail.content || '待补充' }}</pre>
-      </template>
-    </Modal>
-
-    <Modal
       v-model:open="editOpen"
       :confirm-loading="editSaving"
       :mask-closable="false"
@@ -409,5 +400,8 @@ async function runRowAction(action: 'copy' | 'publish' | 'revert', record: IpdSo
         </FormItem>
       </Form>
     </Modal>
+
+    <!-- 文档预览 G7：SOP 详情统一查看 -->
+    <IpdContentView v-model:open="detailOpen" :payload="detailPayload" />
   </div>
 </template>

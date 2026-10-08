@@ -14,6 +14,7 @@ import ActionDetail from './index.vue';
 const api = vi.hoisted(() => ({
   addStageActionDeliverable: vi.fn(),
   aiExecuteStageAction: vi.fn(),
+  listActionDeliverables: vi.fn(),
   listStageActions: vi.fn(),
   recordStageActionFields: vi.fn(),
   transitStageAction: vi.fn(),
@@ -75,6 +76,7 @@ beforeEach(() => {
   stubAntd();
   setActivePinia(createPinia());
   Object.values(api).forEach((fn) => fn.mockReset());
+  api.listActionDeliverables.mockResolvedValue([]);
   routerMock.replace.mockReset();
   reactiveRoute = reactive({ projectId: 'PRJ-1', actionId: 'W-1' });
 });
@@ -393,4 +395,31 @@ it('同实例切项目立即撤下旧动作，迟到列表不覆盖新项目', a
   expect(wrapper.text()).not.toContain('旧项目动作');
   expect(wrapper.text()).toContain('新项目动作');
   wrapper.unmount();
+});
+
+describe('文档预览 G3：深管交付物列表与统一查看', () => {
+  it('深管动作加载交付物列表，点「查看」打开统一预览 Modal', async () => {
+    api.listStageActions.mockResolvedValueOnce([deep()]);
+    api.listActionDeliverables.mockResolvedValueOnce([
+      { fileName: '客户验证报告.pdf', fileSize: '2048', id: '9001', uploadedAt: '2026-10-08 10:00:00' },
+    ]);
+    const wrapper = await mountDetail();
+    expect(api.listActionDeliverables).toHaveBeenCalledWith('W-1');
+    const listArea = wrapper.find('[data-testid="action-deliverable-list"]');
+    expect(listArea.text()).toContain('客户验证报告.pdf');
+    expect(listArea.text()).toContain('2.0 KB');
+    const viewButton = listArea.findAll('button').find((b) => b.text().includes('查看'));
+    expect(viewButton, '交付物行应提供「查看」入口').toBeTruthy();
+    await viewButton!.trigger('click');
+    await flushPromises();
+    expect(document.body.querySelector('.ant-modal')?.textContent).toContain('客户验证报告.pdf');
+    document.body.innerHTML = '';
+    wrapper.unmount();
+  });
+
+  it('轻管动作不拉交付物列表', async () => {
+    api.listStageActions.mockResolvedValueOnce([light()]);
+    await mountDetail();
+    expect(api.listActionDeliverables).not.toHaveBeenCalled();
+  });
 });

@@ -300,3 +300,43 @@ describe('F5 G1-1 一手验证录入通道', () => {
     wrapper.unmount();
   });
 });
+
+describe('文档预览 G4：材料上传后可查看（统一预览组件）', () => {
+  it('上传评审材料后出现查看入口，点击打开预览 Modal 并按 ossId 拉下载端点', async () => {
+    const downloads: string[] = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (method === 'GET' && url === '/api/v1/gates/5/review') return envelope(viewFixture());
+      if (method === 'GET' && url === '/api/v1/gates/5/elements') return envelope(FALLBACK_GATE_ELEMENTS);
+      if (method === 'POST' && url.includes('/gates/5/materials/upload')) {
+        return envelope({ fileName: '评审材料.pdf', gateId: '5', ossId: '4242' });
+      }
+      if (method === 'GET' && url.includes('/gates/5/materials/download')) {
+        downloads.push(url);
+        return new Response(new Blob(['PDF-BYTES'], { type: 'application/octet-stream' }), { status: 200 });
+      }
+      return envelope(null, 404);
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const wrapper = mount(GatePanel);
+    await wrapper.get('.gate-locate input').setValue('5');
+    await wrapper.get('.gate-locate .primary-button').trigger('click');
+    await vi.waitFor(() => expect(wrapper.findAll('.element-row').length).toBeGreaterThan(0));
+
+    const uploadInput = wrapper.find('[data-testid="gate-upload-materials"]');
+    expect(uploadInput.exists()).toBe(true);
+    const file = new File(['PDF-BYTES'], '评审材料.pdf', { type: 'application/pdf' });
+    Object.defineProperty(uploadInput.element, 'files', { configurable: true, value: [file] });
+    await uploadInput.trigger('change');
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="gate-view-materials"]').exists()).toBe(true));
+
+    await wrapper.find('[data-testid="gate-view-materials"]').trigger('click');
+    await vi.waitFor(() => {
+      expect(document.body.querySelector('.ant-modal')?.textContent).toContain('评审材料.pdf');
+    });
+    expect(downloads[0]).toContain('ossId=4242');
+    document.body.innerHTML = '';
+    wrapper.unmount();
+  });
+});

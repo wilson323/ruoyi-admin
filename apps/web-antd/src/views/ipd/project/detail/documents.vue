@@ -34,6 +34,8 @@ import {
 } from 'ant-design-vue';
 
 import { headReviewActions } from '../../_shared/ai-agent/document-review-actions';
+import type { IpdContentViewPayload } from '../../_shared/ipd-content-view/ipd-content-view';
+import IpdContentView from '../../_shared/ipd-content-view/ipd-content-view.vue';
 import { PENDING_TEXT } from '../../_shared/format';
 import {
   type AiDocument,
@@ -148,7 +150,16 @@ const columns = [
   { dataIndex: 'versionNo', key: 'versionNo', title: '当前版本', width: 100 },
   { dataIndex: 'status', key: 'status', title: '状态', width: 100 },
   { dataIndex: 'contentSha256', key: 'contentSha256', title: '摘要', width: 140 },
+  { key: 'action', title: '操作', width: 100 },
 ];
+
+// ---------- 内容查看（统一组件，规范见 IPD前端内容查看接入规范-20261008） ----------
+const viewOpen = ref(false);
+const viewPayload = ref<IpdContentViewPayload | null>(null);
+function openDocView(doc: AiDocument): void {
+  viewPayload.value = { kind: 'text', title: `v${doc.versionNo} ${doc.title}`, text: doc.content };
+  viewOpen.value = true;
+}
 
 // ---------- 登记 AI 输出 v1 ----------
 const registerForm = reactive({
@@ -486,6 +497,9 @@ watch(projectId, (pid) => {
               <span class="text-muted-foreground font-mono text-xs">{{ shortSha(record as AiDocument) }}</span>
             </Tooltip>
           </template>
+          <template v-else-if="column.key === 'action'">
+            <Button size="small" type="link" @click="openDocView(record as AiDocument)">查看内容</Button>
+          </template>
         </template>
       </Table>
       <Empty
@@ -615,8 +629,7 @@ watch(projectId, (pid) => {
               <template v-if="doc.reviewedAt"> · 审核时间：{{ doc.reviewedAt.replace('T', ' ') }}</template>
             </div>
             <details class="mt-2 text-sm">
-              <summary class="text-primary cursor-pointer">查看内容</summary>
-              <pre class="bg-muted mt-2 max-h-64 overflow-auto rounded p-3 text-xs whitespace-pre-wrap">{{ doc.content }}</pre>
+              <summary class="text-primary cursor-pointer" @click.prevent="openDocView(doc)">查看内容</summary>
             </details>
             <Space class="mt-2">
               <Button
@@ -722,5 +735,7 @@ watch(projectId, (pid) => {
         />
       </Modal>
     </Card>
+
+    <IpdContentView v-model:open="viewOpen" :payload="viewPayload" />
   </div>
 </template>

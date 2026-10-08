@@ -36,6 +36,8 @@ import {
 } from 'ant-design-vue';
 
 import { headReviewActions } from '../_shared/ai-agent/document-review-actions';
+import type { IpdContentViewPayload } from '../_shared/ipd-content-view/ipd-content-view';
+import IpdContentView from '../_shared/ipd-content-view/ipd-content-view.vue';
 import { PENDING_TEXT } from '../_shared/format';
 import {
   type AiDocument,
@@ -83,6 +85,14 @@ const STATUS_META: Record<string, { color: string; text: string }> = {
 };
 
 const route = useRoute();
+
+// ---------- 版本内容查看（统一组件，规范见 IPD前端内容查看接入规范-20261008） ----------
+const viewOpen = ref(false);
+const viewPayload = ref<IpdContentViewPayload | null>(null);
+function openVersionView(doc: AiDocument): void {
+  viewPayload.value = { kind: 'text', title: `v${doc.versionNo} ${doc.title}`, text: doc.content };
+  viewOpen.value = true;
+}
 
 // ---------- 项目与类型 ----------
 const projects = ref<ProjectOption[]>([]);
@@ -614,6 +624,7 @@ onMounted(() => {
             <span>{{ doc.title }}</span>
             <Tag :color="statusMeta(doc.status).color">{{ statusMeta(doc.status).text }}</Tag>
             <span class="text-muted-foreground text-xs">类型：{{ docTypeText(doc) }}</span>
+            <Button size="small" type="link" class="ml-auto" @click="openVersionView(doc)">查看内容</Button>
           </div>
           <div class="text-muted-foreground mt-1 font-mono text-xs">
             sha256：{{ doc.contentSha256 || PENDING_TEXT }}
@@ -724,6 +735,8 @@ onMounted(() => {
         <div v-else class="text-muted-foreground text-sm" role="status">暂无历史记录。</div>
       </template>
     </Card>
+
+    <IpdContentView v-model:open="viewOpen" :payload="viewPayload" />
 
     <!-- ④ 版本对比 -->
     <Card title="版本对比">

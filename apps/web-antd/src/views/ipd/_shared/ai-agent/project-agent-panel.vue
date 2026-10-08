@@ -39,6 +39,7 @@ import { interruptTextResponse } from './agui-interrupt';
 import RunTimeline from './run-timeline.vue';
 import { agentRunFailureText } from './timeline-model';
 import { createIdempotencyKey, useProjectAgentRun } from './use-project-agent-run';
+import { downloadBlob } from '../ipd-content-view/ipd-content-view';
 import { useIpdAiWorkspace } from '../ai-workspace/use-ai-workspace';
 import { ipdErrorText } from '../ipd-error-text';
 
@@ -275,15 +276,8 @@ async function downloadAttachment(versionId: string, title: string): Promise<voi
   try {
     const blob = await downloadAgentRunArtifact(owningRun, versionId);
     if (runId.value !== owningRun || props.projectId !== owningProject) return;
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = title.replace(/[\\/\u0000-\u001f]/g, '_') || '产物附件';
-    document.body.append(anchor);
-    try { anchor.click(); } finally {
-      anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-    }
+    // 文档预览 G5（2026-10-08）：手搽 createObjectURL 锚点收编统一 downloadBlob
+    downloadBlob(blob, title || '产物附件');
   } catch (error) {
     if (runId.value === owningRun && props.projectId === owningProject) {
       downloadError.value = ipdErrorText(error, { fallback: '附件下载失败，请重试' });

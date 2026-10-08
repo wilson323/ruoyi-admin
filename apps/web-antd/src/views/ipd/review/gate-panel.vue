@@ -57,6 +57,9 @@ import {
   type IpdGateElementView,
 } from '../../../api/ipd/gate-element-result';
 import { uploadGateMaterial } from '../../../api/ipd/gate-material';
+import { ipdDownload } from '../../../api/ipd/http';
+import type { IpdContentViewPayload } from '../_shared/ipd-content-view/ipd-content-view';
+import IpdContentView from '../_shared/ipd-content-view/ipd-content-view.vue';
 import {
   runArbitrationDivergences,
   runGatePrecheck,
@@ -163,6 +166,11 @@ const canSubmitElements = computed(() => {
 /** R212 ORPHAN-A1：强制输出物 OSS ID（后端 submit 必填；纯数字校验，空/非法禁用提交）。 */
 const materialsOssId = ref('');
 const meetingMinutesOssId = ref('');
+/** 文档预览 G4（2026-10-08）：上传后记录文件名，供统一预览查看/下载。 */
+const materialsFileName = ref('');
+const minutesFileName = ref('');
+const materialViewOpen = ref(false);
+const materialViewPayload = ref<IpdContentViewPayload | null>(null);
 const submitBusy = ref(false);
 const submitError = ref('');
 
@@ -376,12 +384,34 @@ async function uploadOutput(kind: 'materials' | 'minutes', event: Event): Promis
   if (!file || !gateId) return;
   try {
     const uploaded = await uploadGateMaterial(gateId, file);
-    if (kind === 'materials') materialsOssId.value = uploaded.ossId;
-    else meetingMinutesOssId.value = uploaded.ossId;
+    if (kind === 'materials') {
+      materialsOssId.value = uploaded.ossId;
+      materialsFileName.value = uploaded.fileName || file.name;
+    } else {
+      meetingMinutesOssId.value = uploaded.ossId;
+      minutesFileName.value = uploaded.fileName || file.name;
+    }
     message.success(kind === 'materials' ? '评审材料已上传' : '会议纪要已上传');
   } catch (cause) {
     message.error(ipdErrorText(cause, { fallback: '材料上传失败' }));
   }
+}
+
+/** G4：按本次会话上传的 ossId 打开统一预览（GET /gates/{gateId}/materials/download?ossId=）。 */
+function openMaterialView(kind: 'materials' | 'minutes'): void {
+  const gateId = gateIdInput.value.trim();
+  const ossId = kind === 'materials' ? materialsOssId.value.trim() : meetingMinutesOssId.value.trim();
+  if (!gateId || !isDigits(ossId)) return;
+  const fileName = (kind === 'materials' ? materialsFileName.value : minutesFileName.value) || (kind === 'materials' ? '评审材料' : '会议纪要');
+  materialViewPayload.value = {
+    kind: 'auto',
+    title: fileName,
+    download: {
+      filename: fileName,
+      fetch: () => ipdDownload(`/gates/${encodeURIComponent(gateId)}/materials/download?ossId=${encodeURIComponent(ossId)}`),
+    },
+  };
+  materialViewOpen.value = true;
 }
 
 async function loadGate(): Promise<void> {
@@ -828,6 +858,15 @@ function finalRuling(decision: GateDecision): void {
               data-testid="gate-upload-materials"
               @change="uploadOutput('materials', $event)"
             />
+            <button
+              v-if="isDigits(materialsOssId)"
+              type="button"
+              class="element-input"
+              data-testid="gate-view-materials"
+              @click="openMaterialView('materials')"
+            >
+              查看评审材料
+            </button>
             <input
               id="gate-meeting-minutes-oss-input"
               v-model="meetingMinutesOssId"
@@ -844,6 +883,15 @@ function finalRuling(decision: GateDecision): void {
               data-testid="gate-upload-minutes"
               @change="uploadOutput('minutes', $event)"
             />
+            <button
+              v-if="isDigits(meetingMinutesOssId)"
+              type="button"
+              class="element-input"
+              data-testid="gate-view-minutes"
+              @click="openMaterialView('minutes')"
+            >
+              查看会议纪要
+            </button>
           </div>
           <button
             type="button"
@@ -866,6 +914,9 @@ function finalRuling(decision: GateDecision): void {
     </div>
 
     <div v-if="actionError" class="gate-error">{{ actionError }}</div>
+
+    <!-- 文档预览 G4：材料/纪要统一查看/下载 -->
+    <IpdContentView v-model:open="materialViewOpen" :payload="materialViewPayload" />
   </section>
 </template>
 

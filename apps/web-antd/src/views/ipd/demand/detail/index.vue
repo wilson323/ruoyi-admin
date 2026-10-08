@@ -16,6 +16,9 @@ import { IpdRequestError } from '../../../../api/ipd/auth';
 import { type IpdDemand, type DemandAttachment, fetchDemandDetail, listDemandAttachments, downloadDemandAttachment } from '../../../../api/ipd/demand';
 import { PENDING_TEXT, formatDateTime } from '../../_shared/format';
 import { demandStateLabel } from '../../_shared/ipd-enums';
+import type { IpdContentViewPayload } from '../../_shared/ipd-content-view/ipd-content-view';
+import IpdContentView from '../../_shared/ipd-content-view/ipd-content-view.vue';
+import { downloadBlob } from '../../_shared/ipd-content-view/ipd-content-view';
 
 defineOptions({ name: 'IpdRequirementDetail' });
 
@@ -42,15 +45,26 @@ async function downloadAttachment(file: DemandAttachment) {
   downloading.value = file.key;
   attachmentsError.value = '';
   try {
+    // 文档预览 G6（2026-10-08）：手搽 createObjectURL 收编统一 downloadBlob
     const blob = await downloadDemandAttachment(demandId.value, file.key);
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = file.fileName;
-    anchor.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    downloadBlob(blob, file.fileName);
   } catch (cause) { attachmentsError.value = errorText(cause); }
   finally { downloading.value = ''; }
+}
+
+/** 文档预览 G6：附件统一查看（图片直看/binary 兜底，复用既有下载端点）。 */
+const viewOpen = ref(false);
+const viewPayload = ref<IpdContentViewPayload | null>(null);
+function openAttachmentView(file: DemandAttachment) {
+  viewPayload.value = {
+    kind: 'auto',
+    title: file.fileName,
+    download: {
+      filename: file.fileName,
+      fetch: () => downloadDemandAttachment(demandId.value, file.key),
+    },
+  };
+  viewOpen.value = true;
 }
 
 function errorText(cause: unknown): string {
@@ -135,10 +149,14 @@ onMounted(load);
         <Button v-if="attachmentsError" size="small" @click="loadAttachments">重新加载附件</Button>
         <p v-for="file in attachments" :key="file.key">
           {{ file.fileName }}（{{ file.fileSize }} 字节）
+          <Button size="small" @click="openAttachmentView(file)">查看</Button>
           <Button size="small" :loading="downloading === file.key" :disabled="!!downloading" @click="downloadAttachment(file)">下载</Button>
         </p>
         <p v-if="!attachmentsError && !attachments.length">没有附件</p>
       </section>
     </Card>
+
+    <!-- 文档预览 G6：附件统一查看/下载 -->
+    <IpdContentView v-model:open="viewOpen" :payload="viewPayload" />
   </div>
 </template>

@@ -17,7 +17,9 @@
  * PERMANENT_DELETE_EXECUTE（PAGE_PERMISSIONS['/ipd/admin/permanent-delete']）。
  * ID/时间全 string 透传（api 层归一），本视图不做任何数值化与日期运算。
  */
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
+import type { IpdContentViewPayload } from '../../_shared/ipd-content-view/ipd-content-view';
+import IpdContentView from '../../_shared/ipd-content-view/ipd-content-view.vue';
 import {
   Alert,
   Button,
@@ -171,6 +173,12 @@ onMounted(() => {
 const snapshotOpen = ref(false);
 const snapshotTitle = ref('');
 const snapshotText = ref('');
+/** 文档预览 G7（2026-10-08）：私有 Modal+pre 收编统一预览组件（kind=text）。 */
+const snapshotPayload = computed<IpdContentViewPayload>(() => ({
+  kind: 'text',
+  text: snapshotText.value,
+  title: snapshotTitle.value,
+}));
 function showSnapshot(record: PermanentDeleteAuditRow): void {
   snapshotTitle.value = `清除快照 · ${ENTITY_TYPE_TEXT[record.entityType] ?? record.entityType} #${record.entityId}`;
   try {
@@ -311,10 +319,8 @@ function showSnapshot(record: PermanentDeleteAuditRow): void {
         </template>
       </Table>
 
-      <!-- 快照详情：合法 JSON 格式化，非法原文兜底 -->
-      <Modal v-model:open="snapshotOpen" :title="snapshotTitle" :footer="null" width="720px">
-        <pre class="max-h-[480px] overflow-auto rounded bg-gray-50 p-3 font-mono text-xs">{{ snapshotText }}</pre>
-      </Modal>
+      <!-- 快照详情：合法 JSON 格式化，非法原文兜底（G7 收编统一预览组件） -->
+      <IpdContentView v-model:open="snapshotOpen" :payload="snapshotPayload" />
     </Card>
   </div>
 </template>

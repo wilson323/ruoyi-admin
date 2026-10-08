@@ -268,3 +268,22 @@ export function fetchAiAgentTask(taskId: string): Promise<AiAgentTaskView> {
 export function fetchAiAgentTasksByProject(projectId: string): Promise<AiAgentTaskView[]> {
   return ipdGet<AiAgentTaskView[]>('/ai-agent-tasks', { projectId });
 }
+
+/* ---------- 文档预览 G3（2026-10-08）：深管交付物只读列表 ---------- */
+
+/**
+ * 交付物行（GET /api/v1/deliverables?actionId=；Long 全局序列化为 string）。
+ * 鉴权与 download 同闸：ipd:stage-action:list + service 层项目归属校验。
+ */
+export interface ActionDeliverableRow {
+  fileName: string;
+  fileSize: null | string;
+  id: string;
+  /** 后端实体 Date → Jackson 序列化为 epoch 毫秒数字（实测 2026-10-08 真实回读）。 */
+  uploadedAt: null | number | string;
+}
+
+/** 列出动作已登记交付物（按上传时间倒序），供详情页展示与统一预览查看/下载。 */
+export function listActionDeliverables(actionId: string): Promise<ActionDeliverableRow[]> {
+  return ipdGet<ActionDeliverableRow[]>('/deliverables', { actionId });
+}
