@@ -14,7 +14,15 @@ version: 1.0.0
 2. 从当前绝对根目录运行 `python3 <前端实际目录>/scripts/engineering_harness.py --root <当前仓库根> intake`。它输出真实 HEAD/脏输入摘要、未处理失败及已验证工程检查项。前端 worktree 用本 worktree 脚本；后端复用正式前端脚本，不能偷换当前 root。
 3. 对未处理失败先读原始日志与 receipt，区分观察事实、根因假设和独立验证。机器写的 `UNCONFIRMED` 不能升级为已证实根因。
 
+2026-10-08 当前入口补充：verify 拒绝原镜像未登记的事项标签；原镜像、总画布/引用分节和既有 IDE 配置加入输入指纹，变更使验收失效；标签存在不证明 allowedPaths 已批准。两处画布校验复用同一函数，不把旧页面组件当合同。历史原始纠正与覆盖边界见 `docs/ipd-系统说明/IDE执行漂移根因与修复-20261008.md`；截断检索不能证明生产引用为零，工程 receipt 不能扩成加载或业务完成。
+
 ## 执行、失败与验收
+
+### Ruflo 工程工具入口
+
+Ruflo 安装与控制器修复的当前证据和恢复命令见 `docs/ruflo-installation-20261008.md`。开始需要协作、语义路由或持久工程记忆的任务时，先检查本机 Ruflo MCP；安装或依赖变化后运行 `python3 scripts/verify-ruflo.py`。实际恢复用 `python3 scripts/install-ruflo-controller-repair.py`；只接受已核验版本/源码指纹，未知升级先审计，不静默套旧补丁。
+
+Ruflo 用于工程协作，不替代总画布、原看板或 IPD 项目智能体。依任务选择已安装技能；缺口与治理类任务按现有规则多专业并行，普通任务不强制起蜂群。控制器 `enabled` 不等于真实操作、模型行为或业务验收；保留失败、真实正反操作和跨进程回读。密钥、Person会话与业务审批信息不得写入工程记忆，Ruflo 的工程证明不授予 IPD 业务权限。
 
 - 工程机制改动先用 `bash .harness/verify.sh governance <原事项编号>`；前端代码交付用 `bash .harness/verify.sh frontend <原事项编号>`。固定命令，不接受任意 Shell/eval。
 - governance 实跑 Harness/类型门禁反例和既有上下文检查；frontend 再实跑类型、非空 Vitest 与生产构建。无依赖时拒绝，不切到另一树替它验收。后台业务、真实服务加载与业务验收仍走原总计划。

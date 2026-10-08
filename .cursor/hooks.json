@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "/usr/bin/python3 .cursor/hooks/check-execution-cut.py",
+        "failClosed": true
+      }
+    ]
+  }
+}

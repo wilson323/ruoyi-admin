@@ -1,0 +1,12 @@
+{
+  "security/MutationGuard.js": "f7cbcde86e11b50687afd54f76ace02639673712f5f630b72fc6981cdb468041",
+  "security/AttestationLog.js": "83843497cae664e24e29561761a23bd366a1c62347bb151cc0875f30fb7720d4",
+  "security/validation.js": "bfe43e27047b936e19704e88eff9a75e4aebec88ccdcedc22f42ebab6d55233f",
+  "security/limits.js": "fdcf549317f8735e8260e56727f1ffa8442c71327a045ea0badcabf110606177",
+  "backends/ruvector/GuardedVectorBackend.js": "aea3a73e14949809d2174aac229270316666af664fad2d1fb323f65a905fd7a7",
+  "services/GNNService.js": "850e6b6d9b7ad56cac0fed7148b3f2a7b1068c8c82c68649a1af283ed15414c3",
+  "services/GraphTransformerService.js": "2673f57fed57097a2e5fcabeb9d4f651e40dc290d237dfad03942de368657942",
+  "optimizations/RVFOptimizer.js": "ac1881f58fc100d4505977f22bf55a5f327e328061377a6c894d753be7117300",
+  "utils/vector-math.js": "6e0d7271e26acbc5e2bdf745d834340fde52e388cb38ad5113865297f388741e",
+  "security/input-validation.js": "252f92f7ba3c486a9afa33d8378eb1c8d101b81cc137a3ce22dfecfd3a5fab6f"
+}

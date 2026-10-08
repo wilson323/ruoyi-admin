@@ -1,5 +1,7 @@
 {
-  "_comment": "Project hooks cover only actual host events; not a universal enforcement boundary. Existing permission guards unchanged. No automatic commit/push. Engineering SessionStart intake presents evidence and bounded learned checks.",
+  "env": {
+    "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1"
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -83,5 +85,19 @@
         ]
       }
     ]
-  }
+  },
+  "enabledPlugins": {
+    "ruflo-mods@ruflo": true,
+    "ruflo-swarm@ruflo": true,
+    "ruflo-console@ruflo": true
+  },
+  "extraKnownMarketplaces": {
+    "ruflo": {
+      "source": {
+        "source": "github",
+        "repo": "ruvnet/ruflo"
+      }
+    }
+  },
+  "_comment": "Project hooks cover only actual host events; not a universal enforcement boundary. Existing permission guards unchanged. No automatic commit/push. Engineering SessionStart intake presents evidence and bounded learned checks."
 }

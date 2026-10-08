@@ -75,3 +75,16 @@ __pycache__/
 
 .harness/evolve/
 .codex/
+
+# Ruflo local secrets and runtime data
+.env
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
+
+.swarm/
+ruvector.db
+ruvector.db-shm
+ruvector.db-wal
+agentdb.rvf
+agentdb.rvf.lock

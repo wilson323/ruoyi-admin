@@ -1,0 +1,12 @@
+{
+  "name": "agentdb",
+  "version": "3.0.0-alpha.9",
+  "license": "MIT",
+  "author": "ruv",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ruvnet/agentic-flow.git",
+    "directory": "packages/agentdb"
+  },
+  "notice": "Official npm tarball contains no standalone LICENSE file. Original source hashes are retained; MIT declaration is from its package.json, not an invented copyright statement."
+}

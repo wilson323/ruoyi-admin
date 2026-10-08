@@ -1,0 +1,122 @@
+{
+  "advertised_tools": 381,
+  "extension_controllers": "7/7 ACTIVE",
+  "mcp_write_attestation": "PASS",
+  "mcp_write_audit_row": 87,
+  "native_semantic_route": {
+    "route": {
+      "route": "testing",
+      "confidence": 1,
+      "metadata": {},
+      "engine": "native-semantic"
+    },
+    "controller": "semanticRouter"
+  },
+  "restart_persistence": "PASS",
+  "test_entry_cleanup": "PASS",
+  "controller_states": {
+    "hierarchicalMemory": true,
+    "tieredCache": true,
+    "reasoningBank": true,
+    "memoryGraph": true,
+    "vectorBackend": true,
+    "mutationGuard": true,
+    "gnnService": true,
+    "skills": true,
+    "reflexion": true,
+    "attestationLog": true,
+    "memoryConsolidation": true,
+    "explainableRecall": true,
+    "batchOperations": true,
+    "causalGraph": true,
+    "semanticRouter": true,
+    "nightlyLearner": true,
+    "learningSystem": true,
+    "rvfOptimizer": true,
+    "guardedVectorBackend": true,
+    "graphTransformer": true,
+    "contextSynthesizer": true,
+    "mmrDiversityRanker": true,
+    "graphAdapter": true
+  },
+  "security_native_probe": {
+    "verdict": "pass",
+    "proof": {
+      "proofsIssued": 2,
+      "denials": 3,
+      "wasmAvailable": true,
+      "engineType": "native",
+      "avgProofTimeNs": 579917
+    },
+    "audit": {
+      "total": 5,
+      "proved": 2,
+      "denied": 3,
+      "uniqueAgents": 2,
+      "oldestTs": 1791470322
+    },
+    "gnn": {
+      "engineType": "native",
+      "initialized": true,
+      "config": {
+        "inputDim": 384,
+        "hiddenDim": 128,
+        "outputDim": 64,
+        "layers": 4
+      }
+    },
+    "rvf": {
+      "originalSize": 1536,
+      "compressedSize": 192,
+      "compressionRatio": 8,
+      "qualityScore": 0.99958457027256,
+      "quantizationBits": 4,
+      "adaptiveBoost": 0
+    }
+  },
+  "graph_router_probe": [
+    "write:pass",
+    "read:pass",
+    "corrupt-existing-graph:rejected-without-rebuild",
+    "mock-embedding:rejected",
+    "native-semantic:real-embedding-match-and-restored-intents:pass",
+    "router-write:pass",
+    "router-read:pass"
+  ],
+  "cleanup": {
+    "removed": [
+      {
+        "path": "/Users/mac/.local/share/ruflo/agentdb-alpha9-source",
+        "files": 589,
+        "bytes": 3954188
+      },
+      {
+        "path": "/Users/mac/.local/share/ruflo/full-install-20261008",
+        "files": 368,
+        "bytes": 5625417
+      }
+    ],
+    "retained": [
+      "official npm archives and original bridge backup",
+      "controller repair runtime",
+      "historical failure evidence",
+      "open native database files"
+    ],
+    "removed_owned_probe_directories": [
+      "/var/folders/8l/6tnv8ssd2vs0h8463rnv66b00000gn/T/ruflo-graph-router-OrbkoZ",
+      "/var/folders/8l/6tnv8ssd2vs0h8463rnv66b00000gn/T/ruflo-graph-router-15Isr6",
+      "/var/folders/8l/6tnv8ssd2vs0h8463rnv66b00000gn/T/ruflo-graph-router-njQZrr",
+      "/var/folders/8l/6tnv8ssd2vs0h8463rnv66b00000gn/T/ruflo-graph-router-qbF7Vp",
+      "/var/folders/8l/6tnv8ssd2vs0h8463rnv66b00000gn/T/ruflo-graph-router-bOpL8c",
+      "/var/folders/8l/6tnv8ssd2vs0h8463rnv66b00000gn/T/ruflo-graph-router-HlK75x",
+      "/var/folders/8l/6tnv8ssd2vs0h8463rnv66b00000gn/T/ruflo-corrupt-uzzuHT",
+      "/var/folders/8l/6tnv8ssd2vs0h8463rnv66b00000gn/T/ruflo-corrupt-5dRjCN",
+      "/var/folders/8l/6tnv8ssd2vs0h8463rnv66b00000gn/T/ruflo-corrupt-18F695",
+      "/var/folders/8l/6tnv8ssd2vs0h8463rnv66b00000gn/T/ruflo-corrupt-ALAGvG",
+      "/var/folders/8l/6tnv8ssd2vs0h8463rnv66b00000gn/T/ruflo-corrupt-RVFxzW",
+      "/var/folders/8l/6tnv8ssd2vs0h8463rnv66b00000gn/T/ruflo-corrupt-047d0c"
+    ],
+    "probe_namespace_remaining_active": 0
+  },
+  "boundary": "new MCP processes and specified operations only; existing IDE connections not reloaded; no business acceptance"
+}

@@ -34,6 +34,13 @@ class HarnessCases(unittest.TestCase):
         self.cmd('add', '.')
         self.cmd('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture')
         self.addCleanup(self.temp.cleanup)
+        registry = 'CASE-1 OTHER CASE-EMPTY CASE-FE CASE-ZERO CASE-MISSING'
+        self.registry_patch = patch.object(h, 'task_registry', return_value=registry)
+        self.registry_patch.start(); self.addCleanup(self.registry_patch.stop)
+        self.authority = Path(self.temp.name) / 'existing-master'
+        self.authority.write_text('fixture authority')
+        p = patch.object(h, 'authority_paths', return_value=[self.authority])
+        p.start(); self.addCleanup(p.stop)
     def cmd(self, *args):
         return subprocess.check_output(['git', '-C', str(self.root), *args], env={k:v for k,v in os.environ.items() if not k.startswith('GIT_')})
     def execute(self, code, timeout=3):
@@ -236,6 +243,41 @@ class HarnessCases(unittest.TestCase):
         data=json.loads(fp.read_text());data['validator_hash']='different-verifier';fp.write_text(json.dumps(data))
         with patch.object(h,'profiles',return_value=steps),self.assertRaises(h.HarnessError):h.intake(self.root)
 
+    def test_C42_invented_task_refused_before_execution(self):
+        with patch.object(h, 'execute') as execute, self.assertRaises(h.HarnessError):
+            h.verify(self.root, 'governance', 'MADE-UP-NO-CARD')
+        execute.assert_not_called()
+
+    def test_C43_task_substring_is_not_registration(self):
+        with patch.object(h, 'task_registry', return_value='CASE-10'), self.assertRaises(h.HarnessError):
+            h.validate_task(self.root, 'CASE-1')
+        h.validate_task(self.root, 'CASE-1')
+
+    def test_C44_external_authority_change_invalidates_receipt(self):
+        _, path, steps = self.run_receipt()
+        self.authority.write_text('scope changed after verification')
+        with self.assertRaises(h.HarnessError): self.check(path, steps)
+
+    def test_C45_external_authority_change_during_execution_refused(self):
+        code = f"from pathlib import Path; Path({str(self.authority)!r}).write_text('changed'); print('PASS')"
+        receipt, _, _ = self.run_receipt(code)
+        self.assertEqual(receipt['status'], 'STALE_INPUT')
+
+    def test_C46_canvas_entrypoints_share_contract(self):
+        path = Path(__file__).resolve().parents[1] / '.cursor/hooks/check-execution-cut.py'
+        valid = 'const CUT_STATE = "OPEN"; const CUT_ACTION = "repair";'
+        invalid = valid + ' const CUT_UNBLOCK = "other authority";'
+        for text, expected in ((valid, 0), (invalid, 2), ('const CUT_STATE = "CLOSED";', 2)):
+            result = subprocess.run([sys.executable, str(path), '--stdin-text'], input=text, text=True, capture_output=True)
+            self.assertEqual(result.returncode, expected, result.stderr)
+
+    def test_C47_canvas_malformed_payload_refused(self):
+        path = Path(__file__).resolve().parents[1] / '.cursor/hooks/check-execution-cut.py'
+        for raw in ('invalid-json', '[]'):
+            result = subprocess.run([sys.executable, str(path)], input=raw, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(json.loads(result.stdout)['permission'], 'deny')
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--backend-root',type=Path)
@@ -244,9 +286,9 @@ if __name__=='__main__':
         BACKEND_ROOT=args.backend_root.resolve()
         if not (BACKEND_ROOT/'.harness/gate.sh').is_file():
             parser.error('Explicit backend root must contain the real .harness/gate.sh')
-        print('Scope: core 38 cases + explicit backend adapter integration 3 cases; isolated fixtures only',flush=True)
+        print('Scope: core 44 cases + explicit backend adapter integration 3 cases; isolated fixtures only',flush=True)
     else:
-        print('Scope: core 38 cases only; backend adapter integration was not selected',flush=True)
+        print('Scope: core 44 cases only; backend adapter integration was not selected',flush=True)
     names=unittest.defaultTestLoader.getTestCaseNames(HarnessCases)
     suite=unittest.TestSuite(HarnessCases(name) for name in names
                             if BACKEND_ROOT is not None or name not in INTEGRATION_CASES)

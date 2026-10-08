@@ -97,13 +97,50 @@ def snapshot(root, manifest=None):
         write_json(manifest, {"files": entries, "scope": "tracked/untracked nonignored inputs plus explicit local build inputs; not a complete environment attestation"})
     return {"head": git(root, "rev-parse", "HEAD").decode().strip(),
             "input_hash": digest(json.dumps(entries, ensure_ascii=False).encode()),
-            "input_count": len(entries)}
+            "input_count": len(entries), "authority_hash": authority_hash(root)}
+
+
+def authority_paths(root):
+    """Hash existing authority/config, never copy secrets or create another registry."""
+    backend = root if project(root) == "ipd-backend" else Path("/Users/mac/Documents/ruoyi-ai")
+    canvases = Path("/Users/mac/.cursor/projects/Users-mac-Documents-ruoyi-ipd-web/canvases")
+    paths = [backend / "docs/ipd-系统说明/开发计划-看板镜像.md",
+             canvases / "ipd-execution-plan.canvas.tsx",
+             root / "AGENTS.md", root / "CLAUDE.md",
+             root / ".cursor/hooks.json", root / ".cursor/hooks/check-execution-cut.py",
+             root / ".claude/settings.json", root / ".codex/hooks.json",
+             Path.home() / ".claude/settings.json", Path.home() / ".codex/AGENTS.md",
+             Path.home() / ".codex/config.toml", Path.home() / ".cursor/hooks.json"]
+    master = paths[1]
+    if master.is_file():
+        for name in set(re.findall(r'"(ipd-[\w-]+\.canvas\.tsx)"', master.read_text())):
+            paths.append(canvases / name)
+    return paths
+
+
+def authority_hash(root):
+    return digest(json.dumps([[str(p), digest(p.read_bytes()) if p.is_file() else "missing"]
+                              for p in sorted(set(authority_paths(root)))], ensure_ascii=False).encode())
+
+
+def task_registry(root):
+    backend = root if project(root) == "ipd-backend" else Path("/Users/mac/Documents/ruoyi-ai")
+    return (backend / "docs/ipd-系统说明/开发计划-看板镜像.md").read_text()
+
+
+def validate_task(root, task):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}", task):
+        raise HarnessError("Task must reference existing plan/card using a safe identifier")
+    if not re.search(r"(?<![A-Za-z0-9_.-])" + re.escape(task) + r"(?![A-Za-z0-9_.-])", task_registry(root)):
+        raise HarnessError("Task is not recorded in the existing authoritative mirror; no invented card")
 
 
 def validator_hash(root=None):
     here = Path(__file__).resolve().parent
     files = [here / name for name in ("engineering_harness.py", "test_engineering_harness.py",
              "typecheck-error-count.mjs", "typecheck-error-count.test.mjs", "check-ipd-plan-context.py")]
+    files += [here.parent / ".harness/verify.sh",
+              here.parent / ".harness/skills/ipd-engineering-feedback/SKILL.md"]
     backend = (root if root is not None and project(root) == "ipd-backend"
                else Path("/Users/mac/Documents/ruoyi-ai"))
     files += [backend / ".harness" / name for name in ("gate.sh", "loop.sh", "verify.sh")
@@ -251,8 +288,7 @@ def reflect(root, receipt):
 
 
 def verify(root, profile, task):
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}", task):
-        raise HarnessError("Task must reference existing plan/card using a safe identifier")
+    validate_task(root, task)
     kind = project(root)
     feedback = intake(root)
     print(json.dumps({"known_checks": feedback["checks"], "pending_reflections": feedback["pending_reflections"],
@@ -291,10 +327,10 @@ def verify(root, profile, task):
             log_text = Path(step["log"]).read_text()
             if name == "harness-regression" and step["reason"] is None:
                 count = re.search(r"Ran (\d+) tests?", log_text)
-                if not count or int(count[1]) < 41:
+                if not count or int(count[1]) < 47:
                     step["reason"] = "EMPTY_EVIDENCE"
                 ids = {int(x) for x in re.findall(r"test_C(\d\d)_", log_text)}
-                if not set(range(1, 42)).issubset(ids):
+                if not set(range(1, 48)).issubset(ids):
                     step["reason"] = "EMPTY_EVIDENCE"
                 step["case_ids"] = sorted(ids)
             if name == "typecheck-regression" and step["reason"] is None:

@@ -6,6 +6,27 @@ import re
 import sys
 
 
+def execution_problems(text):
+    """Current master contract; shared by context check and Cursor write hook."""
+    states = re.findall(r'const CUT_STATE\s*=\s*"([^"]+)"', text)
+    actions = re.findall(r'const CUT_ACTION\s*=\s*"([^"]*)"', text)
+    unblocks = re.findall(r'const CUT_UNBLOCK\s*=\s*"([^"]*)"', text)
+    if len(states) != 1 or states[0] not in ("OPEN", "BLOCKED"):
+        return ["总画布必须恰好有一个 OPEN/BLOCKED CUT_STATE"]
+    failures = []
+    if states[0] == "OPEN":
+        if len(actions) != 1 or not actions[0].strip() or unblocks:
+            failures.append("OPEN 必须有唯一非空动作，不能同时有解除条件")
+    elif len(unblocks) != 1 or not unblocks[0].strip() or actions:
+        failures.append("BLOCKED 必须有唯一非空解除条件，不能同时有动作")
+    # Old display widgets are optional in the current canvas. If retained,
+    # they must agree with authority rather than create a second state.
+    stats = re.findall(r'<Stat value="([^"]*)" label="全项目下一刀"', text)
+    if stats and (len(stats) != 1 or not stats[0].startswith(states[0])):
+        failures.append("下一刀展示与唯一 CUT_STATE 冲突")
+    return failures
+
+
 def validate(front, back, canvases):
     failures = []
 
@@ -29,11 +50,7 @@ def validate(front, back, canvases):
         failures.append("IPD 事项仍默认路由到 GitHub")
 
     master = read(canvases / "ipd-execution-plan.canvas.tsx")
-    states = re.findall(r'const CUT_STATE\s*=\s*"([^"]+)"', master)
-    if len(states) != 1 or states[0] not in ("OPEN", "BLOCKED"):
-        failures.append("总画布必须恰好有一个 OPEN/BLOCKED CUT_STATE")
-    if states == ["OPEN"] and not re.search(r'const CUT_ACTION\s*=\s*"[^"\s][^"]*"', master):
-        failures.append("OPEN 下一刀缺少动作")
+    failures.extend(execution_problems(master))
     if "历史证据不能当当前状态" not in master:
         failures.append("总画布缺少历史运行记录的时效说明")
     sections = re.findall(r'"(ipd-[\w-]+\.canvas\.tsx)"', master)

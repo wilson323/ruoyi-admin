@@ -1,0 +1,8 @@
+{
+  "package": "@ruvector/graph-transformer-darwin-arm64",
+  "version": "2.0.4",
+  "archive": "ruvector-graph-transformer-darwin-arm64-2.0.4.tgz",
+  "sha256": "cdb9b347deec819bea250adbe9e789b3a14304755f47b8ab50615308810b0d44",
+  "platform": "darwin",
+  "architecture": "arm64"
+}
