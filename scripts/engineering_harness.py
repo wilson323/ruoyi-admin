@@ -155,7 +155,9 @@ def validator_hash(root=None):
         "docs/ipd-系统说明/vibe-kanban/manage.py", "scripts/check-gate-wiring.sh",
         "scripts/gate-manual-registry.txt", "scripts/ci/check-no-async-configurer.sh",
         ".github/workflows/gate-wiring-meta.yml", "scripts/check-untracked-references.py",
-        "scripts/test-untracked-references.py") if (backend / name).is_file()]
+        "scripts/test-untracked-references.py", ".claude/hooks/post-commit-update-kanban.cjs",
+        ".claude/hooks/post-commit-update-kanban.test.cjs",
+        ".codex/hooks/post-commit-update-kanban.cjs") if (backend / name).is_file()]
     return digest(json.dumps([[str(p), digest(p.read_bytes())] for p in files]).encode())
 
 
